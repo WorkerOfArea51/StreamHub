@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Subtitles
@@ -154,6 +155,17 @@ fun PlayerScreen(
                     }
 
                     Row {
+                        IconButton(onClick = {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                val activity = context as? Activity
+                                val params = android.app.PictureInPictureParams.Builder()
+                                    .setAspectRatio(android.util.Rational(16, 9))
+                                    .build()
+                                activity?.enterPictureInPictureMode(params)
+                            }
+                        }) {
+                            Icon(Icons.Default.PictureInPicture, contentDescription = "Picture in Picture Mode", tint = Color.White)
+                        }
                         IconButton(onClick = { viewModel.toggleTrackDialog() }) {
                             Icon(Icons.Default.GraphicEq, contentDescription = "Audio & Subtitles", tint = AccentOrange)
                         }
