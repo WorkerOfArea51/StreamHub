@@ -1,0 +1,88 @@
+name: StreamHub Automated Android Build & Release CI/CD
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Package Android APKs (ARM32, ARM64, Universal)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ☕ Set up Java JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: 🔑 Grant Execute Permission for Gradle Wrapper
+        run: chmod +x gradlew
+
+      - name: 🔨 Build StreamHub APKs (ARM32, ARM64, Universal)
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: 📦 Collect & Rename Build APK Artifacts
+        run: |
+          mkdir -p release_apks
+          find app/build/outputs/apk/debug/ -name "*.apk"
+          
+          # Find and copy generated ABI splits
+          cp app/build/outputs/apk/debug/app-arm64-v8a-debug.apk release_apks/StreamHub-v2.0.0-arm64-v8a.apk || cp app/build/outputs/apk/debug/app-debug.apk release_apks/StreamHub-v2.0.0-arm64-v8a.apk
+          cp app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk release_apks/StreamHub-v2.0.0-armeabi-v7a.apk || true
+          cp app/build/outputs/apk/debug/app-universal-debug.apk release_apks/StreamHub-v2.0.0-universal.apk || cp app/build/outputs/apk/debug/app-debug.apk release_apks/StreamHub-v2.0.0-universal.apk
+          
+          ls -la release_apks/
+
+      - name: 📤 Upload Build Artifacts to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: StreamHub-v2.0.0-APKs
+          path: release_apks/*.apk
+
+      - name: 🚀 Create GitHub Release & Upload APKs
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+        with:
+          name: "StreamHub v2.0.0 Release 🚀"
+          tag_name: "v2.0.0"
+          body: |
+            ## 🌟 StreamHub v2.0.0 Official Release!
+            
+            ### 📥 Download APKs for your Android Device:
+            - **`StreamHub-v2.0.0-arm64-v8a.apk`**: High-performance 64-bit APK for modern Android smartphones (Recommended).
+            - **`StreamHub-v2.0.0-armeabi-v7a.apk`**: 32-bit APK for older Android smartphones.
+            - **`StreamHub-v2.0.0-universal.apk`**: Universal APK compatible with all Android devices & tablets.
+            
+            ---
+            
+            ### ✨ What's Included:
+            - 🍿 **Telegram Private Channel Direct Video Streaming** (0 server cost & unlimited free bandwidth)
+            - 🖼️ **In-App YouTube Trailer Player & Backdrop Cover**
+            - 📅 **Multi-Season & Episode Dropdown Filtering**
+            - 🌟 **TelStream Animated Splash Screen**
+            - ⚙️ **Settings & Administration Panel**
+            - ⏯️ **Continue Watching & Playback Position Saver**
+            - 📥 **Offline Episode Download Manager**
+            - 🔍 **Advanced Search & Interactive Genre Filter Chips**
+            - 🎧 & 💬 **Dedicated Audio Track & Subtitle Track Selectors**
+            - 📺 **Native Picture-in-Picture (PiP) Floating Video Window**
+            - 🔖 **My List Watchlist Bookmark Manager**
+            - ⚡ **Telegram Private Channel Link Batch Generator**
+            - 📜 **Watch History Management & Clear History**
+            - ⏩ **Skip Intro (+90s) & Netflix/Crunchyroll Outro Pop-up**
+            - 👆 **Double-Tap Seek & Customizable Swappable Vertical Drag Controls (Volume & Brightness)**
+            - 🎨 **Custom App Theme Accent Colors (Netflix Red, Crunchyroll Orange, Cyberpunk Cyan, Emerald Green, Neon Purple)**
+          files: |
+            release_apks/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
