@@ -1,7 +1,8 @@
 package com.streamhub.app.ui.screens
 
-import android.content.Intent
-import android.net.Uri
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,9 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -66,6 +64,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.streamhub.app.data.AdminManager
 import com.streamhub.app.data.models.Episode
@@ -91,19 +90,19 @@ fun DetailsScreen(
     onPlayEpisode: (MediaItem, Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val catalog by repository.mediaCatalog.collectAsState()
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
     var showAdminEditDialog by remember { mutableStateOf(false) }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     var selectedSeason by remember { mutableStateOf("Season 1") }
     var isSeasonDropdownExpanded by remember { mutableStateOf(false) }
+    var isPlayingTrailer by remember { mutableStateOf(false) }
 
     val mediaItem = catalog.firstOrNull { it.id == mediaId } ?: return
 
-    // High-Res YouTube Trailer Backdrop Image
+    // YouTube Backdrop Image URL (hqdefault)
     val youtubeBackdropUrl = if (mediaItem.trailerId.isNotEmpty()) {
-        "https://img.youtube.com/vi/${mediaItem.trailerId}/maxresdefault.jpg"
+        "https://img.youtube.com/vi/${mediaItem.trailerId}/hqdefault.jpg"
     } else {
         mediaItem.bannerUrl.ifEmpty { mediaItem.posterUrl }
     }
@@ -115,12 +114,12 @@ fun DetailsScreen(
             MediaItem(id = "rec_2", title = "Shangri-La Frontier", category = "ANIME", rating = "8.05", releaseYear = "2023", posterUrl = "https://cdn.myanimelist.net/images/anime/1622/137688l.jpg", description = "God-tier VR gaming adventure."),
             MediaItem(id = "rec_3", title = "DanMachi (Dungeon)", category = "ANIME", rating = "7.55", releaseYear = "2015", posterUrl = "https://cdn.myanimelist.net/images/anime/8/72117l.jpg", description = "Bell Cranel levels up in Orario dungeon."),
             MediaItem(id = "rec_4", title = "Jujutsu Kaisen", category = "ANIME", rating = "8.65", releaseYear = "2020", posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600", description = "Cursed sorcery and high-octane battles."),
-            MediaItem(id = "rec_5", title = "Demon Slayer: Entertainment District", category = "ANIME", rating = "8.82", releaseYear = "2022", posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600", description = "Tanjiro fights Upper Moon demons."),
+            MediaItem(id = "rec_5", title = "Demon Slayer", category = "ANIME", rating = "8.82", releaseYear = "2022", posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600", description = "Tanjiro fights Upper Moon demons."),
             MediaItem(id = "rec_6", title = "Attack on Titan", category = "ANIME", rating = "9.05", releaseYear = "2013", posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600", description = "Humanity fights massive Titans."),
             MediaItem(id = "rec_7", title = "Chainsaw Man", category = "ANIME", rating = "8.50", releaseYear = "2022", posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600", description = "Denji fuses with Pochita."),
-            MediaItem(id = "rec_8", title = "Bleach: Thousand-Year Blood War", category = "ANIME", rating = "9.00", releaseYear = "2022", posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600", description = "Soul Reapers vs Quincies."),
-            MediaItem(id = "rec_9", title = "Fullmetal Alchemist: Brotherhood", category = "ANIME", rating = "9.10", releaseYear = "2009", posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600", description = "Elric brothers search for Philosopher Stone."),
-            MediaItem(id = "rec_10", title = "Hunter x Hunter (2011)", category = "ANIME", rating = "9.04", releaseYear = "2011", posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600", description = "Gon Freecss seeks to become a Hunter.")
+            MediaItem(id = "rec_8", title = "Bleach: TYBW", category = "ANIME", rating = "9.00", releaseYear = "2022", posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600", description = "Soul Reapers vs Quincies."),
+            MediaItem(id = "rec_9", title = "FMA: Brotherhood", category = "ANIME", rating = "9.10", releaseYear = "2009", posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600", description = "Elric brothers search for Philosopher Stone."),
+            MediaItem(id = "rec_10", title = "Hunter x Hunter", category = "ANIME", rating = "9.04", releaseYear = "2011", posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600", description = "Gon Freecss seeks to become a Hunter.")
         )
     }
 
@@ -144,54 +143,68 @@ fun DetailsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Header Backdrop Container (Official YouTube Trailer Playback on Click)
+            // Header Backdrop Container (In-App YouTube Trailer Player inside Trailer Section)
             item {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(280.dp)
-                        .clickable {
-                            val ytIntent = Intent(
-                                Intent.ACTION_VIEW,
-                                Uri.parse("https://www.youtube.com/watch?v=${mediaItem.trailerId.ifEmpty { "1kCwjK4rgYg" }}")
-                            )
-                            context.startActivity(ytIntent)
-                        }
                 ) {
-                    // YouTube Backdrop Cover Image
-                    AsyncImage(
-                        model = youtubeBackdropUrl,
-                        contentDescription = mediaItem.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(Color(0x550A0A0F), Color(0x990A0A0F), BackgroundDark)
-                                )
-                            )
-                    )
-
-                    // Sleek Red YouTube Play Icon Overlay
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .clip(CircleShape)
-                            .background(Color(0xEEFF0000))
-                            .padding(18.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "Play YouTube Trailer",
-                            tint = Color.White,
-                            modifier = Modifier
-                                .width(36.dp)
-                                .height(36.dp)
+                    if (isPlayingTrailer && mediaItem.trailerId.isNotEmpty()) {
+                        // In-App Embedded YouTube Trailer Player
+                        AndroidView(
+                            factory = { context ->
+                                WebView(context).apply {
+                                    settings.javaScriptEnabled = true
+                                    settings.domStorageEnabled = true
+                                    settings.mediaPlaybackRequiresUserGesture = false
+                                    settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+                                    webViewClient = WebViewClient()
+                                    webChromeClient = WebChromeClient()
+                                    loadUrl("https://www.youtube-nocookie.com/embed/${mediaItem.trailerId}?autoplay=1&playsinline=1")
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
                         )
+                    } else {
+                        // High-Res YouTube Cover Backdrop Image
+                        AsyncImage(
+                            model = youtubeBackdropUrl,
+                            contentDescription = mediaItem.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clickable { isPlayingTrailer = true }
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(Color(0x550A0A0F), Color(0x990A0A0F), BackgroundDark)
+                                    )
+                                )
+                        )
+
+                        // YouTube Red Play Icon Overlay
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .clip(CircleShape)
+                                .background(Color(0xEEFF0000))
+                                .clickable { isPlayingTrailer = true }
+                                .padding(18.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Play In-App YouTube Trailer",
+                                tint = Color.White,
+                                modifier = Modifier
+                                    .width(36.dp)
+                                    .height(36.dp)
+                            )
+                        }
                     }
 
                     IconButton(
@@ -336,7 +349,7 @@ fun DetailsScreen(
                         Tab(
                             selected = selectedTabIndex == 0,
                             onClick = { selectedTabIndex = 0 },
-                            text = { Text("EPISODES (${mediaItem.episodes.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                            text = { Text("EPISODES", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
                         )
                         Tab(
                             selected = selectedTabIndex == 1,
@@ -455,7 +468,7 @@ fun DetailsScreen(
                     ) {
                         Text("MAL RECOMMENDATIONS & SIMILAR ANIME", color = AccentOrange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(12.dp))
-                        
+
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             items(recommendations) { recItem ->
                                 MediaCard(

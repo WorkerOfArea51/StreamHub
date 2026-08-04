@@ -5,14 +5,37 @@ import com.streamhub.app.data.models.Episode
 object TelegramLinkResolver {
 
     /**
+     * Generates a list of batch Telegram links from start link to end link.
+     * E.g. start: "https://t.me/c/2633457020/7159", end: "https://t.me/c/2633457020/7170"
+     * Returns 12 links: 7159 through 7170.
+     */
+    fun generateBatchTelegramLinks(startUrl: String, endUrl: String): String {
+        val regex = Regex("""(https?://t\.me/(?:c/\d+|[^/]+)/)(\d+)""")
+        val startMatch = regex.find(startUrl.trim())
+        val endMatch = regex.find(endUrl.trim())
+
+        if (startMatch != null && endMatch != null) {
+            val prefix = startMatch.groupValues[1]
+            val startId = startMatch.groupValues[2].toLongOrNull() ?: 1L
+            val endId = endMatch.groupValues[2].toLongOrNull() ?: startId
+
+            val links = mutableListOf<String>()
+            val minId = minOf(startId, endId)
+            val maxId = maxOf(startId, endId)
+
+            for (id in minId..maxId) {
+                links.add("$prefix$id")
+            }
+            return links.joinToString("\n")
+        } else if (startUrl.isNotBlank()) {
+            return startUrl.trim()
+        }
+        return ""
+    }
+
+    /**
      * Parses raw batch Telegram links / message URLs or stream links
      * and automatically groups them into structured Episode objects.
-     *
-     * Supports formats:
-     * - https://t.me/channel_name/101
-     * - https://t.me/c/123456789/101
-     * - https://api.telegram.org/file/bot<TOKEN>/<FILE_PATH>
-     * - http://your-stream-proxy.com/stream?id=101
      */
     fun parseAndGroupTelegramLinks(rawText: String): List<Episode> {
         val lines = rawText.lines().map { it.trim() }.filter { it.isNotEmpty() }

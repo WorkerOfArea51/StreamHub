@@ -82,6 +82,10 @@ fun AdminEditorDialog(
     var mirrorLinksText by remember { mutableStateOf(initialItem?.episodes?.joinToString("\n") { it.mirrorStreamUrl } ?: "") }
     var isFetchingApi by remember { mutableStateOf(false) }
 
+    // Telegram Batch Link Range Generator State
+    var startBatchLink by remember { mutableStateOf("https://t.me/c/2633457020/7159") }
+    var endBatchLink by remember { mutableStateOf("https://t.me/c/2633457020/7170") }
+
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(16.dp),
@@ -348,7 +352,46 @@ fun AdminEditorDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // TELEGRAM BATCH LINK RANGE GENERATOR
+                Text("⚡ TELEGRAM PRIVATE CHANNEL BATCH GENERATOR", color = AccentOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+
+                OutlinedTextField(
+                    value = startBatchLink,
+                    onValueChange = { startBatchLink = it },
+                    label = { Text("Start Link (e.g. Episode 1 link: .../7159)", color = TextSecondary) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                OutlinedTextField(
+                    value = endBatchLink,
+                    onValueChange = { endBatchLink = it },
+                    label = { Text("End Link (e.g. Episode 12 link: .../7170)", color = TextSecondary) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = {
+                        val generated = TelegramLinkResolver.generateBatchTelegramLinks(startBatchLink, endBatchLink)
+                        if (generated.isNotEmpty()) {
+                            rawTelegramLinks = generated
+                            mirrorLinksText = generated
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("⚡ Generate Batch Episode Links", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Text("Telegram Primary Stream URLs (streamUrl)", color = AccentOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
 
