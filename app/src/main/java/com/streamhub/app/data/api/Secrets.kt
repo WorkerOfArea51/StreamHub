@@ -5,8 +5,8 @@ object Secrets {
     var TMDB_API_KEY: String = "ec562d9f2a8a07ffb7fa3308fb5bec9c"
     
     // MyAnimeList (MAL) Official Credentials
-    var MAL_CLIENT_ID: String = "4f7167fe0e6ff0b5832d117657a1aefb"
-    var MAL_CLIENT_SECRET: String = "c721d0b2400eeb7893c2e958514be9279736d7f202b6734e4eef913e098b71df"
+    var MAL_CLIENT_ID: String = "61070e26017201303b6320a0a973d40c"
+    var MAL_CLIENT_SECRET: String = ""
     
     // Official MyAnimeList REST API v2 Base URL
     const val MAL_BASE_URL: String = "https://api.myanimelist.net/v2/"
