@@ -8,6 +8,7 @@ import androidx.media3.common.MediaItem as ExoMediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.models.MediaItem
 import kotlinx.coroutines.delay
@@ -43,12 +44,16 @@ class StreamPlayerViewModel : ViewModel() {
 
     private var currentMediaItem: MediaItem? = null
     private var episodesList: List<Episode> = emptyList()
+    private var appContext: Context? = null
 
     fun getPlayer(): ExoPlayer? = exoPlayer
 
     fun initializePlayer(context: Context, mediaItem: MediaItem, initialEpisodeIndex: Int = 0) {
+        appContext = context.applicationContext
         currentMediaItem = mediaItem
         episodesList = mediaItem.episodes
+
+        WatchHistoryManager.init(context)
 
         if (exoPlayer == null) {
             val dataSourceFactory = TelegramDataSourceFactory(context)
@@ -74,11 +79,19 @@ class StreamPlayerViewModel : ViewModel() {
             })
         }
 
-        playEpisode(initialEpisodeIndex)
+        // Check for saved watch history progress
+        val savedProgress = WatchHistoryManager.getProgress(mediaItem.id)
+        val targetEpisodeIndex = if (savedProgress != null && savedProgress.episodeNumber in episodesList.indices) {
+            savedProgress.episodeNumber
+        } else {
+            initialEpisodeIndex
+        }
+
+        playEpisode(targetEpisodeIndex, savedProgress?.positionMs ?: 0L)
         startPositionTracker()
     }
 
-    fun playEpisode(index: Int) {
+    fun playEpisode(index: Int, startPositionMs: Long = 0L) {
         if (episodesList.isEmpty() || index !in episodesList.indices) return
         val episode = episodesList[index]
         _uiState.value = _uiState.value.copy(currentEpisodeIndex = index)
@@ -89,6 +102,9 @@ class StreamPlayerViewModel : ViewModel() {
         exoPlayer?.apply {
             setMediaItem(mediaItem)
             prepare()
+            if (startPositionMs > 0L) {
+                seekTo(startPositionMs)
+            }
             playWhenReady = true
         }
     }
@@ -154,21 +170,48 @@ class StreamPlayerViewModel : ViewModel() {
     private fun startPositionTracker() {
         viewModelScope.launch {
             while (true) {
-                exoPlayer?.let {
-                    if (it.isPlaying) {
+                exoPlayer?.let { player ->
+                    if (player.isPlaying) {
+                        val currentPos = player.currentPosition
+                        val totalDuration = player.duration.coerceAtLeast(0L)
                         _uiState.value = _uiState.value.copy(
-                            currentPositionMs = it.currentPosition,
-                            durationMs = it.duration.coerceAtLeast(0L)
+                            currentPositionMs = currentPos,
+                            durationMs = totalDuration
                         )
+
+                        currentMediaItem?.let { media ->
+                            appContext?.let { ctx ->
+                                WatchHistoryManager.saveProgress(
+                                    context = ctx,
+                                    mediaId = media.id,
+                                    episodeNumber = _uiState.value.currentEpisodeIndex,
+                                    positionMs = currentPos,
+                                    durationMs = totalDuration
+                                )
+                            }
+                        }
                     }
                 }
-                delay(500L)
+                delay(1000L)
             }
         }
     }
 
     fun releasePlayer() {
-        exoPlayer?.release()
+        exoPlayer?.let { player ->
+            currentMediaItem?.let { media ->
+                appContext?.let { ctx ->
+                    WatchHistoryManager.saveProgress(
+                        context = ctx,
+                        mediaId = media.id,
+                        episodeNumber = _uiState.value.currentEpisodeIndex,
+                        positionMs = player.currentPosition,
+                        durationMs = player.duration.coerceAtLeast(0L)
+                    )
+                }
+            }
+            player.release()
+        }
         exoPlayer = null
     }
 
