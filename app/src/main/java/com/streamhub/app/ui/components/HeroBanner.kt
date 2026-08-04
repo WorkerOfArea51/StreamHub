@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -22,16 +23,20 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.streamhub.app.data.MyListManager
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
@@ -47,6 +52,10 @@ fun HeroBanner(
     onAddToListClick: (MediaItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val myListSet by MyListManager.myListFlow.collectAsState()
+    val isBookmarked = myListSet.contains(media.id)
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -169,19 +178,22 @@ fun HeroBanner(
                 }
 
                 OutlinedButton(
-                    onClick = { onAddToListClick(media) },
+                    onClick = {
+                        MyListManager.toggleBookmark(context, media.id)
+                        onAddToListClick(media)
+                    },
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Add,
+                        imageVector = if (isBookmarked) Icons.Default.Check else Icons.Default.Add,
                         contentDescription = "My List",
-                        tint = TextPrimary
+                        tint = if (isBookmarked) AccentOrange else TextPrimary
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "My List",
-                        color = TextPrimary,
+                        text = if (isBookmarked) "In My List" else "My List",
+                        color = if (isBookmarked) AccentOrange else TextPrimary,
                         fontWeight = FontWeight.SemiBold
                     )
                 }

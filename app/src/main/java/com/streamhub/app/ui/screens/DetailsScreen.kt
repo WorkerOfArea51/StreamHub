@@ -25,11 +25,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
+import com.streamhub.app.data.MyListManager
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -303,17 +306,41 @@ fun DetailsScreen(
                                 fontWeight = FontWeight.Medium
                             )
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                            val myListSet by MyListManager.myListFlow.collectAsState()
+                            val isBookmarked = myListSet.contains(mediaItem.id)
 
-                            Button(
-                                onClick = { onPlayEpisode(mediaItem, 0) },
-                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
-                                shape = RoundedCornerShape(8.dp),
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Icon(Icons.Default.PlayArrow, contentDescription = "Play", tint = Color.White)
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Start Streaming", color = Color.White, fontWeight = FontWeight.Bold)
+                                Button(
+                                    onClick = { onPlayEpisode(mediaItem, 0) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.PlayArrow, contentDescription = "Play", tint = Color.White)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Play", color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+
+                                OutlinedButton(
+                                    onClick = { MyListManager.toggleBookmark(context, mediaItem.id) },
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isBookmarked) Icons.Default.Check else Icons.Default.Add,
+                                        contentDescription = "My List",
+                                        tint = if (isBookmarked) AccentOrange else TextPrimary
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (isBookmarked) "In My List" else "My List",
+                                        color = if (isBookmarked) AccentOrange else TextPrimary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                     }
