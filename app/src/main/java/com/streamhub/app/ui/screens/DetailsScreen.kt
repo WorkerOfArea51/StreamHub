@@ -59,7 +59,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -100,11 +99,11 @@ fun DetailsScreen(
 
     val mediaItem = catalog.firstOrNull { it.id == mediaId } ?: return
 
-    // YouTube Backdrop Image URL (hqdefault)
-    val youtubeBackdropUrl = if (mediaItem.trailerId.isNotEmpty()) {
-        "https://img.youtube.com/vi/${mediaItem.trailerId}/hqdefault.jpg"
-    } else {
-        mediaItem.bannerUrl.ifEmpty { mediaItem.posterUrl }
+    // Fallback order for backdrop image: bannerUrl -> posterUrl -> hqdefault
+    val backdropUrl = mediaItem.bannerUrl.ifEmpty {
+        mediaItem.posterUrl.ifEmpty {
+            if (mediaItem.trailerId.isNotEmpty()) "https://img.youtube.com/vi/${mediaItem.trailerId}/hqdefault.jpg" else ""
+        }
     }
 
     // Populate at least 10 Recommendations under MORE LIKE THIS tab
@@ -143,7 +142,7 @@ fun DetailsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Header Backdrop Container (In-App YouTube Trailer Player inside Trailer Section)
+            // Header Backdrop Container (In-App HTML5 YouTube Trailer Player)
             item {
                 Box(
                     modifier = Modifier
@@ -151,7 +150,7 @@ fun DetailsScreen(
                         .height(280.dp)
                 ) {
                     if (isPlayingTrailer && mediaItem.trailerId.isNotEmpty()) {
-                        // In-App Embedded YouTube Trailer Player
+                        // HTML5 YouTube Player with YouTube Origin header bypassing Configuration Error
                         AndroidView(
                             factory = { context ->
                                 WebView(context).apply {
@@ -161,15 +160,32 @@ fun DetailsScreen(
                                     settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
                                     webViewClient = WebViewClient()
                                     webChromeClient = WebChromeClient()
-                                    loadUrl("https://www.youtube-nocookie.com/embed/${mediaItem.trailerId}?autoplay=1&playsinline=1")
+
+                                    val embedHtml = """
+                                        <!DOCTYPE html>
+                                        <html>
+                                        <head>
+                                            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+                                            <style>
+                                                body { margin: 0; padding: 0; background-color: #000; display: flex; justify-content: center; align-items: center; height: 100vh; }
+                                                iframe { width: 100%; height: 100%; border: none; }
+                                            </style>
+                                        </head>
+                                        <body>
+                                            <iframe src="https://www.youtube.com/embed/${mediaItem.trailerId}?autoplay=1&playsinline=1&rel=0&enablejsapi=1" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                                        </body>
+                                        </html>
+                                    """.trimIndent()
+
+                                    loadDataWithBaseURL("https://www.youtube.com", embedHtml, "text/html", "utf-8", null)
                                 }
                             },
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {
-                        // High-Res YouTube Cover Backdrop Image
+                        // High-Res Backdrop Image
                         AsyncImage(
-                            model = youtubeBackdropUrl,
+                            model = backdropUrl,
                             contentDescription = mediaItem.title,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
