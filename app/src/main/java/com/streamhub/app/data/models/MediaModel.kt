@@ -10,7 +10,7 @@ data class MediaItem(
     val releaseYear: String = "2024",
     val maturityRating: String = "16+",
     val studio: String = "A-1 Pictures",
-    val trailerUrl: String = "",
+    val trailerId: String = "1kCwjK4rgYg", // YouTube Video ID
     val malId: String = "",
     val tmdbId: String = "",
     val synonyms: String = "Na Honjaman Level Up, I Level Up Alone",

@@ -1,5 +1,8 @@
 package com.streamhub.app.ui.screens
 
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -55,6 +58,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.streamhub.app.data.AdminManager
 import com.streamhub.app.data.models.Episode
@@ -84,6 +88,7 @@ fun DetailsScreen(
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
     var showAdminEditDialog by remember { mutableStateOf(false) }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
+    var isPlayingTrailer by remember { mutableStateOf(false) }
 
     val mediaItem = catalog.firstOrNull { it.id == mediaId } ?: return
     val recommendations = catalog.filter { it.id != mediaId }
@@ -108,29 +113,60 @@ fun DetailsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Header Backdrop
+            // Header Backdrop Container (Plays Trailer Live inside App)
             item {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(300.dp)
                 ) {
-                    AsyncImage(
-                        model = mediaItem.bannerUrl.ifEmpty { mediaItem.posterUrl },
-                        contentDescription = mediaItem.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    if (isPlayingTrailer && mediaItem.trailerId.isNotEmpty()) {
+                        // In-App Embedded YouTube Trailer Player inside the Header Box
+                        AndroidView(
+                            factory = { context ->
+                                WebView(context).apply {
+                                    settings.javaScriptEnabled = true
+                                    settings.domStorageEnabled = true
+                                    webViewClient = WebViewClient()
+                                    webChromeClient = WebChromeClient()
+                                    loadUrl("https://www.youtube-nocookie.com/embed/${mediaItem.trailerId}?autoplay=1&controls=1")
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        // Static Backdrop Image with Floating Play Trailer Button
+                        AsyncImage(
+                            model = mediaItem.bannerUrl.ifEmpty { mediaItem.posterUrl },
+                            contentDescription = mediaItem.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
 
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(Color(0x990A0A0F), Color(0xCC0A0A0F), BackgroundDark)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(Color(0x770A0A0F), Color(0xAA0A0A0F), BackgroundDark)
+                                    )
                                 )
-                            )
-                    )
+                        )
+
+                        // Floating Play Trailer Overlay Button over Backdrop Header
+                        Button(
+                            onClick = { isPlayingTrailer = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xCC000000)),
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .border(1.dp, AccentOrange, RoundedCornerShape(20.dp))
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = "Play Trailer", tint = AccentOrange)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("▶ Watch Trailer", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
 
                     IconButton(
                         onClick = onBackClick,
@@ -324,6 +360,7 @@ fun DetailsScreen(
                         InfoDetailRow("Duration", mediaItem.duration)
                         InfoDetailRow("Budget / Box Office", mediaItem.budgetBoxOffice)
                         InfoDetailRow("MAL ID", mediaItem.malId.ifEmpty { "52299" })
+                        InfoDetailRow("YouTube Trailer ID", mediaItem.trailerId.ifEmpty { "1kCwjK4rgYg" })
                         InfoDetailRow("TMDB ID", mediaItem.tmdbId.ifEmpty { "N/A" })
                     }
                 }

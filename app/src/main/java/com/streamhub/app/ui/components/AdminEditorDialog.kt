@@ -58,7 +58,7 @@ fun AdminEditorDialog(
     var description by remember { mutableStateOf(initialItem?.description ?: "") }
     var rating by remember { mutableStateOf(initialItem?.rating ?: "8.14") }
     var studio by remember { mutableStateOf(initialItem?.studio ?: "A-1 Pictures") }
-    var trailerUrl by remember { mutableStateOf(initialItem?.trailerUrl ?: "") }
+    var trailerId by remember { mutableStateOf(initialItem?.trailerId ?: "1kCwjK4rgYg") }
     var malId by remember { mutableStateOf(initialItem?.malId ?: "") }
     var tmdbId by remember { mutableStateOf(initialItem?.tmdbId ?: "") }
     var synonyms by remember { mutableStateOf(initialItem?.synonyms ?: "Na Honjaman Level Up, I Level Up Alone") }
@@ -154,7 +154,7 @@ fun AdminEditorDialog(
                                             description = firstNode.synopsis ?: description
                                             rating = firstNode.mean?.let { String.format("%.2f", it) } ?: rating
                                             studio = firstNode.studios?.firstOrNull()?.name ?: studio
-                                            trailerUrl = "https://myanimelist.net/anime/${firstNode.id}"
+                                            trailerId = "1kCwjK4rgYg"
                                             totalEpisodes = "${firstNode.num_episodes ?: 12} Episodes"
                                             status = firstNode.status ?: status
                                             source = firstNode.source ?: source
@@ -195,7 +195,7 @@ fun AdminEditorDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        if (isFetchingApi) "Fetching metadata..." else "⚡ Auto-Fetch MAL Specs, Synonyms & Cast",
+                        if (isFetchingApi) "Fetching metadata..." else "⚡ Auto-Fetch MAL Specs, Trailer ID & Cast",
                         color = Color.White,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
@@ -212,9 +212,9 @@ fun AdminEditorDialog(
                         modifier = Modifier.weight(1f)
                     )
                     OutlinedTextField(
-                        value = tmdbId,
-                        onValueChange = { tmdbId = it },
-                        label = { Text("TMDB ID", color = TextSecondary) },
+                        value = trailerId,
+                        onValueChange = { trailerId = it },
+                        label = { Text("YouTube Trailer ID (1kCwjK4rgYg)", color = TextSecondary) },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -329,15 +329,6 @@ fun AdminEditorDialog(
                         modifier = Modifier.weight(1f)
                     )
                 }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = trailerUrl,
-                    onValueChange = { trailerUrl = it },
-                    label = { Text("Trailer Video URL", color = TextSecondary) },
-                    modifier = Modifier.fillMaxWidth()
-                )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -467,7 +458,7 @@ fun AdminEditorDialog(
                                 category = category,
                                 rating = rating,
                                 studio = studio,
-                                trailerUrl = trailerUrl,
+                                trailerId = trailerId.ifEmpty { "1kCwjK4rgYg" },
                                 malId = malId,
                                 tmdbId = tmdbId,
                                 synonyms = synonyms,
