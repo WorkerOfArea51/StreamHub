@@ -9,11 +9,13 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.ui.graphics.vector.ImageVector
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector? = null) {
+    object Splash : Screen("splash", "Splash")
     object Home : Screen("home", "Home", Icons.Default.Home)
     object Search : Screen("search", "Explore", Icons.Default.Search)
     object Downloads : Screen("downloads", "Downloads", Icons.Default.Download)
     object MyList : Screen("mylist", "My List", Icons.Default.Bookmark)
     object Profile : Screen("profile", "Profile", Icons.Default.Person)
+    object Settings : Screen("settings", "Settings")
     
     object Details : Screen("details/{mediaId}", "Details") {
         fun createRoute(mediaId: String) = "details/$mediaId"

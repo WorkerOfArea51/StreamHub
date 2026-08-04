@@ -4,7 +4,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
@@ -38,6 +37,8 @@ import com.streamhub.app.ui.screens.MyListScreen
 import com.streamhub.app.ui.screens.PlayerScreen
 import com.streamhub.app.ui.screens.ProfileScreen
 import com.streamhub.app.ui.screens.SearchScreen
+import com.streamhub.app.ui.screens.SettingsScreen
+import com.streamhub.app.ui.screens.SplashScreen
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.StreamHubTheme
@@ -126,9 +127,19 @@ fun StreamHubApp() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Screen.Home.route,
+            startDestination = Screen.Splash.route,
             modifier = Modifier.padding(innerPadding)
         ) {
+            composable(Screen.Splash.route) {
+                SplashScreen(
+                    onSplashFinished = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Splash.route) { inclusive = true }
+                        }
+                    }
+                )
+            }
+
             composable(Screen.Home.route) {
                 HomeScreen(
                     repository = repository,
@@ -168,7 +179,17 @@ fun StreamHubApp() {
             }
 
             composable(Screen.Profile.route) {
-                ProfileScreen()
+                ProfileScreen(
+                    onNavigateToSettings = {
+                        navController.navigate(Screen.Settings.route)
+                    }
+                )
+            }
+
+            composable(Screen.Settings.route) {
+                SettingsScreen(
+                    onBackClick = { navController.popBackStack() }
+                )
             }
 
             composable(

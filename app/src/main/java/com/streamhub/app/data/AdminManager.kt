@@ -23,6 +23,10 @@ object AdminManager {
         _isAdminMode.value = false
     }
 
+    fun setAdminMode(enabled: Boolean) {
+        _isAdminMode.value = enabled
+    }
+
     fun toggleAdminForTesting() {
         _isAdminMode.value = !_isAdminMode.value
     }

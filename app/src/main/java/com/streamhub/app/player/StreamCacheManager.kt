@@ -22,4 +22,18 @@ object StreamCacheManager {
         }
         return simpleCache!!
     }
+
+    @Synchronized
+    fun clearCache(context: Context) {
+        try {
+            simpleCache?.release()
+            simpleCache = null
+            val cacheDir = File(context.cacheDir, "media_stream_cache")
+            if (cacheDir.exists()) {
+                cacheDir.deleteRecursively()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 }
