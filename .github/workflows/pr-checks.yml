@@ -3,6 +3,10 @@
 # Runs on PRs targeting main/master. Verifies that BOTH build types
 # compile, including the R8-protected release build. Catches ProGuard
 # keep-rule regressions before they ship in a tagged release.
+#
+# Uses a STUB google-services.json (from .example template) — no real
+# secrets. The resulting APKs cannot connect to Firebase at runtime,
+# but they compile and that's what this workflow verifies.
 name: PR Checks
 
 on:
@@ -35,8 +39,12 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
 
-      - name: Disable Google Services plugin (no google-services.json in CI)
-        run: echo "googleServices.disable=true" >> gradle.properties
+      - name: Create stub google-services.json
+        run: |
+          if [ ! -f app/google-services.json ]; then
+            cp app/google-services.json.example app/google-services.json
+            echo "Stub google-services.json created from .example template"
+          fi
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew

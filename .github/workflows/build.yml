@@ -1,7 +1,8 @@
 # .github/workflows/build.yml
 #
 # Runs on every push to main/master and on every PR.
-# Builds the debug APK using EMPTY secret defaults — this verifies
+# Builds the debug APK using EMPTY secret defaults and a STUB
+# google-services.json (from the .example template). This verifies
 # the build compiles without any real secrets. Forks and first-time
 # contributors will see this workflow pass.
 #
@@ -41,9 +42,14 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
 
-      - name: Disable Google Services plugin (forks have no google-services.json)
+      - name: Create stub google-services.json
         run: |
-          echo "googleServices.disable=true" >> gradle.properties
+          if [ ! -f app/google-services.json ]; then
+            cp app/google-services.json.example app/google-services.json
+            echo "Stub google-services.json created from .example template"
+          else
+            echo "google-services.json already exists (restored from secret in release.yml)"
+          fi
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
