@@ -1,9 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    StreamHub Data Extraction Rules (Android 12+)
+
+    Same policy as backup_rules.xml — only user-content prefs are eligible
+    for cloud backup or device-to-device transfer.
+-->
 <data-extraction-rules>
     <cloud-backup>
-        <include domain="sharedprefs" path="."/>
+        <include domain="sharedpref" path="streamhub_watch_history.xml"/>
+        <include domain="sharedpref" path="streamhub_my_list.xml"/>
+        <include domain="sharedpref" path="streamhub_theme_prefs.xml"/>
     </cloud-backup>
     <device-transfer>
-        <include domain="sharedprefs" path="."/>
+        <include domain="device_sharedpref" path="streamhub_watch_history.xml"/>
+        <include domain="device_sharedpref" path="streamhub_my_list.xml"/>
+        <include domain="device_sharedpref" path="streamhub_theme_prefs.xml"/>
     </device-transfer>
 </data-extraction-rules>

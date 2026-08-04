@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "123456789012",
-    "project_id": "streamhub-app",
-    "storage_bucket": "streamhub-app.appspot.com"
+    "project_number": "YOUR_PROJECT_NUMBER",
+    "project_id": "YOUR_PROJECT_ID",
+    "storage_bucket": "YOUR_PROJECT_ID.appspot.com"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:123456789012:android:1234567890abcdef123456",
+        "mobilesdk_app_id": "YOUR_MOBILESDK_APP_ID",
         "android_client_info": {
           "package_name": "com.streamhub.app"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSy_REPLACED_FIREBASE_API_KEY_FOR_SECURITY"
+          "current_key": "YOUR_FIREBASE_API_KEY"
         }
       ],
       "services": {

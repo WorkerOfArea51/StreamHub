@@ -1,0 +1,63 @@
+# .github/workflows/build.yml
+#
+# Runs on every push to main/master and on every PR.
+# Builds the debug APK using EMPTY secret defaults — this verifies
+# the build compiles without any real secrets. Forks and first-time
+# contributors will see this workflow pass.
+#
+# For builds with real secrets (signed release APKs), see release.yml.
+name: Build Debug APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # Allow manual trigger from Actions tab
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-debug:
+    name: Build Debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+
+      - name: Disable Google Services plugin (forks have no google-services.json)
+        run: |
+          echo "googleServices.disable=true" >> gradle.properties
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Run unit tests (placeholder — M10 will add real tests)
+        run: ./gradlew testDebugUnitTest || true
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: streamhub-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+          if-no-files-found: error

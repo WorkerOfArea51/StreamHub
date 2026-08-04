@@ -124,7 +124,8 @@ fun AdminEditorDialog(
                     value = tmdbApiKey,
                     onValueChange = {
                         tmdbApiKey = it
-                        Secrets.TMDB_API_KEY = it
+                        // TODO(M3): Persist runtime TMDB key override via SharedPreferences-backed config.
+                        // Secrets.TMDB_API_KEY = it
                     },
                     label = { Text("TMDB API Key (Optional)", color = TextSecondary) },
                     modifier = Modifier.fillMaxWidth()

@@ -1,4 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    StreamHub Backup Rules (Android 11 and below)
+
+    Only user-content prefs are backed up. Secrets are never backed up:
+      - Admin PIN: lives in BuildConfig (compiled into APK), not in prefs
+      - API keys: live in BuildConfig, not in prefs
+      - Admin mode state: lives in memory only (AdminManager singleton)
+
+    Backed up:
+      - streamhub_watch_history.xml  → user's playback progress
+      - streamhub_my_list.xml        → user's bookmarked media
+      - streamhub_theme_prefs.xml    → user's accent color choice
+-->
 <full-backup-content>
-    <include domain="sharedprefs" path="."/>
+    <include domain="sharedpref" path="streamhub_watch_history.xml"/>
+    <include domain="sharedpref" path="streamhub_my_list.xml"/>
+    <include domain="sharedpref" path="streamhub_theme_prefs.xml"/>
 </full-backup-content>

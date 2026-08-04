@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    StreamHub Network Security Configuration
+
+    Default: cleartext traffic is BLOCKED for all domains.
+    All network calls must use HTTPS.
+
+    If a specific domain truly requires cleartext in the future
+    (e.g. a self-hosted test stream), add a <domain-config> block:
+        <domain-config cleartextTrafficPermitted="true">
+            <domain includeSubdomains="true">test.example.com</domain>
+        </domain-config>
+
+    Telegram Bot API (api.telegram.org) and Firebase (firestore.googleapis.com)
+    are HTTPS-only — no exceptions needed.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
