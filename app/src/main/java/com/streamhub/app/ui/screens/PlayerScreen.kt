@@ -16,8 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -166,8 +164,11 @@ fun PlayerScreen(
                         }) {
                             Icon(Icons.Default.PictureInPicture, contentDescription = "Picture in Picture Mode", tint = Color.White)
                         }
-                        IconButton(onClick = { viewModel.toggleTrackDialog() }) {
-                            Icon(Icons.Default.GraphicEq, contentDescription = "Audio & Subtitles", tint = AccentOrange)
+                        IconButton(onClick = { viewModel.toggleAudioDialog() }) {
+                            Icon(Icons.Default.GraphicEq, contentDescription = "Audio Track Selector", tint = AccentOrange)
+                        }
+                        IconButton(onClick = { viewModel.toggleSubtitleDialog() }) {
+                            Icon(Icons.Default.Subtitles, contentDescription = "Subtitle Track Selector", tint = PrimaryRed)
                         }
                         IconButton(onClick = { viewModel.cycleAspectRatio() }) {
                             Icon(Icons.Default.AspectRatio, contentDescription = "Aspect Ratio", tint = Color.White)
@@ -274,36 +275,33 @@ fun PlayerScreen(
                     }
                 }
 
-                // Audio & Subtitles Selector Overlay Modal
-                if (uiState.showTrackDialog) {
+                // Dedicated Audio Track Selector Modal
+                if (uiState.showAudioDialog) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(Color(0x99000000))
-                            .clickable { viewModel.toggleTrackDialog() },
+                            .clickable { viewModel.toggleAudioDialog() },
                         contentAlignment = Alignment.Center
                     ) {
                         Card(
                             shape = RoundedCornerShape(14.dp),
                             colors = CardDefaults.cardColors(containerColor = SurfaceDark),
                             modifier = Modifier
-                                .width(360.dp)
+                                .width(320.dp)
                                 .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
                                 .clickable(enabled = false) {}
                                 .padding(16.dp)
                         ) {
                             Column {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.GraphicEq, contentDescription = "Audio & Subtitles", tint = AccentOrange)
+                                    Icon(Icons.Default.GraphicEq, contentDescription = "Audio Tracks", tint = AccentOrange)
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Audio & Subtitle Tracks", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text("Select Audio Track 🎧", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                                 }
 
                                 Spacer(modifier = Modifier.height(14.dp))
 
-                                // Audio Tracks
-                                Text("AUDIO TRACK", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(6.dp))
                                 audioTracks.forEach { track ->
                                     val isSelected = uiState.selectedAudioTrack == track
                                     Row(
@@ -312,7 +310,7 @@ fun PlayerScreen(
                                             .clip(RoundedCornerShape(6.dp))
                                             .background(if (isSelected) Color(0x33FF6B00) else Color.Transparent)
                                             .clickable { viewModel.selectAudioTrack(track) }
-                                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -322,12 +320,38 @@ fun PlayerScreen(
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+
+                // Dedicated Subtitle Track Selector Modal
+                if (uiState.showSubtitleDialog) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0x99000000))
+                            .clickable { viewModel.toggleSubtitleDialog() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Card(
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                            modifier = Modifier
+                                .width(320.dp)
+                                .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+                                .clickable(enabled = false) {}
+                                .padding(16.dp)
+                        ) {
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Subtitles, contentDescription = "Subtitle Tracks", tint = PrimaryRed)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Select Subtitles 💬", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                }
 
                                 Spacer(modifier = Modifier.height(14.dp))
 
-                                // Subtitle Tracks
-                                Text("SUBTITLE TRACK", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(6.dp))
                                 subtitleTracks.forEach { track ->
                                     val isSelected = uiState.selectedSubtitleTrack == track
                                     Row(
@@ -336,7 +360,7 @@ fun PlayerScreen(
                                             .clip(RoundedCornerShape(6.dp))
                                             .background(if (isSelected) Color(0x33E50914) else Color.Transparent)
                                             .clickable { viewModel.selectSubtitleTrack(track) }
-                                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {

@@ -34,7 +34,8 @@ data class PlayerUiState(
     val showEpisodeDrawer: Boolean = false,
     val selectedAudioTrack: String = "Hindi (AAC 5.1)",
     val selectedSubtitleTrack: String = "English (UTF-8)",
-    val showTrackDialog: Boolean = false
+    val showAudioDialog: Boolean = false,
+    val showSubtitleDialog: Boolean = false
 )
 
 @OptIn(UnstableApi::class)
@@ -82,7 +83,6 @@ class StreamPlayerViewModel : ViewModel() {
             })
         }
 
-        // Check for saved watch history progress
         val savedProgress = WatchHistoryManager.getProgress(mediaItem.id)
         val targetEpisodeIndex = if (savedProgress != null && savedProgress.episodeNumber in episodesList.indices) {
             savedProgress.episodeNumber
@@ -113,15 +113,31 @@ class StreamPlayerViewModel : ViewModel() {
     }
 
     fun selectAudioTrack(audioTrack: String) {
-        _uiState.value = _uiState.value.copy(selectedAudioTrack = audioTrack)
+        _uiState.value = _uiState.value.copy(
+            selectedAudioTrack = audioTrack,
+            showAudioDialog = false
+        )
     }
 
     fun selectSubtitleTrack(subtitleTrack: String) {
-        _uiState.value = _uiState.value.copy(selectedSubtitleTrack = subtitleTrack)
+        _uiState.value = _uiState.value.copy(
+            selectedSubtitleTrack = subtitleTrack,
+            showSubtitleDialog = false
+        )
     }
 
-    fun toggleTrackDialog() {
-        _uiState.value = _uiState.value.copy(showTrackDialog = !_uiState.value.showTrackDialog)
+    fun toggleAudioDialog() {
+        _uiState.value = _uiState.value.copy(
+            showAudioDialog = !_uiState.value.showAudioDialog,
+            showSubtitleDialog = false
+        )
+    }
+
+    fun toggleSubtitleDialog() {
+        _uiState.value = _uiState.value.copy(
+            showSubtitleDialog = !_uiState.value.showSubtitleDialog,
+            showAudioDialog = false
+        )
     }
 
     fun togglePlayPause() {
