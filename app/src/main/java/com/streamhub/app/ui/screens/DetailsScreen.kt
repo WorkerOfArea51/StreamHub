@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -91,7 +92,44 @@ fun DetailsScreen(
     var isPlayingTrailer by remember { mutableStateOf(false) }
 
     val mediaItem = catalog.firstOrNull { it.id == mediaId } ?: return
-    val recommendations = catalog.filter { it.id != mediaId }
+
+    // Populate MAL Recommendations (e.g. Sword Art Online, Shangri-La Frontier, DanMachi)
+    val recommendations = remember(catalog, mediaId) {
+        val existingRecs = catalog.filter { it.id != mediaId }
+        if (existingRecs.size >= 3) {
+            existingRecs
+        } else {
+            listOf(
+                MediaItem(
+                    id = "rec_sao",
+                    title = "Sword Art Online",
+                    category = "ANIME",
+                    rating = "7.20",
+                    releaseYear = "2012",
+                    posterUrl = "https://cdn.myanimelist.net/images/anime/11/39717l.jpg",
+                    description = "Gamified world with absurdly overpowered protagonist in a virtual reality MMORPG."
+                ),
+                MediaItem(
+                    id = "rec_shangrila",
+                    title = "Shangri-La Frontier",
+                    category = "ANIME",
+                    rating = "8.05",
+                    releaseYear = "2023",
+                    posterUrl = "https://cdn.myanimelist.net/images/anime/1622/137688l.jpg",
+                    description = "VR gamer tackles trash games before challenging a legendary god-tier game."
+                ),
+                MediaItem(
+                    id = "rec_danmachi",
+                    title = "Is It Wrong to Try to Pick Up Girls in a Dungeon? (DanMachi)",
+                    category = "ANIME",
+                    rating = "7.55",
+                    releaseYear = "2015",
+                    posterUrl = "https://cdn.myanimelist.net/images/anime/8/72117l.jpg",
+                    description = "Dungeon crawler Bell Cranel levels up to become a hero in the labyrinth city of Orario."
+                )
+            )
+        }
+    }
 
     Scaffold(
         floatingActionButton = {
@@ -113,15 +151,16 @@ fun DetailsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Header Backdrop Container (Plays Trailer Live inside App)
+            // Header Backdrop Container (Sleek YouTube Red Play Button Backdrop)
             item {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(300.dp)
+                        .height(280.dp)
+                        .clickable { isPlayingTrailer = true }
                 ) {
                     if (isPlayingTrailer && mediaItem.trailerId.isNotEmpty()) {
-                        // In-App Embedded YouTube Trailer Player inside the Header Box
+                        // In-App Embedded YouTube Trailer Player
                         AndroidView(
                             factory = { context ->
                                 WebView(context).apply {
@@ -135,7 +174,7 @@ fun DetailsScreen(
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {
-                        // Static Backdrop Image with Floating Play Trailer Button
+                        // High-Res Backdrop Image
                         AsyncImage(
                             model = mediaItem.bannerUrl.ifEmpty { mediaItem.posterUrl },
                             contentDescription = mediaItem.title,
@@ -148,23 +187,27 @@ fun DetailsScreen(
                                 .fillMaxSize()
                                 .background(
                                     Brush.verticalGradient(
-                                        colors = listOf(Color(0x770A0A0F), Color(0xAA0A0A0F), BackgroundDark)
+                                        colors = listOf(Color(0x550A0A0F), Color(0x990A0A0F), BackgroundDark)
                                     )
                                 )
                         )
 
-                        // Floating Play Trailer Overlay Button over Backdrop Header
-                        Button(
-                            onClick = { isPlayingTrailer = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xCC000000)),
-                            shape = RoundedCornerShape(20.dp),
+                        // Sleek YouTube Red Play Icon in Center
+                        Box(
                             modifier = Modifier
                                 .align(Alignment.Center)
-                                .border(1.dp, AccentOrange, RoundedCornerShape(20.dp))
+                                .clip(CircleShape)
+                                .background(Color(0xCCFF0000))
+                                .padding(16.dp)
                         ) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = "Play Trailer", tint = AccentOrange)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("▶ Watch Trailer", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Play Trailer",
+                                tint = Color.White,
+                                modifier = Modifier
+                                    .width(36.dp)
+                                    .height(36.dp)
+                            )
                         }
                     }
 
@@ -173,7 +216,7 @@ fun DetailsScreen(
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .padding(16.dp)
-                            .clip(RoundedCornerShape(50))
+                            .clip(CircleShape)
                             .background(Color(0x66000000))
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
@@ -366,7 +409,7 @@ fun DetailsScreen(
                 }
             }
 
-            // Tab 2: More Like This (Recommendations)
+            // Tab 2: More Like This (Recommendations like Sword Art Online, Shangri-La, DanMachi)
             if (selectedTabIndex == 2) {
                 item {
                     Column(
@@ -374,13 +417,13 @@ fun DetailsScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)
                     ) {
-                        Text("RECOMMENDED FOR YOU", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("MAL RECOMMENDATIONS & SIMILAR ANIME", color = AccentOrange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(12.dp))
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             items(recommendations) { recItem ->
                                 MediaCard(
                                     item = recItem,
-                                    onClick = { /* Navigate */ }
+                                    onClick = { /* Navigate to rec */ }
                                 )
                             }
                         }
