@@ -57,8 +57,6 @@ class StreamPlayerViewModel : ViewModel() {
         currentMediaItem = mediaItem
         episodesList = mediaItem.episodes
 
-        WatchHistoryManager.init(context)
-
         if (exoPlayer == null) {
             val dataSourceFactory = TelegramDataSourceFactory(context)
             exoPlayer = ExoPlayer.Builder(context)

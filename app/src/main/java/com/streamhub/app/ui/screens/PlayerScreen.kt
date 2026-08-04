@@ -106,10 +106,6 @@ fun PlayerScreen(
     val uiState by viewModel.uiState.collectAsState()
     val playerSettings by PlayerSettingsManager.settingsFlow.collectAsState()
 
-    LaunchedEffect(Unit) {
-        PlayerSettingsManager.init(context)
-    }
-
     // Force Landscape for video playback
     DisposableEffect(Unit) {
         val originalOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED

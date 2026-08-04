@@ -46,10 +46,6 @@ fun MyListScreen(
     val catalog by repository.mediaCatalog.collectAsState()
     val myListSet by MyListManager.myListFlow.collectAsState()
 
-    LaunchedEffect(Unit) {
-        MyListManager.init(context)
-    }
-
     val bookmarkedItems = catalog.filter { myListSet.contains(it.id) }
 
     Column(

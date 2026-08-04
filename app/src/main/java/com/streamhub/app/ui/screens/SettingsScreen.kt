@@ -82,11 +82,6 @@ fun SettingsScreen(
     val playerSettings by PlayerSettingsManager.settingsFlow.collectAsState()
     val currentAccent by ThemeManager.currentAccent.collectAsState()
 
-    LaunchedEffect(Unit) {
-        PlayerSettingsManager.init(context)
-        ThemeManager.init(context)
-    }
-
     var cacheMessage by remember { mutableStateOf("") }
     var showUpdateModal by remember { mutableStateOf(false) }
 

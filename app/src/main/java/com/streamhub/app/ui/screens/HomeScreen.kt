@@ -78,10 +78,6 @@ fun HomeScreen(
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
     val watchHistoryMap by WatchHistoryManager.historyFlow.collectAsState()
 
-    LaunchedEffect(Unit) {
-        WatchHistoryManager.init(context)
-    }
-
     var selectedCategoryFilter by remember { mutableStateOf("ALL") }
     var showAdminAddDialog by remember { mutableStateOf(false) }
 

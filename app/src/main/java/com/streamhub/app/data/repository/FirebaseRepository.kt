@@ -9,6 +9,22 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+/**
+ * State of the media catalog fetch.
+ * - Loading: initial fetch has not completed yet
+ * - Ready: at least one successful Firestore snapshot has been received
+ * - Error: Firestore returned an error AND no cached data is available
+ *
+ * Note: as of M2, Error is never emitted (the catch blocks still swallow errors
+ * silently). M3 will wire actual error emission. The state exists now so
+ * SplashScreen can wait for Ready instead of a fixed delay.
+ */
+sealed class CatalogState {
+    data object Loading : CatalogState()
+    data object Ready : CatalogState()
+    data class Error(val message: String) : CatalogState()
+}
+
 class FirebaseRepository {
 
     private val firestore by lazy { FirebaseFirestore.getInstance() }
@@ -16,6 +32,9 @@ class FirebaseRepository {
 
     private val _mediaCatalog = MutableStateFlow<List<MediaItem>>(emptyList())
     val mediaCatalog: StateFlow<List<MediaItem>> = _mediaCatalog.asStateFlow()
+
+    private val _catalogState = MutableStateFlow<CatalogState>(CatalogState.Loading)
+    val catalogState: StateFlow<CatalogState> = _catalogState.asStateFlow()
 
     init {
         loadInitialCatalog()
@@ -28,6 +47,12 @@ class FirebaseRepository {
                 .orderBy("title", Query.Direction.ASCENDING)
                 .addSnapshotListener { snapshot, error ->
                     if (error != null || snapshot == null || snapshot.isEmpty) {
+                        // M3 will emit Error state here. For now, mark Ready so
+                        // SplashScreen proceeds — empty catalog is better than
+                        // an infinite splash screen.
+                        if (_catalogState.value is CatalogState.Loading) {
+                            _catalogState.value = CatalogState.Ready
+                        }
                         return@addSnapshotListener
                     }
 
@@ -42,9 +67,12 @@ class FirebaseRepository {
                     if (items.isNotEmpty()) {
                         _mediaCatalog.value = items
                     }
+                    _catalogState.value = CatalogState.Ready
                 }
         } catch (e: Exception) {
-            // Offline or uninitialized fallback
+            // Offline or uninitialized fallback — still mark Ready so SplashScreen
+            // does not hang forever. M3 will emit proper Error state.
+            _catalogState.value = CatalogState.Ready
         }
     }
 

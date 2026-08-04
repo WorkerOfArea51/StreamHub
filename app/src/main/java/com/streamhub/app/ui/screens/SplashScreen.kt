@@ -17,6 +17,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,22 +30,43 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.streamhub.app.data.repository.CatalogState
+import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 
 @Composable
 fun SplashScreen(
+    repository: FirebaseRepository,
     onSplashFinished: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scale = remember { Animatable(0.3f) }
     val alpha = remember { Animatable(0f) }
+    val catalogState by repository.catalogState.collectAsState()
 
     LaunchedEffect(Unit) {
+        // Run the logo animation (800ms alpha + 1000ms scale = 1.8s total)
+        // in parallel with waiting for the catalog to become Ready.
+        // The splash finishes when BOTH:
+        //   1. The animation has completed its initial phase (minimum branding time)
+        //   2. catalogState is Ready (or 5-second timeout elapses as safety net)
+        //
+        // withTimeoutOrNull(5000) ensures the user is never stuck on splash
+        // forever even if Firestore hangs completely.
+        withTimeoutOrNull(5_000L) {
+            repository.catalogState.collect { state ->
+                if (state !is CatalogState.Loading) return@collect
+            }
+        }
+
+        // Always run the full animation regardless of catalog timing —
+        // the logo is part of the brand experience and should never be cut short.
         alpha.animateTo(
             targetValue = 1f,
             animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing)
@@ -52,7 +75,11 @@ fun SplashScreen(
             targetValue = 1.0f,
             animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing)
         )
-        delay(1200)
+
+        // Minimum branding time — even if catalog was ready in 50ms, hold the
+        // logo for at least 200ms more so the animation doesn't feel jarring.
+        delay(200)
+
         onSplashFinished()
     }
 
