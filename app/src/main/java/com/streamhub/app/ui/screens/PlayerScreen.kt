@@ -3,6 +3,9 @@ package com.streamhub.app.ui.screens
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import androidx.annotation.OptIn
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Lock
@@ -29,7 +33,10 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -54,6 +61,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
+import com.streamhub.app.data.PlayerSettingsManager
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.player.StreamPlayerViewModel
 import com.streamhub.app.ui.theme.AccentOrange
@@ -74,6 +82,11 @@ fun PlayerScreen(
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
+    val playerSettings by PlayerSettingsManager.settingsFlow.collectAsState()
+
+    LaunchedEffect(Unit) {
+        PlayerSettingsManager.init(context)
+    }
 
     // Force Landscape for video playback
     DisposableEffect(Unit) {
@@ -91,6 +104,15 @@ fun PlayerScreen(
     }
 
     val currentEpisode = mediaItem.episodes.getOrNull(uiState.currentEpisodeIndex)
+    val hasNextEpisode = (uiState.currentEpisodeIndex + 1) in mediaItem.episodes.indices
+
+    val remainingSec = if (uiState.durationMs > 0 && uiState.currentPositionMs > 0) {
+        ((uiState.durationMs - uiState.currentPositionMs) / 1000).toInt()
+    } else Int.MAX_VALUE
+
+    val showNextEpisodePrompt = hasNextEpisode &&
+            playerSettings.nextEpisodeThresholdSeconds > 0 &&
+            remainingSec in 1..playerSettings.nextEpisodeThresholdSeconds
 
     val audioTracks = listOf("Hindi (AAC 5.1)", "Japanese (Original)", "English (AAC 2.0)", "Tamil (AAC 5.1)")
     val subtitleTracks = listOf("English (UTF-8)", "Hindi (Subtitles)", "Subtitles OFF")
@@ -228,12 +250,37 @@ fun PlayerScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = formatTime(uiState.currentPositionMs),
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // Skip Intro (+90s) Button
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xCC2A2A38))
+                                        .border(1.dp, CardBorderDark, RoundedCornerShape(6.dp))
+                                        .clickable { viewModel.skipIntro(playerSettings.skipIntroSeconds) }
+                                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.FastForward, contentDescription = "Skip Intro", tint = AccentOrange, modifier = Modifier.height(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Skip Intro (+${playerSettings.skipIntroSeconds}s)",
+                                            color = Color.White,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Text(
+                                    text = formatTime(uiState.currentPositionMs),
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
 
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
@@ -373,6 +420,35 @@ fun PlayerScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Netflix / Crunchyroll Smooth "Next Episode ▶" Outro Overlay Prompt
+        AnimatedVisibility(
+            visible = showNextEpisodePrompt,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 80.dp, end = 24.dp)
+        ) {
+            Button(
+                onClick = { viewModel.playNextEpisode() },
+                colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .border(1.dp, Color.White, RoundedCornerShape(10.dp))
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.SkipNext, contentDescription = "Next Episode", tint = Color.White)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Next Episode in ${remainingSec}s ▶",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }

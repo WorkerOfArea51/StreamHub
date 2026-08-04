@@ -112,6 +112,22 @@ class StreamPlayerViewModel : ViewModel() {
         }
     }
 
+    fun playNextEpisode() {
+        val nextIndex = _uiState.value.currentEpisodeIndex + 1
+        if (nextIndex in episodesList.indices) {
+            playEpisode(nextIndex, 0L)
+        }
+    }
+
+    fun skipIntro(seconds: Int = 90) {
+        exoPlayer?.let {
+            val skipMs = seconds * 1000L
+            val target = (it.currentPosition + skipMs).coerceAtMost(it.duration)
+            it.seekTo(target)
+            _uiState.value = _uiState.value.copy(currentPositionMs = target)
+        }
+    }
+
     fun selectAudioTrack(audioTrack: String) {
         _uiState.value = _uiState.value.copy(
             selectedAudioTrack = audioTrack,

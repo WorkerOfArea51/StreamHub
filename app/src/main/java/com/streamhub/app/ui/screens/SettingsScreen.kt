@@ -21,7 +21,9 @@ import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -35,6 +37,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.streamhub.app.data.AdminManager
+import com.streamhub.app.data.PlayerSettingsManager
 import com.streamhub.app.player.StreamCacheManager
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
@@ -66,9 +70,28 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
+    val playerSettings by PlayerSettingsManager.settingsFlow.collectAsState()
+
+    LaunchedEffect(Unit) {
+        PlayerSettingsManager.init(context)
+    }
+
     var cacheMessage by remember { mutableStateOf("") }
     var showUpdateModal by remember { mutableStateOf(false) }
-    var isCheckingUpdate by remember { mutableStateOf(false) }
+
+    val thresholdOptions = listOf(
+        Pair(65, "65s"),
+        Pair(45, "45s"),
+        Pair(40, "40s"),
+        Pair(30, "30s"),
+        Pair(0, "Disabled")
+    )
+
+    val skipIntroOptions = listOf(
+        Pair(90, "90s"),
+        Pair(85, "85s"),
+        Pair(60, "60s")
+    )
 
     Scaffold(
         containerColor = BackgroundDark,
@@ -91,11 +114,100 @@ fun SettingsScreen(
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Settings & Administration",
+                        text = "Settings & Preferences",
                         color = TextPrimary,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
                     )
+                }
+            }
+
+            // Player Preferences (Next Episode Threshold & Skip Intro)
+            item {
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.SkipNext, contentDescription = "Next Episode", tint = PrimaryRed)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Next Episode Auto-Prompt Threshold", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Text(
+                            text = "Pop up Netflix/Crunchyroll-style 'Next Episode' button when remaining time reaches threshold:",
+                            color = TextSecondary,
+                            fontSize = 11.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            thresholdOptions.forEach { (sec, label) ->
+                                val isSelected = playerSettings.nextEpisodeThresholdSeconds == sec
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) PrimaryRed else Color(0xFF1F1F2C))
+                                        .border(1.dp, if (isSelected) PrimaryRed else CardBorderDark, RoundedCornerShape(8.dp))
+                                        .clickable { PlayerSettingsManager.updateNextEpisodeThreshold(context, sec) }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = label,
+                                        color = if (isSelected) Color.White else TextPrimary,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.FastForward, contentDescription = "Skip Intro", tint = AccentOrange)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Skip Intro Duration", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Text("Amount of seconds to fast-forward when tapping 'Skip Intro':", color = TextSecondary, fontSize = 11.sp)
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            skipIntroOptions.forEach { (sec, label) ->
+                                val isSelected = playerSettings.skipIntroSeconds == sec
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) AccentOrange else Color(0xFF1F1F2C))
+                                        .border(1.dp, if (isSelected) AccentOrange else CardBorderDark, RoundedCornerShape(8.dp))
+                                        .clickable { PlayerSettingsManager.updateSkipIntro(context, sec) }
+                                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = label,
+                                        color = if (isSelected) Color.White else TextPrimary,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -294,7 +406,7 @@ fun SettingsScreen(
                     Text("WHAT'S NEW IN V2.0.0:", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "• In-App YouTube Trailer Player\n• Telegram Private Channel Direct Streaming\n• Offline Episode Download Manager\n• Picture-in-Picture Floating Mode\n• Audio & Subtitle Track Selectors\n• Continue Watching & Watchlist",
+                        text = "• Skip Intro (90s) & Next Episode Outro Pop-up\n• In-App YouTube Trailer Player\n• Telegram Private Channel Direct Streaming\n• Offline Episode Download Manager\n• Picture-in-Picture Floating Mode\n• Audio & Subtitle Track Selectors",
                         color = TextPrimary,
                         fontSize = 12.sp,
                         lineHeight = 18.sp
