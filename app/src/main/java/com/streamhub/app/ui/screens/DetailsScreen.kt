@@ -1,7 +1,5 @@
 package com.streamhub.app.ui.screens
 
-import android.content.Intent
-import android.net.Uri
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -61,7 +59,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -92,7 +89,6 @@ fun DetailsScreen(
     onPlayEpisode: (MediaItem, Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val catalog by repository.mediaCatalog.collectAsState()
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
     var showAdminEditDialog by remember { mutableStateOf(false) }
@@ -103,7 +99,7 @@ fun DetailsScreen(
 
     val mediaItem = catalog.firstOrNull { it.id == mediaId } ?: return
 
-    // Exact MAL YouTube Trailer Cover Backdrop Image (mqdefault as in Photo 1 DevTools!)
+    // MAL YouTube Trailer Cover Backdrop Image (mqdefault as shown in Photo 1!)
     val backdropUrl = if (mediaItem.trailerId.isNotEmpty()) {
         "https://i.ytimg.com/vi/${mediaItem.trailerId}/mqdefault.jpg"
     } else {
@@ -152,7 +148,7 @@ fun DetailsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Header Backdrop Container (HTML5 YouTube Trailer Player in Trailer Section)
+            // Header Backdrop Container (In-App HTML5 YouTube Trailer Player)
             item {
                 Box(
                     modifier = Modifier
@@ -160,7 +156,7 @@ fun DetailsScreen(
                         .height(280.dp)
                 ) {
                     if (isPlayingTrailer && mediaItem.trailerId.isNotEmpty()) {
-                        // In-App YouTube Player with YouTube Base URL bypassing Configuration Error
+                        // Embedded HTML5 YouTube Trailer Video Player
                         AndroidView(
                             factory = { ctx ->
                                 WebView(ctx).apply {
@@ -168,8 +164,8 @@ fun DetailsScreen(
                                     settings.domStorageEnabled = true
                                     settings.mediaPlaybackRequiresUserGesture = false
                                     settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
-                                    webViewClient = WebViewClient()
                                     webChromeClient = WebChromeClient()
+                                    webViewClient = WebViewClient()
 
                                     val embedHtml = """
                                         <!DOCTYPE html>
@@ -177,12 +173,15 @@ fun DetailsScreen(
                                         <head>
                                             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
                                             <style>
-                                                body { margin: 0; padding: 0; background-color: #000; display: flex; justify-content: center; align-items: center; height: 100vh; }
-                                                iframe { width: 100%; height: 100%; border: none; }
+                                                body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #000; overflow: hidden; }
+                                                .embed-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; }
+                                                .embed-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
                                             </style>
                                         </head>
                                         <body>
-                                            <iframe src="https://www.youtube-nocookie.com/embed/${mediaItem.trailerId}?autoplay=1&playsinline=1&enablejsapi=1" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                                            <div class="embed-container">
+                                                <iframe src="https://www.youtube-nocookie.com/embed/${mediaItem.trailerId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                                            </div>
                                         </body>
                                         </html>
                                     """.trimIndent()
@@ -193,7 +192,7 @@ fun DetailsScreen(
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {
-                        // High-Res MAL YouTube Cover Backdrop Image (Photo 1)
+                        // MAL YouTube Cover Backdrop Image (Photo 1)
                         AsyncImage(
                             model = backdropUrl,
                             contentDescription = mediaItem.title,
@@ -304,16 +303,7 @@ fun DetailsScreen(
                             Spacer(modifier = Modifier.height(12.dp))
 
                             Button(
-                                onClick = {
-                                    val firstEp = mediaItem.episodes.firstOrNull()
-                                    if (firstEp != null && firstEp.streamUrl.startsWith("https://t.me/")) {
-                                        // Open Telegram App Directly for private channel files
-                                        val tgIntent = Intent(Intent.ACTION_VIEW, Uri.parse(firstEp.streamUrl))
-                                        context.startActivity(tgIntent)
-                                    } else {
-                                        onPlayEpisode(mediaItem, 0)
-                                    }
-                                },
+                                onClick = { onPlayEpisode(mediaItem, 0) },
                                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.fillMaxWidth()
@@ -478,15 +468,7 @@ fun DetailsScreen(
                         EpisodeRowItem(
                             episode = episode,
                             index = index,
-                            onPlay = {
-                                if (episode.streamUrl.startsWith("https://t.me/")) {
-                                    // Launch Telegram app directly for private channel files
-                                    val tgIntent = Intent(Intent.ACTION_VIEW, Uri.parse(episode.streamUrl))
-                                    context.startActivity(tgIntent)
-                                } else {
-                                    onPlayEpisode(mediaItem, index)
-                                }
-                            }
+                            onPlay = { onPlayEpisode(mediaItem, index) }
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                     }
