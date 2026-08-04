@@ -59,6 +59,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -66,6 +67,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.streamhub.app.data.AdminManager
+import com.streamhub.app.data.DownloadManager
 import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.repository.FirebaseRepository
@@ -89,6 +91,7 @@ fun DetailsScreen(
     onPlayEpisode: (MediaItem, Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val catalog by repository.mediaCatalog.collectAsState()
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
     var showAdminEditDialog by remember { mutableStateOf(false) }
@@ -465,10 +468,13 @@ fun DetailsScreen(
                     }
                 } else {
                     itemsIndexed(seasonFilteredEpisodes) { index, episode ->
+                        val isDownloaded = DownloadManager.isDownloaded(mediaItem.id, index)
                         EpisodeRowItem(
                             episode = episode,
                             index = index,
-                            onPlay = { onPlayEpisode(mediaItem, index) }
+                            isDownloaded = isDownloaded,
+                            onPlay = { onPlayEpisode(mediaItem, index) },
+                            onDownload = { DownloadManager.startDownload(context, mediaItem, index) }
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                     }
@@ -542,7 +548,9 @@ fun DetailsScreen(
 fun EpisodeRowItem(
     episode: Episode,
     index: Int,
-    onPlay: () -> Unit
+    isDownloaded: Boolean = false,
+    onPlay: () -> Unit,
+    onDownload: () -> Unit = {}
 ) {
     Card(
         shape = RoundedCornerShape(10.dp),
@@ -607,11 +615,11 @@ fun EpisodeRowItem(
                 )
             }
 
-            IconButton(onClick = { /* Offline Download trigger */ }) {
+            IconButton(onClick = onDownload) {
                 Icon(
                     imageVector = Icons.Default.Download,
                     contentDescription = "Download Episode",
-                    tint = TextSecondary
+                    tint = if (isDownloaded) AccentOrange else TextSecondary
                 )
             }
         }
