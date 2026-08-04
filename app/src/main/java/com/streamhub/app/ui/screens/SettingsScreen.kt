@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.Gesture
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SystemUpdate
@@ -119,6 +120,92 @@ fun SettingsScreen(
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
                     )
+                }
+            }
+
+            // Gesture Side Mapping Controls Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Gesture, contentDescription = "Gesture Drag Controls", tint = AccentOrange)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Vertical Drag Gesture Controls", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Text(
+                            text = "Choose which side controls Volume & Brightness (HUD animation shows on opposite side):",
+                            color = TextSecondary,
+                            fontSize = 11.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            // Default: Right = Volume (Anim Left)
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (playerSettings.volumeOnRight) PrimaryRed else Color(0xFF1F1F2C))
+                                    .border(1.dp, if (playerSettings.volumeOnRight) PrimaryRed else CardBorderDark, RoundedCornerShape(10.dp))
+                                    .clickable { PlayerSettingsManager.updateVolumeSide(context, true) }
+                                    .padding(12.dp)
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "Default",
+                                        color = if (playerSettings.volumeOnRight) Color.White else TextPrimary,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "🔊 Right: Volume (Anim Left)\n☀️ Left: Brightness (Anim Right)",
+                                        color = if (playerSettings.volumeOnRight) Color.White else TextSecondary,
+                                        fontSize = 10.sp,
+                                        lineHeight = 14.sp
+                                    )
+                                }
+                            }
+
+                            // Swapped: Left = Volume (Anim Right)
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (!playerSettings.volumeOnRight) AccentOrange else Color(0xFF1F1F2C))
+                                    .border(1.dp, if (!playerSettings.volumeOnRight) AccentOrange else CardBorderDark, RoundedCornerShape(10.dp))
+                                    .clickable { PlayerSettingsManager.updateVolumeSide(context, false) }
+                                    .padding(12.dp)
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "Swapped Side",
+                                        color = if (!playerSettings.volumeOnRight) Color.White else TextPrimary,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "🔊 Left: Volume (Anim Right)\n☀️ Right: Brightness (Anim Left)",
+                                        color = if (!playerSettings.volumeOnRight) Color.White else TextSecondary,
+                                        fontSize = 10.sp,
+                                        lineHeight = 14.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -406,7 +493,7 @@ fun SettingsScreen(
                     Text("WHAT'S NEW IN V2.0.0:", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "• Skip Intro (90s) & Next Episode Outro Pop-up\n• In-App YouTube Trailer Player\n• Telegram Private Channel Direct Streaming\n• Offline Episode Download Manager\n• Picture-in-Picture Floating Mode\n• Audio & Subtitle Track Selectors",
+                        text = "• Customizable Gesture Control Sides (Volume/Brightness)\n• Double-Tap Left/Right (-10s/+10s) & Middle (Pause/Resume)\n• Skip Intro (90s) & Next Episode Outro Pop-up\n• Telegram Private Channel Direct Streaming\n• Offline Episode Download Manager",
                         color = TextPrimary,
                         fontSize = 12.sp,
                         lineHeight = 18.sp

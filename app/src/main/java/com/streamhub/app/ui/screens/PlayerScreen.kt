@@ -1,7 +1,10 @@
 package com.streamhub.app.ui.screens
 
 import android.app.Activity
+import android.content.Context
 import android.content.pm.ActivityInfo
+import android.media.AudioManager
+import android.view.WindowManager
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -9,20 +12,26 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Brightness6
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Forward10
@@ -35,6 +44,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -42,6 +52,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -50,10 +61,16 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -70,6 +87,8 @@ import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -81,6 +100,9 @@ fun PlayerScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val activity = context as? Activity
+    val scope = rememberCoroutineScope()
+
     val uiState by viewModel.uiState.collectAsState()
     val playerSettings by PlayerSettingsManager.settingsFlow.collectAsState()
 
@@ -90,7 +112,6 @@ fun PlayerScreen(
 
     // Force Landscape for video playback
     DisposableEffect(Unit) {
-        val activity = context as? Activity
         val originalOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         onDispose {
@@ -117,11 +138,109 @@ fun PlayerScreen(
     val audioTracks = listOf("Hindi (AAC 5.1)", "Japanese (Original)", "English (AAC 2.0)", "Tamil (AAC 5.1)")
     val subtitleTracks = listOf("English (UTF-8)", "Hindi (Subtitles)", "Subtitles OFF")
 
+    // Gesture Animation States
+    var doubleTapRippleText by remember { mutableStateOf("") }
+    var doubleTapAlignment by remember { mutableStateOf(Alignment.Center) }
+    var showDoubleTapRipple by remember { mutableStateOf(false) }
+
+    // Volume & Brightness Drag States
+    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    val maxVolume = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).toFloat().coerceAtLeast(1f) }
+
+    var currentVolumePercent by remember { mutableFloatStateOf((audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) / maxVolume) * 100f) }
+    var currentBrightnessPercent by remember { mutableFloatStateOf(0.7f * 100f) }
+
+    var showVolumeIndicator by remember { mutableStateOf(false) }
+    var showBrightnessIndicator by remember { mutableStateOf(false) }
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
-            .clickable { viewModel.toggleControlsVisibility() }
+            .pointerInput(playerSettings.volumeOnRight) {
+                detectTapGestures(
+                    onTap = { viewModel.toggleControlsVisibility() },
+                    onDoubleTap = { offset ->
+                        val screenWidth = size.width.toFloat()
+                        val x = offset.x
+                        when {
+                            x < screenWidth * 0.35f -> {
+                                viewModel.seekBackward()
+                                doubleTapRippleText = "-10s ⏪"
+                                doubleTapAlignment = Alignment.CenterStart
+                                showDoubleTapRipple = true
+                                scope.launch {
+                                    delay(750)
+                                    showDoubleTapRipple = false
+                                }
+                            }
+                            x > screenWidth * 0.65f -> {
+                                viewModel.seekForward()
+                                doubleTapRippleText = "+10s ⏩"
+                                doubleTapAlignment = Alignment.CenterEnd
+                                showDoubleTapRipple = true
+                                scope.launch {
+                                    delay(750)
+                                    showDoubleTapRipple = false
+                                }
+                            }
+                            else -> {
+                                viewModel.togglePlayPause()
+                                doubleTapRippleText = if (uiState.isPlaying) "Pause ⏸" else "Play ▶"
+                                doubleTapAlignment = Alignment.Center
+                                showDoubleTapRipple = true
+                                scope.launch {
+                                    delay(750)
+                                    showDoubleTapRipple = false
+                                }
+                            }
+                        }
+                    }
+                )
+            }
+            .pointerInput(playerSettings.volumeOnRight) {
+                detectVerticalDragGestures(
+                    onDragStart = { offset ->
+                        val screenWidth = size.width.toFloat()
+                        val isRightSideDrag = offset.x > screenWidth * 0.5f
+                        val isVolumeDrag = if (playerSettings.volumeOnRight) isRightSideDrag else !isRightSideDrag
+
+                        if (isVolumeDrag) {
+                            showVolumeIndicator = true
+                        } else {
+                            showBrightnessIndicator = true
+                        }
+                    },
+                    onDragEnd = {
+                        scope.launch {
+                            delay(1200)
+                            showVolumeIndicator = false
+                            showBrightnessIndicator = false
+                        }
+                    },
+                    onVerticalDrag = { change, dragAmount ->
+                        change.consume()
+                        val screenWidth = size.width.toFloat()
+                        val isRightSideDrag = change.position.x > screenWidth * 0.5f
+                        val isVolumeDrag = if (playerSettings.volumeOnRight) isRightSideDrag else !isRightSideDrag
+
+                        val delta = -dragAmount / 5f // Drag up -> positive, Drag down -> negative
+
+                        if (isVolumeDrag) {
+                            showVolumeIndicator = true
+                            currentVolumePercent = (currentVolumePercent + delta).coerceIn(0f, 100f)
+                            val targetVol = ((currentVolumePercent / 100f) * maxVolume).toInt()
+                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                        } else {
+                            showBrightnessIndicator = true
+                            currentBrightnessPercent = (currentBrightnessPercent + delta).coerceIn(10f, 100f)
+                            activity?.window?.attributes = activity?.window?.attributes?.apply {
+                                screenBrightness = currentBrightnessPercent / 100f
+                            }
+                        }
+                    }
+                )
+            }
     ) {
         // ExoPlayer View Container
         AndroidView(
@@ -143,6 +262,114 @@ fun PlayerScreen(
                 color = PrimaryRed,
                 modifier = Modifier.align(Alignment.Center)
             )
+        }
+
+        // Double Tap Ripple Animation Overlay
+        AnimatedVisibility(
+            visible = showDoubleTapRipple,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(doubleTapAlignment)
+        ) {
+            Box(
+                modifier = Modifier
+                    .padding(36.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x88FF0000))
+                    .padding(20.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = doubleTapRippleText,
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        // VOLUME HUD INDICATOR (Animation appears on OPPOSITE side of drag)
+        // If volumeOnRight is true: Volume drag is on Right -> Animation shows on LEFT side!
+        // If volumeOnRight is false: Volume drag is on Left -> Animation shows on RIGHT side!
+        val volumeIndicatorAlignment = if (playerSettings.volumeOnRight) Alignment.CenterStart else Alignment.CenterEnd
+        AnimatedVisibility(
+            visible = showVolumeIndicator,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(volumeIndicatorAlignment)
+                .padding(24.dp)
+        ) {
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xCC101018)),
+                modifier = Modifier
+                    .width(60.dp)
+                    .height(180.dp)
+                    .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(12.dp)
+                ) {
+                    Icon(Icons.Default.VolumeUp, contentDescription = "Volume", tint = AccentOrange, modifier = Modifier.size(24.dp))
+                    Text("${currentVolumePercent.toInt()}%", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    LinearProgressIndicator(
+                        progress = currentVolumePercent / 100f,
+                        color = AccentOrange,
+                        trackColor = Color(0x44FFFFFF),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                    )
+                }
+            }
+        }
+
+        // BRIGHTNESS HUD INDICATOR (Animation appears on OPPOSITE side of drag)
+        // If volumeOnRight is true: Brightness drag is on Left -> Animation shows on RIGHT side!
+        // If volumeOnRight is false: Brightness drag is on Right -> Animation shows on LEFT side!
+        val brightnessIndicatorAlignment = if (playerSettings.volumeOnRight) Alignment.CenterEnd else Alignment.CenterStart
+        AnimatedVisibility(
+            visible = showBrightnessIndicator,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(brightnessIndicatorAlignment)
+                .padding(24.dp)
+        ) {
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xCC101018)),
+                modifier = Modifier
+                    .width(60.dp)
+                    .height(180.dp)
+                    .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(12.dp)
+                ) {
+                    Icon(Icons.Default.Brightness6, contentDescription = "Brightness", tint = PrimaryRed, modifier = Modifier.size(24.dp))
+                    Text("${currentBrightnessPercent.toInt()}%", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    LinearProgressIndicator(
+                        progress = currentBrightnessPercent / 100f,
+                        color = PrimaryRed,
+                        trackColor = Color(0x44FFFFFF),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                    )
+                }
+            }
         }
 
         // Custom Overlay Controls (Aniyomi / TelStream HUD)
@@ -177,7 +404,6 @@ fun PlayerScreen(
                     Row {
                         IconButton(onClick = {
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                val activity = context as? Activity
                                 val params = android.app.PictureInPictureParams.Builder()
                                     .setAspectRatio(android.util.Rational(16, 9))
                                     .build()
@@ -437,8 +663,7 @@ fun PlayerScreen(
                 onClick = { viewModel.playNextEpisode() },
                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
                 shape = RoundedCornerShape(10.dp),
-                modifier = Modifier
-                    .border(1.dp, Color.White, RoundedCornerShape(10.dp))
+                modifier = Modifier.border(1.dp, Color.White, RoundedCornerShape(10.dp))
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.SkipNext, contentDescription = "Next Episode", tint = Color.White)
