@@ -12,15 +12,21 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Gesture
 import androidx.compose.material.icons.filled.Info
@@ -57,12 +63,14 @@ import com.streamhub.app.data.AdminManager
 import com.streamhub.app.data.PlayerSettingsManager
 import com.streamhub.app.player.StreamCacheManager
 import com.streamhub.app.ui.theme.AccentOrange
+import com.streamhub.app.ui.theme.AppThemeAccent
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.CardBorderDark
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
+import com.streamhub.app.ui.theme.ThemeManager
 
 @Composable
 fun SettingsScreen(
@@ -72,9 +80,11 @@ fun SettingsScreen(
     val context = LocalContext.current
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
     val playerSettings by PlayerSettingsManager.settingsFlow.collectAsState()
+    val currentAccent by ThemeManager.currentAccent.collectAsState()
 
     LaunchedEffect(Unit) {
         PlayerSettingsManager.init(context)
+        ThemeManager.init(context)
     }
 
     var cacheMessage by remember { mutableStateOf("") }
@@ -120,6 +130,69 @@ fun SettingsScreen(
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
                     )
+                }
+            }
+
+            // Custom Theme Accent Picker Card
+            item {
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.ColorLens, contentDescription = "Theme Accent", tint = currentAccent.color)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Custom App Theme Accent Color", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Text(
+                            text = "Select your preferred primary accent color theme:",
+                            color = TextSecondary,
+                            fontSize = 11.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(AppThemeAccent.values()) { accent ->
+                                val isSelected = currentAccent == accent
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(if (isSelected) accent.color else Color(0xFF1F1F2C))
+                                        .border(1.dp, if (isSelected) accent.color else CardBorderDark, RoundedCornerShape(20.dp))
+                                        .clickable { ThemeManager.setAccent(context, accent) }
+                                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(12.dp)
+                                            .clip(CircleShape)
+                                            .background(accent.color)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = accent.label,
+                                        color = if (isSelected) Color.White else TextPrimary,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                    if (isSelected) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(Icons.Default.Check, contentDescription = "Selected", tint = Color.White, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -493,7 +566,7 @@ fun SettingsScreen(
                     Text("WHAT'S NEW IN V2.0.0:", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "• Customizable Gesture Control Sides (Volume/Brightness)\n• Double-Tap Left/Right (-10s/+10s) & Middle (Pause/Resume)\n• Skip Intro (90s) & Next Episode Outro Pop-up\n• Telegram Private Channel Direct Streaming\n• Offline Episode Download Manager",
+                        text = "• Custom App Theme Accent Colors (Netflix Red, Crunchyroll Orange, Cyberpunk Cyan, Emerald Green, Neon Purple)\n• Customizable Gesture Control Sides (Volume/Brightness)\n• Double-Tap Left/Right (-10s/+10s) & Middle (Pause/Resume)\n• Skip Intro (90s) & Next Episode Outro Pop-up\n• Telegram Private Channel Direct Streaming\n• Offline Episode Download Manager",
                         color = TextPrimary,
                         fontSize = 12.sp,
                         lineHeight = 18.sp
