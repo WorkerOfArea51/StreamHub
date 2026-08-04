@@ -1,30 +1,34 @@
 package com.streamhub.app.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -52,8 +56,8 @@ import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.models.PlaybackProgress
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.components.AdminEditorDialog
-import com.streamhub.app.ui.components.CategoryRow
 import com.streamhub.app.ui.components.HeroBanner
+import com.streamhub.app.ui.components.MediaCard
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.CardBorderDark
@@ -66,7 +70,7 @@ import com.streamhub.app.ui.theme.TextSecondary
 fun HomeScreen(
     repository: FirebaseRepository,
     onMediaClick: (MediaItem) -> Unit,
-    onPlayClick: (MediaItem) -> Unit,
+    onPlayEpisode: (MediaItem, Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -140,12 +144,12 @@ fun HomeScreen(
             }
 
             // Featured Hero Banner
-            if (featuredItem != null && selectedCategoryFilter == "ALL") {
+            if (featuredItem != null) {
                 item {
                     HeroBanner(
                         media = featuredItem,
-                        onPlayClick = { onPlayClick(it) },
-                        onAddToListClick = { onMediaClick(it) }
+                        onPlayClick = { media -> onPlayEpisode(media, 0) },
+                        onAddToListClick = { media -> onMediaClick(media) }
                     )
                     Spacer(modifier = Modifier.height(20.dp))
                 }
@@ -159,13 +163,31 @@ fun HomeScreen(
                             .fillMaxWidth()
                             .padding(vertical = 8.dp)
                     ) {
-                        Text(
-                            text = "⏯️ Continue Watching",
-                            color = TextPrimary,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 16.dp)
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "⏯️ Continue Watching",
+                                color = TextPrimary,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Text(
+                                text = "Clear History",
+                                color = AccentOrange,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clickable {
+                                    WatchHistoryManager.clearAllHistory(context)
+                                }
+                            )
+                        }
+
                         Spacer(modifier = Modifier.height(12.dp))
 
                         LazyRow(
@@ -173,63 +195,60 @@ fun HomeScreen(
                             modifier = Modifier.padding(horizontal = 16.dp)
                         ) {
                             items(continueWatchingList) { (media, progress) ->
-                                ContinueWatchingCard(
+                                ContinueWatchingRowItem(
                                     media = media,
                                     progress = progress,
-                                    onPlayClick = { onPlayClick(media) }
+                                    onPlay = { onPlayEpisode(media, progress.episodeNumber) },
+                                    onRemove = { WatchHistoryManager.removeMediaProgress(context, media.id) }
                                 )
                             }
                         }
+                        Spacer(modifier = Modifier.height(20.dp))
                     }
-                    Spacer(modifier = Modifier.height(24.dp))
                 }
             }
 
             // Trending Row
             if (trendingItems.isNotEmpty()) {
                 item {
-                    CategoryRow(
-                        title = "🔥 Trending Now",
+                    MediaSectionRow(
+                        title = "🔥 Trending & Popular",
                         items = trendingItems,
                         onMediaClick = onMediaClick
                     )
-                    Spacer(modifier = Modifier.height(24.dp))
                 }
             }
 
-            // Anime Row
+            // Top Anime Row
             if (animeItems.isNotEmpty()) {
                 item {
-                    CategoryRow(
-                        title = "🎌 Popular Anime & Simulcasts",
+                    MediaSectionRow(
+                        title = "🎌 Top Rated Anime",
                         items = animeItems,
                         onMediaClick = onMediaClick
                     )
-                    Spacer(modifier = Modifier.height(24.dp))
                 }
             }
 
-            // Movies Row
+            // Blockbuster Movies Row
             if (movieItems.isNotEmpty()) {
                 item {
-                    CategoryRow(
+                    MediaSectionRow(
                         title = "🎬 Blockbuster Movies",
                         items = movieItems,
                         onMediaClick = onMediaClick
                     )
-                    Spacer(modifier = Modifier.height(24.dp))
                 }
             }
 
             // Web Series Row
             if (webSeriesItems.isNotEmpty()) {
                 item {
-                    CategoryRow(
+                    MediaSectionRow(
                         title = "📺 Popular Web Series",
                         items = webSeriesItems,
                         onMediaClick = onMediaClick
                     )
-                    Spacer(modifier = Modifier.height(24.dp))
                 }
             }
         }
@@ -248,28 +267,69 @@ fun HomeScreen(
 }
 
 @Composable
-fun ContinueWatchingCard(
+fun MediaSectionRow(
+    title: String,
+    items: List<MediaItem>,
+    onMediaClick: (MediaItem) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp)
+    ) {
+        Text(
+            text = title,
+            color = TextPrimary,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp)
+        ) {
+            items(items) { item ->
+                MediaCard(
+                    item = item,
+                    onClick = { onMediaClick(item) },
+                    modifier = Modifier.width(115.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ContinueWatchingRowItem(
     media: MediaItem,
     progress: PlaybackProgress,
-    onPlayClick: () -> Unit
+    onPlay: () -> Unit,
+    onRemove: () -> Unit
 ) {
-    val progressFraction = (progress.positionMs.toFloat() / progress.durationMs.toFloat().coerceAtLeast(1f)).coerceIn(0f, 1f)
+    val progressFraction = if (progress.durationMs > 0) {
+        (progress.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+
+    val currentEp = media.episodes.getOrNull(progress.episodeNumber)
 
     Card(
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
         modifier = Modifier
-            .width(160.dp)
-            .clickable { onPlayClick() }
+            .width(180.dp)
+            .clickable { onPlay() }
     ) {
         Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(1.4f)
+                    .height(105.dp)
             ) {
                 AsyncImage(
-                    model = media.bannerUrl.ifEmpty { media.posterUrl },
+                    model = currentEp?.thumbnailUrl?.ifEmpty { media.bannerUrl.ifEmpty { media.posterUrl } } ?: media.posterUrl,
                     contentDescription = media.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
@@ -294,6 +354,25 @@ fun ContinueWatchingCard(
                             modifier = Modifier.height(20.dp)
                         )
                     }
+                }
+
+                // Remove from History Close Icon
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xAA000000))
+                        .clickable { onRemove() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Remove from history",
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp)
+                    )
                 }
 
                 // Progress Bar at bottom of card

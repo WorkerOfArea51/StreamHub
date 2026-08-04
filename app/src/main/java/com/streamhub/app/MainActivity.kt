@@ -146,8 +146,8 @@ fun StreamHubApp() {
                     onMediaClick = { media ->
                         navController.navigate(Screen.Details.createRoute(media.id))
                     },
-                    onPlayClick = { media ->
-                        navController.navigate(Screen.Player.createRoute(media.id, 0))
+                    onPlayEpisode = { media, episodeIndex ->
+                        navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
                     }
                 )
             }

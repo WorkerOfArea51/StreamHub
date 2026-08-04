@@ -2,6 +2,7 @@ package com.streamhub.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Info
@@ -27,6 +29,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -45,6 +48,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.streamhub.app.data.AdminManager
 import com.streamhub.app.player.StreamCacheManager
 import com.streamhub.app.ui.theme.AccentOrange
@@ -63,6 +67,8 @@ fun SettingsScreen(
     val context = LocalContext.current
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
     var cacheMessage by remember { mutableStateOf("") }
+    var showUpdateModal by remember { mutableStateOf(false) }
+    var isCheckingUpdate by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = BackgroundDark,
@@ -214,11 +220,11 @@ fun SettingsScreen(
                         }
 
                         Button(
-                            onClick = { /* Check updates */ },
-                            colors = ButtonDefaults.buttonColors(containerColor = SurfaceDark),
-                            modifier = Modifier.border(1.dp, CardBorderDark, RoundedCornerShape(8.dp))
+                            onClick = { showUpdateModal = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                            shape = RoundedCornerShape(8.dp)
                         ) {
-                            Text("Up to Date", color = TextSecondary, fontSize = 11.sp)
+                            Text("Check Updates", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -244,6 +250,65 @@ fun SettingsScreen(
                             fontSize = 12.sp,
                             lineHeight = 16.sp
                         )
+                    }
+                }
+            }
+        }
+    }
+
+    // App Update Checker Modal Dialog
+    if (showUpdateModal) {
+        Dialog(onDismissRequest = { showUpdateModal = false }) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
+                    .padding(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.SystemUpdate, contentDescription = "Update", tint = AccentOrange)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("StreamHub Update Checker 🚀", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0x3310B981))
+                            .padding(12.dp)
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = "Latest", tint = Color(0xFF10B981))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("You are on the latest version (v2.0.0)", color = Color(0xFF10B981), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text("WHAT'S NEW IN V2.0.0:", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "• In-App YouTube Trailer Player\n• Telegram Private Channel Direct Streaming\n• Offline Episode Download Manager\n• Picture-in-Picture Floating Mode\n• Audio & Subtitle Track Selectors\n• Continue Watching & Watchlist",
+                        color = TextPrimary,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        OutlinedButton(onClick = { showUpdateModal = false }) {
+                            Text("Close", color = TextSecondary)
+                        }
                     }
                 }
             }

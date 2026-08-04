@@ -76,6 +76,18 @@ object WatchHistoryManager {
         return _historyFlow.value[mediaId]
     }
 
+    fun removeMediaProgress(context: Context, mediaId: String) {
+        val updatedMap = _historyFlow.value.toMutableMap()
+        updatedMap.remove(mediaId)
+        _historyFlow.value = updatedMap
+        getPrefs(context).edit().remove(mediaId).apply()
+    }
+
+    fun clearAllHistory(context: Context) {
+        _historyFlow.value = emptyMap()
+        getPrefs(context).edit().clear().apply()
+    }
+
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
