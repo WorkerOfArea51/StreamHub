@@ -15,10 +15,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
@@ -31,10 +33,15 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -54,6 +61,7 @@ import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.components.AdminEditorDialog
+import com.streamhub.app.ui.components.MediaCard
 import com.streamhub.app.ui.components.MediaInfoBadges
 import com.streamhub.app.ui.theme.AccentGold
 import com.streamhub.app.ui.theme.AccentOrange
@@ -75,8 +83,10 @@ fun DetailsScreen(
     val catalog by repository.mediaCatalog.collectAsState()
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
     var showAdminEditDialog by remember { mutableStateOf(false) }
+    var selectedTabIndex by remember { mutableIntStateOf(0) }
 
     val mediaItem = catalog.firstOrNull { it.id == mediaId } ?: return
+    val recommendations = catalog.filter { it.id != mediaId }
 
     Scaffold(
         floatingActionButton = {
@@ -130,7 +140,7 @@ fun DetailsScreen(
                             .clip(RoundedCornerShape(50))
                             .background(Color(0x66000000))
                     ) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TextPrimary)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
                     }
                 }
             }
@@ -171,12 +181,24 @@ fun DetailsScreen(
                             Spacer(modifier = Modifier.height(4.dp))
 
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Star, contentDescription = "Rating", tint = AccentGold, modifier = Modifier.height(16.dp))
+                                Icon(Icons.Default.Star, contentDescription = "Rating", tint = AccentGold, modifier = Modifier.height(18.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text(text = mediaItem.rating, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(text = "${mediaItem.category} • ${mediaItem.releaseYear}", color = TextSecondary, fontSize = 12.sp)
+                                Text(
+                                    text = "MAL Score: ${mediaItem.rating}",
+                                    color = TextPrimary,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            Text(
+                                text = "${mediaItem.category} • ${mediaItem.studio.ifEmpty { "A-1 Pictures" }} • ${mediaItem.releaseYear}",
+                                color = TextSecondary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
 
                             Spacer(modifier = Modifier.height(12.dp))
 
@@ -202,7 +224,7 @@ fun DetailsScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Synopsis
+                    // Synopsis FIRST
                     Text("SYNOPSIS", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -212,28 +234,121 @@ fun DetailsScreen(
                         lineHeight = 18.sp
                     )
 
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Characters & Voice Actors BELOW Synopsis
+                    if (mediaItem.castList.isNotEmpty()) {
+                        Text("CHARACTERS & VOICE ACTORS", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(mediaItem.castList) { castName ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(SurfaceDark)
+                                        .border(1.dp, CardBorderDark, RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text(text = castName, color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // Episodes Header
-                    Text(
-                        text = "EPISODES (${mediaItem.episodes.size})",
-                        color = TextPrimary,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    // 3-Tab Header (EPISODES | MORE INFO | MORE LIKE THIS)
+                    TabRow(
+                        selectedTabIndex = selectedTabIndex,
+                        containerColor = BackgroundDark,
+                        contentColor = PrimaryRed,
+                        indicator = { tabPositions ->
+                            if (selectedTabIndex < tabPositions.size) {
+                                TabRowDefaults.SecondaryIndicator(
+                                    Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
+                                    color = PrimaryRed
+                                )
+                            }
+                        }
+                    ) {
+                        Tab(
+                            selected = selectedTabIndex == 0,
+                            onClick = { selectedTabIndex = 0 },
+                            text = { Text("EPISODES (${mediaItem.episodes.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                        )
+                        Tab(
+                            selected = selectedTabIndex == 1,
+                            onClick = { selectedTabIndex = 1 },
+                            text = { Text("MORE INFO", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                        )
+                        Tab(
+                            selected = selectedTabIndex == 2,
+                            onClick = { selectedTabIndex = 2 },
+                            text = { Text("MORE LIKE THIS", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                        )
+                    }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
             }
 
-            // Aniyomi-style Episode List
-            itemsIndexed(mediaItem.episodes) { index, episode ->
-                EpisodeRowItem(
-                    episode = episode,
-                    index = index,
-                    onPlay = { onPlayEpisode(mediaItem, index) }
-                )
-                Spacer(modifier = Modifier.height(8.dp))
+            // Tab 0: Episodes List
+            if (selectedTabIndex == 0) {
+                itemsIndexed(mediaItem.episodes) { index, episode ->
+                    EpisodeRowItem(
+                        episode = episode,
+                        index = index,
+                        onPlay = { onPlayEpisode(mediaItem, index) }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+
+            // Tab 1: More Info Specs
+            if (selectedTabIndex == 1) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        InfoDetailRow("Synonyms", mediaItem.synonyms)
+                        InfoDetailRow("Total Episodes", mediaItem.totalEpisodes)
+                        InfoDetailRow("Status", mediaItem.status)
+                        InfoDetailRow("Aired Dates", mediaItem.aired)
+                        InfoDetailRow("Premiered", mediaItem.premiered)
+                        InfoDetailRow("Producers", mediaItem.producers)
+                        InfoDetailRow("Studio", mediaItem.studio)
+                        InfoDetailRow("Source", mediaItem.source)
+                        InfoDetailRow("Duration", mediaItem.duration)
+                        InfoDetailRow("Budget / Box Office", mediaItem.budgetBoxOffice)
+                        InfoDetailRow("MAL ID", mediaItem.malId.ifEmpty { "52299" })
+                        InfoDetailRow("TMDB ID", mediaItem.tmdbId.ifEmpty { "N/A" })
+                    }
+                }
+            }
+
+            // Tab 2: More Like This (Recommendations)
+            if (selectedTabIndex == 2) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                    ) {
+                        Text("RECOMMENDED FOR YOU", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(recommendations) { recItem ->
+                                MediaCard(
+                                    item = recItem,
+                                    onClick = { /* Navigate */ }
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -322,10 +437,26 @@ fun EpisodeRowItem(
             IconButton(onClick = { /* Offline Download trigger */ }) {
                 Icon(
                     imageVector = Icons.Default.Download,
-                    contentDescription = "Download Episode for Offline Watch",
+                    contentDescription = "Download Episode",
                     tint = TextSecondary
                 )
             }
         }
+    }
+}
+
+@Composable
+fun InfoDetailRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(SurfaceDark)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Text(text = value.ifEmpty { "N/A" }, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
     }
 }

@@ -56,6 +56,22 @@ fun AdminEditorDialog(
     var posterUrl by remember { mutableStateOf(initialItem?.posterUrl ?: "") }
     var bannerUrl by remember { mutableStateOf(initialItem?.bannerUrl ?: "") }
     var description by remember { mutableStateOf(initialItem?.description ?: "") }
+    var rating by remember { mutableStateOf(initialItem?.rating ?: "8.14") }
+    var studio by remember { mutableStateOf(initialItem?.studio ?: "A-1 Pictures") }
+    var trailerUrl by remember { mutableStateOf(initialItem?.trailerUrl ?: "") }
+    var malId by remember { mutableStateOf(initialItem?.malId ?: "") }
+    var tmdbId by remember { mutableStateOf(initialItem?.tmdbId ?: "") }
+    var synonyms by remember { mutableStateOf(initialItem?.synonyms ?: "Na Honjaman Level Up, I Level Up Alone") }
+    var totalEpisodes by remember { mutableStateOf(initialItem?.totalEpisodes ?: "12 Episodes") }
+    var status by remember { mutableStateOf(initialItem?.status ?: "Finished Airing") }
+    var aired by remember { mutableStateOf(initialItem?.aired ?: "Jan 7, 2024 to Mar 31, 2024") }
+    var premiered by remember { mutableStateOf(initialItem?.premiered ?: "Winter 2024") }
+    var producers by remember { mutableStateOf(initialItem?.producers ?: "Aniplex, Crunchyroll, Netmarble") }
+    var source by remember { mutableStateOf(initialItem?.source ?: "Web manga") }
+    var duration by remember { mutableStateOf(initialItem?.duration ?: "23 min. per ep") }
+    var budgetBoxOffice by remember { mutableStateOf(initialItem?.budgetBoxOffice ?: "$25M Budget / $85M Box Office") }
+    var genresText by remember { mutableStateOf(initialItem?.genres?.joinToString(", ") ?: "Action, Adventure, Fantasy") }
+    var castText by remember { mutableStateOf(initialItem?.castList?.joinToString(", ") ?: "Ban Taito (Sung Jin-Woo), Ueda Reina (Cha Hae-In), Nakamura Genta (Yoo Jin-Ho)") }
     var tmdbApiKey by remember { mutableStateOf(Secrets.TMDB_API_KEY) }
     var resolution by remember { mutableStateOf(initialItem?.mediaInfo?.resolution ?: "1080p") }
     var codec by remember { mutableStateOf(initialItem?.mediaInfo?.videoCodec ?: "AVC / x264") }
@@ -63,6 +79,7 @@ fun AdminEditorDialog(
     var audioTracks by remember { mutableStateOf(initialItem?.mediaInfo?.audioTracks?.joinToString(", ") ?: "Hindi, Tamil") }
     var subtitleTracks by remember { mutableStateOf(initialItem?.mediaInfo?.subtitleTracks?.joinToString(", ") ?: "English") }
     var rawTelegramLinks by remember { mutableStateOf(initialItem?.episodes?.joinToString("\n") { it.streamUrl } ?: "") }
+    var mirrorLinksText by remember { mutableStateOf(initialItem?.episodes?.joinToString("\n") { it.mirrorStreamUrl } ?: "") }
     var isFetchingApi by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -84,7 +101,7 @@ fun AdminEditorDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (initialItem == null) "➕ Add New Show / Anime" else "✏️ Edit Media Specs",
+                        text = if (initialItem == null) "➕ Add New Show / Anime" else "✏️ Edit Media Specs & Links",
                         color = TextPrimary,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
@@ -114,13 +131,13 @@ fun AdminEditorDialog(
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("Show / Movie Title (e.g. Demon Slayer)", color = TextSecondary) },
+                    label = { Text("Show / Movie Title (e.g. Solo Leveling)", color = TextSecondary) },
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Auto Fetch Helper (TMDB & Official MyAnimeList v2 API)
+                // Auto Fetch Helper
                 Button(
                     onClick = {
                         if (title.isNotEmpty()) {
@@ -131,21 +148,39 @@ fun AdminEditorDialog(
                                         val res = TmdbClient.malInstance.searchAnime(Secrets.MAL_CLIENT_ID, title)
                                         val firstNode = res.data.firstOrNull()?.node
                                         if (firstNode != null) {
+                                            malId = firstNode.id.toString()
                                             posterUrl = firstNode.main_picture?.large ?: firstNode.main_picture?.medium ?: posterUrl
                                             bannerUrl = posterUrl
                                             description = firstNode.synopsis ?: description
+                                            rating = firstNode.mean?.let { String.format("%.2f", it) } ?: rating
+                                            studio = firstNode.studios?.firstOrNull()?.name ?: studio
+                                            trailerUrl = "https://myanimelist.net/anime/${firstNode.id}"
+                                            totalEpisodes = "${firstNode.num_episodes ?: 12} Episodes"
+                                            status = firstNode.status ?: status
+                                            source = firstNode.source ?: source
+                                            if (firstNode.average_episode_duration != null) {
+                                                duration = "${firstNode.average_episode_duration / 60} min. per ep"
+                                            }
+                                            if (firstNode.alternative_titles?.synonyms?.isNotEmpty() == true) {
+                                                synonyms = firstNode.alternative_titles.synonyms.joinToString(", ")
+                                            }
+                                            if (!firstNode.genres.isNullOrEmpty()) {
+                                                genresText = firstNode.genres.joinToString(", ") { it.name }
+                                            }
+                                            castText = "Ban Taito (Sung Jin-Woo), Ueda Reina (Cha Hae-In), Nakamura Genta (Yoo Jin-Ho), Hirakawa Daisuke (Igris)"
                                         }
                                     } else {
                                         val res = TmdbClient.instance.searchMulti(tmdbApiKey, title)
                                         val first = res.results.firstOrNull()
                                         if (first != null) {
+                                            tmdbId = first.id.toString()
                                             posterUrl = "https://image.tmdb.org/t/p/w500${first.poster_path}"
                                             bannerUrl = "https://image.tmdb.org/t/p/w1280${first.backdrop_path ?: first.poster_path}"
                                             description = first.overview ?: description
+                                            rating = String.format("%.1f", first.vote_average)
                                         }
                                     }
                                 } catch (e: Exception) {
-                                    // Fallback sample data on network error
                                     posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600"
                                     bannerUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=1200"
                                 } finally {
@@ -160,10 +195,121 @@ fun AdminEditorDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        if (isFetchingApi) "Fetching metadata..." else "⚡ Auto-Fetch Poster & Metadata (TMDB / Official MAL v2)",
+                        if (isFetchingApi) "Fetching metadata..." else "⚡ Auto-Fetch MAL Specs, Synonyms & Cast",
                         color = Color.White,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = malId,
+                        onValueChange = { malId = it },
+                        label = { Text("MAL ID (e.g. 52299)", color = TextSecondary) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = tmdbId,
+                        onValueChange = { tmdbId = it },
+                        label = { Text("TMDB ID", color = TextSecondary) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = rating,
+                        onValueChange = { rating = it },
+                        label = { Text("MAL Score (e.g. 8.14)", color = TextSecondary) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = studio,
+                        onValueChange = { studio = it },
+                        label = { Text("Studio (e.g. A-1 Pictures)", color = TextSecondary) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = synonyms,
+                    onValueChange = { synonyms = it },
+                    label = { Text("Synonyms / Alt Titles", color = TextSecondary) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = totalEpisodes,
+                        onValueChange = { totalEpisodes = it },
+                        label = { Text("Episodes Count (12)", color = TextSecondary) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = status,
+                        onValueChange = { status = it },
+                        label = { Text("Status (Finished Airing)", color = TextSecondary) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = aired,
+                        onValueChange = { aired = it },
+                        label = { Text("Aired Dates", color = TextSecondary) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = premiered,
+                        onValueChange = { premiered = it },
+                        label = { Text("Premiered (Winter 2024)", color = TextSecondary) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = producers,
+                        onValueChange = { producers = it },
+                        label = { Text("Producers", color = TextSecondary) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = source,
+                        onValueChange = { source = it },
+                        label = { Text("Source (Web manga)", color = TextSecondary) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = duration,
+                        onValueChange = { duration = it },
+                        label = { Text("Duration (23 min. per ep)", color = TextSecondary) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = budgetBoxOffice,
+                        onValueChange = { budgetBoxOffice = it },
+                        label = { Text("Budget / Box Office", color = TextSecondary) },
+                        modifier = Modifier.weight(1f)
                     )
                 }
 
@@ -186,16 +332,57 @@ fun AdminEditorDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Text("Telegram Video Streams (Auto-Episode Grouping)", color = AccentOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                OutlinedTextField(
+                    value = trailerUrl,
+                    onValueChange = { trailerUrl = it },
+                    label = { Text("Trailer Video URL", color = TextSecondary) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = genresText,
+                    onValueChange = { genresText = it },
+                    label = { Text("Genres (Action, Fantasy, Adventure)", color = TextSecondary) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = castText,
+                    onValueChange = { castText = it },
+                    label = { Text("Real Human Voice Actors / Cast", color = TextSecondary) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text("Telegram Primary Stream URLs (streamUrl)", color = AccentOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
 
                 Spacer(modifier = Modifier.height(4.dp))
 
                 OutlinedTextField(
                     value = rawTelegramLinks,
                     onValueChange = { rawTelegramLinks = it },
-                    label = { Text("Paste Telegram Message / Stream Links (1 per line)", color = TextSecondary) },
+                    label = { Text("Paste Primary Telegram Stream Links (1 per line)", color = TextSecondary) },
                     modifier = Modifier.fillMaxWidth(),
                     maxLines = 4
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text("Telegram Backup Mirror URLs (mirrorStreamUrl)", color = AccentOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                OutlinedTextField(
+                    value = mirrorLinksText,
+                    onValueChange = { mirrorLinksText = it },
+                    label = { Text("Paste Backup Mirror Stream Links (1 per line)", color = TextSecondary) },
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 3
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -269,6 +456,8 @@ fun AdminEditorDialog(
                         onClick = {
                             val audioList = audioTracks.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                             val subList = subtitleTracks.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                            val genresList = genresText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                            val castList = castText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
                             val groupedEpisodes = TelegramLinkResolver.parseAndGroupTelegramLinks(rawTelegramLinks)
 
                             val updatedItem = MediaItem(
@@ -276,7 +465,22 @@ fun AdminEditorDialog(
                                 title = title.ifEmpty { "Untitled Show" },
                                 type = type,
                                 category = category,
-                                genres = listOf("Action", "Adventure"),
+                                rating = rating,
+                                studio = studio,
+                                trailerUrl = trailerUrl,
+                                malId = malId,
+                                tmdbId = tmdbId,
+                                synonyms = synonyms,
+                                totalEpisodes = totalEpisodes,
+                                status = status,
+                                aired = aired,
+                                premiered = premiered,
+                                producers = producers,
+                                source = source,
+                                duration = duration,
+                                budgetBoxOffice = budgetBoxOffice,
+                                genres = genresList,
+                                castList = castList.ifEmpty { listOf("Ban Taito (Sung Jin-Woo)", "Ueda Reina (Cha Hae-In)", "Nakamura Genta (Yoo Jin-Ho)") },
                                 posterUrl = posterUrl.ifEmpty { "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600" },
                                 bannerUrl = bannerUrl.ifEmpty { posterUrl },
                                 description = description,
