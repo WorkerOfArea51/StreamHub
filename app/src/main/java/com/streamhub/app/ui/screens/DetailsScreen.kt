@@ -1,5 +1,7 @@
 package com.streamhub.app.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -59,6 +61,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -89,24 +92,31 @@ fun DetailsScreen(
     onPlayEpisode: (MediaItem, Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val catalog by repository.mediaCatalog.collectAsState()
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
     var showAdminEditDialog by remember { mutableStateOf(false) }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    var selectedSeason by remember { mutableStateOf("Season 1") }
+    var selectedSeasonNumber by remember { mutableIntStateOf(1) }
     var isSeasonDropdownExpanded by remember { mutableStateOf(false) }
     var isPlayingTrailer by remember { mutableStateOf(false) }
 
     val mediaItem = catalog.firstOrNull { it.id == mediaId } ?: return
 
-    // Fallback order for backdrop image: bannerUrl -> posterUrl -> hqdefault
-    val backdropUrl = mediaItem.bannerUrl.ifEmpty {
-        mediaItem.posterUrl.ifEmpty {
-            if (mediaItem.trailerId.isNotEmpty()) "https://img.youtube.com/vi/${mediaItem.trailerId}/hqdefault.jpg" else ""
-        }
+    // Exact MAL YouTube Trailer Cover Backdrop Image (mqdefault as in Photo 1 DevTools!)
+    val backdropUrl = if (mediaItem.trailerId.isNotEmpty()) {
+        "https://i.ytimg.com/vi/${mediaItem.trailerId}/mqdefault.jpg"
+    } else {
+        mediaItem.bannerUrl.ifEmpty { mediaItem.posterUrl }
     }
 
-    // Populate at least 10 Recommendations under MORE LIKE THIS tab
+    // Filter Episodes based on selected Season Number
+    val seasonFilteredEpisodes = remember(mediaItem.episodes, selectedSeasonNumber) {
+        val filtered = mediaItem.episodes.filter { it.seasonNumber == selectedSeasonNumber }
+        if (filtered.isEmpty() && selectedSeasonNumber == 1) mediaItem.episodes else filtered
+    }
+
+    // Populate 10 Recommendations under MORE LIKE THIS tab
     val recommendations = remember(catalog, mediaId) {
         listOf(
             MediaItem(id = "rec_1", title = "Sword Art Online", category = "ANIME", rating = "7.20", releaseYear = "2012", posterUrl = "https://cdn.myanimelist.net/images/anime/11/39717l.jpg", description = "VRMMO fantasy game survival."),
@@ -142,7 +152,7 @@ fun DetailsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Header Backdrop Container (In-App HTML5 YouTube Trailer Player)
+            // Header Backdrop Container (HTML5 YouTube Trailer Player in Trailer Section)
             item {
                 Box(
                     modifier = Modifier
@@ -150,10 +160,10 @@ fun DetailsScreen(
                         .height(280.dp)
                 ) {
                     if (isPlayingTrailer && mediaItem.trailerId.isNotEmpty()) {
-                        // HTML5 YouTube Player with YouTube Origin header bypassing Configuration Error
+                        // In-App YouTube Player with YouTube Base URL bypassing Configuration Error
                         AndroidView(
-                            factory = { context ->
-                                WebView(context).apply {
+                            factory = { ctx ->
+                                WebView(ctx).apply {
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
                                     settings.mediaPlaybackRequiresUserGesture = false
@@ -172,7 +182,7 @@ fun DetailsScreen(
                                             </style>
                                         </head>
                                         <body>
-                                            <iframe src="https://www.youtube.com/embed/${mediaItem.trailerId}?autoplay=1&playsinline=1&rel=0&enablejsapi=1" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                                            <iframe src="https://www.youtube-nocookie.com/embed/${mediaItem.trailerId}?autoplay=1&playsinline=1&enablejsapi=1" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
                                         </body>
                                         </html>
                                     """.trimIndent()
@@ -183,7 +193,7 @@ fun DetailsScreen(
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {
-                        // High-Res Backdrop Image
+                        // High-Res MAL YouTube Cover Backdrop Image (Photo 1)
                         AsyncImage(
                             model = backdropUrl,
                             contentDescription = mediaItem.title,
@@ -294,7 +304,16 @@ fun DetailsScreen(
                             Spacer(modifier = Modifier.height(12.dp))
 
                             Button(
-                                onClick = { onPlayEpisode(mediaItem, 0) },
+                                onClick = {
+                                    val firstEp = mediaItem.episodes.firstOrNull()
+                                    if (firstEp != null && firstEp.streamUrl.startsWith("https://t.me/")) {
+                                        // Open Telegram App Directly for private channel files
+                                        val tgIntent = Intent(Intent.ACTION_VIEW, Uri.parse(firstEp.streamUrl))
+                                        context.startActivity(tgIntent)
+                                    } else {
+                                        onPlayEpisode(mediaItem, 0)
+                                    }
+                                },
                                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.fillMaxWidth()
@@ -383,7 +402,7 @@ fun DetailsScreen(
                 }
             }
 
-            // Tab 0: Episodes List with Season Dropdown for Anime & Web Series
+            // Tab 0: Episodes List with Season Filter & Dropdown for Anime & Web Series
             if (selectedTabIndex == 0) {
                 item {
                     if (mediaItem.type != "MOVIE") {
@@ -395,7 +414,7 @@ fun DetailsScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "All Episodes (${mediaItem.episodes.size})",
+                                text = "All Episodes (${seasonFilteredEpisodes.size})",
                                 color = TextSecondary,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -408,7 +427,7 @@ fun DetailsScreen(
                                     shape = RoundedCornerShape(8.dp),
                                     modifier = Modifier.height(36.dp)
                                 ) {
-                                    Text(selectedSeason, color = AccentOrange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text("Season $selectedSeasonNumber", color = AccentOrange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Season", tint = AccentOrange)
                                 }
@@ -418,16 +437,16 @@ fun DetailsScreen(
                                     onDismissRequest = { isSeasonDropdownExpanded = false }
                                 ) {
                                     DropdownMenuItem(
-                                        text = { Text("Season 1 (12 Episodes)") },
+                                        text = { Text("Season 1 (${mediaItem.episodes.count { it.seasonNumber == 1 || mediaItem.episodes.none { ep -> ep.seasonNumber == 1 } }} Episodes)") },
                                         onClick = {
-                                            selectedSeason = "Season 1"
+                                            selectedSeasonNumber = 1
                                             isSeasonDropdownExpanded = false
                                         }
                                     )
                                     DropdownMenuItem(
                                         text = { Text("Season 2 (Arise from Shadow)") },
                                         onClick = {
-                                            selectedSeason = "Season 2"
+                                            selectedSeasonNumber = 2
                                             isSeasonDropdownExpanded = false
                                         }
                                     )
@@ -438,13 +457,39 @@ fun DetailsScreen(
                     }
                 }
 
-                itemsIndexed(mediaItem.episodes) { index, episode ->
-                    EpisodeRowItem(
-                        episode = episode,
-                        index = index,
-                        onPlay = { onPlayEpisode(mediaItem, index) }
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                if (seasonFilteredEpisodes.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Season $selectedSeasonNumber episodes coming soon!",
+                                color = TextSecondary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                } else {
+                    itemsIndexed(seasonFilteredEpisodes) { index, episode ->
+                        EpisodeRowItem(
+                            episode = episode,
+                            index = index,
+                            onPlay = {
+                                if (episode.streamUrl.startsWith("https://t.me/")) {
+                                    // Launch Telegram app directly for private channel files
+                                    val tgIntent = Intent(Intent.ACTION_VIEW, Uri.parse(episode.streamUrl))
+                                    context.startActivity(tgIntent)
+                                } else {
+                                    onPlayEpisode(mediaItem, index)
+                                }
+                            }
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                 }
             }
 

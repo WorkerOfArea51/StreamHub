@@ -46,6 +46,7 @@ data class MediaInfo(
 
 data class Episode(
     val episodeNumber: Int = 1,
+    val seasonNumber: Int = 1,
     val title: String = "Episode 1",
     val thumbnailUrl: String = "",
     val streamUrl: String = "",
