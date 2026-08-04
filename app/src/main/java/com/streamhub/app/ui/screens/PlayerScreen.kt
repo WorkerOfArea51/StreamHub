@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.pm.ActivityInfo
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,16 +16,23 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,7 +58,11 @@ import androidx.media3.ui.PlayerView
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.player.StreamPlayerViewModel
 import com.streamhub.app.ui.theme.AccentOrange
+import com.streamhub.app.ui.theme.CardBorderDark
 import com.streamhub.app.ui.theme.PrimaryRed
+import com.streamhub.app.ui.theme.SurfaceDark
+import com.streamhub.app.ui.theme.TextPrimary
+import com.streamhub.app.ui.theme.TextSecondary
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -80,6 +92,9 @@ fun PlayerScreen(
     }
 
     val currentEpisode = mediaItem.episodes.getOrNull(uiState.currentEpisodeIndex)
+
+    val audioTracks = listOf("Hindi (AAC 5.1)", "Japanese (Original)", "English (AAC 2.0)", "Tamil (AAC 5.1)")
+    val subtitleTracks = listOf("English (UTF-8)", "Hindi (Subtitles)", "Subtitles OFF")
 
     Box(
         modifier = modifier
@@ -127,7 +142,7 @@ fun PlayerScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onBackClick) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
@@ -139,6 +154,9 @@ fun PlayerScreen(
                     }
 
                     Row {
+                        IconButton(onClick = { viewModel.toggleTrackDialog() }) {
+                            Icon(Icons.Default.GraphicEq, contentDescription = "Audio & Subtitles", tint = AccentOrange)
+                        }
                         IconButton(onClick = { viewModel.cycleAspectRatio() }) {
                             Icon(Icons.Default.AspectRatio, contentDescription = "Aspect Ratio", tint = Color.White)
                         }
@@ -241,6 +259,83 @@ fun PlayerScreen(
                             ),
                             modifier = Modifier.fillMaxWidth()
                         )
+                    }
+                }
+
+                // Audio & Subtitles Selector Overlay Modal
+                if (uiState.showTrackDialog) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0x99000000))
+                            .clickable { viewModel.toggleTrackDialog() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Card(
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                            modifier = Modifier
+                                .width(360.dp)
+                                .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+                                .clickable(enabled = false) {}
+                                .padding(16.dp)
+                        ) {
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.GraphicEq, contentDescription = "Audio & Subtitles", tint = AccentOrange)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Audio & Subtitle Tracks", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                // Audio Tracks
+                                Text("AUDIO TRACK", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                audioTracks.forEach { track ->
+                                    val isSelected = uiState.selectedAudioTrack == track
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (isSelected) Color(0x33FF6B00) else Color.Transparent)
+                                            .clickable { viewModel.selectAudioTrack(track) }
+                                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(track, color = if (isSelected) AccentOrange else TextPrimary, fontSize = 13.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                                        if (isSelected) {
+                                            Icon(Icons.Default.Check, contentDescription = "Selected", tint = AccentOrange, modifier = Modifier.height(18.dp))
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                // Subtitle Tracks
+                                Text("SUBTITLE TRACK", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                subtitleTracks.forEach { track ->
+                                    val isSelected = uiState.selectedSubtitleTrack == track
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (isSelected) Color(0x33E50914) else Color.Transparent)
+                                            .clickable { viewModel.selectSubtitleTrack(track) }
+                                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(track, color = if (isSelected) PrimaryRed else TextPrimary, fontSize = 13.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                                        if (isSelected) {
+                                            Icon(Icons.Default.Check, contentDescription = "Selected", tint = PrimaryRed, modifier = Modifier.height(18.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

@@ -31,7 +31,10 @@ data class PlayerUiState(
     val currentEpisodeIndex: Int = 0,
     val isControlsVisible: Boolean = true,
     val isLocked: Boolean = false,
-    val showEpisodeDrawer: Boolean = false
+    val showEpisodeDrawer: Boolean = false,
+    val selectedAudioTrack: String = "Hindi (AAC 5.1)",
+    val selectedSubtitleTrack: String = "English (UTF-8)",
+    val showTrackDialog: Boolean = false
 )
 
 @OptIn(UnstableApi::class)
@@ -107,6 +110,18 @@ class StreamPlayerViewModel : ViewModel() {
             }
             playWhenReady = true
         }
+    }
+
+    fun selectAudioTrack(audioTrack: String) {
+        _uiState.value = _uiState.value.copy(selectedAudioTrack = audioTrack)
+    }
+
+    fun selectSubtitleTrack(subtitleTrack: String) {
+        _uiState.value = _uiState.value.copy(selectedSubtitleTrack = subtitleTrack)
+    }
+
+    fun toggleTrackDialog() {
+        _uiState.value = _uiState.value.copy(showTrackDialog = !_uiState.value.showTrackDialog)
     }
 
     fun togglePlayPause() {
