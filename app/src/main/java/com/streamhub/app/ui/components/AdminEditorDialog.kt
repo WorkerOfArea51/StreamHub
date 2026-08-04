@@ -355,6 +355,8 @@ fun AdminEditorDialog(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // TELEGRAM BATCH LINK RANGE GENERATOR
+                var batchStatusText by remember { mutableStateOf("") }
+
                 Text("⚡ TELEGRAM PRIVATE CHANNEL BATCH GENERATOR", color = AccentOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
 
@@ -382,6 +384,11 @@ fun AdminEditorDialog(
                         if (generated.isNotEmpty()) {
                             rawTelegramLinks = generated
                             mirrorLinksText = generated
+                            val count = generated.lines().size
+                            totalEpisodes = "$count Episodes"
+                            batchStatusText = "✓ Successfully generated $count episode stream links!"
+                        } else {
+                            batchStatusText = "⚠️ Invalid Telegram links. Ensure format: https://t.me/c/2633457020/7159"
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
@@ -389,6 +396,16 @@ fun AdminEditorDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("⚡ Generate Batch Episode Links", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+
+                if (batchStatusText.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = batchStatusText,
+                        color = if (batchStatusText.startsWith("✓")) Color(0xFF10B981) else PrimaryRed,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
