@@ -163,7 +163,7 @@ fun ProfileScreen(
                             pinInput = it
                             pinError = false
                         },
-                        label = { Text("Enter Admin PIN (Default: 1234)", color = TextSecondary) },
+                        label = { Text("Enter Admin PIN", color = TextSecondary) },
                         isError = pinError,
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()

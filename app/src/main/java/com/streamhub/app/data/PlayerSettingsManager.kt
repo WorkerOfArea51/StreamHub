@@ -2,6 +2,7 @@ package com.streamhub.app.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,18 +14,35 @@ data class PlayerSettings(
     val volumeOnRight: Boolean = true // Volume on right (Anim on left) vs Volume on left (Anim on right)
 )
 
+/**
+ * Persists player preferences (skip intro duration, next-ep threshold, etc.)
+ * in SharedPreferences.
+ *
+ * Initialized once by StreamHubApplication.onCreate(). Callers do NOT pass
+ * context to any method.
+ */
 object PlayerSettingsManager {
+
+    private const val TAG = "PlayerSettingsManager"
     private const val PREFS_NAME = "streamhub_player_settings"
     private const val KEY_SKIP_INTRO = "skip_intro_sec"
     const val KEY_NEXT_EPISODE_THRESHOLD = "next_ep_threshold_sec"
     private const val KEY_AUTO_PLAY = "auto_play_next"
     private const val KEY_VOLUME_ON_RIGHT = "volume_on_right"
 
+    private lateinit var appContext: Context
+
     private val _settingsFlow = MutableStateFlow(PlayerSettings())
     val settingsFlow: StateFlow<PlayerSettings> = _settingsFlow.asStateFlow()
 
     fun init(context: Context) {
-        val prefs = getPrefs(context)
+        if (::appContext.isInitialized) return
+        appContext = context.applicationContext
+        loadFromDisk()
+    }
+
+    private fun loadFromDisk() {
+        val prefs = getPrefs()
         _settingsFlow.value = PlayerSettings(
             skipIntroSeconds = prefs.getInt(KEY_SKIP_INTRO, 90),
             nextEpisodeThresholdSeconds = prefs.getInt(KEY_NEXT_EPISODE_THRESHOLD, 45),
@@ -33,27 +51,43 @@ object PlayerSettingsManager {
         )
     }
 
-    fun updateSkipIntro(context: Context, seconds: Int) {
+    fun updateSkipIntro(seconds: Int) {
+        if (!::appContext.isInitialized) {
+            Log.w(TAG, "updateSkipIntro called before init — no-op")
+            return
+        }
         _settingsFlow.value = _settingsFlow.value.copy(skipIntroSeconds = seconds)
-        getPrefs(context).edit().putInt(KEY_SKIP_INTRO, seconds).apply()
+        getPrefs().edit().putInt(KEY_SKIP_INTRO, seconds).apply()
     }
 
-    fun updateNextEpisodeThreshold(context: Context, seconds: Int) {
+    fun updateNextEpisodeThreshold(seconds: Int) {
+        if (!::appContext.isInitialized) {
+            Log.w(TAG, "updateNextEpisodeThreshold called before init — no-op")
+            return
+        }
         _settingsFlow.value = _settingsFlow.value.copy(nextEpisodeThresholdSeconds = seconds)
-        getPrefs(context).edit().putInt(KEY_NEXT_EPISODE_THRESHOLD, seconds).apply()
+        getPrefs().edit().putInt(KEY_NEXT_EPISODE_THRESHOLD, seconds).apply()
     }
 
-    fun updateAutoPlayNext(context: Context, autoPlay: Boolean) {
+    fun updateAutoPlayNext(autoPlay: Boolean) {
+        if (!::appContext.isInitialized) {
+            Log.w(TAG, "updateAutoPlayNext called before init — no-op")
+            return
+        }
         _settingsFlow.value = _settingsFlow.value.copy(autoPlayNextEpisode = autoPlay)
-        getPrefs(context).edit().putBoolean(KEY_AUTO_PLAY, autoPlay).apply()
+        getPrefs().edit().putBoolean(KEY_AUTO_PLAY, autoPlay).apply()
     }
 
-    fun updateVolumeSide(context: Context, volumeOnRight: Boolean) {
+    fun updateVolumeSide(volumeOnRight: Boolean) {
+        if (!::appContext.isInitialized) {
+            Log.w(TAG, "updateVolumeSide called before init — no-op")
+            return
+        }
         _settingsFlow.value = _settingsFlow.value.copy(volumeOnRight = volumeOnRight)
-        getPrefs(context).edit().putBoolean(KEY_VOLUME_ON_RIGHT, volumeOnRight).apply()
+        getPrefs().edit().putBoolean(KEY_VOLUME_ON_RIGHT, volumeOnRight).apply()
     }
 
-    private fun getPrefs(context: Context): SharedPreferences {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private fun getPrefs(): SharedPreferences {
+        return appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 }

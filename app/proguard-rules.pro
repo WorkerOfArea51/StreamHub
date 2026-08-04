@@ -64,3 +64,8 @@
     public static *** w(...);
     public static *** e(...);
 }
+
+# --- bcrypt (at.favre.lib:bcrypt) — used by AdminManager for PIN verification ---
+-keep class at.favre.lib.crypto.bcrypt.** { *; }
+-dontwarn at.favre.lib.crypto.bcrypt.**
+

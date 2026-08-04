@@ -163,7 +163,7 @@ fun SettingsScreen(
                                         .clip(RoundedCornerShape(20.dp))
                                         .background(if (isSelected) accent.color else Color(0xFF1F1F2C))
                                         .border(1.dp, if (isSelected) accent.color else CardBorderDark, RoundedCornerShape(20.dp))
-                                        .clickable { ThemeManager.setAccent(context, accent) }
+                                        .clickable { ThemeManager.setAccent(accent) }
                                         .padding(horizontal = 14.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -226,7 +226,7 @@ fun SettingsScreen(
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(if (playerSettings.volumeOnRight) PrimaryRed else Color(0xFF1F1F2C))
                                     .border(1.dp, if (playerSettings.volumeOnRight) PrimaryRed else CardBorderDark, RoundedCornerShape(10.dp))
-                                    .clickable { PlayerSettingsManager.updateVolumeSide(context, true) }
+                                    .clickable { PlayerSettingsManager.updateVolumeSide(true) }
                                     .padding(12.dp)
                             ) {
                                 Column {
@@ -253,7 +253,7 @@ fun SettingsScreen(
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(if (!playerSettings.volumeOnRight) AccentOrange else Color(0xFF1F1F2C))
                                     .border(1.dp, if (!playerSettings.volumeOnRight) AccentOrange else CardBorderDark, RoundedCornerShape(10.dp))
-                                    .clickable { PlayerSettingsManager.updateVolumeSide(context, false) }
+                                    .clickable { PlayerSettingsManager.updateVolumeSide(false) }
                                     .padding(12.dp)
                             ) {
                                 Column {
@@ -312,7 +312,7 @@ fun SettingsScreen(
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(if (isSelected) PrimaryRed else Color(0xFF1F1F2C))
                                         .border(1.dp, if (isSelected) PrimaryRed else CardBorderDark, RoundedCornerShape(8.dp))
-                                        .clickable { PlayerSettingsManager.updateNextEpisodeThreshold(context, sec) }
+                                        .clickable { PlayerSettingsManager.updateNextEpisodeThreshold(sec) }
                                         .padding(horizontal = 12.dp, vertical = 8.dp)
                                 ) {
                                     Text(
@@ -350,7 +350,7 @@ fun SettingsScreen(
                                         .clip(RoundedCornerShape(8.dp))
                                         .background(if (isSelected) AccentOrange else Color(0xFF1F1F2C))
                                         .border(1.dp, if (isSelected) AccentOrange else CardBorderDark, RoundedCornerShape(8.dp))
-                                        .clickable { PlayerSettingsManager.updateSkipIntro(context, sec) }
+                                        .clickable { PlayerSettingsManager.updateSkipIntro(sec) }
                                         .padding(horizontal = 14.dp, vertical = 8.dp)
                                 ) {
                                     Text(
@@ -386,7 +386,7 @@ fun SettingsScreen(
                 }
             }
 
-            // Admin Mode Toggle
+            // Admin Mode Status (read-only — enable via Profile → Enter PIN)
             item {
                 Card(
                     shape = RoundedCornerShape(14.dp),
@@ -405,18 +405,22 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text("Admin Editor Mode", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Text("Enable editing show metadata & video links", color = TextSecondary, fontSize = 11.sp)
+                                Text(
+                                    if (isAdminMode) "Currently active — editing enabled"
+                                    else "Inactive — enable via Profile → Enter PIN",
+                                    color = TextSecondary,
+                                    fontSize = 11.sp
+                                )
                             }
                         }
 
-                        Switch(
-                            checked = isAdminMode,
-                            onCheckedChange = { AdminManager.setAdminMode(it) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = PrimaryRed
+                        if (isAdminMode) {
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = "Active",
+                                tint = Color(0xFF10B981)
                             )
-                        )
+                        }
                     }
                 }
             }

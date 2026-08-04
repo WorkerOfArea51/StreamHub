@@ -10,6 +10,9 @@ plugins {
 
 // --- Secret loading: env vars first (CI / GitHub Actions), then local.properties (local dev) ---
 // Mapping rule: streamhub.tmdb_api_key  →  STREAMHUB_TMDB_API_KEY  (env var)
+//               dots become underscores, lowercase becomes uppercase
+// This lets the SAME secret("streamhub.tmdb_api_key") call work in both
+// local dev (reads local.properties) and CI (reads environment variable).
 val localProps = Properties().apply {
     val file = rootProject.file("local.properties")
     if (file.exists()) load(FileInputStream(file))
@@ -35,8 +38,8 @@ android {
         applicationId = "com.streamhub.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 3
-        versionName = "2.1.0"
+        versionCode = 4
+        versionName = "2.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -60,6 +63,7 @@ android {
             isEnable = true
             reset()
             include("armeabi-v7a", "arm64-v8a")
+            // Allow universal APK so the app installs on x86 emulators and Intel Chromebooks.
             isUniversalApk = true
         }
     }
@@ -77,6 +81,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // TEMPORARY: sign release with debug key so the APK installs locally.
+            // Replace with a real release keystore before publishing (see M10).
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -89,6 +95,7 @@ android {
     }
     buildFeatures {
         compose = true
+        // Required for AGP 8+ to emit BuildConfig.java
         buildConfig = true
     }
     packaging {
@@ -135,6 +142,9 @@ dependencies {
     // Coroutines & Storage
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.datastore.preferences)
+
+    // Security — bcrypt for admin PIN hash verification (M3)
+    implementation(libs.bcrypt)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

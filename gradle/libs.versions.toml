@@ -14,6 +14,7 @@ okhttp = "4.12.0"
 firestore = "25.0.0"
 coroutines = "1.8.1"
 datastore = "1.1.1"
+bcrypt = "0.10.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -53,6 +54,9 @@ firebase-firestore-ktx = { group = "com.google.firebase", name = "firebase-fires
 # Coroutines & Persistence
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+
+# Security — bcrypt for admin PIN hash verification
+bcrypt = { group = "at.favre.lib", name = "bcrypt", version.ref = "bcrypt" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

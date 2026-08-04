@@ -2,19 +2,44 @@ package com.streamhub.app.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import com.streamhub.app.data.models.PlaybackProgress
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
 
+/**
+ * Persists per-media playback progress in SharedPreferences.
+ *
+ * Initialized once by StreamHubApplication.onCreate(). Callers do NOT pass
+ * context to any method — the applicationContext is captured in init().
+ *
+ * Thread-safety: all public methods are safe to call from any thread.
+ * SharedPreferences.edit().apply() is async and thread-safe.
+ */
 object WatchHistoryManager {
+
+    private const val TAG = "WatchHistoryManager"
     private const val PREFS_NAME = "streamhub_watch_history"
+
+    private lateinit var appContext: Context
+
     private val _historyFlow = MutableStateFlow<Map<String, PlaybackProgress>>(emptyMap())
     val historyFlow: StateFlow<Map<String, PlaybackProgress>> = _historyFlow.asStateFlow()
 
+    /**
+     * Initialize the manager with the application context. Called once by
+     * StreamHubApplication.onCreate(). Subsequent calls are no-ops (idempotent).
+     */
     fun init(context: Context) {
-        val prefs = getPrefs(context)
+        if (::appContext.isInitialized) return
+        appContext = context.applicationContext
+        loadFromDisk()
+    }
+
+    private fun loadFromDisk() {
+        val prefs = getPrefs()
         val allEntries = prefs.all
         val historyMap = mutableMapOf<String, PlaybackProgress>()
 
@@ -31,7 +56,7 @@ object WatchHistoryManager {
                     )
                     historyMap[mediaId] = progress
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    Log.w(TAG, "Failed to parse progress for $mediaId", e)
                 }
             }
         }
@@ -39,13 +64,17 @@ object WatchHistoryManager {
     }
 
     fun saveProgress(
-        context: Context,
         mediaId: String,
         episodeNumber: Int,
         positionMs: Long,
         durationMs: Long
     ) {
+        if (!::appContext.isInitialized) {
+            Log.w(TAG, "saveProgress called before init — no-op")
+            return
+        }
         if (mediaId.isEmpty() || durationMs <= 0) return
+
         val progress = PlaybackProgress(
             mediaId = mediaId,
             episodeNumber = episodeNumber,
@@ -66,9 +95,9 @@ object WatchHistoryManager {
                 put("durationMs", durationMs)
                 put("lastUpdated", progress.lastUpdated)
             }
-            getPrefs(context).edit().putString(mediaId, json.toString()).apply()
+            getPrefs().edit().putString(mediaId, json.toString()).apply()
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Failed to persist progress for $mediaId", e)
         }
     }
 
@@ -76,19 +105,27 @@ object WatchHistoryManager {
         return _historyFlow.value[mediaId]
     }
 
-    fun removeMediaProgress(context: Context, mediaId: String) {
+    fun removeMediaProgress(mediaId: String) {
+        if (!::appContext.isInitialized) {
+            Log.w(TAG, "removeMediaProgress called before init — no-op")
+            return
+        }
         val updatedMap = _historyFlow.value.toMutableMap()
         updatedMap.remove(mediaId)
         _historyFlow.value = updatedMap
-        getPrefs(context).edit().remove(mediaId).apply()
+        getPrefs().edit().remove(mediaId).apply()
     }
 
-    fun clearAllHistory(context: Context) {
+    fun clearAllHistory() {
+        if (!::appContext.isInitialized) {
+            Log.w(TAG, "clearAllHistory called before init — no-op")
+            return
+        }
         _historyFlow.value = emptyMap()
-        getPrefs(context).edit().clear().apply()
+        getPrefs().edit().clear().apply()
     }
 
-    private fun getPrefs(context: Context): SharedPreferences {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private fun getPrefs(): SharedPreferences {
+        return appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 }

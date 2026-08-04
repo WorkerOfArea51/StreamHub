@@ -179,7 +179,7 @@ fun HomeScreen(
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.clickable {
-                                    WatchHistoryManager.clearAllHistory(context)
+                                    WatchHistoryManager.clearAllHistory()
                                 }
                             )
                         }
@@ -195,7 +195,7 @@ fun HomeScreen(
                                     media = media,
                                     progress = progress,
                                     onPlay = { onPlayEpisode(media, progress.episodeNumber) },
-                                    onRemove = { WatchHistoryManager.removeMediaProgress(context, media.id) }
+                                    onRemove = { WatchHistoryManager.removeMediaProgress(media.id) }
                                 )
                             }
                         }

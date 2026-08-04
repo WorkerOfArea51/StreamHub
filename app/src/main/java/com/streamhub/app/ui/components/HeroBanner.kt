@@ -179,7 +179,7 @@ fun HeroBanner(
 
                 OutlinedButton(
                     onClick = {
-                        MyListManager.toggleBookmark(context, media.id)
+                        MyListManager.toggleBookmark(media.id)
                         onAddToListClick(media)
                     },
                     shape = RoundedCornerShape(8.dp),

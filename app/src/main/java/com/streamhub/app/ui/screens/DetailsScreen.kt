@@ -325,7 +325,7 @@ fun DetailsScreen(
                                 }
 
                                 OutlinedButton(
-                                    onClick = { MyListManager.toggleBookmark(context, mediaItem.id) },
+                                    onClick = { MyListManager.toggleBookmark(mediaItem.id) },
                                     shape = RoundedCornerShape(8.dp),
                                     modifier = Modifier.weight(1f)
                                 ) {

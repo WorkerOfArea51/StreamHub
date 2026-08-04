@@ -225,15 +225,12 @@ class StreamPlayerViewModel : ViewModel() {
                         )
 
                         currentMediaItem?.let { media ->
-                            appContext?.let { ctx ->
-                                WatchHistoryManager.saveProgress(
-                                    context = ctx,
-                                    mediaId = media.id,
-                                    episodeNumber = _uiState.value.currentEpisodeIndex,
-                                    positionMs = currentPos,
-                                    durationMs = totalDuration
-                                )
-                            }
+                            WatchHistoryManager.saveProgress(
+                                mediaId = media.id,
+                                episodeNumber = _uiState.value.currentEpisodeIndex,
+                                positionMs = currentPos,
+                                durationMs = totalDuration
+                            )
                         }
                     }
                 }
@@ -245,15 +242,12 @@ class StreamPlayerViewModel : ViewModel() {
     fun releasePlayer() {
         exoPlayer?.let { player ->
             currentMediaItem?.let { media ->
-                appContext?.let { ctx ->
-                    WatchHistoryManager.saveProgress(
-                        context = ctx,
-                        mediaId = media.id,
-                        episodeNumber = _uiState.value.currentEpisodeIndex,
-                        positionMs = player.currentPosition,
-                        durationMs = player.duration.coerceAtLeast(0L)
-                    )
-                }
+                WatchHistoryManager.saveProgress(
+                    mediaId = media.id,
+                    episodeNumber = _uiState.value.currentEpisodeIndex,
+                    positionMs = player.currentPosition,
+                    durationMs = player.duration.coerceAtLeast(0L)
+                )
             }
             player.release()
         }
