@@ -2,6 +2,7 @@ package com.streamhub.app.data.telegram
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.Uri
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -35,18 +36,20 @@ data class ProxyConfig(
 data class PublicProxyItem(
     val server: String,
     val port: Int,
-    val secret: String,
+    val secret: String = "",
+    val type: ProxyType = ProxyType.MTPROTO,
     val country: String = "Global 🌐",
     var pingMs: Long = -1L,
     var isChecking: Boolean = false
 )
 
 /**
- * Self-Contained MTProto Proxy & Censorship Bypass Engine:
- * - Completely independent of external personal repos.
- * - Embeds a resilient pool of 15+ MTProto public proxy servers.
- * - Auto-fetches live proxy lists from open public repositories.
- * - Parallel multi-threaded ping tester to find the fastest proxy in real-time.
+ * TelStream-Exact Proxy Engine:
+ * - Fetches directly from TelStream's canonical proxy sources:
+ *   1) https://raw.githubusercontent.com/SoliSpirit/mtproto/master/all_proxies.txt (MTProto)
+ *   2) https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt (SOCKS5)
+ * - Parses Telegram tg://proxy links, t.me/proxy links, and IP:Port lines.
+ * - Parallel multi-threaded ping tester with auto-selection of fastest proxy.
  */
 object TelegramProxyManager {
 
@@ -76,29 +79,19 @@ object TelegramProxyManager {
     private val _isFetchingProxies = MutableStateFlow(false)
     val isFetchingProxies: StateFlow<Boolean> = _isFetchingProxies.asStateFlow()
 
-    // Independent Built-in MTProto Public Proxy Pool (15 Global Servers)
-    private val builtInPublicProxies = listOf(
-        PublicProxyItem("149.154.175.50", 443, "ee00000000000000000000000000000000", "US 🇺🇸"),
-        PublicProxyItem("149.154.167.51", 443, "ee00000000000000000000000000000000", "EU 🇪🇺"),
-        PublicProxyItem("91.108.56.160", 443, "ee00000000000000000000000000000000", "SG 🇸🇬"),
-        PublicProxyItem("149.154.175.100", 443, "ee00000000000000000000000000000000", "DE 🇩🇪"),
-        PublicProxyItem("91.108.4.150", 443, "ee00000000000000000000000000000000", "UK 🇬🇧"),
-        PublicProxyItem("149.154.165.120", 443, "ee00000000000000000000000000000000", "NL 🇳🇱"),
-        PublicProxyItem("91.108.56.170", 443, "ee00000000000000000000000000000000", "JP 🇯🇵"),
-        PublicProxyItem("149.154.175.55", 443, "ee00000000000000000000000000000000", "CA 🇨🇦"),
-        PublicProxyItem("91.108.4.165", 443, "ee00000000000000000000000000000000", "FR 🇫🇷"),
-        PublicProxyItem("149.154.167.90", 443, "ee00000000000000000000000000000000", "IT 🇮🇹"),
-        PublicProxyItem("91.108.56.180", 443, "ee00000000000000000000000000000000", "IN 🇮🇳"),
-        PublicProxyItem("149.154.175.200", 443, "ee00000000000000000000000000000000", "AU 🇦🇺"),
-        PublicProxyItem("91.108.4.190", 443, "ee00000000000000000000000000000000", "TR 🇹🇷"),
-        PublicProxyItem("149.154.167.210", 443, "ee00000000000000000000000000000000", "AE 🇦🇪"),
-        PublicProxyItem("91.108.56.195", 443, "ee00000000000000000000000000000000", "BR 🇧🇷")
+    // Canonical Proxy Sources from TelStream's proxy_manager_service.dart
+    private val telStreamProxySources = listOf(
+        "https://raw.githubusercontent.com/SoliSpirit/mtproto/master/all_proxies.txt",
+        "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt"
     )
 
-    // Open Independent Public Proxy Sources
-    private val publicProxySources = listOf(
-        "https://raw.githubusercontent.com/Hooksk/Telegram-Proxy/main/proxies.json",
-        "https://raw.githubusercontent.com/solicomp/telegram-proxy/main/proxies.json"
+    // Fallback Built-in Pool
+    private val builtInPublicProxies = listOf(
+        PublicProxyItem("149.154.175.50", 443, "ee00000000000000000000000000000000", ProxyType.MTPROTO, "US 🇺🇸"),
+        PublicProxyItem("149.154.167.51", 443, "ee00000000000000000000000000000000", ProxyType.MTPROTO, "EU 🇪🇺"),
+        PublicProxyItem("91.108.56.160", 443, "ee00000000000000000000000000000000", ProxyType.MTPROTO, "SG 🇸🇬"),
+        PublicProxyItem("149.154.175.100", 443, "ee00000000000000000000000000000000", ProxyType.MTPROTO, "DE 🇩🇪"),
+        PublicProxyItem("91.108.4.150", 443, "ee00000000000000000000000000000000", ProxyType.MTPROTO, "UK 🇬🇧")
     )
 
     fun init(context: Context) {
@@ -155,48 +148,73 @@ object TelegramProxyManager {
     }
 
     /**
-     * Auto-fetches live MTProto proxies from open public repositories with fallback to built-in pool.
+     * Auto-fetches live MTProto and SOCKS5 proxies using TelStream's exact canonical sources.
      */
     suspend fun autoFetchPublicProxies(): List<PublicProxyItem> {
         return withContext(Dispatchers.IO) {
             _isFetchingProxies.value = true
             val fetchedList = mutableListOf<PublicProxyItem>()
-            fetchedList.addAll(builtInPublicProxies)
 
-            for (sourceUrl in publicProxySources) {
+            for (sourceUrl in telStreamProxySources) {
                 try {
                     val request = Request.Builder().url(sourceUrl).build()
                     httpClient.newCall(request).execute().use { response ->
                         if (response.isSuccessful) {
                             val body = response.body?.string() ?: ""
                             if (body.isNotBlank()) {
-                                val jsonArray = JSONArray(body)
-                                for (i in 0 until jsonArray.length()) {
-                                    val obj = jsonArray.getJSONObject(i)
-                                    val server = obj.optString("server", obj.optString("ip", ""))
-                                    val port = obj.optInt("port", 443)
-                                    val secret = obj.optString("secret", "")
-                                    val country = obj.optString("country", "Global 🌐")
-                                    if (server.isNotBlank()) {
-                                        fetchedList.add(PublicProxyItem(server, port, secret, country))
-                                    }
-                                }
+                                parseProxySourceContent(sourceUrl, body, fetchedList)
                             }
                         }
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Proxy source $sourceUrl unreachable, moving to next: ${e.message}")
+                    Log.w(TAG, "TelStream source $sourceUrl failed: ${e.message}")
                 }
             }
 
-            // Deduplicate servers
-            val distinctProxies = fetchedList.distinctBy { it.server }
+            if (fetchedList.isEmpty()) {
+                fetchedList.addAll(builtInPublicProxies)
+            }
 
-            // Run parallel socket ping testing across all proxies
+            val distinctProxies = fetchedList.distinctBy { it.server }.take(40)
+
+            // Run parallel socket ping testing across fetched proxies
             val testedList = pingAllProxiesParallel(distinctProxies)
             _publicProxies.value = testedList
             _isFetchingProxies.value = false
             testedList
+        }
+    }
+
+    private fun parseProxySourceContent(sourceUrl: String, content: String, outputList: MutableList<PublicProxyItem>) {
+        val lines = content.lines()
+        for (line in lines) {
+            val trimmed = line.trim()
+            if (trimmed.isBlank() || trimmed.startsWith("#")) continue
+
+            try {
+                if (trimmed.startsWith("tg://proxy") || trimmed.startsWith("https://t.me/proxy") || trimmed.startsWith("http://t.me/proxy")) {
+                    // Parse MTProto Telegram proxy URL
+                    val uri = Uri.parse(trimmed)
+                    val server = uri.getQueryParameter("server") ?: uri.getQueryParameter("host") ?: ""
+                    val port = uri.getQueryParameter("port")?.toIntOrNull() ?: 443
+                    val secret = uri.getQueryParameter("secret") ?: ""
+                    if (server.isNotBlank()) {
+                        outputList.add(PublicProxyItem(server, port, secret, ProxyType.MTPROTO, "MTProto ⚡"))
+                    }
+                } else if (trimmed.contains(":")) {
+                    // Parse IP:Port line format (e.g. SOCKS5)
+                    val parts = trimmed.split(":")
+                    if (parts.size >= 2) {
+                        val server = parts[0].trim()
+                        val port = parts[1].trim().toIntOrNull()
+                        if (server.isNotBlank() && port != null) {
+                            outputList.add(PublicProxyItem(server, port, "", ProxyType.SOCKS5, "SOCKS5 🌐"))
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore malformed line
+            }
         }
     }
 
@@ -224,7 +242,7 @@ object TelegramProxyManager {
     fun selectFastestProxy() {
         val list = _publicProxies.value
         val fastest = list.firstOrNull { it.pingMs > 0 } ?: builtInPublicProxies.first()
-        saveConfig(fastest.server, fastest.port, fastest.secret, ProxyType.MTPROTO, true)
+        saveConfig(fastest.server, fastest.port, fastest.secret, fastest.type, true)
     }
 
     /**
