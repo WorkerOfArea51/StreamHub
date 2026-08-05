@@ -105,15 +105,17 @@ fun SettingsScreen(
             // Custom Theme Accent Picker Card
             item {
                 Card(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, currentAccent.color.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.ColorLens, contentDescription = "Theme Accent", tint = currentAccent.color)
                             Spacer(modifier = Modifier.width(10.dp))
-                            Text("Custom App Theme Accent Color", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text("App Accent Theme Color 🎨", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                         }
 
                         Spacer(modifier = Modifier.height(4.dp))
@@ -130,33 +132,31 @@ fun SettingsScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            items(AppThemeAccent.values()) { accent ->
+                            items(AppThemeAccent.entries) { accent ->
                                 val isSelected = currentAccent == accent
-                                Row(
+                                Card(
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(containerColor = if (isSelected) accent.color.copy(alpha = 0.2f) else SurfaceDark),
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .background(if (isSelected) accent.color else Color(0xFF1F1F2C))
-                                        .border(1.dp, if (isSelected) accent.color else CardBorderDark, RoundedCornerShape(20.dp))
+                                        .border(if (isSelected) 2.dp else 1.dp, if (isSelected) accent.color else Color(0xFF2C2C3E), RoundedCornerShape(12.dp))
                                         .clickable { ThemeManager.setAccent(accent) }
-                                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(12.dp)
-                                            .clip(CircleShape)
-                                            .background(accent.color)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = accent.label,
-                                        color = if (isSelected) Color.White else TextPrimary,
-                                        fontSize = 12.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                    )
-                                    if (isSelected) {
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Icon(Icons.Default.Check, contentDescription = "Selected", tint = Color.White, modifier = Modifier.size(14.dp))
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(14.dp)
+                                                .clip(CircleShape)
+                                                .background(accent.color)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(accent.label, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                        if (isSelected) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Icon(Icons.Default.Check, contentDescription = "Selected", tint = accent.color, modifier = Modifier.size(14.dp))
+                                        }
                                     }
                                 }
                             }

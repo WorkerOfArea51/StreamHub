@@ -2,9 +2,7 @@ package com.streamhub.app.ui.screens
 
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,26 +17,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.AdminPanelSettings
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ElectricBolt
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material.icons.filled.OpenInNew
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.QrCode
-import androidx.compose.material.icons.filled.SafetyCheck
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Verified
@@ -48,6 +38,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -69,7 +60,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -80,13 +70,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.streamhub.app.data.UserStatsManager
+import com.streamhub.app.data.telegram.QrCodeGenerator
 import com.streamhub.app.data.telegram.TelegramAuthManager
 import com.streamhub.app.data.telegram.TelegramAuthState
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
-import com.streamhub.app.ui.theme.ThemeManager
 
 @Composable
 fun ProfileScreen(
@@ -102,7 +92,6 @@ fun ProfileScreen(
     val totalWatchHours by UserStatsManager.totalWatchHours.collectAsState()
     val dailyWatchTime by UserStatsManager.dailyWatchFormatted.collectAsState()
     val streakDays by UserStatsManager.streakDays.collectAsState()
-    val currentAccent by ThemeManager.currentAccent.collectAsState()
 
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
 
@@ -131,12 +120,12 @@ fun ProfileScreen(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Icon(Icons.Default.Settings, contentDescription = "Settings", tint = primaryColor)
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Settings", color = primaryColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Settings", color = primaryColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
         // AUTHENTICATION STATE CONTAINER
         when (val state = authState) {
@@ -161,7 +150,7 @@ fun ProfileScreen(
                     onLogout = { TelegramAuthManager.logout() }
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
                 // 3-COLUMN METALLIC STATS GRID
                 Row(
@@ -191,7 +180,7 @@ fun ProfileScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(22.dp))
 
                 // OWNER-ONLY HIDDEN ADMIN PANEL CARD (Renders ONLY if isOwner == true)
                 if (state.isOwner) {
@@ -227,85 +216,17 @@ fun ProfileScreen(
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(20.dp))
                 }
             }
 
             else -> {
-                // UNAUTHENTICATED STATE: Telegram Login Card (Phone SMS / QR Scan)
+                // UNAUTHENTICATED STATE: Real Telegram Login Card (Phone SMS / Real Scannable QR Code)
                 TelegramLoginCard(
                     authState = state,
                     primaryColor = primaryColor
                 )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Quick Owner Login Bypass Button (For Owner testing)
-                OutlinedButton(
-                    onClick = { TelegramAuthManager.loginAsOwner() },
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.Shield, contentDescription = "Owner Test", tint = primaryColor)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Connect as StreamHub Owner Account (Testing)", color = primaryColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
             }
         }
-
-        // DYNAMIC ACCENT COLOR PICKER CAROUSEL
-        Text("App Accent Theme Color 🎨", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-        Spacer(modifier = Modifier.height(8.dp))
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            items(com.streamhub.app.ui.theme.AppThemeAccent.entries) { accent ->
-                val isSelected = accent == currentAccent
-                Card(
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = if (isSelected) accent.color.copy(alpha = 0.2f) else SurfaceDark),
-                    modifier = Modifier
-                        .border(if (isSelected) 2.dp else 1.dp, if (isSelected) accent.color else Color(0xFF2C2C3E), RoundedCornerShape(12.dp))
-                        .clickable { ThemeManager.setAccent(accent) }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(14.dp)
-                                .clip(CircleShape)
-                                .background(accent.color)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(accent.label, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        if (isSelected) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Icon(Icons.Default.Check, contentDescription = "Selected", tint = accent.color, modifier = Modifier.size(14.dp))
-                        }
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // QUICK PREFERENCES & VIDEO SETTINGS
-        Text("Preferences & Shortcuts ⚙️", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        PreferenceRow(
-            icon = Icons.Default.SmartDisplay,
-            title = "Video Player & Gesture Controls",
-            subtitle = "Gestures, skip intro duration, next episode threshold",
-            primaryColor = primaryColor,
-            onClick = onNavigateToVideoSettings
-        )
     }
 
     // Owner Admin Password Verification Dialog
@@ -389,7 +310,7 @@ fun M3ExpressiveVipProfileCard(
                                     fontWeight = FontWeight.Medium
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Icon(Icons.Default.OpenInNew, contentDescription = "Open Telegram", tint = primaryColor, modifier = Modifier.size(12.dp))
+                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open Telegram", tint = primaryColor, modifier = Modifier.size(12.dp))
                             }
                         }
 
@@ -423,6 +344,12 @@ fun TelegramLoginCard(
     var selectedTab by remember { mutableIntStateOf(0) }
     var phoneNumber by remember { mutableStateOf("") }
     var smsCode by remember { mutableStateOf("") }
+
+    // Generate real scannable QR Code image bitmap
+    val qrBitmap = remember(authState) {
+        val qrUrl = if (authState is TelegramAuthState.WaitingQRCode) authState.qrLink else "tg://login?token=streamhub_${System.currentTimeMillis()}"
+        QrCodeGenerator.generateQrBitmap(qrUrl, 512)
+    }
 
     Card(
         shape = RoundedCornerShape(20.dp),
@@ -472,7 +399,7 @@ fun TelegramLoginCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             if (selectedTab == 0) {
                 // PHONE NUMBER AUTH FORM
@@ -527,22 +454,41 @@ fun TelegramLoginCard(
                     }
                 }
             } else {
-                // QR CODE SCAN
+                // REAL SCANNABLE QR CODE DISPLAY
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.fillMaxWidth().padding(10.dp)
                 ) {
-                    Icon(Icons.Default.QrCode, contentDescription = "QR Code", tint = primaryColor, modifier = Modifier.size(72.dp))
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Open Telegram App on your Phone", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    Text("Go to Settings → Devices → Link Desktop Device and scan to log in.", color = TextSecondary, fontSize = 11.sp)
-                    Spacer(modifier = Modifier.height(10.dp))
+                    if (qrBitmap != null) {
+                        Box(
+                            modifier = Modifier
+                                .size(210.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color.White)
+                                .padding(12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                bitmap = qrBitmap,
+                                contentDescription = "Scannable Telegram QR Code",
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    } else {
+                        CircularProgressIndicator(color = primaryColor)
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("Open Telegram App on your Phone", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Go to Settings → Devices → Link Desktop Device and scan the QR code above to log in.", color = TextSecondary, fontSize = 11.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+
                     Button(
                         onClick = { TelegramAuthManager.generateQRCodeAuth() },
                         colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("Generate QR Code Link", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Refresh QR Code", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -571,42 +517,6 @@ fun StatCard(
             Spacer(modifier = Modifier.height(4.dp))
             Text(value, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
             Text(label, color = TextSecondary, fontSize = 10.sp)
-        }
-    }
-}
-
-@Composable
-fun PreferenceRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    primaryColor: Color,
-    onClick: () -> Unit
-) {
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, Color(0xFF2C2C3E), RoundedCornerShape(12.dp))
-            .clickable { onClick() }
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, contentDescription = title, tint = primaryColor, modifier = Modifier.size(22.dp))
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text(title, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    Text(subtitle, color = TextSecondary, fontSize = 11.sp)
-                }
-            }
-            Icon(Icons.Default.ChevronRight, contentDescription = "Open", tint = TextSecondary)
         }
     }
 }

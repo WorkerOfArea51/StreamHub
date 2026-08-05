@@ -38,8 +38,8 @@ android {
         applicationId = "com.streamhub.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 14
-        versionName = "2.3.0"
+        versionCode = 15
+        versionName = "2.3.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -191,6 +191,9 @@ dependencies {
 
     // Security — bcrypt for admin PIN hash verification (M3)
     implementation(libs.bcrypt)
+
+    // QR Code Generator (ZXing)
+    implementation("com.google.zxing:core:3.5.3")
 
     debugImplementation(libs.androidx.ui.tooling)
 }

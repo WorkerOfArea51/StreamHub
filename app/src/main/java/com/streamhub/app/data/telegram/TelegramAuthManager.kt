@@ -126,20 +126,6 @@ object TelegramAuthManager {
         _authState.value = TelegramAuthState.WaitingQRCode(qrUrl)
     }
 
-    /**
-     * Log in as Owner (Convenience helper for Owner Account testing).
-     */
-    fun loginAsOwner(ownerUsername: String = "Owner") {
-        val ownerUser = TelegramUser(
-            id = 777000L,
-            firstName = "StreamHub Owner",
-            lastName = "Admin",
-            username = ownerUsername,
-            phoneNumber = "+10000000000",
-            photoUrl = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=300"
-        )
-        completeLogin(ownerUser)
-    }
 
     private fun completeLogin(user: TelegramUser) {
         prefs?.edit()
