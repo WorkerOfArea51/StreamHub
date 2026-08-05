@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,13 +21,12 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SdCard
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -46,10 +44,8 @@ import coil.compose.AsyncImage
 import com.streamhub.app.data.DownloadManager
 import com.streamhub.app.data.DownloadedItem
 import com.streamhub.app.data.models.MediaItem
-import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.CardBorderDark
-import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
@@ -61,6 +57,7 @@ fun DownloadsScreen(
 ) {
     val downloadsList by DownloadManager.downloads.collectAsState()
     val totalMbUsed = downloadsList.filter { it.isCompleted }.sumOf { it.fileSizeMb }
+    val primaryColor = MaterialTheme.colorScheme.primary
 
     Column(
         modifier = modifier
@@ -99,7 +96,7 @@ fun DownloadsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.SdCard, contentDescription = "Storage", tint = AccentOrange)
+                    Icon(Icons.Default.SdCard, contentDescription = "Storage", tint = primaryColor)
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text("Offline Local Storage", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
@@ -109,7 +106,7 @@ fun DownloadsScreen(
 
                 Text(
                     text = "${downloadsList.size} Episodes",
-                    color = AccentOrange,
+                    color = primaryColor,
                     fontWeight = FontWeight.Bold,
                     fontSize = 12.sp
                 )
@@ -129,7 +126,7 @@ fun DownloadsScreen(
                     Icon(
                         imageVector = Icons.Default.DownloadDone,
                         contentDescription = "Downloads",
-                        tint = AccentOrange,
+                        tint = primaryColor,
                         modifier = Modifier.height(64.dp)
                     )
 
@@ -182,6 +179,7 @@ fun DownloadedEpisodeCard(
     onPlay: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val primaryColor = MaterialTheme.colorScheme.primary
     Card(
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
@@ -248,7 +246,7 @@ fun DownloadedEpisodeCard(
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = if (item.isCompleted) "${String.format("%.1f", item.fileSizeMb)} MB • Offline Ready" else "Downloading... ${item.progressPercent}%",
-                        color = if (item.isCompleted) AccentOrange else PrimaryRed,
+                        color = primaryColor,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -264,7 +262,7 @@ fun DownloadedEpisodeCard(
             if (!item.isCompleted) {
                 LinearProgressIndicator(
                     progress = item.progressPercent / 100f,
-                    color = PrimaryRed,
+                    color = primaryColor,
                     trackColor = Color(0x33FFFFFF),
                     modifier = Modifier
                         .fillMaxWidth()

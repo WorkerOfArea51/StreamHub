@@ -76,12 +76,13 @@ fun MediaCard(
             )
 
             // Quality Badge Top Right
+            val primaryColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(6.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(PrimaryRed)
+                    .background(primaryColor)
                     .padding(horizontal = 5.dp, vertical = 2.dp)
             ) {
                 Text(

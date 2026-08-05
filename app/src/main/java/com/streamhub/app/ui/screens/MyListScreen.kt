@@ -16,9 +16,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -31,7 +31,6 @@ import com.streamhub.app.data.MyListManager
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.components.MediaCard
-import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
@@ -45,6 +44,7 @@ fun MyListScreen(
     val context = LocalContext.current
     val catalog by repository.mediaCatalog.collectAsState()
     val myListSet by MyListManager.myListFlow.collectAsState()
+    val primaryColor = MaterialTheme.colorScheme.primary
 
     val bookmarkedItems = catalog.filter { myListSet.contains(it.id) }
 
@@ -82,7 +82,7 @@ fun MyListScreen(
                     Icon(
                         imageVector = Icons.Default.Bookmark,
                         contentDescription = "My List",
-                        tint = AccentOrange,
+                        tint = primaryColor,
                         modifier = Modifier.height(64.dp)
                     )
 
