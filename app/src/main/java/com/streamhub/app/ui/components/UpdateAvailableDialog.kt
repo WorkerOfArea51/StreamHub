@@ -34,6 +34,7 @@ fun UpdateAvailableDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
+    val primaryColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(16.dp),
@@ -50,7 +51,7 @@ fun UpdateAvailableDialog(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "Version ${info.versionName}",
-                    color = PrimaryRed,
+                    color = primaryColor,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -79,7 +80,7 @@ fun UpdateAvailableDialog(
         },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("Update Now", color = PrimaryRed, fontWeight = FontWeight.Bold)
+                Text("Update Now", color = primaryColor, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {

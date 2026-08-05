@@ -252,10 +252,12 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxSize()
         )
 
+        val primaryColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
+
         // Buffering Indicator
         if (uiState.isBuffering) {
             CircularProgressIndicator(
-                color = PrimaryRed,
+                color = primaryColor,
                 modifier = Modifier.align(Alignment.Center)
             )
         }
@@ -442,7 +444,7 @@ fun PlayerScreen(
                             onClick = { viewModel.togglePlayPause() },
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
-                                .background(PrimaryRed)
+                                .background(primaryColor)
                                 .padding(12.dp)
                         ) {
                             Icon(
@@ -535,8 +537,8 @@ fun PlayerScreen(
                             onValueChange = { viewModel.seekTo(it.toLong()) },
                             valueRange = 0f..(uiState.durationMs.toFloat().coerceAtLeast(1f)),
                             colors = SliderDefaults.colors(
-                                thumbColor = PrimaryRed,
-                                activeTrackColor = PrimaryRed,
+                                thumbColor = primaryColor,
+                                activeTrackColor = primaryColor,
                                 inactiveTrackColor = Color(0x66FFFFFF)
                             ),
                             modifier = Modifier.fillMaxWidth()
@@ -614,7 +616,7 @@ fun PlayerScreen(
                         ) {
                             Column {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Subtitles, contentDescription = "Subtitle Tracks", tint = PrimaryRed)
+                                    Icon(Icons.Default.Subtitles, contentDescription = "Subtitle Tracks", tint = primaryColor)
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text("Select Subtitles 💬", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                                 }
@@ -627,15 +629,15 @@ fun PlayerScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(6.dp))
-                                            .background(if (isSelected) Color(0x33E50914) else Color.Transparent)
+                                            .background(if (isSelected) primaryColor.copy(alpha = 0.2f) else Color.Transparent)
                                             .clickable { viewModel.selectSubtitleTrack(track) }
                                             .padding(horizontal = 12.dp, vertical = 10.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(track, color = if (isSelected) PrimaryRed else TextPrimary, fontSize = 13.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                                        Text(track, color = if (isSelected) primaryColor else TextPrimary, fontSize = 13.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
                                         if (isSelected) {
-                                            Icon(Icons.Default.Check, contentDescription = "Selected", tint = PrimaryRed, modifier = Modifier.height(18.dp))
+                                            Icon(Icons.Default.Check, contentDescription = "Selected", tint = primaryColor, modifier = Modifier.height(18.dp))
                                         }
                                     }
                                 }
@@ -657,7 +659,7 @@ fun PlayerScreen(
         ) {
             Button(
                 onClick = { viewModel.playNextEpisode() },
-                colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
                 shape = RoundedCornerShape(10.dp),
                 modifier = Modifier.border(1.dp, Color.White, RoundedCornerShape(10.dp))
             ) {

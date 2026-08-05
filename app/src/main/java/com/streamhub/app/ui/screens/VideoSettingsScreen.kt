@@ -105,7 +105,7 @@ fun VideoSettingsScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Gesture, contentDescription = "Gestures", tint = PrimaryRed)
+                            Icon(Icons.Default.Gesture, contentDescription = "Gestures", tint = androidx.compose.material3.MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.width(10.dp))
                             Text("Vertical Drag Gesture Controls", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
@@ -144,7 +144,7 @@ fun VideoSettingsScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.SkipNext, contentDescription = "Next Ep", tint = PrimaryRed)
+                            Icon(Icons.Default.SkipNext, contentDescription = "Next Ep", tint = androidx.compose.material3.MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.width(10.dp))
                             Text("Next Episode Auto-Prompt", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
@@ -185,7 +185,7 @@ fun VideoSettingsScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.FastForward, contentDescription = "Skip Intro", tint = PrimaryRed)
+                            Icon(Icons.Default.FastForward, contentDescription = "Skip Intro", tint = androidx.compose.material3.MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.width(10.dp))
                             Text("Skip Intro Duration", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
@@ -227,14 +227,15 @@ private fun GestureOptionCard(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
+    val accentColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(if (isSelected) Color(0x33E50914) else Color(0xFF1C1C26))
+            .background(if (isSelected) accentColor.copy(alpha = 0.2f) else Color(0xFF1C1C26))
             .border(
                 width = if (isSelected) 1.dp else 0.dp,
-                color = if (isSelected) PrimaryRed else Color.Transparent,
+                color = if (isSelected) accentColor else Color.Transparent,
                 shape = RoundedCornerShape(8.dp)
             )
             .clickable { onClick() }
@@ -245,7 +246,7 @@ private fun GestureOptionCard(
             selected = isSelected,
             onClick = onClick,
             colors = RadioButtonDefaults.colors(
-                selectedColor = PrimaryRed,
+                selectedColor = accentColor,
                 unselectedColor = TextSecondary
             )
         )
@@ -263,7 +264,8 @@ private fun ThresholdChip(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
-    val backgroundColor = if (isSelected) PrimaryRed else Color(0xFF1C1C26)
+    val accentColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
+    val backgroundColor = if (isSelected) accentColor else Color(0xFF1C1C26)
     val textColor = if (isSelected) Color.White else TextSecondary
 
     Text(

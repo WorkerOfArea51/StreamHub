@@ -112,7 +112,7 @@ fun HomeScreen(
             if (isAdminMode) {
                 FloatingActionButton(
                     onClick = { showAdminAddDialog = true },
-                    containerColor = PrimaryRed,
+                    containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                     contentColor = Color.White
                 ) {
                     Icon(Icons.Default.Add, contentDescription = "Add Show")
@@ -165,7 +165,7 @@ fun HomeScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         CircularProgressIndicator(
-                            color = PrimaryRed
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.primary
                         )
                     }
                 }
@@ -442,10 +442,11 @@ fun CategoryFilterChip(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
+    val accentColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(20.dp))
-            .background(if (isSelected) PrimaryRed else SurfaceDark)
+            .background(if (isSelected) accentColor else SurfaceDark)
             .clickable { onClick() }
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {

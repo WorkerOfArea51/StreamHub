@@ -315,7 +315,7 @@ fun DetailsScreen(
                             ) {
                                 Button(
                                     onClick = { onPlayEpisode(mediaItem, 0) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                                    colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary),
                                     shape = RoundedCornerShape(8.dp),
                                     modifier = Modifier.weight(1f)
                                 ) {
@@ -387,16 +387,17 @@ fun DetailsScreen(
 
                     Spacer(modifier = Modifier.height(24.dp))
 
+                    val primaryColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
                     // 3-Tab Header (EPISODES | MORE INFO | MORE LIKE THIS)
                     TabRow(
                         selectedTabIndex = selectedTabIndex,
                         containerColor = BackgroundDark,
-                        contentColor = PrimaryRed,
+                        contentColor = primaryColor,
                         indicator = { tabPositions ->
                             if (selectedTabIndex < tabPositions.size) {
                                 TabRowDefaults.SecondaryIndicator(
                                     Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
-                                    color = PrimaryRed
+                                    color = primaryColor
                                 )
                             }
                         }

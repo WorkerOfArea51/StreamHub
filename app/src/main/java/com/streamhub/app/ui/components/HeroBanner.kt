@@ -93,7 +93,7 @@ fun HeroBanner(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
-                        .background(PrimaryRed)
+                        .background(androidx.compose.material3.MaterialTheme.colorScheme.primary)
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
@@ -160,7 +160,7 @@ fun HeroBanner(
             ) {
                 Button(
                     onClick = { onPlayClick(media) },
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                    colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary),
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.weight(1f)
                 ) {

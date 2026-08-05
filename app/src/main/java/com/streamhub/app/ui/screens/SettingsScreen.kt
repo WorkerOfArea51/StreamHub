@@ -182,7 +182,7 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.PlayCircle, contentDescription = "Video", tint = PrimaryRed)
+                            Icon(Icons.Default.PlayCircle, contentDescription = "Video", tint = androidx.compose.material3.MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text("Video Settings", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -234,20 +234,16 @@ fun SettingsScreen(
 private fun AppUpdateCard() {
     val context = LocalContext.current
     val updateState by AppUpdateManager.updateState.collectAsState()
+    val primaryColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
+
+    var userChecked by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
 
-    // Auto-check for updates when this card enters composition
-    LaunchedEffect(Unit) {
-        AppUpdateManager.checkForUpdate(
-            currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
-            repoOwner = "WorkerOfArea51",
-            repoName = "StreamHub"
-        )
-    }
-
-    // Show dialog when an update is available
+    // Only open dialog if update is available AND user manually tapped "Check Updates"
     LaunchedEffect(updateState) {
-        showUpdateDialog = updateState is UpdateState.UpdateAvailable
+        if (updateState is UpdateState.UpdateAvailable && userChecked) {
+            showUpdateDialog = true
+        }
     }
 
     if (showUpdateDialog && updateState is UpdateState.UpdateAvailable) {
@@ -288,6 +284,7 @@ private fun AppUpdateCard() {
 
                 Button(
                     onClick = {
+                        userChecked = true
                         AppUpdateManager.checkForUpdate(
                             currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
                             repoOwner = "WorkerOfArea51",
@@ -295,7 +292,7 @@ private fun AppUpdateCard() {
                             forceCheck = true
                         )
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                    colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
                     shape = RoundedCornerShape(8.dp),
                     enabled = updateState !is UpdateState.Checking &&
                               updateState !is UpdateState.Downloading
@@ -312,11 +309,25 @@ private fun AppUpdateCard() {
                             val progress = (updateState as UpdateState.Downloading).progressPercent
                             Text("$progress%", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
+                        is UpdateState.UpdateAvailable -> {
+                            Text("Update Available", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
                         else -> {
                             Text("Check Updates", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
+            }
+
+            // Inline status feedback
+            if (userChecked && updateState is UpdateState.UpToDate) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "You are on the latest version (v${BuildConfig.VERSION_NAME}).",
+                    color = primaryColor,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
 
             // Download progress bar
@@ -325,7 +336,7 @@ private fun AppUpdateCard() {
                 Spacer(modifier = Modifier.height(12.dp))
                 LinearProgressIndicator(
                     progress = { download.progressPercent / 100f },
-                    color = PrimaryRed,
+                    color = primaryColor,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(4.dp))
@@ -340,7 +351,7 @@ private fun AppUpdateCard() {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     "Update check failed: ${(updateState as UpdateState.Error).message}",
-                    color = PrimaryRed,
+                    color = primaryColor,
                     fontSize = 11.sp
                 )
             }

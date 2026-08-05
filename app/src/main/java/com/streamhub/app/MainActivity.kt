@@ -141,6 +141,8 @@ fun StreamHubApp() {
     val bottomBarScreens = listOf(
         Screen.Home,
         Screen.Search,
+        Screen.Downloads,
+        Screen.MyList,
         Screen.Profile
     )
 
@@ -171,14 +173,14 @@ fun StreamHubApp() {
                                     Icon(
                                         imageVector = it,
                                         contentDescription = screen.title,
-                                        tint = if (selected) PrimaryRed else TextSecondary
+                                        tint = if (selected) androidx.compose.material3.MaterialTheme.colorScheme.primary else TextSecondary
                                     )
                                 }
                             },
                             label = {
                                 Text(
                                     text = screen.title,
-                                    color = if (selected) PrimaryRed else TextSecondary,
+                                    color = if (selected) androidx.compose.material3.MaterialTheme.colorScheme.primary else TextSecondary,
                                     fontSize = 10.sp,
                                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
                                 )

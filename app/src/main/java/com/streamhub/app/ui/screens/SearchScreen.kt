@@ -126,7 +126,7 @@ fun SearchScreen(
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = SurfaceDark,
                 unfocusedContainerColor = SurfaceDark,
-                focusedBorderColor = PrimaryRed,
+                focusedBorderColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                 unfocusedBorderColor = CardBorderDark,
                 focusedTextColor = TextPrimary,
                 unfocusedTextColor = TextPrimary
@@ -136,6 +136,8 @@ fun SearchScreen(
         )
 
         Spacer(modifier = Modifier.height(14.dp))
+
+        val accentColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
 
         // Genre Filter Chips Row
         LazyRow(
@@ -147,8 +149,8 @@ fun SearchScreen(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
-                        .background(if (isSelected) PrimaryRed else SurfaceDark)
-                        .border(1.dp, if (isSelected) PrimaryRed else CardBorderDark, RoundedCornerShape(20.dp))
+                        .background(if (isSelected) accentColor else SurfaceDark)
+                        .border(1.dp, if (isSelected) accentColor else CardBorderDark, RoundedCornerShape(20.dp))
                         .clickable { selectedGenreFilter = key }
                         .padding(horizontal = 14.dp, vertical = 7.dp)
                 ) {
