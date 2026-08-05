@@ -38,8 +38,8 @@ android {
         applicationId = "com.streamhub.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 9
-        versionName = "2.2.5"
+        versionCode = 10
+        versionName = "2.2.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -81,11 +81,30 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            val keystoreFile = rootProject.file("app/release-key.jks")
+            if (keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = "streamhub"
+                keyAlias = "streamhub"
+                keyPassword = "streamhub"
+            } else {
+                // Fallback to default debug key if project keystore file is absent
+                storeFile = signingConfigs.getByName("debug").storeFile
+                storePassword = signingConfigs.getByName("debug").storePassword
+                keyAlias = signingConfigs.getByName("debug").keyAlias
+                keyPassword = signingConfigs.getByName("debug").keyPassword
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
             isDebuggable = true
             buildConfigField("boolean", "DEBUG_LOGGING", "true")
+            signingConfig = signingConfigs.getByName("release")
         }
         release {
             isMinifyEnabled = true
@@ -94,9 +113,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // TEMPORARY: sign release with debug key so the APK installs locally.
-            // Replace with a real release keystore before publishing (see M10).
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
