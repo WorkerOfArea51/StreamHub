@@ -28,6 +28,15 @@ object Secrets {
      */
     val ADMIN_PIN_HASH: String get() = BuildConfig.ADMIN_PIN_HASH
 
+    /** Telegram App API credentials for TDLib client authentication. */
+    val TELEGRAM_API_ID: String get() = BuildConfig.TELEGRAM_API_ID
+    val TELEGRAM_API_HASH: String get() = BuildConfig.TELEGRAM_API_HASH
+
+    /** Telegram Private Channels (Auto-joined upon TDLib user login). */
+    val TELEGRAM_ANIME_CHANNEL: String get() = BuildConfig.TELEGRAM_ANIME_CHANNEL
+    val TELEGRAM_MOVIES_CHANNEL: String get() = BuildConfig.TELEGRAM_MOVIES_CHANNEL
+    val TELEGRAM_SERIES_CHANNEL: String get() = BuildConfig.TELEGRAM_SERIES_CHANNEL
+
     /** MyAnimeList v2 REST API base URL. */
     const val MAL_BASE_URL: String = "https://api.myanimelist.net/v2/"
 
