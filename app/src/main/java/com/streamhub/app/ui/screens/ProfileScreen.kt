@@ -78,6 +78,31 @@ import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 
+data class CountryCode(
+    val name: String,
+    val flag: String,
+    val dialCode: String
+)
+
+val countryCodesList = listOf(
+    CountryCode("United States", "🇺🇸", "+1"),
+    CountryCode("India", "🇮🇳", "+91"),
+    CountryCode("Bangladesh", "🇧🇩", "+880"),
+    CountryCode("United Kingdom", "🇬🇧", "+44"),
+    CountryCode("Pakistan", "🇵🇰", "+92"),
+    CountryCode("Canada", "🇨🇦", "+1"),
+    CountryCode("Australia", "🇦🇺", "+61"),
+    CountryCode("Germany", "🇩🇪", "+49"),
+    CountryCode("France", "🇫🇷", "+33"),
+    CountryCode("Indonesia", "🇮🇩", "+62"),
+    CountryCode("Brazil", "🇧🇷", "+55"),
+    CountryCode("Nigeria", "🇳🇬", "+234"),
+    CountryCode("Philippines", "🇵🇭", "+63"),
+    CountryCode("Turkey", "🇹🇷", "+90"),
+    CountryCode("United Arab Emirates", "🇦🇪", "+971"),
+    CountryCode("Saudi Arabia", "🇸🇦", "+966")
+)
+
 @Composable
 fun ProfileScreen(
     onNavigateToSettings: () -> Unit = {},
@@ -402,7 +427,7 @@ fun TelegramLoginCard(
             Spacer(modifier = Modifier.height(16.dp))
 
             if (selectedTab == 0) {
-                // PHONE NUMBER AUTH FORM
+                // PHONE NUMBER AUTH FORM (Telegram Country Code Selector)
                 when (authState) {
                     is TelegramAuthState.WaitingCode -> {
                         Text("Enter Telegram Verification Code sent to ${authState.phoneNumber}:", color = TextSecondary, fontSize = 11.sp)
@@ -430,10 +455,81 @@ fun TelegramLoginCard(
                         }
                     }
                     else -> {
+                        var expandedCountryDropdown by remember { mutableStateOf(false) }
+                        var selectedCountry by remember { mutableStateOf(countryCodesList[0]) }
+
+                        Text("Country", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // TELEGRAM-STYLE COUNTRY SELECTOR BOX
+                        Card(
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF14141E)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, Color(0xFF2C2C3E), RoundedCornerShape(10.dp))
+                                .clickable { expandedCountryDropdown = true }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(selectedCountry.flag, fontSize = 18.sp)
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(selectedCountry.name, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Text(selectedCountry.dialCode, color = primaryColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            androidx.compose.material3.DropdownMenu(
+                                expanded = expandedCountryDropdown,
+                                onDismissRequest = { expandedCountryDropdown = false },
+                                modifier = Modifier
+                                    .background(SurfaceDark)
+                                    .border(1.dp, Color(0xFF2C2C3E))
+                            ) {
+                                countryCodesList.forEach { country ->
+                                    androidx.compose.material3.DropdownMenuItem(
+                                        text = {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(country.flag, fontSize = 16.sp)
+                                                    Spacer(modifier = Modifier.width(10.dp))
+                                                    Text(country.name, color = TextPrimary, fontSize = 12.sp)
+                                                }
+                                                Spacer(modifier = Modifier.width(16.dp))
+                                                Text(country.dialCode, color = primaryColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        },
+                                        onClick = {
+                                            selectedCountry = country
+                                            expandedCountryDropdown = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // PHONE NUMBER FIELD WITH COUNTRY DIAL CODE PREFIX
+                        Text("Phone Number", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
                         OutlinedTextField(
                             value = phoneNumber,
                             onValueChange = { phoneNumber = it },
-                            placeholder = { Text("e.g. +1234567890", color = TextSecondary) },
+                            prefix = {
+                                Text("${selectedCountry.flag} ${selectedCountry.dialCode} ", color = primaryColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            },
+                            placeholder = { Text("000 000 0000", color = TextSecondary) },
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = primaryColor,
@@ -442,9 +538,12 @@ fun TelegramLoginCard(
                             ),
                             modifier = Modifier.fillMaxWidth()
                         )
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
                         Button(
-                            onClick = { TelegramAuthManager.startPhoneAuth(phoneNumber) },
+                            onClick = {
+                                val fullNumber = if (phoneNumber.startsWith("+")) phoneNumber else "${selectedCountry.dialCode}$phoneNumber"
+                                TelegramAuthManager.startPhoneAuth(fullNumber)
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
