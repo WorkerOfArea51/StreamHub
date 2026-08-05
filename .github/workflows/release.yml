@@ -91,29 +91,29 @@ jobs:
           STREAMHUB_ADMIN_PIN_HASH: ${{ secrets.STREAMHUB_ADMIN_PIN_HASH }}
         run: ./gradlew assembleRelease --stacktrace
 
-      - name: Verify APK is signed
+      - name: Verify APKs are signed
         run: |
-          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
-          if [ -z "$APK_PATH" ]; then
-            echo "::error::No release APK found"
-            exit 1
-          fi
-          echo "APK: $APK_PATH"
-          $ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs "$APK_PATH" || \
-            echo "::warning::APK signature verification failed — check signing config"
+          for APK_PATH in app/build/outputs/apk/release/*.apk; do
+            if [ ! -f "$APK_PATH" ]; then
+              echo "::error::No release APK found"
+              exit 1
+            fi
+            echo "Verifying: $APK_PATH"
+            $ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs "$APK_PATH" || \
+              echo "::warning::APK signature verification failed for $APK_PATH"
+          done
 
-      - name: Generate SHA-256 checksum
-        id: checksum
+      - name: Generate SHA-256 checksums
         run: |
-          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
-          sha256sum "$APK_PATH" > "$APK_PATH.sha256"
-          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
-          echo "apk_name=$(basename $APK_PATH)" >> $GITHUB_OUTPUT
+          for APK_PATH in app/build/outputs/apk/release/*.apk; do
+            sha256sum "$APK_PATH" > "$APK_PATH.sha256"
+            echo "Generated checksum for $(basename $APK_PATH)"
+          done
 
-      - name: Upload release APK artifact
+      - name: Upload release APKs artifact
         uses: actions/upload-artifact@v4
         with:
-          name: streamhub-release-apk
+          name: streamhub-release-apks
           path: |
             app/build/outputs/apk/release/*.apk
             app/build/outputs/apk/release/*.sha256
@@ -128,8 +128,10 @@ jobs:
           name: StreamHub ${{ inputs.tag_name || github.ref_name }}
           generate_release_notes: true
           files: |
-            ${{ steps.checksum.outputs.apk_path }}
-            ${{ steps.checksum.outputs.apk_path }}.sha256
+            app/build/outputs/apk/release/StreamHub-arm32-release.apk
+            app/build/outputs/apk/release/StreamHub-arm32-release.apk.sha256
+            app/build/outputs/apk/release/StreamHub-arm64-release.apk
+            app/build/outputs/apk/release/StreamHub-arm64-release.apk.sha256
           draft: false
           prerelease: ${{ contains(inputs.tag_name || github.ref_name, '-') }}
         env:

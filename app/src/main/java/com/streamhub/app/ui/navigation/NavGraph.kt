@@ -16,6 +16,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     object MyList : Screen("mylist", "My List", Icons.Default.Bookmark)
     object Profile : Screen("profile", "Profile", Icons.Default.Person)
     object Settings : Screen("settings", "Settings")
+    object VideoSettings : Screen("video-settings", "Video Settings")
     
     object Details : Screen("details/{mediaId}", "Details") {
         fun createRoute(mediaId: String) = "details/$mediaId"

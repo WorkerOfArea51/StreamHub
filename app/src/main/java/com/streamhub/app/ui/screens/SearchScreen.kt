@@ -195,18 +195,13 @@ fun SearchScreen(
 
         // Results Grid
         if (filteredItems.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "No shows found matching your search.",
-                    color = TextSecondary,
-                    fontSize = 13.sp
-                )
-            }
+            com.streamhub.app.ui.components.EmptyStateCard(
+                icon = Icons.Default.Search,
+                title = if (searchQuery.isEmpty()) "Search for shows" else "No results found",
+                subtitle = if (searchQuery.isEmpty()) "Type a title to search the catalog"
+                           else "Try a different search term",
+                modifier = Modifier.weight(1f)
+            )
         } else {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(3),

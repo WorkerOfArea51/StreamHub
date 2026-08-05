@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    FileProvider paths for in-app APK installer.
+    The APK is downloaded to cacheDir and shared via FileProvider.
+-->
+<paths>
+    <cache-path name="cache" path="." />
+</paths>

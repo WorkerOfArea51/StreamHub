@@ -22,7 +22,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
+import com.streamhub.app.ui.components.EmptyStateCard
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -75,6 +77,7 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val catalog by repository.mediaCatalog.collectAsState()
+    val catalogState by repository.catalogState.collectAsState()
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
     val watchHistoryMap by WatchHistoryManager.historyFlow.collectAsState()
 
@@ -136,6 +139,35 @@ fun HomeScreen(
                     CategoryFilterChip("Anime", selectedCategoryFilter == "ANIME") { selectedCategoryFilter = "ANIME" }
                     CategoryFilterChip("Movies", selectedCategoryFilter == "MOVIES") { selectedCategoryFilter = "MOVIES" }
                     CategoryFilterChip("Web Series", selectedCategoryFilter == "SERIES") { selectedCategoryFilter = "SERIES" }
+                }
+            }
+
+            // Empty state — catalog is empty and Firestore has responded
+            if (catalog.isEmpty() && catalogState is com.streamhub.app.data.repository.CatalogState.Ready) {
+                item {
+                    EmptyStateCard(
+                        icon = Icons.Default.Movie,
+                        title = if (isAdminMode) "No shows yet" else "No content available",
+                        subtitle = if (isAdminMode) "Tap the + button to add your first show"
+                                   else "Ask the admin to add content",
+                        modifier = Modifier.height(400.dp)
+                    )
+                }
+            }
+
+            // Loading state — Firestore hasn't responded yet
+            if (catalog.isEmpty() && catalogState is com.streamhub.app.data.repository.CatalogState.Loading) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(400.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = PrimaryRed
+                        )
+                    }
                 }
             }
 

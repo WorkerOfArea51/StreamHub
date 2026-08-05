@@ -141,8 +141,6 @@ fun StreamHubApp() {
     val bottomBarScreens = listOf(
         Screen.Home,
         Screen.Search,
-        Screen.Downloads,
-        Screen.MyList,
         Screen.Profile
     )
 
@@ -260,6 +258,15 @@ fun StreamHubApp() {
 
             composable(Screen.Settings.route) {
                 SettingsScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onNavigateToVideoSettings = {
+                        navController.navigate(Screen.VideoSettings.route)
+                    }
+                )
+            }
+
+            composable(Screen.VideoSettings.route) {
+                com.streamhub.app.ui.screens.VideoSettingsScreen(
                     onBackClick = { navController.popBackStack() }
                 )
             }

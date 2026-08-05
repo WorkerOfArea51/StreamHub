@@ -11,10 +11,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -36,13 +42,36 @@ import com.streamhub.app.data.api.Secrets
 import com.streamhub.app.data.api.TmdbClient
 import com.streamhub.app.data.models.MediaInfo
 import com.streamhub.app.data.models.MediaItem
-import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
+/**
+ * Admin Editor Dialog — add or edit a MediaItem.
+ *
+ * Structured into two clearly separated sections:
+ *
+ *   Section A: Metadata & Auto-Fetch
+ *     - Title field + Auto-Fetch MAL button (fills in metadata from MAL API)
+ *     - MAL ID, Studio, Score, Status, Episodes, Aired, Premiered, Producers,
+ *       Source, Duration, Budget, Category, Type, Genres, Cast, Poster URL,
+ *       Synopsis, YouTube Trailer ID
+ *     - Technical MediaInfo Specs (Resolution, Codec, File Size, Audio, Subtitles)
+ *
+ *   Section B: Telegram Private Channel Batch Generator
+ *     - Start Link (t.me/c/<channel>/<first_msg_id>)
+ *     - End Link (t.me/c/<channel>/<last_msg_id>)
+ *     - Generate button → creates Episode list with auto-extracted episode numbers
+ *
+ * Stream URL paste fields are REMOVED — the user uses Telegram private channels
+ * exclusively as the file server. Episode.streamUrl is populated automatically
+ * by the batch generator with raw t.me/c/... URLs (resolution to proxy URL
+ * happens at playback time via TelegramDataSourceFactory).
+ */
 @Composable
 fun AdminEditorDialog(
     initialItem: MediaItem? = null,
@@ -50,193 +79,177 @@ fun AdminEditorDialog(
     onSave: (MediaItem) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+
+    // --- Section A: Metadata ---
     var title by remember { mutableStateOf(initialItem?.title ?: "") }
+    var malId by remember { mutableStateOf(initialItem?.malId ?: "") }
+    var tmdbId by remember { mutableStateOf(initialItem?.tmdbId ?: "") }
+    var trailerId by remember { mutableStateOf(initialItem?.trailerId ?: "") }
+    var rating by remember { mutableStateOf(initialItem?.rating ?: "") }
+    var studio by remember { mutableStateOf(initialItem?.studio ?: "") }
+    var synonyms by remember { mutableStateOf(initialItem?.synonyms ?: "") }
+    var totalEpisodes by remember { mutableStateOf(initialItem?.totalEpisodes ?: "") }
+    var status by remember { mutableStateOf(initialItem?.status ?: "") }
+    var aired by remember { mutableStateOf(initialItem?.aired ?: "") }
+    var premiered by remember { mutableStateOf(initialItem?.premiered ?: "") }
+    var producers by remember { mutableStateOf(initialItem?.producers ?: "") }
+    var source by remember { mutableStateOf(initialItem?.source ?: "") }
+    var duration by remember { mutableStateOf(initialItem?.duration ?: "") }
+    var budgetBoxOffice by remember { mutableStateOf(initialItem?.budgetBoxOffice ?: "") }
     var category by remember { mutableStateOf(initialItem?.category ?: "ANIME") }
     var type by remember { mutableStateOf(initialItem?.type ?: "SERIES") }
+    var genresText by remember { mutableStateOf(initialItem?.genres?.joinToString(", ") ?: "") }
+    var castText by remember { mutableStateOf(initialItem?.castList?.joinToString(", ") ?: "") }
     var posterUrl by remember { mutableStateOf(initialItem?.posterUrl ?: "") }
     var bannerUrl by remember { mutableStateOf(initialItem?.bannerUrl ?: "") }
     var description by remember { mutableStateOf(initialItem?.description ?: "") }
-    var rating by remember { mutableStateOf(initialItem?.rating ?: "8.14") }
-    var studio by remember { mutableStateOf(initialItem?.studio ?: "A-1 Pictures") }
-    var trailerId by remember { mutableStateOf(initialItem?.trailerId ?: "1kCwjK4rgYg") }
-    var malId by remember { mutableStateOf(initialItem?.malId ?: "") }
-    var tmdbId by remember { mutableStateOf(initialItem?.tmdbId ?: "") }
-    var synonyms by remember { mutableStateOf(initialItem?.synonyms ?: "Na Honjaman Level Up, I Level Up Alone") }
-    var totalEpisodes by remember { mutableStateOf(initialItem?.totalEpisodes ?: "12 Episodes") }
-    var status by remember { mutableStateOf(initialItem?.status ?: "Finished Airing") }
-    var aired by remember { mutableStateOf(initialItem?.aired ?: "Jan 7, 2024 to Mar 31, 2024") }
-    var premiered by remember { mutableStateOf(initialItem?.premiered ?: "Winter 2024") }
-    var producers by remember { mutableStateOf(initialItem?.producers ?: "Aniplex, Crunchyroll, Netmarble") }
-    var source by remember { mutableStateOf(initialItem?.source ?: "Web manga") }
-    var duration by remember { mutableStateOf(initialItem?.duration ?: "23 min. per ep") }
-    var budgetBoxOffice by remember { mutableStateOf(initialItem?.budgetBoxOffice ?: "$25M Budget / $85M Box Office") }
-    var genresText by remember { mutableStateOf(initialItem?.genres?.joinToString(", ") ?: "Action, Adventure, Fantasy") }
-    var castText by remember { mutableStateOf(initialItem?.castList?.joinToString(", ") ?: "Ban Taito (Sung Jin-Woo), Ueda Reina (Cha Hae-In), Nakamura Genta (Yoo Jin-Ho)") }
-    var tmdbApiKey by remember { mutableStateOf(Secrets.TMDB_API_KEY) }
-    var resolution by remember { mutableStateOf(initialItem?.mediaInfo?.resolution ?: "1080p") }
-    var codec by remember { mutableStateOf(initialItem?.mediaInfo?.videoCodec ?: "AVC / x264") }
-    var fileSize by remember { mutableStateOf(initialItem?.mediaInfo?.fileSize ?: "2.3 GB") }
-    var audioTracks by remember { mutableStateOf(initialItem?.mediaInfo?.audioTracks?.joinToString(", ") ?: "Hindi, Tamil") }
-    var subtitleTracks by remember { mutableStateOf(initialItem?.mediaInfo?.subtitleTracks?.joinToString(", ") ?: "English") }
-    var rawTelegramLinks by remember { mutableStateOf(initialItem?.episodes?.joinToString("\n") { it.streamUrl } ?: "") }
-    var mirrorLinksText by remember { mutableStateOf(initialItem?.episodes?.joinToString("\n") { it.mirrorStreamUrl } ?: "") }
-    var isFetchingApi by remember { mutableStateOf(false) }
 
-    // Telegram Batch Link Range Generator State
-    var startBatchLink by remember { mutableStateOf("https://t.me/c/2633457020/7159") }
-    var endBatchLink by remember { mutableStateOf("https://t.me/c/2633457020/7170") }
+    // --- Section A: MediaInfo Specs ---
+    var resolution by remember { mutableStateOf(initialItem?.mediaInfo?.resolution ?: "") }
+    var videoCodec by remember { mutableStateOf(initialItem?.mediaInfo?.videoCodec ?: "") }
+    var fileSize by remember { mutableStateOf(initialItem?.mediaInfo?.fileSize ?: "") }
+    var audioTracksText by remember {
+        mutableStateOf(initialItem?.mediaInfo?.audioTracks?.joinToString(", ") ?: "")
+    }
+    var subtitleTracksText by remember {
+        mutableStateOf(initialItem?.mediaInfo?.subtitleTracks?.joinToString(", ") ?: "")
+    }
+
+    // --- Section B: Telegram Batch ---
+    var startBatchLink by remember { mutableStateOf("") }
+    var endBatchLink by remember { mutableStateOf("") }
+    var generatedEpisodesText by remember { mutableStateOf("") }
+
+    // --- UI State ---
+    var isFetchingApi by remember { mutableStateOf(false) }
+    var fetchError by remember { mutableStateOf<String?>(null) }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
+            modifier = Modifier.fillMaxWidth()
         ) {
             Column(
                 modifier = Modifier
-                    .padding(20.dp)
+                    .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
+                    .padding(20.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (initialItem == null) "➕ Add New Show / Anime" else "✏️ Edit Media Specs & Links",
-                        color = TextPrimary,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "ADMIN MODE",
-                        color = PrimaryRed,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                OutlinedTextField(
-                    value = tmdbApiKey,
-                    onValueChange = {
-                        tmdbApiKey = it
-                        // TODO(M3): Persist runtime TMDB key override via SharedPreferences-backed config.
-                        // Secrets.TMDB_API_KEY = it
-                    },
-                    label = { Text("TMDB API Key (Optional)", color = TextSecondary) },
-                    modifier = Modifier.fillMaxWidth()
+                // Dialog title
+                Text(
+                    text = if (initialItem == null) "Add New Show" else "Edit Show",
+                    color = TextPrimary,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
                 )
+                Spacer(modifier = Modifier.height(16.dp))
 
-                Spacer(modifier = Modifier.height(8.dp))
+                // ==========================================
+                // SECTION A: METADATA & AUTO-FETCH
+                // ==========================================
+                SectionHeader(
+                    icon = Icons.Default.Movie,
+                    title = "Metadata"
+                )
 
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("Show / Movie Title (e.g. Solo Leveling)", color = TextSecondary) },
+                    label = { Text("Title", color = TextSecondary) },
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Auto Fetch Helper
+                OutlinedTextField(
+                    value = malId,
+                    onValueChange = { malId = it },
+                    label = { Text("MAL ID", color = TextSecondary) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
                 Button(
                     onClick = {
-                        if (title.isNotEmpty()) {
-                            isFetchingApi = true
-                            scope.launch {
-                                try {
-                                    if (category == "ANIME") {
-                                        val res = TmdbClient.malInstance.searchAnime(Secrets.MAL_CLIENT_ID, title)
-                                        val firstNode = res.data.firstOrNull()?.node
-                                        if (firstNode != null) {
-                                            malId = firstNode.id.toString()
-                                            posterUrl = firstNode.main_picture?.large ?: firstNode.main_picture?.medium ?: posterUrl
-                                            bannerUrl = posterUrl
-                                            description = firstNode.synopsis ?: description
-                                            rating = firstNode.mean?.let { String.format("%.2f", it) } ?: rating
-                                            studio = firstNode.studios?.firstOrNull()?.name ?: studio
-                                            trailerId = "1kCwjK4rgYg"
-                                            totalEpisodes = "${firstNode.num_episodes ?: 12} Episodes"
-                                            status = firstNode.status ?: status
-                                            source = firstNode.source ?: source
-                                            if (firstNode.average_episode_duration != null) {
-                                                duration = "${firstNode.average_episode_duration / 60} min. per ep"
-                                            }
-                                            if (firstNode.alternative_titles?.synonyms?.isNotEmpty() == true) {
-                                                synonyms = firstNode.alternative_titles.synonyms.joinToString(", ")
-                                            }
-                                            if (!firstNode.genres.isNullOrEmpty()) {
-                                                genresText = firstNode.genres.joinToString(", ") { it.name }
-                                            }
-                                            castText = "Ban Taito (Sung Jin-Woo), Ueda Reina (Cha Hae-In), Nakamura Genta (Yoo Jin-Ho), Hirakawa Daisuke (Igris)"
-                                        }
-                                    } else {
-                                        val res = TmdbClient.instance.searchMulti(tmdbApiKey, title)
-                                        val first = res.results.firstOrNull()
-                                        if (first != null) {
-                                            tmdbId = first.id.toString()
-                                            posterUrl = "https://image.tmdb.org/t/p/w500${first.poster_path}"
-                                            bannerUrl = "https://image.tmdb.org/t/p/w1280${first.backdrop_path ?: first.poster_path}"
-                                            description = first.overview ?: description
-                                            rating = String.format("%.1f", first.vote_average)
-                                        }
+                        isFetchingApi = true
+                        fetchError = null
+                        scope.launch {
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    val response = TmdbClient.malInstance.searchAnime(
+                                        clientId = Secrets.MAL_CLIENT_ID,
+                                        query = title
+                                    )
+                                    val firstNode = response.data?.firstOrNull()?.node
+                                    if (firstNode != null) {
+                                        malId = firstNode.id.toString()
+                                        title = firstNode.title
+                                        posterUrl = firstNode.main_picture?.large ?: posterUrl
+                                        bannerUrl = firstNode.main_picture?.large ?: bannerUrl
+                                        description = firstNode.synopsis ?: description
+                                        rating = firstNode.mean?.toString() ?: rating
+                                        totalEpisodes = firstNode.num_episodes?.let { "$it Episodes" } ?: totalEpisodes
+                                        status = if (firstNode.status == "finished_airing") "Finished Airing"
+                                                 else if (firstNode.status == "currently_airing") "Currently Airing"
+                                                 else status
+                                        duration = firstNode.average_episode_duration?.let { "${it / 60} min. per ep" } ?: duration
                                     }
-                                } catch (e: Exception) {
-                                    posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600"
-                                    bannerUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=1200"
-                                } finally {
-                                    isFetchingApi = false
                                 }
+                            } catch (e: Exception) {
+                                fetchError = "MAL fetch failed: ${e.message}"
+                            } finally {
+                                isFetchingApi = false
                             }
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
-                    enabled = !isFetchingApi,
-                    shape = RoundedCornerShape(8.dp),
+                    enabled = title.isNotBlank() && !isFetchingApi,
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
                     modifier = Modifier.fillMaxWidth()
                 ) {
+                    if (isFetchingApi) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.width(16.dp).height(16.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    } else {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White)
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
                     Text(
-                        if (isFetchingApi) "Fetching metadata..." else "⚡ Auto-Fetch MAL Specs, Trailer ID & Cast",
+                        if (isFetchingApi) "Fetching..." else "Auto-Fetch from MAL",
                         color = Color.White,
-                        fontSize = 11.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = malId,
-                        onValueChange = { malId = it },
-                        label = { Text("MAL ID (e.g. 52299)", color = TextSecondary) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = trailerId,
-                        onValueChange = { trailerId = it },
-                        label = { Text("YouTube Trailer ID (1kCwjK4rgYg)", color = TextSecondary) },
-                        modifier = Modifier.weight(1f)
-                    )
+                fetchError?.let {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(it, color = PrimaryRed, fontSize = 11.sp)
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
+                // Two-column rows for compact metadata
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = rating,
                         onValueChange = { rating = it },
-                        label = { Text("MAL Score (e.g. 8.14)", color = TextSecondary) },
+                        label = { Text("Rating", color = TextSecondary) },
+                        singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
                     OutlinedTextField(
                         value = studio,
                         onValueChange = { studio = it },
-                        label = { Text("Studio (e.g. A-1 Pictures)", color = TextSecondary) },
+                        label = { Text("Studio", color = TextSecondary) },
+                        singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -246,7 +259,8 @@ fun AdminEditorDialog(
                 OutlinedTextField(
                     value = synonyms,
                     onValueChange = { synonyms = it },
-                    label = { Text("Synonyms / Alt Titles", color = TextSecondary) },
+                    label = { Text("Alternative Titles", color = TextSecondary) },
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -256,13 +270,15 @@ fun AdminEditorDialog(
                     OutlinedTextField(
                         value = totalEpisodes,
                         onValueChange = { totalEpisodes = it },
-                        label = { Text("Episodes Count (12)", color = TextSecondary) },
+                        label = { Text("Episodes", color = TextSecondary) },
+                        singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
                     OutlinedTextField(
                         value = status,
                         onValueChange = { status = it },
-                        label = { Text("Status (Finished Airing)", color = TextSecondary) },
+                        label = { Text("Status", color = TextSecondary) },
+                        singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -270,50 +286,18 @@ fun AdminEditorDialog(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = aired,
-                        onValueChange = { aired = it },
-                        label = { Text("Aired Dates", color = TextSecondary) },
-                        modifier = Modifier.weight(1f)
-                    )
                     OutlinedTextField(
                         value = premiered,
                         onValueChange = { premiered = it },
-                        label = { Text("Premiered (Winter 2024)", color = TextSecondary) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = producers,
-                        onValueChange = { producers = it },
-                        label = { Text("Producers", color = TextSecondary) },
+                        label = { Text("Premiered", color = TextSecondary) },
+                        singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
                     OutlinedTextField(
-                        value = source,
-                        onValueChange = { source = it },
-                        label = { Text("Source (Web manga)", color = TextSecondary) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = duration,
-                        onValueChange = { duration = it },
-                        label = { Text("Duration (23 min. per ep)", color = TextSecondary) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = budgetBoxOffice,
-                        onValueChange = { budgetBoxOffice = it },
-                        label = { Text("Budget / Box Office", color = TextSecondary) },
+                        value = aired,
+                        onValueChange = { aired = it },
+                        label = { Text("Aired", color = TextSecondary) },
+                        singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -324,13 +308,15 @@ fun AdminEditorDialog(
                     OutlinedTextField(
                         value = category,
                         onValueChange = { category = it },
-                        label = { Text("Category (ANIME/MOVIE)", color = TextSecondary) },
+                        label = { Text("Category", color = TextSecondary) },
+                        singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
                     OutlinedTextField(
                         value = type,
                         onValueChange = { type = it },
-                        label = { Text("Type (MOVIE/SERIES)", color = TextSecondary) },
+                        label = { Text("Type", color = TextSecondary) },
+                        singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -340,7 +326,8 @@ fun AdminEditorDialog(
                 OutlinedTextField(
                     value = genresText,
                     onValueChange = { genresText = it },
-                    label = { Text("Genres (Action, Fantasy, Adventure)", color = TextSecondary) },
+                    label = { Text("Genres (comma-separated)", color = TextSecondary) },
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -349,111 +336,59 @@ fun AdminEditorDialog(
                 OutlinedTextField(
                     value = castText,
                     onValueChange = { castText = it },
-                    label = { Text("Real Human Voice Actors / Cast", color = TextSecondary) },
+                    label = { Text("Cast (comma-separated)", color = TextSecondary) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = posterUrl,
+                        onValueChange = { posterUrl = it },
+                        label = { Text("Poster URL", color = TextSecondary) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = trailerId,
+                        onValueChange = { trailerId = it },
+                        label = { Text("YouTube Trailer ID", color = TextSecondary) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Synopsis", color = TextSecondary) },
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // TELEGRAM BATCH LINK RANGE GENERATOR
-                var batchStatusText by remember { mutableStateOf("") }
-
-                Text("⚡ TELEGRAM PRIVATE CHANNEL BATCH GENERATOR", color = AccentOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(4.dp))
-
-                OutlinedTextField(
-                    value = startBatchLink,
-                    onValueChange = { startBatchLink = it },
-                    label = { Text("Start Link (e.g. Episode 1 link: .../7159)", color = TextSecondary) },
-                    modifier = Modifier.fillMaxWidth()
+                // MediaInfo Specs sub-section
+                SectionHeader(
+                    icon = Icons.Default.Movie,
+                    title = "Technical Specs"
                 )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                OutlinedTextField(
-                    value = endBatchLink,
-                    onValueChange = { endBatchLink = it },
-                    label = { Text("End Link (e.g. Episode 12 link: .../7170)", color = TextSecondary) },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    onClick = {
-                        val generated = TelegramLinkResolver.generateBatchTelegramLinks(startBatchLink, endBatchLink)
-                        if (generated.isNotEmpty()) {
-                            rawTelegramLinks = generated
-                            mirrorLinksText = generated
-                            val count = generated.lines().size
-                            totalEpisodes = "$count Episodes"
-                            batchStatusText = "✓ Successfully generated $count episode stream links!"
-                        } else {
-                            batchStatusText = "⚠️ Invalid Telegram links. Ensure format: https://t.me/c/2633457020/7159"
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("⚡ Generate Batch Episode Links", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-
-                if (batchStatusText.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = batchStatusText,
-                        color = if (batchStatusText.startsWith("✓")) Color(0xFF10B981) else PrimaryRed,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Text("Telegram Primary Stream URLs (streamUrl)", color = AccentOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                OutlinedTextField(
-                    value = rawTelegramLinks,
-                    onValueChange = { rawTelegramLinks = it },
-                    label = { Text("Paste Primary Telegram Stream Links (1 per line)", color = TextSecondary) },
-                    modifier = Modifier.fillMaxWidth(),
-                    maxLines = 4
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text("Telegram Backup Mirror URLs (mirrorStreamUrl)", color = AccentOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                OutlinedTextField(
-                    value = mirrorLinksText,
-                    onValueChange = { mirrorLinksText = it },
-                    label = { Text("Paste Backup Mirror Stream Links (1 per line)", color = TextSecondary) },
-                    modifier = Modifier.fillMaxWidth(),
-                    maxLines = 3
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text("Technical MediaInfo Specs (Leech Bot Specs)", color = AccentOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-
-                Spacer(modifier = Modifier.height(4.dp))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = resolution,
                         onValueChange = { resolution = it },
-                        label = { Text("Resolution (1080p/4K)", color = TextSecondary) },
+                        label = { Text("Resolution", color = TextSecondary) },
+                        singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
                     OutlinedTextField(
-                        value = codec,
-                        onValueChange = { codec = it },
-                        label = { Text("Codec (AVC/HEVC)", color = TextSecondary) },
+                        value = videoCodec,
+                        onValueChange = { videoCodec = it },
+                        label = { Text("Codec", color = TextSecondary) },
+                        singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -464,13 +399,15 @@ fun AdminEditorDialog(
                     OutlinedTextField(
                         value = fileSize,
                         onValueChange = { fileSize = it },
-                        label = { Text("File Size (2.3 GB)", color = TextSecondary) },
+                        label = { Text("File Size", color = TextSecondary) },
+                        singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
                     OutlinedTextField(
-                        value = audioTracks,
-                        onValueChange = { audioTracks = it },
-                        label = { Text("Audio (Hindi, Tamil)", color = TextSecondary) },
+                        value = audioTracksText,
+                        onValueChange = { audioTracksText = it },
+                        label = { Text("Audio Tracks", color = TextSecondary) },
+                        singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -478,48 +415,116 @@ fun AdminEditorDialog(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedTextField(
-                    value = posterUrl,
-                    onValueChange = { posterUrl = it },
-                    label = { Text("Poster Image URL", color = TextSecondary) },
+                    value = subtitleTracksText,
+                    onValueChange = { subtitleTracksText = it },
+                    label = { Text("Subtitle Tracks", color = TextSecondary) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // ==========================================
+                // SECTION B: TELEGRAM BATCH GENERATOR
+                // ==========================================
+                SectionHeader(
+                    icon = Icons.Default.Send,
+                    title = "Telegram Episodes"
+                )
+
+                Text(
+                    "Paste the first and last message URL from your private Telegram channel. " +
+                    "Episodes will be generated automatically with auto-extracted episode numbers.",
+                    color = TextSecondary,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = startBatchLink,
+                    onValueChange = { startBatchLink = it },
+                    label = { Text("Start Link", color = TextSecondary) },
+                    placeholder = { Text("https://t.me/c/1234567890/100", color = TextSecondary) },
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    label = { Text("Synopsis / Plot Overview", color = TextSecondary) },
-                    modifier = Modifier.fillMaxWidth(),
-                    maxLines = 3
+                    value = endBatchLink,
+                    onValueChange = { endBatchLink = it },
+                    label = { Text("End Link", color = TextSecondary) },
+                    placeholder = { Text("https://t.me/c/1234567890/112", color = TextSecondary) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
+                Button(
+                    onClick = {
+                        val generated = TelegramLinkResolver.generateBatchTelegramLinks(
+                            startBatchLink, endBatchLink
+                        )
+                        generatedEpisodesText = generated
+                    },
+                    enabled = startBatchLink.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Send, contentDescription = null, tint = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Generate Episodes", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+
+                if (generatedEpisodesText.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    val episodeCount = generatedEpisodesText.lines().filter { it.isNotBlank() }.size
+                    Text(
+                        "$episodeCount episodes generated",
+                        color = PrimaryRed,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // ==========================================
+                // ACTION BUTTONS
+                // ==========================================
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedButton(onClick = onDismiss) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Text("Cancel", color = TextSecondary)
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
-                            val audioList = audioTracks.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                            val subList = subtitleTracks.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                            val genresList = genresText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                            val castList = castText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                            val groupedEpisodes = TelegramLinkResolver.parseAndGroupTelegramLinks(rawTelegramLinks)
+                            val episodes = if (generatedEpisodesText.isNotBlank()) {
+                                TelegramLinkResolver.parseAndGroupTelegramLinks(generatedEpisodesText)
+                            } else {
+                                initialItem?.episodes ?: emptyList()
+                            }
 
-                            val updatedItem = MediaItem(
+                            val mediaItem = MediaItem(
                                 id = initialItem?.id ?: "media_${System.currentTimeMillis()}",
-                                title = title.ifEmpty { "Untitled Show" },
+                                title = title,
                                 type = type,
                                 category = category,
+                                genres = genresText.split(",").map { it.trim() }.filter { it.isNotBlank() },
                                 rating = rating,
+                                releaseYear = "",
+                                maturityRating = "",
                                 studio = studio,
-                                trailerId = trailerId.ifEmpty { "1kCwjK4rgYg" },
+                                trailerId = trailerId,
                                 malId = malId,
                                 tmdbId = tmdbId,
                                 synonyms = synonyms,
@@ -531,37 +536,52 @@ fun AdminEditorDialog(
                                 source = source,
                                 duration = duration,
                                 budgetBoxOffice = budgetBoxOffice,
-                                genres = genresList,
-                                castList = castList.ifEmpty { listOf("Ban Taito (Sung Jin-Woo)", "Ueda Reina (Cha Hae-In)", "Nakamura Genta (Yoo Jin-Ho)") },
-                                posterUrl = posterUrl.ifEmpty { "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600" },
-                                bannerUrl = bannerUrl.ifEmpty { posterUrl },
+                                castList = castText.split(",").map { it.trim() }.filter { it.isNotBlank() },
+                                posterUrl = posterUrl,
+                                bannerUrl = bannerUrl.ifBlank { posterUrl },
                                 description = description,
+                                isFeatured = initialItem?.isFeatured ?: false,
+                                isTrending = initialItem?.isTrending ?: false,
                                 mediaInfo = MediaInfo(
                                     resolution = resolution,
-                                    videoCodec = codec,
+                                    videoCodec = videoCodec,
                                     fileSize = fileSize,
-                                    audioTracks = audioList,
-                                    subtitleTracks = subList,
-                                    qualityBadges = listOf(resolution, codec, "Dual Audio")
-                                ),
-                                episodes = groupedEpisodes.ifEmpty {
-                                    listOf(
-                                        com.streamhub.app.data.models.Episode(
-                                            episodeNumber = 1,
-                                            title = "Full Stream / Episode 1",
-                                            streamUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
-                                        )
+                                    audioTracks = audioTracksText.split(",").map { it.trim() }.filter { it.isNotBlank() },
+                                    subtitleTracks = subtitleTracksText.split(",").map { it.trim() }.filter { it.isNotBlank() },
+                                    qualityBadges = listOfNotNull(
+                                        resolution.takeIf { it.isNotBlank() },
+                                        videoCodec.takeIf { it.isNotBlank() }
                                     )
-                                }
+                                ),
+                                episodes = episodes
                             )
-                            onSave(updatedItem)
+                            onSave(mediaItem)
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed)
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Text("Save to Firebase", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Save", color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun SectionHeader(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, tint = PrimaryRed)
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            title,
+            color = TextPrimary,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+    Spacer(modifier = Modifier.height(12.dp))
 }

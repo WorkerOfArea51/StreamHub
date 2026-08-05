@@ -63,8 +63,23 @@ android {
             isEnable = true
             reset()
             include("armeabi-v7a", "arm64-v8a")
-            // Allow universal APK so the app installs on x86 emulators and Intel Chromebooks.
-            isUniversalApk = true
+            isUniversalApk = false
+        }
+    }
+
+    // Rename output APKs to StreamHub-arm32.apk / StreamHub-arm64.apk
+    // arm32 = armeabi-v7a, arm64 = arm64-v8a
+    applicationVariants.all {
+        val variant = this
+        variant.outputs.all {
+            val output = this as com.android.build.gradle.internal.api.ApkVariantOutputImpl
+            val abi = output.getFilter(com.android.build.api.variant.FilterConfiguration.FilterType.ABI.name)
+            val archName = when (abi) {
+                "armeabi-v7a" -> "arm32"
+                "arm64-v8a" -> "arm64"
+                else -> "universal"
+            }
+            output.outputFileName = "StreamHub-${archName}-${variant.buildType.name}.apk"
         }
     }
 

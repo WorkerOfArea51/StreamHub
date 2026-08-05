@@ -21,27 +21,21 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.CleaningServices
-import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.ColorLens
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.Gesture
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -58,11 +52,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import com.streamhub.app.data.AdminManager
-import com.streamhub.app.data.PlayerSettingsManager
-import com.streamhub.app.player.StreamCacheManager
-import com.streamhub.app.ui.theme.AccentOrange
+import com.streamhub.app.BuildConfig
+import com.streamhub.app.data.AppUpdateManager
+import com.streamhub.app.data.UpdateState
+import com.streamhub.app.ui.components.UpdateAvailableDialog
 import com.streamhub.app.ui.theme.AppThemeAccent
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.CardBorderDark
@@ -75,29 +68,10 @@ import com.streamhub.app.ui.theme.ThemeManager
 @Composable
 fun SettingsScreen(
     onBackClick: () -> Unit,
+    onNavigateToVideoSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val isAdminMode by AdminManager.isAdminMode.collectAsState()
-    val playerSettings by PlayerSettingsManager.settingsFlow.collectAsState()
     val currentAccent by ThemeManager.currentAccent.collectAsState()
-
-    var cacheMessage by remember { mutableStateOf("") }
-    var showUpdateModal by remember { mutableStateOf(false) }
-
-    val thresholdOptions = listOf(
-        Pair(65, "65s"),
-        Pair(45, "45s"),
-        Pair(40, "40s"),
-        Pair(30, "30s"),
-        Pair(0, "Disabled")
-    )
-
-    val skipIntroOptions = listOf(
-        Pair(90, "90s"),
-        Pair(85, "85s"),
-        Pair(60, "60s")
-    )
 
     Scaffold(
         containerColor = BackgroundDark,
@@ -191,207 +165,14 @@ fun SettingsScreen(
                 }
             }
 
-            // Gesture Side Mapping Controls Card
+            // Video Settings sub-screen entry card
             item {
                 Card(
                     shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Gesture, contentDescription = "Gesture Drag Controls", tint = AccentOrange)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text("Vertical Drag Gesture Controls", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        Text(
-                            text = "Choose which side controls Volume & Brightness (HUD animation shows on opposite side):",
-                            color = TextSecondary,
-                            fontSize = 11.sp
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            // Default: Right = Volume (Anim Left)
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(if (playerSettings.volumeOnRight) PrimaryRed else Color(0xFF1F1F2C))
-                                    .border(1.dp, if (playerSettings.volumeOnRight) PrimaryRed else CardBorderDark, RoundedCornerShape(10.dp))
-                                    .clickable { PlayerSettingsManager.updateVolumeSide(true) }
-                                    .padding(12.dp)
-                            ) {
-                                Column {
-                                    Text(
-                                        text = "Default",
-                                        color = if (playerSettings.volumeOnRight) Color.White else TextPrimary,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "🔊 Right: Volume (Anim Left)\n☀️ Left: Brightness (Anim Right)",
-                                        color = if (playerSettings.volumeOnRight) Color.White else TextSecondary,
-                                        fontSize = 10.sp,
-                                        lineHeight = 14.sp
-                                    )
-                                }
-                            }
-
-                            // Swapped: Left = Volume (Anim Right)
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(if (!playerSettings.volumeOnRight) AccentOrange else Color(0xFF1F1F2C))
-                                    .border(1.dp, if (!playerSettings.volumeOnRight) AccentOrange else CardBorderDark, RoundedCornerShape(10.dp))
-                                    .clickable { PlayerSettingsManager.updateVolumeSide(false) }
-                                    .padding(12.dp)
-                            ) {
-                                Column {
-                                    Text(
-                                        text = "Swapped Side",
-                                        color = if (!playerSettings.volumeOnRight) Color.White else TextPrimary,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "🔊 Left: Volume (Anim Right)\n☀️ Right: Brightness (Anim Left)",
-                                        color = if (!playerSettings.volumeOnRight) Color.White else TextSecondary,
-                                        fontSize = 10.sp,
-                                        lineHeight = 14.sp
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Player Preferences (Next Episode Threshold & Skip Intro)
-            item {
-                Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.SkipNext, contentDescription = "Next Episode", tint = PrimaryRed)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text("Next Episode Auto-Prompt Threshold", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        Text(
-                            text = "Pop up Netflix/Crunchyroll-style 'Next Episode' button when remaining time reaches threshold:",
-                            color = TextSecondary,
-                            fontSize = 11.sp
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            thresholdOptions.forEach { (sec, label) ->
-                                val isSelected = playerSettings.nextEpisodeThresholdSeconds == sec
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (isSelected) PrimaryRed else Color(0xFF1F1F2C))
-                                        .border(1.dp, if (isSelected) PrimaryRed else CardBorderDark, RoundedCornerShape(8.dp))
-                                        .clickable { PlayerSettingsManager.updateNextEpisodeThreshold(sec) }
-                                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                                ) {
-                                    Text(
-                                        text = label,
-                                        color = if (isSelected) Color.White else TextPrimary,
-                                        fontSize = 12.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.FastForward, contentDescription = "Skip Intro", tint = AccentOrange)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text("Skip Intro Duration", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        Text("Amount of seconds to fast-forward when tapping 'Skip Intro':", color = TextSecondary, fontSize = 11.sp)
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            skipIntroOptions.forEach { (sec, label) ->
-                                val isSelected = playerSettings.skipIntroSeconds == sec
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (isSelected) AccentOrange else Color(0xFF1F1F2C))
-                                        .border(1.dp, if (isSelected) AccentOrange else CardBorderDark, RoundedCornerShape(8.dp))
-                                        .clickable { PlayerSettingsManager.updateSkipIntro(sec) }
-                                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                                ) {
-                                    Text(
-                                        text = label,
-                                        color = if (isSelected) Color.White else TextPrimary,
-                                        fontSize = 12.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Telegram & Firebase Status Account Card
-            item {
-                Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CloudDone, contentDescription = "Status", tint = AccentOrange)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text("Firebase & Telegram Engine", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                Text("Connected to StreamHub Cloud Storage", color = TextSecondary, fontSize = 11.sp)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Admin Mode Status (read-only — enable via Profile → Enter PIN)
-            item {
-                Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onNavigateToVideoSettings() }
                 ) {
                     Row(
                         modifier = Modifier
@@ -401,107 +182,28 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.AdminPanelSettings, contentDescription = "Admin", tint = PrimaryRed)
+                            Icon(Icons.Default.PlayCircle, contentDescription = "Video", tint = PrimaryRed)
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
-                                Text("Admin Editor Mode", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Text(
-                                    if (isAdminMode) "Currently active — editing enabled"
-                                    else "Inactive — enable via Profile → Enter PIN",
-                                    color = TextSecondary,
-                                    fontSize = 11.sp
-                                )
+                                Text("Video Settings", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text("Gestures, skip intro, next episode", color = TextSecondary, fontSize = 11.sp)
                             }
                         }
-
-                        if (isAdminMode) {
-                            Icon(
-                                Icons.Default.CheckCircle,
-                                contentDescription = "Active",
-                                tint = Color(0xFF10B981)
-                            )
-                        }
+                        Icon(
+                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = "Open",
+                            tint = TextSecondary
+                        )
                     }
                 }
             }
 
-            // Cache Cleaner
+            // App Version + In-App Updater Card
             item {
-                Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.CleaningServices, contentDescription = "Cache", tint = AccentOrange)
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text("Video Chunk Cache", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                    Text("Clear ExoPlayer buffer storage", color = TextSecondary, fontSize = 11.sp)
-                                }
-                            }
-
-                            Button(
-                                onClick = {
-                                    StreamCacheManager.clearCache(context)
-                                    cacheMessage = "Video chunk cache cleared successfully!"
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text("Clear Cache", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                        if (cacheMessage.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(cacheMessage, color = AccentOrange, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                        }
-                    }
-                }
+                AppUpdateCard()
             }
 
-            // App Updates
-            item {
-                Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.SystemUpdate, contentDescription = "Update", tint = TextPrimary)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text("App Version", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Text("StreamHub v2.0.0 (Latest Release)", color = TextSecondary, fontSize = 11.sp)
-                            }
-                        }
-
-                        Button(
-                            onClick = { showUpdateModal = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("Check Updates", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-
-            // About
+            // About StreamHub Card
             item {
                 Card(
                     shape = RoundedCornerShape(14.dp),
@@ -526,62 +228,121 @@ fun SettingsScreen(
             }
         }
     }
+}
 
-    // App Update Checker Modal Dialog
-    if (showUpdateModal) {
-        Dialog(onDismissRequest = { showUpdateModal = false }) {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
-                    .padding(16.dp)
+@Composable
+private fun AppUpdateCard() {
+    val context = LocalContext.current
+    val updateState by AppUpdateManager.updateState.collectAsState()
+    var showUpdateDialog by remember { mutableStateOf(false) }
+
+    // Auto-check for updates when this card enters composition
+    LaunchedEffect(Unit) {
+        AppUpdateManager.checkForUpdate(
+            currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
+            repoOwner = "WorkerOfArea51",
+            repoName = "StreamHub"
+        )
+    }
+
+    // Show dialog when an update is available
+    LaunchedEffect(updateState) {
+        showUpdateDialog = updateState is UpdateState.UpdateAvailable
+    }
+
+    if (showUpdateDialog && updateState is UpdateState.UpdateAvailable) {
+        val info = (updateState as UpdateState.UpdateAvailable).info
+        UpdateAvailableDialog(
+            info = info,
+            onDismiss = { showUpdateDialog = false },
+            onConfirm = {
+                showUpdateDialog = false
+                AppUpdateManager.startDownload(context)
+            }
+        )
+    }
+
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.SystemUpdate, contentDescription = "Update", tint = AccentOrange)
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text("StreamHub Update Checker 🚀", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.SystemUpdate, contentDescription = "Update", tint = TextPrimary)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text("App Version", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(
+                            "StreamHub v${BuildConfig.VERSION_NAME}",
+                            color = TextSecondary,
+                            fontSize = 11.sp
+                        )
                     }
+                }
 
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0x3310B981))
-                            .padding(12.dp)
-                    ) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = "Latest", tint = Color(0xFF10B981))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("You are on the latest version (v2.0.0)", color = Color(0xFF10B981), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Text("WHAT'S NEW IN V2.0.0:", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "• Custom App Theme Accent Colors (Netflix Red, Crunchyroll Orange, Cyberpunk Cyan, Emerald Green, Neon Purple)\n• Customizable Gesture Control Sides (Volume/Brightness)\n• Double-Tap Left/Right (-10s/+10s) & Middle (Pause/Resume)\n• Skip Intro (90s) & Next Episode Outro Pop-up\n• Telegram Private Channel Direct Streaming\n• Offline Episode Download Manager",
-                        color = TextPrimary,
-                        fontSize = 12.sp,
-                        lineHeight = 18.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(18.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        OutlinedButton(onClick = { showUpdateModal = false }) {
-                            Text("Close", color = TextSecondary)
+                Button(
+                    onClick = {
+                        AppUpdateManager.checkForUpdate(
+                            currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
+                            repoOwner = "WorkerOfArea51",
+                            repoName = "StreamHub",
+                            forceCheck = true
+                        )
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                    shape = RoundedCornerShape(8.dp),
+                    enabled = updateState !is UpdateState.Checking &&
+                              updateState !is UpdateState.Downloading
+                ) {
+                    when (updateState) {
+                        is UpdateState.Checking -> {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                        }
+                        is UpdateState.Downloading -> {
+                            val progress = (updateState as UpdateState.Downloading).progressPercent
+                            Text("$progress%", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        else -> {
+                            Text("Check Updates", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
+            }
+
+            // Download progress bar
+            if (updateState is UpdateState.Downloading) {
+                val download = updateState as UpdateState.Downloading
+                Spacer(modifier = Modifier.height(12.dp))
+                LinearProgressIndicator(
+                    progress = { download.progressPercent / 100f },
+                    color = PrimaryRed,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "${download.downloadedMb} MB / ${download.totalMb} MB",
+                    color = TextSecondary,
+                    fontSize = 11.sp
+                )
+            }
+
+            if (updateState is UpdateState.Error) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Update check failed: ${(updateState as UpdateState.Error).message}",
+                    color = PrimaryRed,
+                    fontSize = 11.sp
+                )
             }
         }
     }
