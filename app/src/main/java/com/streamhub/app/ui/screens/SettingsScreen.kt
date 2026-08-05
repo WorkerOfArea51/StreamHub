@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -72,6 +73,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val currentAccent by ThemeManager.currentAccent.collectAsState()
+    var showProxyDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = BackgroundDark,
@@ -165,14 +167,15 @@ fun SettingsScreen(
                 }
             }
 
-            // Video Settings sub-screen entry card
+            // MTProto & Censorship Bypass Proxy Settings Card
             item {
                 Card(
                     shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = SurfaceDark),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onNavigateToVideoSettings() }
+                        .border(1.dp, currentAccent.color.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+                        .clickable { showProxyDialog = true }
                 ) {
                     Row(
                         modifier = Modifier
@@ -182,11 +185,11 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.PlayCircle, contentDescription = "Video", tint = androidx.compose.material3.MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Default.Security, contentDescription = "Proxy", tint = currentAccent.color)
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
-                                Text("Video Settings", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Text("Gestures, skip intro, next episode", color = TextSecondary, fontSize = 11.sp)
+                                Text("MTProto & Censorship Bypass Proxy 🌐", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text("Configure MTProto/SOCKS5 server to bypass ISP blocks", color = TextSecondary, fontSize = 11.sp)
                             }
                         }
                         Icon(
@@ -227,6 +230,12 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+
+    if (showProxyDialog) {
+        com.streamhub.app.ui.components.ProxySettingsDialog(
+            onDismiss = { showProxyDialog = false }
+        )
     }
 }
 

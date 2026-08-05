@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.ElectricBolt
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Timer
@@ -119,6 +120,7 @@ fun ProfileScreen(
     val streakDays by UserStatsManager.streakDays.collectAsState()
 
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
+    var showProxyDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -250,8 +252,26 @@ fun ProfileScreen(
                     authState = state,
                     primaryColor = primaryColor
                 )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                OutlinedButton(
+                    onClick = { showProxyDialog = true },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Security, contentDescription = "Proxy Settings", tint = primaryColor)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Configure MTProto Proxy 🛡️ (Bypass Censorship)", color = primaryColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
+    }
+
+    if (showProxyDialog) {
+        com.streamhub.app.ui.components.ProxySettingsDialog(
+            onDismiss = { showProxyDialog = false }
+        )
     }
 
     // Owner Admin Password Verification Dialog
