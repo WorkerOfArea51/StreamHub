@@ -82,6 +82,8 @@ fun ProxySettingsDialog(
     var server by remember { mutableStateOf(currentConfig.server) }
     var portText by remember { mutableStateOf(currentConfig.port.toString()) }
     var secret by remember { mutableStateOf(currentConfig.secret) }
+    var username by remember { mutableStateOf(currentConfig.username) }
+    var password by remember { mutableStateOf(currentConfig.password) }
 
     var isTesting by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
@@ -248,9 +250,11 @@ fun ProxySettingsDialog(
                                                 server = pItem.server
                                                 portText = pItem.port.toString()
                                                 secret = pItem.secret
-                                                selectedType = ProxyType.MTPROTO
+                                                username = pItem.username
+                                                password = pItem.password
+                                                selectedType = pItem.type
                                                 isEnabled = true
-                                                TelegramProxyManager.saveConfig(pItem.server, pItem.port, pItem.secret, ProxyType.MTPROTO, true)
+                                                TelegramProxyManager.saveConfig(pItem.server, pItem.port, pItem.secret, pItem.username, pItem.password, pItem.type, true)
                                             }
                                     ) {
                                         Row(
@@ -361,6 +365,37 @@ fun ProxySettingsDialog(
                                 ),
                                 modifier = Modifier.fillMaxWidth()
                             )
+                        } else {
+                            // SOCKS5 & HTTP USERNAME / PASSWORD AUTH
+                            Spacer(modifier = Modifier.height(6.dp))
+                            OutlinedTextField(
+                                value = username,
+                                onValueChange = { username = it },
+                                label = { Text("Username (Optional)", color = TextSecondary) },
+                                placeholder = { Text("Proxy Username", color = TextSecondary) },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = primaryColor,
+                                    unfocusedBorderColor = Color(0xFF2C2C3E),
+                                    focusedTextColor = TextPrimary
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(modifier = Modifier.height(6.dp))
+                            OutlinedTextField(
+                                value = password,
+                                onValueChange = { password = it },
+                                label = { Text("Password (Optional)", color = TextSecondary) },
+                                placeholder = { Text("Proxy Password", color = TextSecondary) },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = primaryColor,
+                                    unfocusedBorderColor = Color(0xFF2C2C3E),
+                                    focusedTextColor = TextPrimary
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
 
                         Spacer(modifier = Modifier.height(10.dp))
@@ -417,7 +452,7 @@ fun ProxySettingsDialog(
             Button(
                 onClick = {
                     val p = portText.toIntOrNull() ?: 443
-                    TelegramProxyManager.saveConfig(server, p, secret, selectedType, isEnabled)
+                    TelegramProxyManager.saveConfig(server, p, secret, username, password, selectedType, isEnabled)
                     onDismiss()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = primaryColor),

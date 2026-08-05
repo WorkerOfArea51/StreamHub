@@ -167,6 +167,40 @@ fun SettingsScreen(
                 }
             }
 
+            // Video Settings sub-screen entry card
+            item {
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, currentAccent.color.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+                        .clickable { onNavigateToVideoSettings() }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.PlayCircle, contentDescription = "Video", tint = currentAccent.color)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text("Video Player Settings 🎬", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text("Gestures, skip intro, auto-play next episode", color = TextSecondary, fontSize = 11.sp)
+                            }
+                        }
+                        Icon(
+                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = "Open",
+                            tint = TextSecondary
+                        )
+                    }
+                }
+            }
+
             // MTProto & Censorship Bypass Proxy Settings Card
             item {
                 Card(
