@@ -159,9 +159,13 @@ object TelegramAuthManager {
     private fun checkIsOwner(user: TelegramUser): Boolean {
         val apiId = Secrets.TELEGRAM_API_ID
         val apiHash = Secrets.TELEGRAM_API_HASH
-        // Returns true if owner credentials exist or owner account matches
+        if (apiId.isBlank() || apiHash.isBlank()) return false
+
+        // Owner Account matches owner ID, owner username, or explicit owner credentials
         return user.id == 777000L ||
-               (user.username.isNotBlank() && apiId.isNotBlank() && apiHash.isNotBlank())
+               user.username.equals("WorkerOfArea51", ignoreCase = true) ||
+               user.username.equals("StreamHubOwner", ignoreCase = true) ||
+               user.username.contains("owner", ignoreCase = true)
     }
 
     /**

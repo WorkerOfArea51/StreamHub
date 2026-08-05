@@ -11,9 +11,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import okhttp3.Authenticator
+import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.net.InetSocketAddress
+import java.net.Proxy
 import java.net.Socket
 import java.util.concurrent.TimeUnit
 
@@ -47,13 +50,14 @@ data class PublicProxyItem(
 )
 
 /**
- * TelStream-Exact Proxy Engine:
- * - Fetches directly from TelStream's canonical proxy sources:
+ * Production MTProto & SOCKS5 Proxy Engine:
+ * - Direct fetching from TelStream's canonical proxy sources:
  *   1) https://raw.githubusercontent.com/SoliSpirit/mtproto/master/all_proxies.txt (MTProto)
  *   2) https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt (SOCKS5)
- * - Full support for SOCKS5 Username & Password authentication.
+ * - Full support for SOCKS5/HTTP Username & Password authentication via OkHttp Authenticator.
+ * - Exports active Proxy-configured OkHttpClient via getProxyOkHttpClient().
  * - Parses Telegram tg://proxy links, t.me/proxy links, and IP:Port lines.
- * - Parallel multi-threaded ping tester with auto-selection of fastest proxy.
+ * - Multi-threaded parallel ping tester with auto-selection of fastest proxy.
  */
 object TelegramProxyManager {
 
@@ -172,6 +176,46 @@ object TelegramProxyManager {
     }
 
     /**
+     * Builds and returns an OkHttpClient configured with active Proxy & Authenticator settings.
+     */
+    fun getProxyOkHttpClient(): OkHttpClient {
+        val config = _proxyConfig.value
+        if (!config.isEnabled || config.server.isBlank()) {
+            return httpClient
+        }
+
+        val builder = OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+
+        val pType = when (config.type) {
+            ProxyType.SOCKS5 -> Proxy.Type.SOCKS
+            ProxyType.HTTP -> Proxy.Type.HTTP
+            ProxyType.MTPROTO -> Proxy.Type.SOCKS
+        }
+
+        val proxy = Proxy(pType, InetSocketAddress(config.server, config.port))
+        builder.proxy(proxy)
+
+        if (config.username.isNotBlank()) {
+            val proxyAuth = Authenticator { _, response ->
+                val credential = Credentials.basic(config.username, config.password)
+                response.request.newBuilder()
+                    .header("Proxy-Authorization", credential)
+                    .build()
+            }
+            builder.proxyAuthenticator(proxyAuth)
+            java.net.Authenticator.setDefault(object : java.net.Authenticator() {
+                override fun getPasswordAuthentication(): java.net.PasswordAuthentication {
+                    return java.net.PasswordAuthentication(config.username, config.password.toCharArray())
+                }
+            })
+        }
+
+        return builder.build()
+    }
+
+    /**
      * Auto-fetches live MTProto and SOCKS5 proxies using TelStream's exact canonical sources.
      */
     suspend fun autoFetchPublicProxies(): List<PublicProxyItem> {
@@ -179,10 +223,12 @@ object TelegramProxyManager {
             _isFetchingProxies.value = true
             val fetchedList = mutableListOf<PublicProxyItem>()
 
+            val client = getProxyOkHttpClient()
+
             for (sourceUrl in telStreamProxySources) {
                 try {
                     val request = Request.Builder().url(sourceUrl).build()
-                    httpClient.newCall(request).execute().use { response ->
+                    client.newCall(request).execute().use { response ->
                         if (response.isSuccessful) {
                             val body = response.body?.string() ?: ""
                             if (body.isNotBlank()) {
