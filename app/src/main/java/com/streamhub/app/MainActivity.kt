@@ -70,6 +70,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        com.streamhub.app.data.UserStatsManager.init(this)
+        com.streamhub.app.data.telegram.TelegramAuthManager.init(this)
+
         setContent {
             StreamHubTheme {
                 StreamHubApp()

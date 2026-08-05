@@ -178,32 +178,22 @@ fun AdminEditorDialog(
                         isFetchingApi = true
                         fetchError = null
                         scope.launch {
-                            try {
-                                withContext(Dispatchers.IO) {
-                                    val response = TmdbClient.malInstance.searchAnime(
-                                        clientId = Secrets.MAL_CLIENT_ID,
-                                        query = title
-                                    )
-                                    val firstNode = response.data?.firstOrNull()?.node
-                                    if (firstNode != null) {
-                                        malId = firstNode.id.toString()
-                                        title = firstNode.title
-                                        posterUrl = firstNode.main_picture?.large ?: posterUrl
-                                        bannerUrl = firstNode.main_picture?.large ?: bannerUrl
-                                        description = firstNode.synopsis ?: description
-                                        rating = firstNode.mean?.toString() ?: rating
-                                        totalEpisodes = firstNode.num_episodes?.let { "$it Episodes" } ?: totalEpisodes
-                                        status = if (firstNode.status == "finished_airing") "Finished Airing"
-                                                 else if (firstNode.status == "currently_airing") "Currently Airing"
-                                                 else status
-                                        duration = firstNode.average_episode_duration?.let { "${it / 60} min. per ep" } ?: duration
-                                    }
+                            val result = com.streamhub.app.data.api.MetadataFetchManager.fetchMetadata(title, category)
+                            result.fold(
+                                onSuccess = { meta ->
+                                    title = meta.title
+                                    description = meta.synopsis
+                                    posterUrl = meta.posterUrl
+                                    bannerUrl = meta.backdropUrl
+                                    rating = meta.rating
+                                    category = meta.category
+                                    resolution = meta.resolution
+                                },
+                                onFailure = { err ->
+                                    fetchError = "Auto-fetch failed: ${err.message}"
                                 }
-                            } catch (e: Exception) {
-                                fetchError = "MAL fetch failed: ${e.message}"
-                            } finally {
-                                isFetchingApi = false
-                            }
+                            )
+                            isFetchingApi = false
                         }
                     },
                     enabled = title.isNotBlank() && !isFetchingApi,
@@ -222,7 +212,7 @@ fun AdminEditorDialog(
                         Spacer(modifier = Modifier.width(8.dp))
                     }
                     Text(
-                        if (isFetchingApi) "Fetching..." else "Auto-Fetch from MAL",
+                        if (isFetchingApi) "Fetching..." else "⚡ Auto-Fetch Metadata (TMDB/MAL)",
                         color = Color.White,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
