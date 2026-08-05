@@ -50,8 +50,6 @@ android {
         buildConfigField("String", "TMDB_API_KEY", "\"${secret("streamhub.tmdb_api_key")}\"")
         buildConfigField("String", "MAL_CLIENT_ID", "\"${secret("streamhub.mal_client_id")}\"")
         buildConfigField("String", "MAL_CLIENT_SECRET", "\"${secret("streamhub.mal_client_secret")}\"")
-        buildConfigField("String", "TELEGRAM_BOT_TOKEN", "\"${secret("streamhub.telegram_bot_token")}\"")
-        buildConfigField("String", "TELEGRAM_PRIVATE_CHANNEL_ID", "\"${secret("streamhub.telegram_channel_id")}\"")
         // Admin PIN stored as a bcrypt hash. Default "0000" disables admin login.
         buildConfigField("String", "ADMIN_PIN_HASH", "\"${secret("streamhub.admin_pin_hash", "0000")}\"")
         // Runtime flag — overwritten to "true" in debug build type below.

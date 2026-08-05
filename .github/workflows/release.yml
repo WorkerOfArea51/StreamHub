@@ -86,8 +86,6 @@ jobs:
           STREAMHUB_TMDB_API_KEY: ${{ secrets.STREAMHUB_TMDB_API_KEY }}
           STREAMHUB_MAL_CLIENT_ID: ${{ secrets.STREAMHUB_MAL_CLIENT_ID }}
           STREAMHUB_MAL_CLIENT_SECRET: ${{ secrets.STREAMHUB_MAL_CLIENT_SECRET }}
-          STREAMHUB_TELEGRAM_BOT_TOKEN: ${{ secrets.STREAMHUB_TELEGRAM_BOT_TOKEN }}
-          STREAMHUB_TELEGRAM_CHANNEL_ID: ${{ secrets.STREAMHUB_TELEGRAM_CHANNEL_ID }}
           STREAMHUB_ADMIN_PIN_HASH: ${{ secrets.STREAMHUB_ADMIN_PIN_HASH }}
         run: ./gradlew assembleRelease --stacktrace
 

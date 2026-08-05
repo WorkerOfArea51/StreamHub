@@ -22,18 +22,6 @@ object Secrets {
     val MAL_CLIENT_SECRET: String get() = BuildConfig.MAL_CLIENT_SECRET
 
     /**
-     * Telegram Bot Token from @BotFather. Used by TelegramDataSourceFactory (M4)
-     * to authorize requests against private channel media.
-     */
-    val TELEGRAM_BOT_TOKEN: String get() = BuildConfig.TELEGRAM_BOT_TOKEN
-
-    /**
-     * Private Telegram channel ID (the negative number from t.me/c/<id>/...).
-     * Used by TelegramLinkResolver (M4) for batch link generation defaults.
-     */
-    val TELEGRAM_PRIVATE_CHANNEL_ID: String get() = BuildConfig.TELEGRAM_PRIVATE_CHANNEL_ID
-
-    /**
      * Bcrypt hash of the admin PIN. Verified by AdminManager.verifyAndEnableAdmin (M3).
      * Default "0000" never matches any real PIN, so admin login is disabled until
      * a real hash is set in local.properties.
