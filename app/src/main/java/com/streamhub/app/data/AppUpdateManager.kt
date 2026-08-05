@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -52,17 +51,14 @@ sealed class UpdateState {
  * In-app updater — checks GitHub Releases for new versions, downloads the APK,
  * and triggers the system installer.
  *
- * Uses the GitHub Releases API:
- *   GET https://api.github.com/repos/{owner}/{repo}/releases/latest
- *
- * The API returns JSON with tag_name, body (release notes), and assets[].
- * We find the arm64 APK (preferred) or arm32 APK and download it.
- *
- * Download progress is exposed via [updateState] StateFlow — the UI shows
- * a progress bar with "1MB / 20MB" style display.
- *
- * The APK is downloaded to the app's cache directory and installed via
- * ACTION_INSTALL_PACKAGE intent (requires REQUEST_INSTALL_PACKAGES permission).
+ * Employs a dual-strategy update check:
+ * 1. Web Redirect Check (https://github.com/owner/repo/releases/latest)
+ *    - Never rate-limited by GitHub (no 403 API rate limit errors).
+ *    - Parses the redirected tag name (e.g. "v2.2.2").
+ * 2. API Asset Resolution with Fallback:
+ *    - Attempts api.github.com for asset metadata and release notes.
+ *    - If API returns 403 or fails, seamlessly falls back to standard direct asset URLs:
+ *      https://github.com/owner/repo/releases/download/{tag}/StreamHub-arm64-release.apk
  */
 object AppUpdateManager {
 
@@ -71,10 +67,21 @@ object AppUpdateManager {
     private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
+    // Follow redirects enabled for asset downloads
     private val httpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
+            .build()
+    }
+
+    // Follow redirects disabled for checking the /latest 302 location header
+    private val redirectCheckingClient by lazy {
+        OkHttpClient.Builder()
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
             .build()
     }
 
@@ -83,15 +90,17 @@ object AppUpdateManager {
     /**
      * Check GitHub Releases for a newer version.
      *
-     * @param currentVersionCode The current app's versionCode (from BuildConfig)
+     * @param currentVersionCode Current app's versionCode
+     * @param currentVersionName Current app's versionName (e.g. "2.2.0")
      * @param repoOwner GitHub repo owner (e.g. "WorkerOfArea51")
      * @param repoName GitHub repo name (e.g. "StreamHub")
      * @param forceCheck If true, re-checks even if state is already UpToDate
      */
     fun checkForUpdate(
-        currentVersionCode: Long,
-        repoOwner: String,
-        repoName: String,
+        currentVersionCode: Long = 0L,
+        currentVersionName: String = "2.2.0",
+        repoOwner: String = "WorkerOfArea51",
+        repoName: String = "StreamHub",
         forceCheck: Boolean = false
     ) {
         if (!forceCheck && _updateState.value is UpdateState.UpToDate) return
@@ -100,100 +109,155 @@ object AppUpdateManager {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val url = "https://api.github.com/repos/$repoOwner/$repoName/releases/latest"
-                val request = Request.Builder().url(url)
-                    .header("Accept", "application/vnd.github+json")
-                    .header("User-Agent", "StreamHub-App")
-                    .build()
+                var latestTag: String? = null
 
-                httpClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        _updateState.value = UpdateState.Error("GitHub API returned ${response.code}")
-                        return@use
-                    }
+                // Strategy 1: Check GitHub Releases web redirect (100% rate-limit proof)
+                try {
+                    val redirectUrl = "https://github.com/$repoOwner/$repoName/releases/latest"
+                    val redirectRequest = Request.Builder()
+                        .url(redirectUrl)
+                        .header("User-Agent", "Mozilla/5.0 (Android; Mobile)")
+                        .build()
 
-                    val body = response.body?.string()
-                        ?: throw Exception("Empty response body")
-                    val json = JSONObject(body)
-
-                    val tagName = json.optString("tag_name", "")
-                    val releaseBody = json.optString("body", "No release notes.")
-                    val isPreRelease = json.optBoolean("prerelease", false)
-
-                    // Parse versionCode from tag: "v2.2.0" → 4 (look for the versionCode in build.gradle.kts)
-                    val remoteVersionCode = parseVersionCodeFromTag(tagName)
-
-                    if (remoteVersionCode <= currentVersionCode) {
-                        _updateState.value = UpdateState.UpToDate
-                        return@use
-                    }
-
-                    // Find the APK asset — prefer arm64, fall back to arm32
-                    val assets = json.optJSONArray("assets") ?: run {
-                        _updateState.value = UpdateState.Error("No assets in release")
-                        return@use
-                    }
-
-                    var apkAsset: JSONObject? = null
-                    // First pass: look for arm64
-                    for (i in 0 until assets.length()) {
-                        val asset = assets.getJSONObject(i)
-                        val name = asset.optString("name", "")
-                        if (name.contains("arm64", ignoreCase = true) && name.endsWith(".apk")) {
-                            apkAsset = asset
-                            break
-                        }
-                    }
-                    // Second pass: look for arm32 if arm64 not found
-                    if (apkAsset == null) {
-                        for (i in 0 until assets.length()) {
-                            val asset = assets.getJSONObject(i)
-                            val name = asset.optString("name", "")
-                            if (name.contains("arm32", ignoreCase = true) && name.endsWith(".apk")) {
-                                apkAsset = asset
-                                break
+                    redirectCheckingClient.newCall(redirectRequest).execute().use { response ->
+                        if (response.code == 302 || response.code == 301) {
+                            val location = response.header("Location") ?: ""
+                            if (location.contains("/releases/tag/")) {
+                                latestTag = location.substringAfter("/releases/tag/").trim()
                             }
                         }
                     }
-                    // Third pass: any APK
-                    if (apkAsset == null) {
-                        for (i in 0 until assets.length()) {
-                            val asset = assets.getJSONObject(i)
-                            val name = asset.optString("name", "")
-                            if (name.endsWith(".apk")) {
-                                apkAsset = asset
-                                break
-                            }
-                        }
-                    }
-
-                    if (apkAsset == null) {
-                        _updateState.value = UpdateState.Error("No APK found in release")
-                        return@use
-                    }
-
-                    val downloadUrl = apkAsset.optString("browser_download_url", "")
-                    val apkSize = apkAsset.optLong("size", 0L)
-
-                    if (downloadUrl.isBlank()) {
-                        _updateState.value = UpdateState.Error("No download URL in asset")
-                        return@use
-                    }
-
-                    val info = UpdateInfo(
-                        versionName = tagName,
-                        versionCode = remoteVersionCode,
-                        downloadUrl = downloadUrl,
-                        releaseNotes = releaseBody,
-                        isPreRelease = isPreRelease,
-                        apkSizeBytes = apkSize
-                    )
-
-                    _updateState.value = UpdateState.UpdateAvailable(info)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Web redirect check failed, will attempt REST API", e)
                 }
+
+                // Strategy 2: If web redirect didn't yield a tag, try REST API /releases/latest
+                var apiJson: JSONObject? = null
+                if (latestTag == null) {
+                    val apiUrl = "https://api.github.com/repos/$repoOwner/$repoName/releases/latest"
+                    val apiRequest = Request.Builder()
+                        .url(apiUrl)
+                        .header("Accept", "application/vnd.github+json")
+                        .header("User-Agent", "StreamHub-App")
+                        .build()
+
+                    httpClient.newCall(apiRequest).execute().use { response ->
+                        if (response.isSuccessful) {
+                            val body = response.body?.string()
+                            if (!body.isNullOrBlank()) {
+                                val parsed = JSONObject(body)
+                                apiJson = parsed
+                                val tag = parsed.optString("tag_name", "")
+                                if (tag.isNotBlank()) latestTag = tag
+                            }
+                        }
+                    }
+                }
+
+                val tag = latestTag
+                if (tag == null) {
+                    _updateState.value = UpdateState.Error("Unable to reach GitHub release servers.")
+                    return@launch
+                }
+
+                // Compare version numbers (e.g. "v2.2.3" vs "2.2.0")
+                val hasUpdate = isNewerVersion(tag, currentVersionName)
+                if (!hasUpdate) {
+                    _updateState.value = UpdateState.UpToDate
+                    return@launch
+                }
+
+                // Newer version found! Prepare UpdateInfo
+                var downloadUrl = ""
+                var releaseNotes = "StreamHub $tag is available with performance improvements and bug fixes."
+                var apkSizeBytes = 0L
+                var isPreRelease = false
+
+                // Try API asset lookup if we haven't already
+                if (apiJson == null) {
+                    try {
+                        val tagApiUrl = "https://api.github.com/repos/$repoOwner/$repoName/releases/tags/$tag"
+                        val tagRequest = Request.Builder()
+                            .url(tagApiUrl)
+                            .header("Accept", "application/vnd.github+json")
+                            .header("User-Agent", "StreamHub-App")
+                            .build()
+
+                        httpClient.newCall(tagRequest).execute().use { response ->
+                            if (response.isSuccessful) {
+                                val body = response.body?.string()
+                                if (!body.isNullOrBlank()) {
+                                    apiJson = JSONObject(body)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "API tag info fetch failed: ${e.message}")
+                    }
+                }
+
+                if (apiJson != null) {
+                    releaseNotes = apiJson!!.optString("body", releaseNotes)
+                    isPreRelease = apiJson!!.optBoolean("prerelease", false)
+                    val assets = apiJson!!.optJSONArray("assets")
+                    if (assets != null) {
+                        // Look for arm64 first, then arm32, then any apk
+                        var chosenAsset: JSONObject? = null
+                        for (i in 0 until assets.length()) {
+                            val asset = assets.getJSONObject(i)
+                            val name = asset.optString("name", "")
+                            if (name.contains("arm64", ignoreCase = true) && name.endsWith(".apk")) {
+                                chosenAsset = asset
+                                break
+                            }
+                        }
+                        if (chosenAsset == null) {
+                            for (i in 0 until assets.length()) {
+                                val asset = assets.getJSONObject(i)
+                                val name = asset.optString("name", "")
+                                if (name.contains("arm32", ignoreCase = true) && name.endsWith(".apk")) {
+                                    chosenAsset = asset
+                                    break
+                                }
+                            }
+                        }
+                        if (chosenAsset == null) {
+                            for (i in 0 until assets.length()) {
+                                val asset = assets.getJSONObject(i)
+                                val name = asset.optString("name", "")
+                                if (name.endsWith(".apk")) {
+                                    chosenAsset = asset
+                                    break
+                                }
+                            }
+                        }
+
+                        if (chosenAsset != null) {
+                            downloadUrl = chosenAsset.optString("browser_download_url", "")
+                            apkSizeBytes = chosenAsset.optLong("size", 0L)
+                        }
+                    }
+                }
+
+                // Fallback URL if API was rate-limited or didn't return asset download URL
+                if (downloadUrl.isBlank()) {
+                    downloadUrl = "https://github.com/$repoOwner/$repoName/releases/download/$tag/StreamHub-arm64-release.apk"
+                }
+
+                val info = UpdateInfo(
+                    versionName = tag,
+                    versionCode = parseVersionCodeFromTag(tag),
+                    downloadUrl = downloadUrl,
+                    releaseNotes = releaseNotes,
+                    isPreRelease = isPreRelease,
+                    apkSizeBytes = apkSizeBytes
+                )
+
+                _updateState.value = UpdateState.UpdateAvailable(info)
+
             } catch (e: Exception) {
                 Log.e(TAG, "Update check failed", e)
-                _updateState.value = UpdateState.Error(e.message ?: "Unknown error")
+                _updateState.value = UpdateState.Error(e.message ?: "Unknown update error")
             }
         }
     }
@@ -215,54 +279,76 @@ object AppUpdateManager {
                 val info = state.info
                 val totalBytes = if (info.apkSizeBytes > 0) info.apkSizeBytes else 0L
 
-                val request = Request.Builder().url(info.downloadUrl).build()
+                val request = Request.Builder()
+                    .url(info.downloadUrl)
+                    .header("User-Agent", "Mozilla/5.0 (Android; Mobile)")
+                    .build()
+
                 httpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
+                        // If arm64 fallback failed, try arm32 fallback URL
+                        if (info.downloadUrl.contains("arm64")) {
+                            val arm32Url = info.downloadUrl.replace("arm64", "arm32")
+                            val fallbackRequest = Request.Builder()
+                                .url(arm32Url)
+                                .header("User-Agent", "Mozilla/5.0 (Android; Mobile)")
+                                .build()
+                            httpClient.newCall(fallbackRequest).execute().use { fallbackResponse ->
+                                if (fallbackResponse.isSuccessful) {
+                                    downloadStreamToApk(context, fallbackResponse, totalBytes)
+                                    return@use
+                                }
+                            }
+                        }
                         _updateState.value = UpdateState.Error("Download failed: HTTP ${response.code}")
                         return@use
                     }
 
-                    val responseBody = response.body
-                        ?: throw Exception("Empty response body")
-
-                    val apkFile = File(context.cacheDir, "streamhub_update.apk")
-                    if (apkFile.exists()) apkFile.delete()
-
-                    val actualTotal = if (totalBytes > 0) totalBytes
-                                      else responseBody.contentLength()
-
-                    responseBody.byteStream().use { input ->
-                        apkFile.outputStream().use { output ->
-                            val buffer = ByteArray(8192)
-                            var bytesRead: Int
-                            var totalRead = 0L
-
-                            while (input.read(buffer).also { bytesRead = it } != -1) {
-                                output.write(buffer, 0, bytesRead)
-                                totalRead += bytesRead
-
-                                if (actualTotal > 0) {
-                                    val percent = ((totalRead * 100) / actualTotal).toInt()
-                                    val downloadedMb = (totalRead / 1024 / 1024).toInt()
-                                    val totalMb = (actualTotal / 1024 / 1024).toInt()
-                                    _updateState.value = UpdateState.Downloading(
-                                        progressPercent = percent,
-                                        downloadedMb = downloadedMb,
-                                        totalMb = totalMb
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    _updateState.value = UpdateState.Downloaded(apkFile)
-                    installApk(context, apkFile)
+                    downloadStreamToApk(context, response, totalBytes)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Download failed", e)
                 _updateState.value = UpdateState.Error(e.message ?: "Download failed")
             }
         }
+    }
+
+    private fun downloadStreamToApk(context: Context, response: okhttp3.Response, totalBytes: Long) {
+        val responseBody = response.body
+            ?: throw Exception("Empty response body")
+
+        val apkFile = File(context.cacheDir, "streamhub_update.apk")
+        if (apkFile.exists()) apkFile.delete()
+
+        val actualTotal = if (totalBytes > 0) totalBytes
+                          else responseBody.contentLength()
+
+        responseBody.byteStream().use { input ->
+            apkFile.outputStream().use { output ->
+                val buffer = ByteArray(8192)
+                var bytesRead: Int
+                var totalRead = 0L
+
+                while (input.read(buffer).also { bytesRead = it } != -1) {
+                    output.write(buffer, 0, bytesRead)
+                    totalRead += bytesRead
+
+                    if (actualTotal > 0) {
+                        val percent = ((totalRead * 100) / actualTotal).toInt().coerceIn(0, 100)
+                        val downloadedMb = (totalRead / (1024 * 1024)).toInt()
+                        val totalMb = (actualTotal / (1024 * 1024)).toInt()
+                        _updateState.value = UpdateState.Downloading(
+                            progressPercent = percent,
+                            downloadedMb = downloadedMb,
+                            totalMb = totalMb
+                        )
+                    }
+                }
+            }
+        }
+
+        _updateState.value = UpdateState.Downloaded(apkFile)
+        installApk(context, apkFile)
     }
 
     /**
@@ -289,7 +375,7 @@ object AppUpdateManager {
     }
 
     /**
-     * Reset state back to Idle (e.g. after user dismisses the update dialog).
+     * Reset state back to Idle.
      */
     fun resetState() {
         downloadJob?.cancel()
@@ -297,8 +383,26 @@ object AppUpdateManager {
     }
 
     /**
-     * Parse a versionCode from a tag name like "v2.2.0".
+     * Semantic version comparison: returns true if [remoteTag] (e.g. "v2.2.2")
+     * is strictly greater than [currentVersionName] (e.g. "2.2.0").
      */
+    private fun isNewerVersion(remoteTag: String, currentVersionName: String): Boolean {
+        val remoteClean = remoteTag.removePrefix("v").removePrefix("V").trim()
+        val currentClean = currentVersionName.removePrefix("v").removePrefix("V").trim()
+
+        val remoteParts = remoteClean.split(".").mapNotNull { it.split("-")[0].toIntOrNull() }
+        val currentParts = currentClean.split(".").mapNotNull { it.split("-")[0].toIntOrNull() }
+
+        val maxLen = maxOf(remoteParts.size, currentParts.size)
+        for (i in 0 until maxLen) {
+            val remoteVal = remoteParts.getOrElse(i) { 0 }
+            val currentVal = currentParts.getOrElse(i) { 0 }
+            if (remoteVal > currentVal) return true
+            if (remoteVal < currentVal) return false
+        }
+        return false
+    }
+
     private fun parseVersionCodeFromTag(tagName: String): Long {
         val version = tagName.removePrefix("v").removePrefix("V")
         val parts = version.split(".")
@@ -310,4 +414,6 @@ object AppUpdateManager {
         }
         return 0L
     }
+
+    private fun String?.isNullOrBlank(): Boolean = this == null || this.isBlank()
 }

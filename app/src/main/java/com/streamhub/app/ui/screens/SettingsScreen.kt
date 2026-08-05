@@ -287,6 +287,7 @@ private fun AppUpdateCard() {
                         userChecked = true
                         AppUpdateManager.checkForUpdate(
                             currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
+                            currentVersionName = BuildConfig.VERSION_NAME,
                             repoOwner = "WorkerOfArea51",
                             repoName = "StreamHub",
                             forceCheck = true
