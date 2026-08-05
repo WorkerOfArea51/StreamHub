@@ -7,14 +7,12 @@ name: Build & Publish Signed Release APK
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag name (e.g. v2.2.0)'
+        description: 'Tag name (e.g. v2.2.2)'
         required: false
         type: string
 
@@ -126,8 +124,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.tag_name || (github.ref_type == 'tag' && github.ref_name) || 'v2.2.0' }}
-          name: StreamHub ${{ inputs.tag_name || (github.ref_type == 'tag' && github.ref_name) || 'v2.2.0' }}
+          tag_name: ${{ inputs.tag_name || github.ref_name }}
+          name: StreamHub ${{ inputs.tag_name || github.ref_name }}
           generate_release_notes: true
           files: |
             app/build/outputs/apk/release/StreamHub-arm32-release.apk
