@@ -38,8 +38,8 @@ android {
         applicationId = "com.streamhub.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 10
-        versionName = "2.2.6"
+        versionCode = 11
+        versionName = "2.2.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -81,16 +81,26 @@ android {
         }
     }
 
+    val keystorePropsFile = rootProject.file("keystore.properties")
+    val keystoreProps = Properties().apply {
+        if (keystorePropsFile.exists()) {
+            load(FileInputStream(keystorePropsFile))
+        }
+    }
+
     signingConfigs {
         create("release") {
-            val keystoreFile = rootProject.file("app/release-key.jks")
-            if (keystoreFile.exists()) {
-                storeFile = keystoreFile
+            if (keystorePropsFile.exists()) {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            } else if (rootProject.file("app/release-key.jks").exists()) {
+                storeFile = rootProject.file("app/release-key.jks")
                 storePassword = "streamhub"
                 keyAlias = "streamhub"
                 keyPassword = "streamhub"
             } else {
-                // Fallback to default debug key if project keystore file is absent
                 storeFile = signingConfigs.getByName("debug").storeFile
                 storePassword = signingConfigs.getByName("debug").storePassword
                 keyAlias = signingConfigs.getByName("debug").keyAlias
