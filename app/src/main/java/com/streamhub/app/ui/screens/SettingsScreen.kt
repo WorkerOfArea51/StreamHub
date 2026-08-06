@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
@@ -49,6 +50,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +64,7 @@ import com.streamhub.app.BuildConfig
 import com.streamhub.app.data.AppUpdateManager
 import com.streamhub.app.data.UpdateState
 import com.streamhub.app.ui.components.UpdateAvailableDialog
+import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.AppThemeAccent
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.CardBorderDark
@@ -70,6 +73,7 @@ import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 import com.streamhub.app.ui.theme.ThemeManager
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
@@ -540,6 +544,115 @@ fun SettingsScreen(
                                     fontSize = (subConfig.fontSizeSp * 0.7f).sp,
                                     fontWeight = FontWeight.Bold
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Speed Benchmark & CDN Latency Tester Card
+            item {
+                val testState by com.streamhub.app.data.SpeedTestManager.testState.collectAsState()
+                val scope = rememberCoroutineScope()
+
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Speed,
+                                contentDescription = "Speed Test",
+                                tint = currentAccent.color,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Stream Server Speed & Latency Test 🚀", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text("Benchmark streaming CDN ping & download bandwidth", color = TextSecondary, fontSize = 11.sp)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        when (testState) {
+                            is com.streamhub.app.data.SpeedTestState.Idle -> {
+                                Button(
+                                    onClick = {
+                                        scope.launch { com.streamhub.app.data.SpeedTestManager.runSpeedTest() }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = currentAccent.color),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Run Speed Test 🚀", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                }
+                            }
+
+                            is com.streamhub.app.data.SpeedTestState.Testing -> {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                                    CircularProgressIndicator(color = currentAccent.color, modifier = Modifier.size(28.dp))
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text("Testing connection ping & bandwidth...", color = TextSecondary, fontSize = 12.sp)
+                                }
+                            }
+
+                            is com.streamhub.app.data.SpeedTestState.Completed -> {
+                                val res = testState as com.streamhub.app.data.SpeedTestState.Completed
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF161622))
+                                        .padding(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column {
+                                            Text("Latency Ping 📶", color = TextSecondary, fontSize = 11.sp)
+                                            Text("${res.pingMs} ms", color = Color(0xFF4ADE80), fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                        }
+                                        Column {
+                                            Text("Bandwidth Speed ⚡", color = TextSecondary, fontSize = 11.sp)
+                                            Text("${res.speedMbps} Mbps", color = AccentOrange, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text("Recommended: ${res.qualityRating}", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Button(
+                                    onClick = { scope.launch { com.streamhub.app.data.SpeedTestManager.runSpeedTest() } },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E1E2D)),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Retest Connection 🔄", color = TextPrimary, fontSize = 11.sp)
+                                }
+                            }
+
+                            is com.streamhub.app.data.SpeedTestState.Error -> {
+                                val err = testState as com.streamhub.app.data.SpeedTestState.Error
+                                Text("Test failed: ${err.message}", color = PrimaryRed, fontSize = 12.sp)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(
+                                    onClick = { scope.launch { com.streamhub.app.data.SpeedTestManager.runSpeedTest() } },
+                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Retry Test 🔄", color = Color.White, fontSize = 11.sp)
+                                }
                             }
                         }
                     }

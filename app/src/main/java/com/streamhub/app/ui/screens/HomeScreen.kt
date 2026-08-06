@@ -1,6 +1,7 @@
 package com.streamhub.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -85,6 +86,7 @@ fun HomeScreen(
 
     var selectedCategoryFilter by remember { mutableStateOf("ALL") }
     var showAdminAddDialog by remember { mutableStateOf(false) }
+    var showSurpriseMeDialog by remember { mutableStateOf(false) }
 
     val myListIds by com.streamhub.app.data.MyListManager.myListFlow.collectAsState()
 
@@ -140,18 +142,37 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Category Filter Pills
+            // Category Filter Pills & Surprise Me Roulette Button
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CategoryFilterChip("All", selectedCategoryFilter == "ALL") { selectedCategoryFilter = "ALL" }
-                    CategoryFilterChip("Anime", selectedCategoryFilter == "ANIME") { selectedCategoryFilter = "ANIME" }
-                    CategoryFilterChip("Movies", selectedCategoryFilter == "MOVIES") { selectedCategoryFilter = "MOVIES" }
-                    CategoryFilterChip("Web Series", selectedCategoryFilter == "SERIES") { selectedCategoryFilter = "SERIES" }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        CategoryFilterChip("All", selectedCategoryFilter == "ALL") { selectedCategoryFilter = "ALL" }
+                        CategoryFilterChip("Anime", selectedCategoryFilter == "ANIME") { selectedCategoryFilter = "ANIME" }
+                        CategoryFilterChip("Movies", selectedCategoryFilter == "MOVIES") { selectedCategoryFilter = "MOVIES" }
+                        CategoryFilterChip("Series", selectedCategoryFilter == "SERIES") { selectedCategoryFilter = "SERIES" }
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(AccentOrange.copy(alpha = 0.2f))
+                            .border(1.dp, AccentOrange, RoundedCornerShape(20.dp))
+                            .clickable { showSurpriseMeDialog = true }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text("Surprise 🎰", color = AccentOrange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
@@ -315,6 +336,17 @@ fun HomeScreen(
             onSave = { newItem ->
                 repository.saveMediaItem(newItem)
                 showAdminAddDialog = false
+            }
+        )
+    }
+
+    if (showSurpriseMeDialog) {
+        com.streamhub.app.ui.dialogs.SurpriseMeDialog(
+            catalog = catalog,
+            onDismiss = { showSurpriseMeDialog = false },
+            onMediaClick = { media ->
+                showSurpriseMeDialog = false
+                onMediaClick(media)
             }
         )
     }
