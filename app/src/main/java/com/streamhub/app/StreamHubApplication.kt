@@ -50,6 +50,8 @@ class StreamHubApplication : Application() {
         private const val TAG = "StreamHubApplication"
     }
 
+    private val initScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "Application onCreate — initializing managers")
@@ -85,7 +87,7 @@ class StreamHubApplication : Application() {
         runCatching { HomeScreenLayoutManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "HomeScreenLayoutManager.init failed", it) }
 
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob()).launch {
+        initScope.launch {
             runCatching { com.streamhub.app.data.DownloadManager.init(applicationContext) }
                 .onFailure { Log.e(TAG, "DownloadManager.init failed", it) }
         }

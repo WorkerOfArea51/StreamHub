@@ -109,10 +109,11 @@ fun HomeScreen(
     }
 
     val continueWatchingList = remember(catalog, watchHistoryMap) {
+        val catalogMap = catalog.associateBy { it.id }
         watchHistoryMap.values
             .sortedByDescending { it.lastUpdated }
             .mapNotNull { progress ->
-                val media = catalog.firstOrNull { it.id == progress.mediaId }
+                val media = catalogMap[progress.mediaId]
                 if (media != null) Pair(media, progress) else null
             }
     }

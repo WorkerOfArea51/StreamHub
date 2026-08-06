@@ -40,40 +40,44 @@ fun VolumeIndicator(
     volumeOnRight: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val volumeIndicatorAlignment = if (volumeOnRight) Alignment.CenterStart else Alignment.CenterEnd
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(),
-        exit = fadeOut(),
-        modifier = modifier
-            .padding(24.dp)
+    val volumeIndicatorAlignment = if (volumeOnRight) Alignment.CenterEnd else Alignment.CenterStart
+    androidx.compose.foundation.layout.Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = volumeIndicatorAlignment
     ) {
-        Card(
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xCC101018)),
-            modifier = Modifier
-                .width(60.dp)
-                .height(180.dp)
-                .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.padding(24.dp)
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceBetween,
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xCC101018)),
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(12.dp)
+                    .width(60.dp)
+                    .height(180.dp)
+                    .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
             ) {
-                Icon(Icons.Default.VolumeUp, contentDescription = "Volume", tint = AccentOrange, modifier = Modifier.size(24.dp))
-                Text("${volumePercent.toInt()}%", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                LinearProgressIndicator(
-                    progress = { volumePercent / 100f },
-                    color = AccentOrange,
-                    trackColor = Color(0x44FFFFFF),
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceBetween,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                )
+                        .fillMaxSize()
+                        .padding(12.dp)
+                ) {
+                    Icon(Icons.Default.VolumeUp, contentDescription = "Volume", tint = AccentOrange, modifier = Modifier.size(24.dp))
+                    Text("${volumePercent.toInt()}%", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    LinearProgressIndicator(
+                        progress = { volumePercent / 100f },
+                        color = AccentOrange,
+                        trackColor = Color(0x44FFFFFF),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                    )
+                }
             }
         }
     }
@@ -86,40 +90,44 @@ fun BrightnessIndicator(
     volumeOnRight: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val brightnessIndicatorAlignment = if (volumeOnRight) Alignment.CenterEnd else Alignment.CenterStart
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(),
-        exit = fadeOut(),
-        modifier = modifier
-            .padding(24.dp)
+    val brightnessIndicatorAlignment = if (volumeOnRight) Alignment.CenterStart else Alignment.CenterEnd
+    androidx.compose.foundation.layout.Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = brightnessIndicatorAlignment
     ) {
-        Card(
-            shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xCC101018)),
-            modifier = Modifier
-                .width(60.dp)
-                .height(180.dp)
-                .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.padding(24.dp)
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceBetween,
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xCC101018)),
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(12.dp)
+                    .width(60.dp)
+                    .height(180.dp)
+                    .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
             ) {
-                Icon(Icons.Default.Brightness6, contentDescription = "Brightness", tint = PrimaryRed, modifier = Modifier.size(24.dp))
-                Text("${brightnessPercent.toInt()}%", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                LinearProgressIndicator(
-                    progress = { brightnessPercent / 100f },
-                    color = PrimaryRed,
-                    trackColor = Color(0x44FFFFFF),
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceBetween,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                )
+                        .fillMaxSize()
+                        .padding(12.dp)
+                ) {
+                    Icon(Icons.Default.Brightness6, contentDescription = "Brightness", tint = PrimaryRed, modifier = Modifier.size(24.dp))
+                    Text("${brightnessPercent.toInt()}%", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    LinearProgressIndicator(
+                        progress = { brightnessPercent / 100f },
+                        color = PrimaryRed,
+                        trackColor = Color(0x44FFFFFF),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                    )
+                }
             }
         }
     }

@@ -65,37 +65,37 @@ fun AdminEditorDialog(
     val scope = rememberCoroutineScope()
 
     // --- Section A: Metadata ---
-    var title by remember { mutableStateOf(initialItem?.title ?: "") }
-    var malId by remember { mutableStateOf(initialItem?.malId ?: "") }
-    var tmdbId by remember { mutableStateOf(initialItem?.tmdbId ?: "") }
-    var trailerId by remember { mutableStateOf(initialItem?.trailerId ?: "") }
-    var rating by remember { mutableStateOf(initialItem?.rating ?: "") }
-    var studio by remember { mutableStateOf(initialItem?.studio ?: "") }
-    var synonyms by remember { mutableStateOf(initialItem?.synonyms ?: "") }
-    var totalEpisodes by remember { mutableStateOf(initialItem?.totalEpisodes ?: "") }
-    var status by remember { mutableStateOf(initialItem?.status ?: "") }
-    var aired by remember { mutableStateOf(initialItem?.aired ?: "") }
-    var premiered by remember { mutableStateOf(initialItem?.premiered ?: "") }
-    var producers by remember { mutableStateOf(initialItem?.producers ?: "") }
-    var source by remember { mutableStateOf(initialItem?.source ?: "") }
-    var duration by remember { mutableStateOf(initialItem?.duration ?: "") }
-    var budgetBoxOffice by remember { mutableStateOf(initialItem?.budgetBoxOffice ?: "") }
-    var category by remember { mutableStateOf(initialItem?.category ?: "ANIME") }
-    var type by remember { mutableStateOf(initialItem?.type ?: "SERIES") }
-    var genresText by remember { mutableStateOf(initialItem?.genres?.joinToString(", ") ?: "") }
-    var castText by remember { mutableStateOf(initialItem?.castList?.joinToString(", ") ?: "") }
-    var posterUrl by remember { mutableStateOf(initialItem?.posterUrl ?: "") }
-    var bannerUrl by remember { mutableStateOf(initialItem?.bannerUrl ?: "") }
-    var description by remember { mutableStateOf(initialItem?.description ?: "") }
+    var title by remember(initialItem) { mutableStateOf(initialItem?.title ?: "") }
+    var malId by remember(initialItem) { mutableStateOf(initialItem?.malId ?: "") }
+    var tmdbId by remember(initialItem) { mutableStateOf(initialItem?.tmdbId ?: "") }
+    var trailerId by remember(initialItem) { mutableStateOf(initialItem?.trailerId ?: "") }
+    var rating by remember(initialItem) { mutableStateOf(initialItem?.rating ?: "") }
+    var studio by remember(initialItem) { mutableStateOf(initialItem?.studio ?: "") }
+    var synonyms by remember(initialItem) { mutableStateOf(initialItem?.synonyms ?: "") }
+    var totalEpisodes by remember(initialItem) { mutableStateOf(initialItem?.totalEpisodes ?: "") }
+    var status by remember(initialItem) { mutableStateOf(initialItem?.status ?: "") }
+    var aired by remember(initialItem) { mutableStateOf(initialItem?.aired ?: "") }
+    var premiered by remember(initialItem) { mutableStateOf(initialItem?.premiered ?: "") }
+    var producers by remember(initialItem) { mutableStateOf(initialItem?.producers ?: "") }
+    var source by remember(initialItem) { mutableStateOf(initialItem?.source ?: "") }
+    var duration by remember(initialItem) { mutableStateOf(initialItem?.duration ?: "") }
+    var budgetBoxOffice by remember(initialItem) { mutableStateOf(initialItem?.budgetBoxOffice ?: "") }
+    var category by remember(initialItem) { mutableStateOf(initialItem?.category ?: "ANIME") }
+    var type by remember(initialItem) { mutableStateOf(initialItem?.type ?: "SERIES") }
+    var genresText by remember(initialItem) { mutableStateOf(initialItem?.genres?.joinToString(", ") ?: "") }
+    var castText by remember(initialItem) { mutableStateOf(initialItem?.castList?.joinToString(", ") ?: "") }
+    var posterUrl by remember(initialItem) { mutableStateOf(initialItem?.posterUrl ?: "") }
+    var bannerUrl by remember(initialItem) { mutableStateOf(initialItem?.bannerUrl ?: "") }
+    var description by remember(initialItem) { mutableStateOf(initialItem?.description ?: "") }
 
     // --- Section A: MediaInfo Specs ---
-    var resolution by remember { mutableStateOf(initialItem?.mediaInfo?.resolution ?: "") }
-    var videoCodec by remember { mutableStateOf(initialItem?.mediaInfo?.videoCodec ?: "") }
-    var fileSize by remember { mutableStateOf(initialItem?.mediaInfo?.fileSize ?: "") }
-    var audioTracksText by remember {
+    var resolution by remember(initialItem) { mutableStateOf(initialItem?.mediaInfo?.resolution ?: "") }
+    var videoCodec by remember(initialItem) { mutableStateOf(initialItem?.mediaInfo?.videoCodec ?: "") }
+    var fileSize by remember(initialItem) { mutableStateOf(initialItem?.mediaInfo?.fileSize ?: "") }
+    var audioTracksText by remember(initialItem) {
         mutableStateOf(initialItem?.mediaInfo?.audioTracks?.joinToString(", ") ?: "")
     }
-    var subtitleTracksText by remember {
+    var subtitleTracksText by remember(initialItem) {
         mutableStateOf(initialItem?.mediaInfo?.subtitleTracks?.joinToString(", ") ?: "")
     }
 

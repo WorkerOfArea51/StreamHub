@@ -77,13 +77,13 @@ fun ProxySettingsDialog(
 
     var selectedTab by remember { mutableIntStateOf(0) }
 
-    var isEnabled by remember { mutableStateOf(currentConfig.isEnabled) }
-    var selectedType by remember { mutableStateOf(currentConfig.type) }
-    var server by remember { mutableStateOf(currentConfig.server) }
-    var portText by remember { mutableStateOf(currentConfig.port.toString()) }
-    var secret by remember { mutableStateOf(currentConfig.secret) }
-    var username by remember { mutableStateOf(currentConfig.username) }
-    var password by remember { mutableStateOf(currentConfig.password) }
+    var isEnabled by remember(currentConfig.isEnabled) { mutableStateOf(currentConfig.isEnabled) }
+    var selectedType by remember(currentConfig.type) { mutableStateOf(currentConfig.type) }
+    var server by remember(currentConfig.server) { mutableStateOf(currentConfig.server) }
+    var portText by remember(currentConfig.port) { mutableStateOf(currentConfig.port.toString()) }
+    var secret by remember(currentConfig.secret) { mutableStateOf(currentConfig.secret) }
+    var username by remember(currentConfig.username) { mutableStateOf(currentConfig.username) }
+    var password by remember(currentConfig.password) { mutableStateOf(currentConfig.password) }
 
     var isTesting by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }

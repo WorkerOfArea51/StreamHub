@@ -41,10 +41,6 @@ import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 import com.streamhub.app.ui.theme.AppThemeAccent
-import com.streamhub.app.ui.theme.CardBorderDark
-import com.streamhub.app.ui.theme.SurfaceDark
-import com.streamhub.app.ui.theme.TextPrimary
-import com.streamhub.app.ui.theme.TextSecondary
 
 @Composable
 fun HomeLayoutCard(currentAccent: AppThemeAccent) {

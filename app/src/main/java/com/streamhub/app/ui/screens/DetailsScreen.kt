@@ -106,7 +106,7 @@ fun DetailsScreen(
     var isPlayingTrailer by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(isPlayingTrailer) {
         onDispose {
             webViewRef?.stopLoading()
             webViewRef?.destroy()

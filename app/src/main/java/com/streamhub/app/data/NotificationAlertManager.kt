@@ -30,7 +30,7 @@ object NotificationAlertManager {
     private const val KEY_SEEN_EPISODE_COUNTS = "seen_episode_counts_"
 
     private const val CHANNEL_ID = "streamhub_episode_alerts"
-    private const val CHANNEL_NAME = "New Episode Alerts 🍿"
+    private const val CHANNEL_NAME = "New Episode Alerts"
 
     private var prefs: SharedPreferences? = null
 

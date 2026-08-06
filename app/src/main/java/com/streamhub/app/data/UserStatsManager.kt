@@ -122,7 +122,7 @@ object UserStatsManager {
             "ANIME" -> animeSec += seconds
             "MOVIE" -> movieSec += seconds
             "WEB_SERIES", "SERIES" -> seriesSec += seconds
-            else -> animeSec += seconds
+            else -> { /* Ignore unknown categories */ }
         }
 
         if (lastDate != todayStr) {

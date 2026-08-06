@@ -99,45 +99,52 @@ fun SearchScreen(
         Pair(7.0, "⭐ 7.0+ High Quality")
     )
 
-    val yearFilterList = listOf("ALL", "2024", "2023", "2022", "Older")
+    val currentYear = remember { java.time.LocalDate.now().year }
+    val yearFilterList = remember(currentYear) {
+        listOf("ALL", currentYear.toString(), (currentYear - 1).toString(), (currentYear - 2).toString(), "Older")
+    }
 
     val primaryColor = MaterialTheme.colorScheme.primary
 
     // Filter Logic
-    val filteredCatalog = catalog.filter { item ->
-        val matchesQuery = searchQuery.isEmpty() ||
-                item.title.contains(searchQuery, ignoreCase = true) ||
-                item.synonyms.contains(searchQuery, ignoreCase = true) ||
-                item.category.contains(searchQuery, ignoreCase = true) ||
-                item.studio.contains(searchQuery, ignoreCase = true) ||
-                item.genres.any { genre -> genre.contains(searchQuery, ignoreCase = true) }
+    val filteredCatalog = remember(catalog, searchQuery, selectedCategoryFilter, minRatingFilter, selectedYearFilter, currentYear) {
+        catalog.filter { item ->
+            val matchesQuery = searchQuery.isEmpty() ||
+                    item.title.contains(searchQuery, ignoreCase = true) ||
+                    item.synonyms.contains(searchQuery, ignoreCase = true) ||
+                    item.category.contains(searchQuery, ignoreCase = true) ||
+                    item.studio.contains(searchQuery, ignoreCase = true) ||
+                    item.genres.any { genre -> genre.contains(searchQuery, ignoreCase = true) }
 
-        val matchesCategory = when (selectedCategoryFilter) {
-            "ALL" -> true
-            "ANIME" -> item.category == "ANIME"
-            "MOVIE" -> item.category == "MOVIE"
-            "SERIES" -> item.category == "WEB_SERIES"
-            else -> item.genres.any { it.equals(selectedCategoryFilter, ignoreCase = true) }
+            val matchesCategory = when (selectedCategoryFilter) {
+                "ALL" -> true
+                "ANIME" -> item.category == "ANIME"
+                "MOVIE" -> item.category == "MOVIE"
+                "SERIES" -> item.category == "WEB_SERIES"
+                else -> item.genres.any { it.equals(selectedCategoryFilter, ignoreCase = true) }
+            }
+
+            val itemRating = item.rating.toDoubleOrNull() ?: 0.0
+            val matchesRating = itemRating >= minRatingFilter
+
+            val matchesYear = when (selectedYearFilter) {
+                "ALL" -> true
+                "Older" -> (item.releaseYear.toIntOrNull() ?: currentYear) < (currentYear - 2)
+                else -> item.releaseYear == selectedYearFilter
+            }
+
+            matchesQuery && matchesCategory && matchesRating && matchesYear
         }
-
-        val itemRating = item.rating.toDoubleOrNull() ?: 0.0
-        val matchesRating = itemRating >= minRatingFilter
-
-        val matchesYear = when (selectedYearFilter) {
-            "ALL" -> true
-            "Older" -> (item.releaseYear.toIntOrNull() ?: 2024) < 2022
-            else -> item.releaseYear == selectedYearFilter
-        }
-
-        matchesQuery && matchesCategory && matchesRating && matchesYear
     }
 
     // Sort Logic
-    val sortedCatalog = when (sortOption) {
-        SortOption.LATEST -> filteredCatalog
-        SortOption.RATING_DESC -> filteredCatalog.sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
-        SortOption.TITLE_ASC -> filteredCatalog.sortedBy { it.title }
-        SortOption.YEAR_DESC -> filteredCatalog.sortedByDescending { it.releaseYear.toIntOrNull() ?: 0 }
+    val sortedCatalog = remember(filteredCatalog, sortOption) {
+        when (sortOption) {
+            SortOption.LATEST -> filteredCatalog
+            SortOption.RATING_DESC -> filteredCatalog.sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
+            SortOption.TITLE_ASC -> filteredCatalog.sortedBy { it.title }
+            SortOption.YEAR_DESC -> filteredCatalog.sortedByDescending { it.releaseYear.toIntOrNull() ?: 0 }
+        }
     }
 
     Column(

@@ -63,15 +63,15 @@ fun HeroCarousel(
 ) {
     if (featuredItems.isEmpty()) return
 
-    val context = LocalContext.current
     val pagerState = rememberPagerState(pageCount = { featuredItems.size })
     val primaryColor = MaterialTheme.colorScheme.primary
+    val myListSet by MyListManager.myListFlow.collectAsState()
 
     // Auto-advance hero carousel every 5 seconds
     LaunchedEffect(pagerState, featuredItems) {
         while (true) {
             delay(5000)
-            if (featuredItems.isNotEmpty()) {
+            if (featuredItems.isNotEmpty() && !pagerState.isScrollInProgress) {
                 val nextPage = (pagerState.currentPage + 1) % featuredItems.size
                 pagerState.animateScrollToPage(nextPage)
             }
@@ -88,7 +88,6 @@ fun HeroCarousel(
             modifier = Modifier.fillMaxSize()
         ) { page ->
             val media = featuredItems[page]
-            val myListSet by MyListManager.myListFlow.collectAsState()
             val isBookmarked = myListSet.contains(media.id)
 
             Box(

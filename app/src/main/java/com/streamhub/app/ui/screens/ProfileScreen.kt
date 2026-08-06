@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -122,143 +125,25 @@ fun ProfileScreen(
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
     var showProxyDialog by remember { mutableStateOf(false) }
 
-    Column(
+    LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .background(BackgroundDark)
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState())
+            .background(BackgroundDark),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Top Bar
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Profiles & Account 👤",
-                color = TextPrimary,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            OutlinedButton(
-                onClick = onNavigateToSettings,
-                shape = RoundedCornerShape(12.dp)
+        item(key = "profile_top_bar") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.Settings, contentDescription = "Settings", tint = primaryColor)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Settings", color = primaryColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // AUTHENTICATION STATE CONTAINER
-        when (val state = authState) {
-            is TelegramAuthState.Authenticated -> {
-                // LOGGED IN STATE: M3 Expressive VIP Profile Card
-                M3ExpressiveVipProfileCard(
-                    user = state.user,
-                    isOwner = state.isOwner,
-                    primaryColor = primaryColor,
-                    onOpenTelegram = {
-                        val telegramUri = Uri.parse(
-                            if (state.user.username.isNotBlank()) "tg://resolve?domain=${state.user.username}"
-                            else "https://t.me/"
-                        )
-                        val intent = Intent(Intent.ACTION_VIEW, telegramUri)
-                        try {
-                            context.startActivity(intent)
-                        } catch (e: Exception) {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/")))
-                        }
-                    },
-                    onLogout = { TelegramAuthManager.logout() }
+                Text(
+                    text = "Profiles & Account 👤",
+                    color = TextPrimary,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
                 )
-
-                Spacer(modifier = Modifier.height(18.dp))
-
-                // 3-COLUMN METALLIC STATS GRID
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    StatCard(
-                        icon = Icons.Default.Timer,
-                        label = "Total Watch",
-                        value = totalWatchHours,
-                        primaryColor = primaryColor,
-                        modifier = Modifier.weight(1f)
-                    )
-                    StatCard(
-                        icon = Icons.Default.SmartDisplay,
-                        label = "Today Usage",
-                        value = dailyWatchTime,
-                        primaryColor = primaryColor,
-                        modifier = Modifier.weight(1f)
-                    )
-                    StatCard(
-                        icon = Icons.Default.ElectricBolt,
-                        label = "Streak",
-                        value = "🔥 $streakDays Days",
-                        primaryColor = primaryColor,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(18.dp))
-
-                // Watch Analytics & Habit Breakdown Dashboard
-                com.streamhub.app.ui.components.WatchAnalyticsCard()
-
-                Spacer(modifier = Modifier.height(18.dp))
-
-                // OWNER-ONLY HIDDEN ADMIN PANEL CARD (Renders ONLY if isOwner == true)
-                if (state.isOwner) {
-                    Card(
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, primaryColor.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.AdminPanelSettings, contentDescription = "Admin Panel", tint = primaryColor, modifier = Modifier.size(28.dp))
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text("Owner Admin Dashboard 🛡️", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                    Text("Owner Account Verified • Manage Catalog & Streams", color = TextSecondary, fontSize = 11.sp)
-                                }
-                            }
-
-                            Button(
-                                onClick = { showAdminPasswordDialog = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Text("Open", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-            }
-
-            else -> {
-                // UNAUTHENTICATED STATE: Real Telegram Login Card (Phone SMS / Real Scannable QR Code)
-                TelegramLoginCard(
-                    authState = state,
-                    primaryColor = primaryColor
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
 
                 OutlinedButton(
                     onClick = { showProxyDialog = true },
@@ -399,6 +284,12 @@ fun TelegramLoginCard(
     val qrBitmap = remember(authState) {
         val qrUrl = if (authState is TelegramAuthState.WaitingQRCode) authState.qrLink else "tg://login?token=streamhub_${System.currentTimeMillis()}"
         QrCodeGenerator.generateQrBitmap(qrUrl, 512)
+    }
+
+    androidx.compose.runtime.DisposableEffect(qrBitmap) {
+        onDispose {
+            runCatching { qrBitmap?.asAndroidBitmap()?.recycle() }
+        }
     }
 
     Card(

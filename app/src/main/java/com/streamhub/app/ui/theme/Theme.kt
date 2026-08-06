@@ -42,7 +42,8 @@ fun StreamHubTheme(
 
     if (!view.isInEditMode) {
         SideEffect {
-            val window = (view.context as Activity).window
+            val activity = view.context as? Activity ?: return@SideEffect
+            val window = activity.window
             window.statusBarColor = BackgroundDark.toArgb()
             window.navigationBarColor = BackgroundDark.toArgb()
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false

@@ -382,6 +382,7 @@ class StreamPlayerViewModel : ViewModel() {
      * Previous `while(true)` ran forever even after releasePlayer().
      */
     private fun startPositionTracker() {
+        var lastProgressSaveMs = 0L
         positionTrackerJob?.cancel()
         positionTrackerJob = viewModelScope.launch {
             while (isActive) {
@@ -394,13 +395,17 @@ class StreamPlayerViewModel : ViewModel() {
                             durationMs = totalDuration
                         )
 
-                        currentMediaItem?.let { media ->
-                            WatchHistoryManager.saveProgress(
-                                mediaId = media.id,
-                                episodeNumber = _uiState.value.currentEpisodeIndex,
-                                positionMs = currentPos,
-                                durationMs = totalDuration
-                            )
+                        val now = System.currentTimeMillis()
+                        if (now - lastProgressSaveMs >= 10_000L) {
+                            currentMediaItem?.let { media ->
+                                WatchHistoryManager.saveProgress(
+                                    mediaId = media.id,
+                                    episodeNumber = _uiState.value.currentEpisodeIndex,
+                                    positionMs = currentPos,
+                                    durationMs = totalDuration
+                                )
+                            }
+                            lastProgressSaveMs = now
                         }
                     }
                 }

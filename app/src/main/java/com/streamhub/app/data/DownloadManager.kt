@@ -374,11 +374,10 @@ object DownloadManager {
         val currentList = _downloads.value.toMutableList()
         val index = currentList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
         if (index != -1) {
-            currentList[index] = currentList[index].copy(isPaused = false)
+            currentList.removeAt(index)
             _downloads.value = currentList
             saveToDisk()
-            Log.w(TAG, "Resume requested for ${item.mediaTitle} Ep${item.episodeIndex + 1}. " +
-                "Original URL not stored — user must re-trigger download from Details screen.")
+            Log.w(TAG, "Resume not supported without original URL. Removed stale download item for ${item.mediaTitle}. User can re-download from Details.")
         }
     }
 
