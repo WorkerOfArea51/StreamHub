@@ -100,6 +100,7 @@ object AppUpdateManager {
     }
 
     private var downloadJob: kotlinx.coroutines.Job? = null
+    private var checkJob: kotlinx.coroutines.Job? = null
 
     /**
      * Check GitHub Releases for a newer version.
@@ -112,7 +113,7 @@ object AppUpdateManager {
      */
     fun checkForUpdate(
         currentVersionCode: Long = 0L,
-        currentVersionName: String = "2.2.0",
+        currentVersionName: String = com.streamhub.app.BuildConfig.VERSION_NAME,
         repoOwner: String = "WorkerOfArea51",
         repoName: String = "StreamHub",
         forceCheck: Boolean = false
@@ -121,7 +122,7 @@ object AppUpdateManager {
 
         _updateState.value = UpdateState.Checking
 
-        scope.launch {
+        checkJob = scope.launch {
             try {
                 var latestTag: String? = null
 
@@ -468,6 +469,7 @@ object AppUpdateManager {
      */
     fun resetState() {
         downloadJob?.cancel()
+        checkJob?.cancel()
         _updateState.value = UpdateState.Idle
     }
 

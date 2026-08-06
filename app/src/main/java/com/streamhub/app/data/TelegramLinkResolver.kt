@@ -4,6 +4,8 @@ import com.streamhub.app.data.models.Episode
 
 object TelegramLinkResolver {
 
+    private const val MAX_BATCH_SIZE = 500
+
     /**
      * Generates a list of batch Telegram links from start link to end link.
      * E.g. start: "https://t.me/c/2633457020/7159", end: "https://t.me/c/2633457020/7170"
@@ -22,6 +24,11 @@ object TelegramLinkResolver {
             val links = mutableListOf<String>()
             val minId = minOf(startId, endId)
             val maxId = maxOf(startId, endId)
+
+            val rangeSize = maxId - minId + 1
+            if (rangeSize > MAX_BATCH_SIZE) {
+                return "Error: Batch range too large ($rangeSize links). Maximum is $MAX_BATCH_SIZE."
+            }
 
             for (id in minId..maxId) {
                 links.add("$prefix$id")

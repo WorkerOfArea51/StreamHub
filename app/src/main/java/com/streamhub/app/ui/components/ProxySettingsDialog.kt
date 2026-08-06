@@ -404,7 +404,7 @@ fun ProxySettingsDialog(
                             onClick = {
                                 isTesting = true
                                 testResult = null
-                                val p = portText.toIntOrNull() ?: 443
+                                val p = portText.toIntOrNull()?.coerceIn(1, 65535) ?: 443
                                 scope.launch {
                                     val res = TelegramProxyManager.testConnection(server, p)
                                     res.fold(
@@ -451,7 +451,7 @@ fun ProxySettingsDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    val p = portText.toIntOrNull() ?: 443
+                    val p = portText.toIntOrNull()?.coerceIn(1, 65535) ?: 443
                     TelegramProxyManager.saveConfig(server, p, secret, username, password, selectedType, isEnabled)
                     onDismiss()
                 },

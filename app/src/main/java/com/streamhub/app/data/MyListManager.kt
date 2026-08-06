@@ -37,7 +37,7 @@ object MyListManager {
 
     private fun loadFromDisk() {
         val prefs = getPrefs()
-        val savedSet = prefs.getStringSet(KEY_BOOKMARKS, emptySet()) ?: emptySet()
+        val savedSet = (prefs.getStringSet(KEY_BOOKMARKS, emptySet()) ?: emptySet()).toSet()
         _myListFlow.value = savedSet
     }
 

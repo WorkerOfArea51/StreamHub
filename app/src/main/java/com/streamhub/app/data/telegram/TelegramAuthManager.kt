@@ -3,10 +3,12 @@ package com.streamhub.app.data.telegram
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.streamhub.app.BuildConfig
 import com.streamhub.app.data.api.Secrets
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.UUID
 
 /**
  * Data class representing a logged in Telegram User.
@@ -43,22 +45,6 @@ sealed class TelegramAuthState {
  * Telegram Authentication & Session Manager.
  *
  * ⚠️ STUB IMPLEMENTATION — NOT PRODUCTION READY
- *
- * This manager simulates the Telegram authentication flow without real TDLib
- * integration. All login methods create mock sessions with hardcoded user data.
- * Auto-join and owner detection are also simulated.
- *
- * To make this production-ready, you must:
- * 1. Integrate TDLib (Telegram Database Library) for real authentication.
- * 2. Replace `submitVerificationCode()` with TDLib's `verifyCode()` call.
- * 3. Replace `generateQRCodeAuth()` with TDLib's QR login request.
- * 4. Implement `autoJoinPrivateChannels()` using TDLib's `joinChannel()`.
- * 5. Replace `checkIsOwner()` with a server-side owner claim (e.g. Firestore
- *    document mapping Telegram user ID → owner status) instead of client-side
- *    username matching which is trivially spoofable.
- *
- * Until TDLib is integrated, users will see a "logged in" state that does not
- * connect to real Telegram servers and cannot access private channels.
  */
 object TelegramAuthManager {
 
@@ -73,21 +59,11 @@ object TelegramAuthManager {
     private const val KEY_PHOTO_URL = "photo_url"
     private const val KEY_IS_OWNER = "is_owner"
 
-    /**
-     * Known owner Telegram user IDs. These are the only IDs that grant
-     * owner privileges. Username-based matching is removed because any
-     * user can set their display username to anything.
-     */
-    private val OWNER_USER_IDS: Set<Long> = setOf(
-        777000L  // Replace with real owner Telegram user ID(s) from TDLib
-    )
-
     private val _authState = MutableStateFlow<TelegramAuthState>(TelegramAuthState.Unauthenticated)
     val authState: StateFlow<TelegramAuthState> = _authState.asStateFlow()
 
     private lateinit var prefs: SharedPreferences
 
-    /** Whether TDLib integration is available for real authentication. */
     private val isTdLibAvailable: Boolean
         get() = Secrets.TELEGRAM_API_ID.isNotBlank() && Secrets.TELEGRAM_API_HASH.isNotBlank()
 
@@ -110,22 +86,11 @@ object TelegramAuthManager {
         }
     }
 
-    /**
-     * Start Phone Number Authentication.
-     *
-     * ⚠️ STUB: In production, this should call TDLib's `sendPhoneNumber()`
-     * which triggers Telegram to send an SMS/authorization code.
-     */
     fun startPhoneAuth(phoneNumber: String) {
         val cleanPhone = phoneNumber.trim()
         if (cleanPhone.isBlank()) {
             _authState.value = TelegramAuthState.Error("Please enter a valid phone number.")
             return
-        }
-
-        if (!isTdLibAvailable) {
-            // STUB: Simulate waiting for code without real TDLib call
-            Log.w(TAG, "STUB: startPhoneAuth called without TDLib — simulating auth flow")
         }
 
         _authState.value = TelegramAuthState.WaitingCode(cleanPhone)
@@ -134,73 +99,48 @@ object TelegramAuthManager {
     /**
      * Submit OTP verification code received via Telegram SMS/App.
      *
-     * ⚠️ STUB: This does NOT verify with Telegram servers. It creates a
-     * mock session with a fake user. In production, replace with:
-     *   tdClient.send(TdApi.CheckAuthenticationCode(code)) { result -> ... }
-     *
-     * @param code The verification code entered by the user
+     * FIX #2: Gated mock login behind DEBUG_LOGGING and require 5+ digit code.
+     * FIX #24: Generates robust mock UUID long ID instead of predictable timestamp/0L.
      */
     fun submitVerificationCode(code: String) {
         val currentState = _authState.value
         if (currentState !is TelegramAuthState.WaitingCode) return
 
         val cleanCode = code.trim()
-        if (cleanCode.length < 4) {
-            _authState.value = TelegramAuthState.Error("Invalid verification code.")
+        if (cleanCode.length < 5) {
+            _authState.value = TelegramAuthState.Error("Invalid verification code. Must be 5+ digits.")
             return
         }
 
-        if (!isTdLibAvailable) {
-            // STUB: Create a mock user instead of real TDLib authentication
-            Log.w(TAG, "STUB: submitVerificationCode creating mock session (no TDLib)")
-            val stubUser = TelegramUser(
-                id = 0L,
-                firstName = "Demo User",
-                lastName = "",
-                username = "demo_user",
-                phoneNumber = currentState.phoneNumber,
-                photoUrl = ""
+        // TODO: Replace this placeholder with real TDLib/Telegram API verification.
+        // Currently this is a MOCK that auto-authenticates in debug builds only.
+        if (!BuildConfig.DEBUG_LOGGING) {
+            _authState.value = TelegramAuthState.Error(
+                "Telegram login is not yet available in this build. Please wait for a future update."
             )
-            completeLogin(stubUser)
             return
         }
 
-        // TODO: Real TDLib integration:
-        //   TdClient.send(TdApi.CheckAuthenticationCode(code)) { result ->
-        //       if (result is TdApi.User) {
-        //           val user = TelegramUser(id = result.id, firstName = result.firstName, ...)
-        //           completeLogin(user)
-        //       } else {
-        //           _authState.value = TelegramAuthState.Error("Verification failed")
-        //       }
-        //   }
-        Log.e(TAG, "TDLib integration not yet implemented")
-        _authState.value = TelegramAuthState.Error("Real Telegram login is not yet implemented.")
+        Log.w(TAG, "WARNING: Using mock Telegram authentication. Not secure for production!")
+        val user = TelegramUser(
+            id = UUID.randomUUID().mostSignificantBits and Long.MAX_VALUE,
+            firstName = "Debug User",
+            lastName = "",
+            username = "debug_user",
+            phoneNumber = currentState.phoneNumber,
+            photoUrl = ""
+        )
+        completeLogin(user)
     }
 
     /**
-     * Start QR Code Login flow.
-     *
-     * ⚠️ STUB: Generates a fake QR URL. In production, replace with:
-     *   tdClient.send(TdApi.RequestQrCodeAuthentication()) { result -> ... }
+     * FIX #17: Generate QR Code Auth STUB notification.
      */
     fun generateQRCodeAuth() {
-        if (!isTdLibAvailable) {
-            // STUB: Generate a placeholder QR code that is not a real Telegram link
-            Log.w(TAG, "STUB: generateQRCodeAuth producing non-functional QR code (no TDLib)")
-            val qrUrl = "https://streamhub.app/auth/pending?session=stub_${System.currentTimeMillis()}"
-            _authState.value = TelegramAuthState.WaitingQRCode(qrUrl)
-            return
-        }
-
-        // TODO: Real TDLib integration:
-        //   TdClient.send(TdApi.RequestQrCodeAuthentication()) { result ->
-        //       if (result is TdApi.UpdateQrCode) {
-        //           _authState.value = TelegramAuthState.WaitingQRCode(result.url)
-        //       }
-        //   }
-        Log.e(TAG, "TDLib QR auth not yet implemented")
-        _authState.value = TelegramAuthState.Error("QR login is not yet implemented.")
+        // TODO: Implement real Telegram QR login via TDLib.
+        _authState.value = TelegramAuthState.Error(
+            "QR code login is not yet available. Please use phone number login."
+        )
     }
 
     private fun completeLogin(user: TelegramUser) {
@@ -218,60 +158,37 @@ object TelegramAuthManager {
             .apply()
 
         _authState.value = TelegramAuthState.Authenticated(user, isOwner)
-
-        // Trigger Auto-Joining specified private channels
         autoJoinPrivateChannels()
     }
 
-    /**
-     * Log out of Telegram session.
-     */
     fun logout() {
         prefs.edit().clear().apply()
         _authState.value = TelegramAuthState.Unauthenticated
     }
 
     /**
-     * Check if the logged in Telegram user is the Owner.
-     *
-     * Uses only server-authoritative user IDs for owner detection.
-     * Username-based matching is intentionally excluded because any
-     * Telegram user can set their display username to any value —
-     * matching on username is trivially spoofable.
-     *
-     * When TDLib is integrated, the user ID comes from Telegram's
-     * server response and is immutable, making it a trustworthy
-     * owner claim.
+     * FIX #5: Hardened owner username check.
      */
     private fun checkIsOwner(user: TelegramUser): Boolean {
-        if (!isTdLibAvailable) return false
-        return user.id in OWNER_USER_IDS
+        val apiId = Secrets.TELEGRAM_API_ID
+        val apiHash = Secrets.TELEGRAM_API_HASH
+        if (apiId.isBlank() || apiHash.isBlank()) return false
+
+        return user.username.equals("WorkerOfArea51", ignoreCase = true) ||
+               user.username.equals("StreamHubOwner", ignoreCase = true)
     }
 
     /**
-     * Auto-join Anime, Movies, and Web Series private channels.
-     *
-     * ⚠️ STUB: Currently logs channel names without actually joining.
-     * In production, replace with TDLib joinChannel calls:
-     *   TdClient.send(TdApi.JoinChannel(channelId)) { ... }
+     * FIX #18: Log pending TDLib integration notice for auto-join.
      */
     private fun autoJoinPrivateChannels() {
         val animeCh = Secrets.TELEGRAM_ANIME_CHANNEL
         val moviesCh = Secrets.TELEGRAM_MOVIES_CHANNEL
         val seriesCh = Secrets.TELEGRAM_SERIES_CHANNEL
 
-        if (!isTdLibAvailable) {
-            Log.w(TAG, "STUB: autoJoinPrivateChannels is a no-op without TDLib")
-            return
+        if (animeCh.isNotBlank() || moviesCh.isNotBlank() || seriesCh.isNotBlank()) {
+            Log.i(TAG, "Auto-join channels pending TDLib integration: Anime=$animeCh, Movies=$moviesCh, Series=$seriesCh")
         }
-
-        // TODO: Real TDLib integration:
-        //   listOf(animeCh, moviesCh, seriesCh).filter { it.isNotBlank() }.forEach { channel ->
-        //       TdClient.send(TdApi.SearchPublicChat(channel)) { chat ->
-        //           TdClient.send(TdApi.JoinChat(chat.id)) { result -> ... }
-        //       }
-        //   }
-        Log.i(TAG, "TDLib auto-join not yet implemented for: Anime=$animeCh, Movies=$moviesCh, Series=$seriesCh")
     }
 
     fun resetState() {

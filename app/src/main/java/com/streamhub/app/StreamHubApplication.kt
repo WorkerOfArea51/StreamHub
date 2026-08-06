@@ -81,6 +81,9 @@ class StreamHubApplication : Application() {
         runCatching { HomeScreenLayoutManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "HomeScreenLayoutManager.init failed", it) }
 
+        runCatching { com.streamhub.app.data.DownloadManager.init(applicationContext) }
+            .onFailure { Log.e(TAG, "DownloadManager.init failed", it) }
+
         // Layer 2 — Data managers
         runCatching { UserStatsManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "UserStatsManager.init failed", it) }

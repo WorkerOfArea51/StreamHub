@@ -204,7 +204,12 @@ object DownloadManager {
                 return customDir
             }
         }
-        val defaultDir = File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "StreamHub")
+        val externalDir = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)
+        val defaultDir = if (externalDir != null) {
+            File(externalDir, "StreamHub")
+        } else {
+            File(context.filesDir, "StreamHub")
+        }
         if (!defaultDir.exists()) defaultDir.mkdirs()
         return defaultDir
     }
@@ -217,7 +222,12 @@ object DownloadManager {
                 return customDir
             }
         }
-        val defaultDir = File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), "StreamHub_Screenshots")
+        val externalDir = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+        val defaultDir = if (externalDir != null) {
+            File(externalDir, "StreamHub_Screenshots")
+        } else {
+            File(context.filesDir, "StreamHub_Screenshots")
+        }
         if (!defaultDir.exists()) defaultDir.mkdirs()
         return defaultDir
     }

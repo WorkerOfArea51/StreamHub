@@ -160,24 +160,24 @@ object UserStatsManager {
         }
     }
 
+    private val dateFormatter by lazy {
+        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd", java.util.Locale.US)
+    }
+
     private fun getTodayDateString(): String {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        return sdf.format(Date())
+        return java.time.LocalDate.now().format(dateFormatter)
     }
 
     /**
-     * FIX #3: Only exactly 1 day ago counts as "yesterday".
-     * daysDiff == 1 means yesterday. daysDiff == 2 means 2 days ago — streak breaks.
+     * FIX #19 & #20: Thread-safe java.time date comparison.
+     * Only exactly 1 day ago counts as "yesterday".
      */
     private fun isYesterday(dateStr: String): Boolean {
-        try {
-            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-            val date = sdf.parse(dateStr) ?: return false
-            val diff = Date().time - date.time
-            val daysDiff = diff / (1000 * 60 * 60 * 24)
-            return daysDiff == 1L
+        return try {
+            val date = java.time.LocalDate.parse(dateStr, dateFormatter)
+            date == java.time.LocalDate.now().minusDays(1)
         } catch (e: Exception) {
-            return false
+            false
         }
     }
 }

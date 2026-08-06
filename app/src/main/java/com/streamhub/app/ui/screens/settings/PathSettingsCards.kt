@@ -39,8 +39,9 @@ import com.streamhub.app.ui.theme.AppThemeAccent
 
 @Composable
 fun DownloadPathCard(currentAccent: AppThemeAccent) {
-    val customDownloadPath by DownloadManager.customDownloadPath.collectAsState()
     val context = LocalContext.current
+    DownloadManager.init(context)
+    val customDownloadPath by DownloadManager.customDownloadPath.collectAsState()
 
     Card(
         shape = RoundedCornerShape(14.dp),
@@ -106,8 +107,9 @@ fun DownloadPathCard(currentAccent: AppThemeAccent) {
 
 @Composable
 fun ScreenshotPathCard(currentAccent: AppThemeAccent) {
-    val customScreenshotPath by DownloadManager.customScreenshotPath.collectAsState()
     val context = LocalContext.current
+    DownloadManager.init(context)
+    val customScreenshotPath by DownloadManager.customScreenshotPath.collectAsState()
 
     Card(
         shape = RoundedCornerShape(14.dp),

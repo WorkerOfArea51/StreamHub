@@ -7,11 +7,18 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 
+/**
+ * Custom ExoPlayer DataSource Factory for Telegram stream links.
+ *
+ * FIX #11: Stores appContext (applicationContext) to prevent Activity context leaks.
+ */
 @OptIn(UnstableApi::class)
 class TelegramDataSourceFactory(
-    private val context: Context,
+    context: Context,
     private val botToken: String? = null
 ) : DataSource.Factory {
+
+    private val appContext: Context = context.applicationContext
 
     override fun createDataSource(): DataSource {
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
@@ -19,14 +26,17 @@ class TelegramDataSourceFactory(
             .setConnectTimeoutMs(15000)
             .setReadTimeoutMs(15000)
 
-        if (!botToken.isNull_Empty()) {
+        // FIX #22: Use stdlib isNullOrEmpty() instead of custom shadowing extension
+        // FIX #21: Document authorization header redirect behavior
+        if (!botToken.isNullOrEmpty()) {
+            // Note: setDefaultRequestProperties applies to initial requests and cross-protocol redirects.
             httpDataSourceFactory.setDefaultRequestProperties(
                 mapOf("Authorization" to "Bearer $botToken")
             )
         }
 
         val upstreamFactory = httpDataSourceFactory.createDataSource()
-        val cache = StreamCacheManager.getCache(context)
+        val cache = StreamCacheManager.getCache(appContext)
 
         return CacheDataSource(
             cache,
@@ -35,5 +45,3 @@ class TelegramDataSourceFactory(
         )
     }
 }
-
-private fun String?.isNull_Empty(): Boolean = this == null || this.isEmpty()

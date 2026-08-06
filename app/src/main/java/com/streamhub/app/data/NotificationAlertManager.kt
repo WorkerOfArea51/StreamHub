@@ -90,7 +90,7 @@ object NotificationAlertManager {
                     mediaTitle = item.title,
                     episodeTitle = epTitle,
                     mediaId = item.id,
-                    notificationId = item.id.hashCode()
+                    notificationId = item.id.hashCode() and 0x7FFFFFFF
                 )
             }
 

@@ -3,6 +3,7 @@ package com.streamhub.app.data
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,7 +21,7 @@ sealed class SpeedTestState {
     data class Completed(
         val pingMs: Long,
         val speedMbps: Double,
-        val qualityRating: String // "4K Ultra HD", "1080p Full HD", "720p HD", "480p SD"
+        val qualityRating: String
     ) : SpeedTestState()
     data class Error(val message: String) : SpeedTestState()
 }
@@ -33,28 +34,19 @@ sealed class SpeedTestState {
  *
  * The speed measurement is honest — no multipliers or clamping.
  * The reported Mbps reflects actual download throughput.
- *
- * The test endpoint should be a high-bandwidth CDN URL. Ideally this
- * would be a Telegram CDN streaming endpoint. Currently uses a public
- * image CDN as a reasonable proxy for streaming throughput.
  */
 object SpeedTestManager {
 
     private const val TAG = "SpeedTestManager"
 
-    /**
-     * Managed coroutine scope. SupervisorJob ensures resilience.
-     * Call [cancelAll] on app termination to clean up.
-     */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var testJob: Job? = null
 
     private val _testState = MutableStateFlow<SpeedTestState>(SpeedTestState.Idle)
     val testState: StateFlow<SpeedTestState> = _testState.asStateFlow()
 
-    /** CDN endpoint for bandwidth testing. Should be a high-bandwidth, low-latency URL. */
     private const val TEST_ENDPOINT = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=1200"
 
-    /** Shared HTTP client with appropriate timeouts for speed testing. */
     private val httpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(4, TimeUnit.SECONDS)
@@ -66,7 +58,7 @@ object SpeedTestManager {
         if (_testState.value is SpeedTestState.Testing) return
         _testState.value = SpeedTestState.Testing
 
-        scope.launch {
+        testJob = scope.launch {
             try {
                 // Phase 1: Measure ping latency (3 HEAD requests)
                 var totalPing = 0L
@@ -109,9 +101,14 @@ object SpeedTestManager {
     }
 
     /**
-     * Measure round-trip latency via a HEAD request.
-     * Returns the total time in milliseconds including connection + response.
+     * FIX #9: Explicit cancelTest method.
      */
+    fun cancelTest() {
+        testJob?.cancel()
+        testJob = null
+        _testState.value = SpeedTestState.Idle
+    }
+
     private fun measurePingMillis(): Long {
         val request = Request.Builder()
             .url(TEST_ENDPOINT)
@@ -120,16 +117,11 @@ object SpeedTestManager {
 
         val start = System.currentTimeMillis()
         httpClient.newCall(request).execute().use { response ->
-            // Force reading the response to complete the round trip
             response.code
         }
         return System.currentTimeMillis() - start
     }
 
-    /**
-     * Measure download throughput by downloading the full test endpoint body.
-     * Returns (bytesRead, durationMs).
-     */
     private fun measureDownload(): Pair<Int, Long> {
         val request = Request.Builder()
             .url(TEST_ENDPOINT)
@@ -156,13 +148,11 @@ object SpeedTestManager {
     }
 
     fun resetState() {
-        _testState.value = SpeedTestState.Idle
+        cancelTest()
     }
 
-    /**
-     * Cancel all in-flight speed tests. Call on app termination.
-     */
     fun cancelAll() {
+        cancelTest()
         scope.cancel()
     }
 }

@@ -49,7 +49,9 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -102,8 +104,35 @@ fun DetailsScreen(
     var selectedSeasonNumber by remember { mutableIntStateOf(1) }
     var isSeasonDropdownExpanded by remember { mutableStateOf(false) }
     var isPlayingTrailer by remember { mutableStateOf(false) }
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
 
-    val mediaItem = catalog.firstOrNull { it.id == mediaId } ?: return
+    DisposableEffect(Unit) {
+        onDispose {
+            webViewRef?.stopLoading()
+            webViewRef?.destroy()
+            webViewRef = null
+        }
+    }
+
+    val mediaItem = catalog.firstOrNull { it.id == mediaId }
+
+    if (mediaItem == null) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BackgroundDark),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Content not found", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(12.dp))
+                TextButton(onClick = onBackClick) {
+                    Text("Go Back", color = PrimaryRed)
+                }
+            }
+        }
+        return
+    }
 
     // MAL YouTube Trailer Cover Backdrop Image (mqdefault as shown in Photo 1!)
     val backdropUrl = if (mediaItem.trailerId.isNotEmpty()) {
@@ -171,7 +200,12 @@ fun DetailsScreen(
                                     settings.mediaPlaybackRequiresUserGesture = false
                                     settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
                                     webChromeClient = WebChromeClient()
-                                    webViewClient = WebViewClient()
+                                    webViewClient = object : WebViewClient() {
+                                        override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
+                                            val host = request.url.host ?: ""
+                                            return !(host.endsWith("youtube-nocookie.com") || host.endsWith("youtube.com"))
+                                        }
+                                    }
 
                                     val embedHtml = """
                                         <!DOCTYPE html>
@@ -193,7 +227,7 @@ fun DetailsScreen(
                                     """.trimIndent()
 
                                     loadDataWithBaseURL("https://www.youtube.com", embedHtml, "text/html", "utf-8", null)
-                                }
+                                }.also { webViewRef = it }
                             },
                             modifier = Modifier.fillMaxSize()
                         )

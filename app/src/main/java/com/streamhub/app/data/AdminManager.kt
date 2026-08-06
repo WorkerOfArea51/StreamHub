@@ -44,7 +44,7 @@ object AdminManager {
         // "0000" is the build-time default — never a valid bcrypt hash
         // (real bcrypt hashes start with "$2a$", "$2b$", or "$2y$").
         // Treat it as "admin login disabled".
-        if (hash.isBlank() || hash == "0000" || !hash.startsWith("$2")) {
+        if (hash.isBlank() || hash == "0000" || (!hash.startsWith("\$2a\$") && !hash.startsWith("\$2b\$") && !hash.startsWith("\$2y\$"))) {
             Log.w(TAG, "Admin login is disabled — ADMIN_PIN_HASH not configured")
             return false
         }

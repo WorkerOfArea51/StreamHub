@@ -677,7 +677,7 @@ fun AdminPasswordDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (password == "StreamHub#Admin9872!" || password == "1234") {
+                    if (com.streamhub.app.data.AdminManager.verifyAndEnableAdmin(password)) {
                         onSuccess()
                     } else {
                         errorMsg = "Incorrect Admin Password."
