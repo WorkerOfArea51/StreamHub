@@ -137,7 +137,10 @@ class MainActivity : ComponentActivity() {
 fun StreamHubApp() {
     val navController = rememberNavController()
     val repository = remember { FirebaseRepository() }
-    val playerViewModel: StreamPlayerViewModel = viewModel()
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        repository.connect()
+    }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -299,6 +302,7 @@ fun StreamHubApp() {
                     navArgument("episodeIndex") { type = NavType.IntType }
                 )
             ) { backStackEntry ->
+                val playerViewModel: StreamPlayerViewModel = viewModel()
                 val mediaId = backStackEntry.arguments?.getString("mediaId") ?: ""
                 val episodeIndex = backStackEntry.arguments?.getInt("episodeIndex") ?: 0
                 val catalogState by repository.catalogState.collectAsState()

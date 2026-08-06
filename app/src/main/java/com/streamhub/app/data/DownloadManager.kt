@@ -88,7 +88,9 @@ object DownloadManager {
 
         loadFromDisk(context)
         registerCompletionReceiver()
-        startProgressPolling()
+        if (_downloads.value.any { !it.isCompleted && !it.isPaused }) {
+            startProgressPolling()
+        }
     }
 
     /**

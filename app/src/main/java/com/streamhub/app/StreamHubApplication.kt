@@ -13,6 +13,10 @@ import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.telegram.TelegramAuthManager
 import com.streamhub.app.data.telegram.TelegramProxyManager
 import com.streamhub.app.ui.theme.ThemeManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Custom Application class — the single source of truth for app initialization.
@@ -81,8 +85,10 @@ class StreamHubApplication : Application() {
         runCatching { HomeScreenLayoutManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "HomeScreenLayoutManager.init failed", it) }
 
-        runCatching { com.streamhub.app.data.DownloadManager.init(applicationContext) }
-            .onFailure { Log.e(TAG, "DownloadManager.init failed", it) }
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob()).launch {
+            runCatching { com.streamhub.app.data.DownloadManager.init(applicationContext) }
+                .onFailure { Log.e(TAG, "DownloadManager.init failed", it) }
+        }
 
         // Layer 2 — Data managers
         runCatching { UserStatsManager.init(applicationContext) }

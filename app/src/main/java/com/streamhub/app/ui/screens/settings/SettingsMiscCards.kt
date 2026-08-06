@@ -233,8 +233,18 @@ fun AppUpdateCard() {
     var showUpdateDialog by remember { mutableStateOf(false) }
     var previousState by remember { mutableStateOf<UpdateState>(UpdateState.Idle) }
 
+    val updateStateCategory = when (updateState) {
+        is UpdateState.Idle -> 0
+        is UpdateState.Checking -> 1
+        is UpdateState.UpdateAvailable -> 2
+        is UpdateState.UpToDate -> 3
+        is UpdateState.Downloading -> 4
+        is UpdateState.Downloaded -> 5
+        is UpdateState.Error -> 6
+    }
+
     // Only show dialog on TRANSITION into UpdateAvailable, not on re-composition with same state
-    LaunchedEffect(updateState) {
+    LaunchedEffect(updateStateCategory) {
         if (updateState is UpdateState.UpdateAvailable && previousState !is UpdateState.UpdateAvailable && userChecked) {
             showUpdateDialog = true
         }

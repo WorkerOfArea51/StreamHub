@@ -57,26 +57,28 @@ fun SplashScreen(
     LaunchedEffect(Unit) {
         coroutineScope {
             val catalogReady = async {
-                withTimeoutOrNull(5_000L) {
+                withTimeoutOrNull(2_000L) {
                     repository.catalogState.first { it !is CatalogState.Loading }
                 }
             }
 
             val animJob = launch {
-                alpha.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing)
-                )
-                scale.animateTo(
-                    targetValue = 1.0f,
-                    animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing)
-                )
+                launch {
+                    alpha.animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing)
+                    )
+                }
+                launch {
+                    scale.animateTo(
+                        targetValue = 1.0f,
+                        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing)
+                    )
+                }
             }
 
             animJob.join()
             catalogReady.await()
-            delay(150)
-
             onSplashFinished()
         }
     }

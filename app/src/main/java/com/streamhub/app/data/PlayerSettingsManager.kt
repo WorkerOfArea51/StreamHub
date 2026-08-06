@@ -43,12 +43,17 @@ object PlayerSettingsManager {
 
     private fun loadFromDisk() {
         val prefs = getPrefs()
-        _settingsFlow.value = PlayerSettings(
-            skipIntroSeconds = prefs.getInt(KEY_SKIP_INTRO, 90),
-            nextEpisodeThresholdSeconds = prefs.getInt(KEY_NEXT_EPISODE_THRESHOLD, 45),
-            autoPlayNextEpisode = prefs.getBoolean(KEY_AUTO_PLAY, true),
-            volumeOnRight = prefs.getBoolean(KEY_VOLUME_ON_RIGHT, true)
-        )
+        try {
+            _settingsFlow.value = PlayerSettings(
+                skipIntroSeconds = prefs.getInt(KEY_SKIP_INTRO, 90),
+                nextEpisodeThresholdSeconds = prefs.getInt(KEY_NEXT_EPISODE_THRESHOLD, 45),
+                autoPlayNextEpisode = prefs.getBoolean(KEY_AUTO_PLAY, true),
+                volumeOnRight = prefs.getBoolean(KEY_VOLUME_ON_RIGHT, true)
+            )
+        } catch (e: Exception) {
+            prefs.edit().clear().apply()
+            _settingsFlow.value = PlayerSettings()
+        }
     }
 
     fun updateSkipIntro(seconds: Int) {

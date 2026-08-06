@@ -43,14 +43,19 @@ object HomeScreenLayoutManager {
 
     private fun loadFromDisk() {
         val p = prefs ?: return
-        _layoutConfig.value = HomeLayoutConfig(
-            showHeroCarousel = p.getBoolean(KEY_SHOW_HERO, true),
-            showContinueWatching = p.getBoolean(KEY_SHOW_CONTINUE, true),
-            continueWatchingFirst = p.getBoolean(KEY_CONTINUE_FIRST, false),
-            showTrendingSection = p.getBoolean(KEY_SHOW_TRENDING, true),
-            showAnimeSection = p.getBoolean(KEY_SHOW_ANIME, true),
-            showMoviesSection = p.getBoolean(KEY_SHOW_MOVIES, true)
-        )
+        try {
+            _layoutConfig.value = HomeLayoutConfig(
+                showHeroCarousel = p.getBoolean(KEY_SHOW_HERO, true),
+                showContinueWatching = p.getBoolean(KEY_SHOW_CONTINUE, true),
+                continueWatchingFirst = p.getBoolean(KEY_CONTINUE_FIRST, false),
+                showTrendingSection = p.getBoolean(KEY_SHOW_TRENDING, true),
+                showAnimeSection = p.getBoolean(KEY_SHOW_ANIME, true),
+                showMoviesSection = p.getBoolean(KEY_SHOW_MOVIES, true)
+            )
+        } catch (e: Exception) {
+            p.edit().clear().apply()
+            _layoutConfig.value = HomeLayoutConfig()
+        }
     }
 
     fun updateConfig(newConfig: HomeLayoutConfig) {

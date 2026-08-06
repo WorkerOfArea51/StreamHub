@@ -69,3 +69,19 @@
 -keep class at.favre.lib.crypto.bcrypt.** { *; }
 -dontwarn at.favre.lib.crypto.bcrypt.**
 
+# --- StateFlow data classes used by Compose ---
+-keep class com.streamhub.app.data.SubtitleConfig { *; }
+-keep class com.streamhub.app.data.HomeLayoutConfig { *; }
+-keep class com.streamhub.app.data.PlayerSettings { *; }
+-keep class com.streamhub.app.data.SpeedTestState { *; }
+-keep class com.streamhub.app.data.SpeedTestState$* { *; }
+-keep class com.streamhub.app.data.UpdateState { *; }
+-keep class com.streamhub.app.data.UpdateState$* { *; }
+-keep class com.streamhub.app.data.UpdateInfo { *; }
+-keep class com.streamhub.app.data.DownloadedItem { *; }
+-keep class com.streamhub.app.data.telegram.ProxyConfig { *; }
+-keep class com.streamhub.app.data.telegram.PublicProxyItem { *; }
+-keep class com.streamhub.app.data.telegram.ProxyType { *; }
+-keep class com.streamhub.app.ui.theme.AppThemeAccent { *; }
+
+

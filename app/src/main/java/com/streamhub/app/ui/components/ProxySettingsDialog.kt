@@ -238,7 +238,7 @@ fun ProxySettingsDialog(
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxWidth().height(230.dp)
                             ) {
-                                items(publicProxies) { pItem ->
+                                items(publicProxies, key = { "${it.server}:${it.port}" }) { pItem ->
                                     val isCurrentActive = currentConfig.server == pItem.server && currentConfig.isEnabled
                                     Card(
                                         shape = RoundedCornerShape(12.dp),

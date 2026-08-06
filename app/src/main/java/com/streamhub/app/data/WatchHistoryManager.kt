@@ -11,27 +11,18 @@ import org.json.JSONObject
 
 /**
  * Persists per-media playback progress in SharedPreferences.
- *
- * Initialized once by StreamHubApplication.onCreate(). Callers do NOT pass
- * context to any method — the applicationContext is captured in init().
- *
- * Thread-safety: all public methods are safe to call from any thread.
- * SharedPreferences.edit().apply() is async and thread-safe.
  */
 object WatchHistoryManager {
 
     private const val TAG = "WatchHistoryManager"
     private const val PREFS_NAME = "streamhub_watch_history"
+    private const val KEY_ALL_HISTORY_IDS = "all_history_ids_set"
 
     private lateinit var appContext: Context
 
     private val _historyFlow = MutableStateFlow<Map<String, PlaybackProgress>>(emptyMap())
     val historyFlow: StateFlow<Map<String, PlaybackProgress>> = _historyFlow.asStateFlow()
 
-    /**
-     * Initialize the manager with the application context. Called once by
-     * StreamHubApplication.onCreate(). Subsequent calls are no-ops (idempotent).
-     */
     fun init(context: Context) {
         if (::appContext.isInitialized) return
         appContext = context.applicationContext
@@ -40,11 +31,12 @@ object WatchHistoryManager {
 
     private fun loadFromDisk() {
         val prefs = getPrefs()
-        val allEntries = prefs.all
         val historyMap = mutableMapOf<String, PlaybackProgress>()
+        val allKeys = (prefs.getStringSet(KEY_ALL_HISTORY_IDS, emptySet()) ?: emptySet()).toSet()
 
-        for ((mediaId, jsonStr) in allEntries) {
-            if (jsonStr is String) {
+        if (allKeys.isNotEmpty()) {
+            for (mediaId in allKeys) {
+                val jsonStr = prefs.getString(mediaId, null) ?: continue
                 try {
                     val json = JSONObject(jsonStr)
                     val progress = PlaybackProgress(
@@ -57,6 +49,27 @@ object WatchHistoryManager {
                     historyMap[mediaId] = progress
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to parse progress for $mediaId", e)
+                }
+            }
+        } else {
+            // Fallback for migration from old prefs.all
+            val allEntries = prefs.all
+            for ((mediaId, jsonStr) in allEntries) {
+                if (mediaId == KEY_ALL_HISTORY_IDS) continue
+                if (jsonStr is String) {
+                    try {
+                        val json = JSONObject(jsonStr)
+                        val progress = PlaybackProgress(
+                            mediaId = json.getString("mediaId"),
+                            episodeNumber = json.getInt("episodeNumber"),
+                            positionMs = json.getLong("positionMs"),
+                            durationMs = json.getLong("durationMs"),
+                            lastUpdated = json.getLong("lastUpdated")
+                        )
+                        historyMap[mediaId] = progress
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to parse progress for $mediaId", e)
+                    }
                 }
             }
         }
@@ -95,7 +108,14 @@ object WatchHistoryManager {
                 put("durationMs", durationMs)
                 put("lastUpdated", progress.lastUpdated)
             }
-            getPrefs().edit().putString(mediaId, json.toString()).apply()
+            val prefs = getPrefs()
+            val currentIds = (prefs.getStringSet(KEY_ALL_HISTORY_IDS, emptySet()) ?: emptySet()).toMutableSet()
+            currentIds.add(mediaId)
+
+            prefs.edit()
+                .putString(mediaId, json.toString())
+                .putStringSet(KEY_ALL_HISTORY_IDS, currentIds)
+                .apply()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to persist progress for $mediaId", e)
         }
@@ -113,7 +133,15 @@ object WatchHistoryManager {
         val updatedMap = _historyFlow.value.toMutableMap()
         updatedMap.remove(mediaId)
         _historyFlow.value = updatedMap
-        getPrefs().edit().remove(mediaId).apply()
+
+        val prefs = getPrefs()
+        val currentIds = (prefs.getStringSet(KEY_ALL_HISTORY_IDS, emptySet()) ?: emptySet()).toMutableSet()
+        currentIds.remove(mediaId)
+
+        prefs.edit()
+            .remove(mediaId)
+            .putStringSet(KEY_ALL_HISTORY_IDS, currentIds)
+            .apply()
     }
 
     fun clearAllHistory() {

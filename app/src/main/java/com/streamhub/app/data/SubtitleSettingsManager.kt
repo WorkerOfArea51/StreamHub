@@ -41,11 +41,16 @@ object SubtitleSettingsManager {
 
     private fun loadFromDisk() {
         val p = prefs ?: return
-        _subtitleConfig.value = SubtitleConfig(
-            fontSizeSp = p.getFloat(KEY_FONT_SIZE, 18f),
-            textColorArgb = p.getLong(KEY_TEXT_COLOR, 0xFFFFE066L),
-            backgroundColorArgb = p.getLong(KEY_BG_COLOR, 0xAA000000L)
-        )
+        try {
+            _subtitleConfig.value = SubtitleConfig(
+                fontSizeSp = p.getFloat(KEY_FONT_SIZE, 18f),
+                textColorArgb = p.getLong(KEY_TEXT_COLOR, 0xFFFFE066L),
+                backgroundColorArgb = p.getLong(KEY_BG_COLOR, 0xAA000000L)
+            )
+        } catch (e: Exception) {
+            p.edit().clear().apply()
+            _subtitleConfig.value = SubtitleConfig()
+        }
     }
 
     fun updateConfig(newConfig: SubtitleConfig) {

@@ -61,7 +61,7 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Header
-            item {
+            item(key = "settings_header") {
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -79,37 +79,37 @@ fun SettingsScreen(
             }
 
             // Custom Theme Accent Picker Card
-            item { ThemeAccentCard(currentAccent = currentAccent) }
+            item(key = "settings_theme_accent") { ThemeAccentCard(currentAccent = currentAccent) }
 
             // Notification Alert Settings Card
-            item { NotificationAlertCard(currentAccent = currentAccent) }
+            item(key = "settings_notification") { NotificationAlertCard(currentAccent = currentAccent) }
 
             // Custom Download Path Card
-            item { DownloadPathCard(currentAccent = currentAccent) }
+            item(key = "settings_download_path") { DownloadPathCard(currentAccent = currentAccent) }
 
             // Custom Screenshot Path Card
-            item { ScreenshotPathCard(currentAccent = currentAccent) }
+            item(key = "settings_screenshot_path") { ScreenshotPathCard(currentAccent = currentAccent) }
 
             // Custom Home Screen Layout Preferences Card
-            item { HomeLayoutCard(currentAccent = currentAccent) }
+            item(key = "settings_home_layout") { HomeLayoutCard(currentAccent = currentAccent) }
 
             // Subtitle Appearance Customizer Card
-            item { SubtitleAppearanceCard(currentAccent = currentAccent) }
+            item(key = "settings_subtitle") { SubtitleAppearanceCard(currentAccent = currentAccent) }
 
             // Speed Benchmark & CDN Latency Tester Card
-            item { SpeedTestCard(currentAccent = currentAccent) }
+            item(key = "settings_speed_test") { SpeedTestCard(currentAccent = currentAccent) }
 
             // Video Settings sub-screen entry card
-            item { VideoSettingsEntryCard(currentAccent = currentAccent, onNavigateToVideoSettings = onNavigateToVideoSettings) }
+            item(key = "settings_video_entry") { VideoSettingsEntryCard(currentAccent = currentAccent, onNavigateToVideoSettings = onNavigateToVideoSettings) }
 
             // MTProto & Censorship Bypass Proxy Settings Card
-            item { ProxySettingsEntryCard(currentAccent = currentAccent, onClick = { showProxyDialog = true }) }
+            item(key = "settings_proxy_entry") { ProxySettingsEntryCard(currentAccent = currentAccent, onClick = { showProxyDialog = true }) }
 
             // App Version + In-App Updater Card
-            item { AppUpdateCard() }
+            item(key = "settings_app_update") { AppUpdateCard() }
 
             // About StreamHub Card
-            item { AboutCard() }
+            item(key = "settings_about") { AboutCard() }
         }
     }
 

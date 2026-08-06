@@ -59,7 +59,12 @@ class FirebaseRepository {
 
     init {
         loadInitialCatalog()
-        attachFirestoreListener()
+    }
+
+    suspend fun connect() {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            attachFirestoreListener()
+        }
     }
 
     /**
