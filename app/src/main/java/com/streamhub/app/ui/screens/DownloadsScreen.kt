@@ -17,8 +17,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material3.Card
@@ -41,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.data.DownloadManager
 import com.streamhub.app.data.DownloadedItem
 import com.streamhub.app.data.models.MediaItem
@@ -261,13 +264,29 @@ fun DownloadedEpisodeCard(
                     IconButton(onClick = onDelete) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444))
                     }
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (item.isPaused) {
+                            IconButton(onClick = { com.streamhub.app.data.DownloadManager.resumeDownload(item) }) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = "Resume", tint = primaryColor)
+                            }
+                        } else {
+                            IconButton(onClick = { com.streamhub.app.data.DownloadManager.pauseDownload(item) }) {
+                                Icon(Icons.Default.Pause, contentDescription = "Pause", tint = AccentOrange)
+                            }
+                        }
+
+                        IconButton(onClick = { com.streamhub.app.data.DownloadManager.cancelDownload(item) }) {
+                            Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color(0xFFEF4444))
+                        }
+                    }
                 }
             }
 
             if (!item.isCompleted) {
                 LinearProgressIndicator(
-                    progress = item.progressPercent / 100f,
-                    color = primaryColor,
+                    progress = { (item.progressPercent / 100f).coerceIn(0f, 1f) },
+                    color = if (item.isPaused) AccentOrange else primaryColor,
                     trackColor = Color(0x33FFFFFF),
                     modifier = Modifier
                         .fillMaxWidth()

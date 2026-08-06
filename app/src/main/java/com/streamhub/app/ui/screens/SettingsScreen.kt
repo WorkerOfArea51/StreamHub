@@ -22,8 +22,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PlayCircle
@@ -211,6 +213,120 @@ fun SettingsScreen(
                                 checkedTrackColor = currentAccent.color
                             )
                         )
+                    }
+                }
+            }
+
+            // Custom Download Path Card
+            item {
+                val customDownloadPath by com.streamhub.app.data.DownloadManager.customDownloadPath.collectAsState()
+                val context = LocalContext.current
+
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = "Download Folder",
+                                tint = currentAccent.color,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Custom Download Path 📁", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text(
+                                    text = customDownloadPath.ifEmpty { "Default: Movies/StreamHub" },
+                                    color = TextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Button(
+                                onClick = {
+                                    val defaultPath = com.streamhub.app.data.DownloadManager.getEffectiveDownloadDir(context).absolutePath
+                                    com.streamhub.app.data.DownloadManager.setCustomDownloadPath(defaultPath)
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E1E2D)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Set Default 📁", color = TextPrimary, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Custom Screenshot Path Card
+            item {
+                val customScreenshotPath by com.streamhub.app.data.DownloadManager.customScreenshotPath.collectAsState()
+                val context = LocalContext.current
+
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.CameraAlt,
+                                contentDescription = "Screenshot Folder",
+                                tint = currentAccent.color,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Custom Screenshot Path 📸", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text(
+                                    text = customScreenshotPath.ifEmpty { "Default: Pictures/StreamHub_Screenshots" },
+                                    color = TextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Button(
+                                onClick = {
+                                    val defaultPath = com.streamhub.app.data.DownloadManager.getEffectiveScreenshotDir(context).absolutePath
+                                    com.streamhub.app.data.DownloadManager.setCustomScreenshotPath(defaultPath)
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E1E2D)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Set Default 📸", color = TextPrimary, fontSize = 11.sp)
+                            }
+                        }
                     }
                 }
             }
