@@ -244,6 +244,8 @@ fun PlayerScreen(
                 )
             }
     ) {
+        val subConfig by com.streamhub.app.data.SubtitleSettingsManager.subtitleConfig.collectAsState()
+
         // ExoPlayer View Container
         AndroidView(
             factory = { ctx ->
@@ -254,6 +256,19 @@ fun PlayerScreen(
             },
             update = { playerView ->
                 playerView.player = viewModel.getPlayer()
+                playerView.subtitleView?.apply {
+                    setStyle(
+                        androidx.media3.ui.CaptionStyleCompat(
+                            subConfig.textColorArgb.toInt(),
+                            subConfig.backgroundColorArgb.toInt(),
+                            android.graphics.Color.TRANSPARENT,
+                            subConfig.edgeType,
+                            android.graphics.Color.BLACK,
+                            null
+                        )
+                    )
+                    setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, subConfig.fontSizeSp)
+                }
             },
             modifier = Modifier.fillMaxSize()
         )

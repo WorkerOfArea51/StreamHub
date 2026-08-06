@@ -74,6 +74,7 @@ class MainActivity : ComponentActivity() {
         com.streamhub.app.data.UserStatsManager.init(this)
         com.streamhub.app.data.NotificationAlertManager.init(this)
         com.streamhub.app.data.HomeScreenLayoutManager.init(this)
+        com.streamhub.app.data.SubtitleSettingsManager.init(this)
         com.streamhub.app.data.telegram.TelegramAuthManager.init(this)
         com.streamhub.app.data.telegram.TelegramProxyManager.init(this)
         com.streamhub.app.data.AppUpdateManager.checkForUpdate(

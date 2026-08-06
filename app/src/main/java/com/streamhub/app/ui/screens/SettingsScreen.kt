@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -411,6 +412,136 @@ fun SettingsScreen(
                             accentColor = currentAccent.color,
                             onCheckedChange = { com.streamhub.app.data.HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showMoviesSection = it)) }
                         )
+                    }
+                }
+            }
+
+            // Subtitle Appearance Customizer Card
+            item {
+                val subConfig by com.streamhub.app.data.SubtitleSettingsManager.subtitleConfig.collectAsState()
+
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Subtitles,
+                                contentDescription = "Subtitles",
+                                tint = currentAccent.color,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Subtitle Styling & Appearance 📜", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text("Customize caption font size and text colors", color = TextSecondary, fontSize = 11.sp)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Subtitle Font Size Selector
+                        Text("Font Size", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            listOf("Small (14sp)" to 14f, "Medium (18sp)" to 18f, "Large (24sp)" to 24f, "XL (30sp)" to 30f).forEach { (label, size) ->
+                                val isSelected = subConfig.fontSizeSp == size
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) currentAccent.color.copy(alpha = 0.25f) else Color(0xFF191924))
+                                        .border(if (isSelected) 1.5.dp else 1.dp, if (isSelected) currentAccent.color else Color(0xFF2C2C3E), RoundedCornerShape(8.dp))
+                                        .clickable { com.streamhub.app.data.SubtitleSettingsManager.updateConfig(subConfig.copy(fontSizeSp = size)) }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(label.split(" ")[0], color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Subtitle Text Color Selector
+                        Text("Subtitle Text Color", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            listOf(
+                                "Yellow 💛" to 0xFFFFE066L,
+                                "White 🤍" to 0xFFFFFFFFL,
+                                "Cyan 🩵" to 0xFF38BDF8L,
+                                "Green 💚" to 0xFF4ADE80L
+                            ).forEach { (label, colorArgb) ->
+                                val isSelected = subConfig.textColorArgb == colorArgb
+                                val chipColor = Color(colorArgb.toULong())
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSelected) currentAccent.color.copy(alpha = 0.2f) else Color(0xFF191924))
+                                        .border(if (isSelected) 1.5.dp else 1.dp, if (isSelected) currentAccent.color else Color(0xFF2C2C3E), RoundedCornerShape(8.dp))
+                                        .clickable { com.streamhub.app.data.SubtitleSettingsManager.updateConfig(subConfig.copy(textColorArgb = colorArgb)) }
+                                        .padding(vertical = 8.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .clip(CircleShape)
+                                            .background(chipColor)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(label.split(" ")[0], color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Live Subtitle Preview Box
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF0F0F16))
+                                .border(1.dp, CardBorderDark, RoundedCornerShape(8.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val textColor = Color(subConfig.textColorArgb.toULong())
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(subConfig.backgroundColorArgb.toULong()))
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "Preview: Hello! Watching StreamHub Subtitles",
+                                    color = textColor,
+                                    fontSize = (subConfig.fontSizeSp * 0.7f).sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
                 }
             }
