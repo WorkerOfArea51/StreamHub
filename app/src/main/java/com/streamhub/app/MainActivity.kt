@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         com.streamhub.app.data.UserStatsManager.init(this)
+        com.streamhub.app.data.NotificationAlertManager.init(this)
         com.streamhub.app.data.telegram.TelegramAuthManager.init(this)
         com.streamhub.app.data.telegram.TelegramProxyManager.init(this)
         com.streamhub.app.data.AppUpdateManager.checkForUpdate(

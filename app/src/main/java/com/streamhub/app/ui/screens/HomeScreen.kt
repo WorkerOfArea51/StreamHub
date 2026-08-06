@@ -85,6 +85,14 @@ fun HomeScreen(
     var selectedCategoryFilter by remember { mutableStateOf("ALL") }
     var showAdminAddDialog by remember { mutableStateOf(false) }
 
+    val myListIds by com.streamhub.app.data.MyListManager.myListFlow.collectAsState()
+
+    LaunchedEffect(catalog, myListIds) {
+        if (catalog.isNotEmpty()) {
+            com.streamhub.app.data.NotificationAlertManager.checkAndNotifyNewEpisodes(context, catalog, myListIds)
+        }
+    }
+
     val filteredCatalog = when (selectedCategoryFilter) {
         "ANIME" -> catalog.filter { it.category == "ANIME" }
         "MOVIES" -> catalog.filter { it.category == "MOVIE" }
