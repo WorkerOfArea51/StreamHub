@@ -81,6 +81,7 @@ fun HomeScreen(
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
     val watchHistoryMap by WatchHistoryManager.historyFlow.collectAsState()
     val updateState by com.streamhub.app.data.AppUpdateManager.updateState.collectAsState()
+    val layoutConfig by com.streamhub.app.data.HomeScreenLayoutManager.layoutConfig.collectAsState()
 
     var selectedCategoryFilter by remember { mutableStateOf("ALL") }
     var showAdminAddDialog by remember { mutableStateOf(false) }
@@ -196,8 +197,8 @@ fun HomeScreen(
                 }
             }
 
-            // Featured Hero Carousel
-            if (featuredItems.isNotEmpty()) {
+            // Featured Hero Carousel (If NOT set to continueWatchingFirst)
+            if (!layoutConfig.continueWatchingFirst && layoutConfig.showHeroCarousel && featuredItems.isNotEmpty()) {
                 item {
                     com.streamhub.app.ui.components.HeroCarousel(
                         featuredItems = featuredItems,
@@ -209,7 +210,7 @@ fun HomeScreen(
             }
 
             // Continue Watching Row (Resume Playback)
-            if (continueWatchingList.isNotEmpty()) {
+            if (layoutConfig.showContinueWatching && continueWatchingList.isNotEmpty()) {
                 item {
                     Column(
                         modifier = Modifier

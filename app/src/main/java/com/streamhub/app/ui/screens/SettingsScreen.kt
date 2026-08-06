@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
@@ -331,6 +332,89 @@ fun SettingsScreen(
                 }
             }
 
+            // Custom Home Screen Layout Preferences Card
+            item {
+                val layoutConfig by com.streamhub.app.data.HomeScreenLayoutManager.layoutConfig.collectAsState()
+
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Dashboard,
+                                contentDescription = "Layout",
+                                tint = currentAccent.color,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Customize Home Screen Layout 🎨", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text("Reorder and toggle Home screen content sections", color = TextSecondary, fontSize = 11.sp)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Toggle Hero Banner
+                        LayoutToggleRow(
+                            label = "Hero Banner Carousel 🖼️",
+                            checked = layoutConfig.showHeroCarousel,
+                            accentColor = currentAccent.color,
+                            onCheckedChange = { com.streamhub.app.data.HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showHeroCarousel = it)) }
+                        )
+
+                        // Toggle Continue Watching
+                        LayoutToggleRow(
+                            label = "Continue Watching Resume Bar 🍿",
+                            checked = layoutConfig.showContinueWatching,
+                            accentColor = currentAccent.color,
+                            onCheckedChange = { com.streamhub.app.data.HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showContinueWatching = it)) }
+                        )
+
+                        // Swap Continue Watching to Top
+                        LayoutToggleRow(
+                            label = "Show Continue Watching at Top ⬆️",
+                            checked = layoutConfig.continueWatchingFirst,
+                            accentColor = currentAccent.color,
+                            onCheckedChange = { com.streamhub.app.data.HomeScreenLayoutManager.updateConfig(layoutConfig.copy(continueWatchingFirst = it)) }
+                        )
+
+                        // Toggle Trending Now
+                        LayoutToggleRow(
+                            label = "Trending Now Section 🔥",
+                            checked = layoutConfig.showTrendingSection,
+                            accentColor = currentAccent.color,
+                            onCheckedChange = { com.streamhub.app.data.HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showTrendingSection = it)) }
+                        )
+
+                        // Toggle Anime Section
+                        LayoutToggleRow(
+                            label = "Top Anime Section 🎌",
+                            checked = layoutConfig.showAnimeSection,
+                            accentColor = currentAccent.color,
+                            onCheckedChange = { com.streamhub.app.data.HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showAnimeSection = it)) }
+                        )
+
+                        // Toggle Movies Section
+                        LayoutToggleRow(
+                            label = "Blockbuster Movies Section 🎬",
+                            checked = layoutConfig.showMoviesSection,
+                            accentColor = currentAccent.color,
+                            onCheckedChange = { com.streamhub.app.data.HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showMoviesSection = it)) }
+                        )
+                    }
+                }
+            }
+
             // Video Settings sub-screen entry card
             item {
                 Card(
@@ -564,5 +648,31 @@ private fun AppUpdateCard() {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun LayoutToggleRow(
+    label: String,
+    checked: Boolean,
+    accentColor: Color,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        androidx.compose.material3.Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = androidx.compose.material3.SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = accentColor
+            )
+        )
     }
 }
