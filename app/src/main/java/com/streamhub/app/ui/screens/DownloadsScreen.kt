@@ -158,12 +158,17 @@ fun DownloadsScreen(
                     DownloadedEpisodeCard(
                         item = downloadItem,
                         onPlay = {
-                            val dummyMedia = MediaItem(
+                            val localEpisode = com.streamhub.app.data.models.Episode(
+                                title = downloadItem.episodeTitle,
+                                streamUrl = downloadItem.localFilePath
+                            )
+                            val offlineMedia = MediaItem(
                                 id = downloadItem.mediaId,
                                 title = downloadItem.mediaTitle,
-                                posterUrl = downloadItem.posterUrl
+                                posterUrl = downloadItem.posterUrl,
+                                episodes = listOf(localEpisode)
                             )
-                            onPlayEpisode(dummyMedia, downloadItem.episodeIndex)
+                            onPlayEpisode(offlineMedia, 0)
                         },
                         onDelete = { DownloadManager.deleteDownload(downloadItem) }
                     )
