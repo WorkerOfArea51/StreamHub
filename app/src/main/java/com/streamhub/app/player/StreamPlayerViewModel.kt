@@ -6,15 +6,19 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem as ExoMediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.TrackGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.models.MediaItem
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 enum class AspectRatioMode {
@@ -32,16 +36,20 @@ data class PlayerUiState(
     val isControlsVisible: Boolean = true,
     val isLocked: Boolean = false,
     val showEpisodeDrawer: Boolean = false,
-    val selectedAudioTrack: String = "Hindi (AAC 5.1)",
-    val selectedSubtitleTrack: String = "English (UTF-8)",
+    val selectedAudioTrack: String = "",
+    val selectedSubtitleTrack: String = "",
     val showAudioDialog: Boolean = false,
-    val showSubtitleDialog: Boolean = false
+    val showSubtitleDialog: Boolean = false,
+    // FIX #3: Actual track lists from ExoPlayer, not hardcoded
+    val availableAudioTracks: List<String> = emptyList(),
+    val availableSubtitleTracks: List<String> = listOf("Off")
 )
 
 @OptIn(UnstableApi::class)
 class StreamPlayerViewModel : ViewModel() {
 
     private var exoPlayer: ExoPlayer? = null
+    private var trackSelector: DefaultTrackSelector? = null
 
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
@@ -49,6 +57,9 @@ class StreamPlayerViewModel : ViewModel() {
     private var currentMediaItem: MediaItem? = null
     private var episodesList: List<Episode> = emptyList()
     private var appContext: Context? = null
+
+    // FIX #1: Trackable Job for position tracker — can be cancelled on release
+    private var positionTrackerJob: Job? = null
 
     fun getPlayer(): ExoPlayer? = exoPlayer
 
@@ -58,12 +69,26 @@ class StreamPlayerViewModel : ViewModel() {
         episodesList = mediaItem.episodes
 
         if (exoPlayer == null) {
-            val dataSourceFactory = TelegramDataSourceFactory(context)
-            exoPlayer = ExoPlayer.Builder(context)
-                .setMediaSourceFactory(
-                    androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
+            // FIX #4: runCatching around player creation to prevent crash on failure
+            val createResult = runCatching {
+                val dataSourceFactory = TelegramDataSourceFactory(context)
+                trackSelector = DefaultTrackSelector(context)
+                ExoPlayer.Builder(context)
+                    .setTrackSelector(trackSelector!!)
+                    .setMediaSourceFactory(
+                        androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
+                    )
+                    .build()
+            }
+
+            if (createResult.isFailure) {
+                _uiState.value = _uiState.value.copy(
+                    isBuffering = false
                 )
-                .build()
+                return
+            }
+
+            exoPlayer = createResult.getOrNull()
 
             exoPlayer?.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -78,6 +103,11 @@ class StreamPlayerViewModel : ViewModel() {
                         durationMs = duration
                     )
                 }
+
+                // FIX #3: Listen for track changes and update available tracks list
+                override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                    updateAvailableTracks(tracks)
+                }
             })
         }
 
@@ -90,6 +120,65 @@ class StreamPlayerViewModel : ViewModel() {
 
         playEpisode(targetEpisodeIndex, savedProgress?.positionMs ?: 0L)
         startPositionTracker()
+    }
+
+    /**
+     * FIX #3: Reads actual audio and subtitle track info from ExoPlayer.
+     * Replaces the hardcoded lists that had no connection to reality.
+     */
+    @OptIn(UnstableApi::class)
+    private fun updateAvailableTracks(tracks: androidx.media3.common.Tracks) {
+        val audioTrackNames = mutableListOf<String>()
+        val subtitleTrackNames = mutableListOf("Off")
+
+        for (trackGroup in tracks.groups) {
+            val trackType = trackGroup.type
+            if (trackType == androidx.media3.common.C.TRACK_TYPE_AUDIO) {
+                for (i in 0 until trackGroup.length) {
+                    val format = trackGroup.getTrackFormat(i)
+                    val label = buildString {
+                        val lang = format.label ?: format.language
+                        if (!lang.isNullOrBlank()) append(lang)
+                        else append("Audio ${audioTrackNames.size + 1}")
+                        val mime = format.sampleMimeType
+                        if (!mime.isNullOrBlank()) {
+                            val short = when {
+                                mime.contains("ac-3", ignoreCase = true) -> "AC3"
+                                mime.contains("eac3", ignoreCase = true) -> "E-AC3"
+                                mime.contains("aac", ignoreCase = true) -> "AAC"
+                                mime.contains("opus", ignoreCase = true) -> "Opus"
+                                mime.contains("vorbis", ignoreCase = true) -> "Vorbis"
+                                else -> null
+                            }
+                            if (short != null) append(" ($short)")
+                        }
+                        val chCount = format.channelCount
+                        if (chCount > 0) {
+                            val chLabel = when (chCount) {
+                                1 -> "Mono"
+                                2 -> "2.0"
+                                6 -> "5.1"
+                                8 -> "7.1"
+                                else -> "${chCount}ch"
+                            }
+                            append(" $chLabel")
+                        }
+                    }
+                    audioTrackNames.add(label)
+                }
+            } else if (trackType == androidx.media3.common.C.TRACK_TYPE_TEXT) {
+                for (i in 0 until trackGroup.length) {
+                    val format = trackGroup.getTrackFormat(i)
+                    val lang = format.label ?: format.language ?: "Subtitle ${subtitleTrackNames.size}"
+                    subtitleTrackNames.add(lang)
+                }
+            }
+        }
+
+        _uiState.value = _uiState.value.copy(
+            availableAudioTracks = if (audioTrackNames.isNotEmpty()) audioTrackNames else listOf("Default"),
+            availableSubtitleTracks = subtitleTrackNames
+        )
     }
 
     fun playEpisode(index: Int, startPositionMs: Long = 0L) {
@@ -126,16 +215,95 @@ class StreamPlayerViewModel : ViewModel() {
         }
     }
 
-    fun selectAudioTrack(audioTrack: String) {
+    /**
+     * FIX #2: Actually selects the audio track in ExoPlayer via TrackSelector.
+     * Previous implementation only updated UI state — the audio track never changed.
+     */
+    @OptIn(UnstableApi::class)
+    fun selectAudioTrack(trackName: String) {
+        val player = exoPlayer ?: return
+        val selector = trackSelector ?: return
+        val tracks = player.currentTracks
+
+        var groupIndex = -1
+        var trackIndex = -1
+
+        outer@ for ((gi, trackGroup) in tracks.groups.withIndex()) {
+            if (trackGroup.type != androidx.media3.common.C.TRACK_TYPE_AUDIO) continue
+            for (ti in 0 until trackGroup.length) {
+                val format = trackGroup.getTrackFormat(ti)
+                val label = format.label ?: format.language ?: "Audio ${ti + 1}"
+                if (label == trackName) {
+                    groupIndex = gi
+                    trackIndex = ti
+                    break@outer
+                }
+            }
+        }
+
+        if (groupIndex >= 0 && trackIndex >= 0) {
+            val parameters = selector.buildUponParameters()
+                .setOverrideForType(
+                    androidx.media3.common.TrackSelectionOverride(
+                        tracks.groups[groupIndex].mediaTrackGroup,
+                        listOf(trackIndex)
+                    )
+                )
+            selector.parameters = parameters.build()
+        }
+
         _uiState.value = _uiState.value.copy(
-            selectedAudioTrack = audioTrack,
+            selectedAudioTrack = trackName,
             showAudioDialog = false
         )
     }
 
-    fun selectSubtitleTrack(subtitleTrack: String) {
+    /**
+     * FIX #2: Actually selects the subtitle track in ExoPlayer via TrackSelector.
+     * "Off" disables all subtitles. Previous implementation was cosmetic-only.
+     */
+    @OptIn(UnstableApi::class)
+    fun selectSubtitleTrack(trackName: String) {
+        val player = exoPlayer ?: return
+        val selector = trackSelector ?: return
+
+        if (trackName == "Off") {
+            val parameters = selector.buildUponParameters()
+                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true)
+            selector.parameters = parameters.build()
+        } else {
+            val tracks = player.currentTracks
+            var groupIndex = -1
+            var trackIndex = -1
+
+            outer@ for ((gi, trackGroup) in tracks.groups.withIndex()) {
+                if (trackGroup.type != androidx.media3.common.C.TRACK_TYPE_TEXT) continue
+                for (ti in 0 until trackGroup.length) {
+                    val format = trackGroup.getTrackFormat(ti)
+                    val label = format.label ?: format.language ?: "Subtitle ${ti + 1}"
+                    if (label == trackName) {
+                        groupIndex = gi
+                        trackIndex = ti
+                        break@outer
+                    }
+                }
+            }
+
+            if (groupIndex >= 0 && trackIndex >= 0) {
+                val parameters = selector.buildUponParameters()
+                    .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false)
+                    .setOverrideForType(
+                        androidx.media3.common.TrackSelectionOverride(
+                            tracks.groups[groupIndex].mediaTrackGroup,
+                            listOf(trackIndex)
+                        )
+                    )
+                selector.parameters = parameters.build()
+            }
+        }
+
         _uiState.value = _uiState.value.copy(
-            selectedSubtitleTrack = subtitleTrack,
+            selectedSubtitleTrack = trackName,
             showSubtitleDialog = false
         )
     }
@@ -156,11 +324,7 @@ class StreamPlayerViewModel : ViewModel() {
 
     fun togglePlayPause() {
         exoPlayer?.let {
-            if (it.isPlaying) {
-                it.pause()
-            } else {
-                it.play()
-            }
+            if (it.isPlaying) it.pause() else it.play()
         }
     }
 
@@ -212,9 +376,15 @@ class StreamPlayerViewModel : ViewModel() {
         }
     }
 
+    /**
+     * FIX #1: Position tracker now uses a cancellable Job reference.
+     * The loop checks `isActive` so it stops when the Job is cancelled on release.
+     * Previous `while(true)` ran forever even after releasePlayer().
+     */
     private fun startPositionTracker() {
-        viewModelScope.launch {
-            while (true) {
+        positionTrackerJob?.cancel()
+        positionTrackerJob = viewModelScope.launch {
+            while (isActive) {
                 exoPlayer?.let { player ->
                     if (player.isPlaying) {
                         val currentPos = player.currentPosition
@@ -240,6 +410,10 @@ class StreamPlayerViewModel : ViewModel() {
     }
 
     fun releasePlayer() {
+        // FIX #1: Cancel position tracker — no more zombie while(true) loop
+        positionTrackerJob?.cancel()
+        positionTrackerJob = null
+
         exoPlayer?.let { player ->
             currentMediaItem?.let { media ->
                 WatchHistoryManager.saveProgress(
@@ -252,6 +426,7 @@ class StreamPlayerViewModel : ViewModel() {
             player.release()
         }
         exoPlayer = null
+        trackSelector = null
     }
 
     override fun onCleared() {

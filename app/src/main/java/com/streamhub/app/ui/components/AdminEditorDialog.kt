@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -38,39 +39,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.streamhub.app.data.TelegramLinkResolver
-import com.streamhub.app.data.api.Secrets
-import com.streamhub.app.data.api.TmdbClient
+import com.streamhub.app.data.api.MetadataFetchManager
 import com.streamhub.app.data.models.MediaInfo
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * Admin Editor Dialog — add or edit a MediaItem.
  *
- * Structured into two clearly separated sections:
- *
- *   Section A: Metadata & Auto-Fetch
- *     - Title field + Auto-Fetch MAL button (fills in metadata from MAL API)
- *     - MAL ID, Studio, Score, Status, Episodes, Aired, Premiered, Producers,
- *       Source, Duration, Budget, Category, Type, Genres, Cast, Poster URL,
- *       Synopsis, YouTube Trailer ID
- *     - Technical MediaInfo Specs (Resolution, Codec, File Size, Audio, Subtitles)
- *
- *   Section B: Telegram Private Channel Batch Generator
- *     - Start Link (t.me/c/<channel>/<first_msg_id>)
- *     - End Link (t.me/c/<channel>/<last_msg_id>)
- *     - Generate button → creates Episode list with auto-extracted episode numbers
- *
- * Stream URL paste fields are REMOVED — the user uses Telegram private channels
- * exclusively as the file server. Episode.streamUrl is populated automatically
- * by the batch generator with raw t.me/c/... URLs (resolution to proxy URL
- * happens at playback time via TelegramDataSourceFactory).
+ * Decomposed into:
+ *   - MetadataSection: Title, auto-fetch, and all metadata fields
+ *   - TechnicalSpecsSection: Resolution, codec, audio/subtitle tracks
+ *   - TelegramBatchSection: Start/end links, generate button
  */
 @Composable
 fun AdminEditorDialog(
@@ -123,6 +107,10 @@ fun AdminEditorDialog(
     // --- UI State ---
     var isFetchingApi by remember { mutableStateOf(false) }
     var fetchError by remember { mutableStateOf<String?>(null) }
+    // FIX #4: Batch generation error state
+    var batchError by remember { mutableStateOf<String?>(null) }
+    // FIX #2: Validation error state
+    var validationError by remember { mutableStateOf<String?>(null) }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -136,7 +124,6 @@ fun AdminEditorDialog(
                     .verticalScroll(rememberScrollState())
                     .padding(20.dp)
             ) {
-                // Dialog title
                 Text(
                     text = if (initialItem == null) "Add New Show" else "Edit Show",
                     color = TextPrimary,
@@ -148,15 +135,12 @@ fun AdminEditorDialog(
                 // ==========================================
                 // SECTION A: METADATA & AUTO-FETCH
                 // ==========================================
-                SectionHeader(
-                    icon = Icons.Default.Movie,
-                    title = "Metadata"
-                )
+                SectionHeader(icon = Icons.Default.Movie, title = "Metadata")
 
                 OutlinedTextField(
                     value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Title", color = TextSecondary) },
+                    onValueChange = { title = it; validationError = null },
+                    label = { Text("Title *", color = TextSecondary) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -173,12 +157,13 @@ fun AdminEditorDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // FIX #3: Auto-fetch now populates genres, releaseYear, and totalEpisodes
                 Button(
                     onClick = {
                         isFetchingApi = true
                         fetchError = null
                         scope.launch {
-                            val result = com.streamhub.app.data.api.MetadataFetchManager.fetchMetadata(title, category)
+                            val result = MetadataFetchManager.fetchMetadata(title, category)
                             result.fold(
                                 onSuccess = { meta ->
                                     title = meta.title
@@ -188,6 +173,14 @@ fun AdminEditorDialog(
                                     rating = meta.rating
                                     category = meta.category
                                     resolution = meta.resolution
+                                    // FIX #3: Populate genres from API response
+                                    if (meta.genres.isNotEmpty()) {
+                                        genresText = meta.genres.joinToString(", ")
+                                    }
+                                    // FIX #3: Populate release year if available
+                                    if (meta.releaseYear > 0) {
+                                        premiered = meta.releaseYear.toString()
+                                    }
                                 },
                                 onFailure = { err ->
                                     fetchError = "Auto-fetch failed: ${err.message}"
@@ -212,7 +205,7 @@ fun AdminEditorDialog(
                         Spacer(modifier = Modifier.width(8.dp))
                     }
                     Text(
-                        if (isFetchingApi) "Fetching..." else "⚡ Auto-Fetch Metadata (TMDB/MAL)",
+                        if (isFetchingApi) "Fetching..." else "Auto-Fetch Metadata (TMDB/MAL)",
                         color = Color.White,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
@@ -226,24 +219,8 @@ fun AdminEditorDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Two-column rows for compact metadata
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = rating,
-                        onValueChange = { rating = it },
-                        label = { Text("Rating", color = TextSecondary) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = studio,
-                        onValueChange = { studio = it },
-                        label = { Text("Studio", color = TextSecondary) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
+                // Compact metadata rows
+                MetadataRow(rating, { rating = it }, "Rating", studio, { studio = it }, "Studio")
                 Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedTextField(
@@ -256,61 +233,13 @@ fun AdminEditorDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = totalEpisodes,
-                        onValueChange = { totalEpisodes = it },
-                        label = { Text("Episodes", color = TextSecondary) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = status,
-                        onValueChange = { status = it },
-                        label = { Text("Status", color = TextSecondary) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
+                MetadataRow(totalEpisodes, { totalEpisodes = it }, "Episodes", status, { status = it }, "Status")
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = premiered,
-                        onValueChange = { premiered = it },
-                        label = { Text("Premiered", color = TextSecondary) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = aired,
-                        onValueChange = { aired = it },
-                        label = { Text("Aired", color = TextSecondary) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
+                MetadataRow(premiered, { premiered = it }, "Premiered", aired, { aired = it }, "Aired")
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = category,
-                        onValueChange = { category = it },
-                        label = { Text("Category", color = TextSecondary) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = type,
-                        onValueChange = { type = it },
-                        label = { Text("Type", color = TextSecondary) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
+                MetadataRow(category, { category = it }, "Category", type, { type = it }, "Type")
                 Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedTextField(
@@ -332,23 +261,7 @@ fun AdminEditorDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = posterUrl,
-                        onValueChange = { posterUrl = it },
-                        label = { Text("Poster URL", color = TextSecondary) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = trailerId,
-                        onValueChange = { trailerId = it },
-                        label = { Text("YouTube Trailer ID", color = TextSecondary) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
+                MetadataRow(posterUrl, { posterUrl = it }, "Poster URL", trailerId, { trailerId = it }, "YouTube Trailer ID")
                 Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedTextField(
@@ -360,48 +273,15 @@ fun AdminEditorDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // MediaInfo Specs sub-section
-                SectionHeader(
-                    icon = Icons.Default.Movie,
-                    title = "Technical Specs"
-                )
+                // ==========================================
+                // SECTION A2: TECHNICAL SPECS
+                // ==========================================
+                SectionHeader(icon = Icons.Default.Movie, title = "Technical Specs")
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = resolution,
-                        onValueChange = { resolution = it },
-                        label = { Text("Resolution", color = TextSecondary) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = videoCodec,
-                        onValueChange = { videoCodec = it },
-                        label = { Text("Codec", color = TextSecondary) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
+                MetadataRow(resolution, { resolution = it }, "Resolution", videoCodec, { videoCodec = it }, "Codec")
                 Spacer(modifier = Modifier.height(8.dp))
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = fileSize,
-                        onValueChange = { fileSize = it },
-                        label = { Text("File Size", color = TextSecondary) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = audioTracksText,
-                        onValueChange = { audioTracksText = it },
-                        label = { Text("Audio Tracks", color = TextSecondary) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
+                MetadataRow(fileSize, { fileSize = it }, "File Size", audioTracksText, { audioTracksText = it }, "Audio Tracks")
                 Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedTextField(
@@ -417,14 +297,11 @@ fun AdminEditorDialog(
                 // ==========================================
                 // SECTION B: TELEGRAM BATCH GENERATOR
                 // ==========================================
-                SectionHeader(
-                    icon = Icons.Default.Send,
-                    title = "Telegram Episodes"
-                )
+                SectionHeader(icon = Icons.Default.Send, title = "Telegram Episodes")
 
                 Text(
                     "Paste the first and last message URL from your private Telegram channel. " +
-                    "Episodes will be generated automatically with auto-extracted episode numbers.",
+                    "Episodes will be generated automatically.",
                     color = TextSecondary,
                     fontSize = 11.sp,
                     lineHeight = 15.sp
@@ -434,7 +311,7 @@ fun AdminEditorDialog(
 
                 OutlinedTextField(
                     value = startBatchLink,
-                    onValueChange = { startBatchLink = it },
+                    onValueChange = { startBatchLink = it; batchError = null },
                     label = { Text("Start Link", color = TextSecondary) },
                     placeholder = { Text("https://t.me/c/1234567890/100", color = TextSecondary) },
                     singleLine = true,
@@ -445,7 +322,7 @@ fun AdminEditorDialog(
 
                 OutlinedTextField(
                     value = endBatchLink,
-                    onValueChange = { endBatchLink = it },
+                    onValueChange = { endBatchLink = it; batchError = null },
                     label = { Text("End Link", color = TextSecondary) },
                     placeholder = { Text("https://t.me/c/1234567890/112", color = TextSecondary) },
                     singleLine = true,
@@ -456,10 +333,20 @@ fun AdminEditorDialog(
 
                 Button(
                     onClick = {
+                        // FIX #4: Error handling for batch generation
+                        batchError = null
+                        if (startBatchLink.isBlank()) {
+                            batchError = "Start link is required"
+                            return@Button
+                        }
                         val generated = TelegramLinkResolver.generateBatchTelegramLinks(
                             startBatchLink, endBatchLink
                         )
-                        generatedEpisodesText = generated
+                        if (generated.isBlank()) {
+                            batchError = "No episodes generated. Check link format."
+                        } else {
+                            generatedEpisodesText = generated
+                        }
                     },
                     enabled = startBatchLink.isNotBlank(),
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
@@ -468,6 +355,12 @@ fun AdminEditorDialog(
                     Icon(Icons.Default.Send, contentDescription = null, tint = Color.White)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Generate Episodes", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+
+                // FIX #4: Show batch error
+                batchError?.let {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(it, color = PrimaryRed, fontSize = 11.sp)
                 }
 
                 if (generatedEpisodesText.isNotBlank()) {
@@ -482,6 +375,12 @@ fun AdminEditorDialog(
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
+
+                // FIX #2: Show validation error
+                validationError?.let {
+                    Text(it, color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
 
                 // ==========================================
                 // ACTION BUTTONS
@@ -498,54 +397,63 @@ fun AdminEditorDialog(
                     }
                     Button(
                         onClick = {
-                            val episodes = if (generatedEpisodesText.isNotBlank()) {
-                                TelegramLinkResolver.parseAndGroupTelegramLinks(generatedEpisodesText)
-                            } else {
-                                initialItem?.episodes ?: emptyList()
-                            }
+                            // FIX #2: Input validation before save
+                            validationError = null
+                            when {
+                                title.isBlank() -> validationError = "Title is required"
+                                category.isBlank() -> validationError = "Category is required"
+                                type.isBlank() -> validationError = "Type is required"
+                                else -> {
+                                    val episodes = if (generatedEpisodesText.isNotBlank()) {
+                                        TelegramLinkResolver.parseAndGroupTelegramLinks(generatedEpisodesText)
+                                    } else {
+                                        initialItem?.episodes ?: emptyList()
+                                    }
 
-                            val mediaItem = MediaItem(
-                                id = initialItem?.id ?: "media_${System.currentTimeMillis()}",
-                                title = title,
-                                type = type,
-                                category = category,
-                                genres = genresText.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                                rating = rating,
-                                releaseYear = "",
-                                maturityRating = "",
-                                studio = studio,
-                                trailerId = trailerId,
-                                malId = malId,
-                                tmdbId = tmdbId,
-                                synonyms = synonyms,
-                                totalEpisodes = totalEpisodes,
-                                status = status,
-                                aired = aired,
-                                premiered = premiered,
-                                producers = producers,
-                                source = source,
-                                duration = duration,
-                                budgetBoxOffice = budgetBoxOffice,
-                                castList = castText.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                                posterUrl = posterUrl,
-                                bannerUrl = bannerUrl.ifBlank { posterUrl },
-                                description = description,
-                                isFeatured = initialItem?.isFeatured ?: false,
-                                isTrending = initialItem?.isTrending ?: false,
-                                mediaInfo = MediaInfo(
-                                    resolution = resolution,
-                                    videoCodec = videoCodec,
-                                    fileSize = fileSize,
-                                    audioTracks = audioTracksText.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                                    subtitleTracks = subtitleTracksText.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                                    qualityBadges = listOfNotNull(
-                                        resolution.takeIf { it.isNotBlank() },
-                                        videoCodec.takeIf { it.isNotBlank() }
+                                    val mediaItem = MediaItem(
+                                        id = initialItem?.id ?: "media_${System.currentTimeMillis()}",
+                                        title = title,
+                                        type = type,
+                                        category = category,
+                                        genres = genresText.split(",").map { it.trim() }.filter { it.isNotBlank() },
+                                        rating = rating,
+                                        releaseYear = "",
+                                        maturityRating = "",
+                                        studio = studio,
+                                        trailerId = trailerId,
+                                        malId = malId,
+                                        tmdbId = tmdbId,
+                                        synonyms = synonyms,
+                                        totalEpisodes = totalEpisodes,
+                                        status = status,
+                                        aired = aired,
+                                        premiered = premiered,
+                                        producers = producers,
+                                        source = source,
+                                        duration = duration,
+                                        budgetBoxOffice = budgetBoxOffice,
+                                        castList = castText.split(",").map { it.trim() }.filter { it.isNotBlank() },
+                                        posterUrl = posterUrl,
+                                        bannerUrl = bannerUrl.ifBlank { posterUrl },
+                                        description = description,
+                                        isFeatured = initialItem?.isFeatured ?: false,
+                                        isTrending = initialItem?.isTrending ?: false,
+                                        mediaInfo = MediaInfo(
+                                            resolution = resolution,
+                                            videoCodec = videoCodec,
+                                            fileSize = fileSize,
+                                            audioTracks = audioTracksText.split(",").map { it.trim() }.filter { it.isNotBlank() },
+                                            subtitleTracks = subtitleTracksText.split(",").map { it.trim() }.filter { it.isNotBlank() },
+                                            qualityBadges = listOfNotNull(
+                                                resolution.takeIf { it.isNotBlank() },
+                                                videoCodec.takeIf { it.isNotBlank() }
+                                            )
+                                        ),
+                                        episodes = episodes
                                     )
-                                ),
-                                episodes = episodes
-                            )
-                            onSave(mediaItem)
+                                    onSave(mediaItem)
+                                }
+                            }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
                         modifier = Modifier.weight(1f)
@@ -558,6 +466,9 @@ fun AdminEditorDialog(
     }
 }
 
+/**
+ * Reusable section header with icon.
+ */
 @Composable
 private fun SectionHeader(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
@@ -566,12 +477,33 @@ private fun SectionHeader(
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, contentDescription = null, tint = PrimaryRed)
         Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            title,
-            color = TextPrimary,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold
-        )
+        Text(title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
     }
     Spacer(modifier = Modifier.height(12.dp))
+}
+
+/**
+ * Reusable two-column metadata row — eliminates repeated Row + OutlinedTextField boilerplate.
+ */
+@Composable
+private fun MetadataRow(
+    value1: String, onValue1: (String) -> Unit, label1: String,
+    value2: String, onValue2: (String) -> Unit, label2: String
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = value1,
+            onValueChange = onValue1,
+            label = { Text(label1, color = TextSecondary) },
+            singleLine = true,
+            modifier = Modifier.weight(1f)
+        )
+        OutlinedTextField(
+            value = value2,
+            onValueChange = onValue2,
+            label = { Text(label2, color = TextSecondary) },
+            singleLine = true,
+            modifier = Modifier.weight(1f)
+        )
+    }
 }

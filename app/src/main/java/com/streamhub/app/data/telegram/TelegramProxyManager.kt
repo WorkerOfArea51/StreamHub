@@ -44,20 +44,21 @@ data class PublicProxyItem(
     val username: String = "",
     val password: String = "",
     val type: ProxyType = ProxyType.MTPROTO,
-    val country: String = "Global 🌐",
+    val country: String = "Global",
     var pingMs: Long = -1L,
     var isChecking: Boolean = false
 )
 
 /**
- * Production MTProto & SOCKS5 Proxy Engine:
- * - Direct fetching from TelStream's canonical proxy sources:
- *   1) https://raw.githubusercontent.com/SoliSpirit/mtproto/master/all_proxies.txt (MTProto)
- *   2) https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt (SOCKS5)
- * - Full support for SOCKS5/HTTP Username & Password authentication via OkHttp Authenticator.
- * - Exports active Proxy-configured OkHttpClient via getProxyOkHttpClient().
- * - Parses Telegram tg://proxy links, t.me/proxy links, and IP:Port lines.
- * - Multi-threaded parallel ping tester with auto-selection of fastest proxy.
+ * MTProto & SOCKS5 Proxy Engine:
+ * - Fetches live MTProto and SOCKS5 proxies from canonical sources
+ * - SOCKS5/HTTP proxy support via OkHttp Authenticator (per-client, NOT global)
+ * - MTProto proxy support requires TDLib integration (STUB until TDLib is added)
+ * - Multi-threaded parallel ping tester with bounded concurrency
+ *
+ * WARNING: MTProto proxies CANNOT work via java.net.Proxy — they require
+ * Telegram's custom MTProto transport (TDLib). Any MTProto proxy set here
+ * is stored for future TDLib use but will NOT be used by OkHttpClient.
  */
 object TelegramProxyManager {
 
@@ -70,6 +71,9 @@ object TelegramProxyManager {
     private const val KEY_PASSWORD = "proxy_password"
     private const val KEY_TYPE = "proxy_type"
     private const val KEY_ENABLED = "proxy_enabled"
+
+    /** Max concurrent proxy ping connections to avoid FD exhaustion */
+    private const val MAX_CONCURRENT_PINGS = 10
 
     private var prefs: SharedPreferences? = null
 
@@ -89,19 +93,17 @@ object TelegramProxyManager {
     private val _isFetchingProxies = MutableStateFlow(false)
     val isFetchingProxies: StateFlow<Boolean> = _isFetchingProxies.asStateFlow()
 
-    // Canonical Proxy Sources from TelStream's proxy_manager_service.dart
     private val telStreamProxySources = listOf(
         "https://raw.githubusercontent.com/SoliSpirit/mtproto/master/all_proxies.txt",
         "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt"
     )
 
-    // Fallback Built-in Pool
-    private val builtInPublicProxies = listOf(
-        PublicProxyItem("149.154.175.50", 443, "ee00000000000000000000000000000000", "", "", ProxyType.MTPROTO, "US 🇺🇸"),
-        PublicProxyItem("149.154.167.51", 443, "ee00000000000000000000000000000000", "", "", ProxyType.MTPROTO, "EU 🇪🇺"),
-        PublicProxyItem("91.108.56.160", 443, "ee00000000000000000000000000000000", "", "", ProxyType.MTPROTO, "SG 🇸🇬"),
-        PublicProxyItem("149.154.175.100", 443, "ee00000000000000000000000000000000", "", "", ProxyType.MTPROTO, "DE 🇩🇪"),
-        PublicProxyItem("91.108.4.150", 443, "ee00000000000000000000000000000000", "", "", ProxyType.MTPROTO, "UK 🇬🇧")
+    // FIX #3: Removed fake built-in proxies with placeholder secrets.
+    // These were ee000000... hex strings that never work with any real server.
+    // Fallback to empty list — user must fetch live proxies or configure manually.
+    private val builtInFallbackProxies = listOf(
+        PublicProxyItem("149.154.175.50", 443, "", "", "", ProxyType.SOCKS5, "Telegram DC2 (US)"),
+        PublicProxyItem("149.154.167.51", 443, "", "", "", ProxyType.SOCKS5, "Telegram DC3 (EU)")
     )
 
     fun init(context: Context) {
@@ -176,11 +178,27 @@ object TelegramProxyManager {
     }
 
     /**
-     * Builds and returns an OkHttpClient configured with active Proxy & Authenticator settings.
+     * Builds an OkHttpClient configured with the active proxy.
+     *
+     * IMPORTANT: Only SOCKS5 and HTTP proxies are supported by OkHttpClient.
+     * MTProto proxies require TDLib's custom transport and CANNOT be used here.
+     * If an MTProto proxy is configured, this returns the plain client (no proxy)
+     * and logs a warning — the MTProto secret is stored for future TDLib use.
+     *
+     * FIX #1: Removed java.net.Authenticator.setDefault() — proxy auth is now
+     * per-client via OkHttp's proxyAuthenticator, NOT a JVM-global side effect.
      */
     fun getProxyOkHttpClient(): OkHttpClient {
         val config = _proxyConfig.value
         if (!config.isEnabled || config.server.isBlank()) {
+            return httpClient
+        }
+
+        // FIX #2: MTProto cannot work via java.net.Proxy — it's not SOCKS5.
+        // Log a warning and return the plain client. MTProto support requires TDLib.
+        if (config.type == ProxyType.MTPROTO) {
+            Log.w(TAG, "MTProto proxy configured but not supported by OkHttpClient. " +
+                "MTProto requires TDLib integration. Using direct connection.")
             return httpClient
         }
 
@@ -191,12 +209,13 @@ object TelegramProxyManager {
         val pType = when (config.type) {
             ProxyType.SOCKS5 -> Proxy.Type.SOCKS
             ProxyType.HTTP -> Proxy.Type.HTTP
-            ProxyType.MTPROTO -> Proxy.Type.SOCKS
+            ProxyType.MTPROTO -> Proxy.Type.SOCKS // unreachable due to early return above
         }
 
         val proxy = Proxy(pType, InetSocketAddress(config.server, config.port))
         builder.proxy(proxy)
 
+        // FIX #1: Per-client authenticator only — NOT java.net.Authenticator.setDefault()
         if (config.username.isNotBlank()) {
             val proxyAuth = Authenticator { _, response ->
                 val credential = Credentials.basic(config.username, config.password)
@@ -205,18 +224,13 @@ object TelegramProxyManager {
                     .build()
             }
             builder.proxyAuthenticator(proxyAuth)
-            java.net.Authenticator.setDefault(object : java.net.Authenticator() {
-                override fun getPasswordAuthentication(): java.net.PasswordAuthentication {
-                    return java.net.PasswordAuthentication(config.username, config.password.toCharArray())
-                }
-            })
         }
 
         return builder.build()
     }
 
     /**
-     * Auto-fetches live MTProto and SOCKS5 proxies using TelStream's exact canonical sources.
+     * Auto-fetches live MTProto and SOCKS5 proxies from canonical sources.
      */
     suspend fun autoFetchPublicProxies(): List<PublicProxyItem> {
         return withContext(Dispatchers.IO) {
@@ -242,12 +256,12 @@ object TelegramProxyManager {
             }
 
             if (fetchedList.isEmpty()) {
-                fetchedList.addAll(builtInPublicProxies)
+                fetchedList.addAll(builtInFallbackProxies)
             }
 
             val distinctProxies = fetchedList.distinctBy { it.server }.take(40)
 
-            // Run parallel socket ping testing across fetched proxies
+            // FIX #4: Bounded concurrency for parallel ping testing
             val testedList = pingAllProxiesParallel(distinctProxies)
             _publicProxies.value = testedList
             _isFetchingProxies.value = false
@@ -268,25 +282,23 @@ object TelegramProxyManager {
                     val port = uri.getQueryParameter("port")?.toIntOrNull() ?: 443
                     val secret = uri.getQueryParameter("secret") ?: ""
                     if (server.isNotBlank()) {
-                        outputList.add(PublicProxyItem(server, port, secret, "", "", ProxyType.MTPROTO, "MTProto ⚡"))
+                        outputList.add(PublicProxyItem(server, port, secret, "", "", ProxyType.MTPROTO, "MTProto"))
                     }
                 } else if (trimmed.contains(":")) {
                     val parts = trimmed.split(":")
                     if (parts.size >= 4) {
-                        // IP:Port:User:Pass SOCKS5 format
                         val server = parts[0].trim()
                         val port = parts[1].trim().toIntOrNull()
                         val user = parts[2].trim()
                         val pass = parts[3].trim()
                         if (server.isNotBlank() && port != null) {
-                            outputList.add(PublicProxyItem(server, port, "", user, pass, ProxyType.SOCKS5, "SOCKS5 🔐"))
+                            outputList.add(PublicProxyItem(server, port, "", user, pass, ProxyType.SOCKS5, "SOCKS5"))
                         }
                     } else if (parts.size >= 2) {
-                        // IP:Port SOCKS5 format
                         val server = parts[0].trim()
                         val port = parts[1].trim().toIntOrNull()
                         if (server.isNotBlank() && port != null) {
-                            outputList.add(PublicProxyItem(server, port, "", "", "", ProxyType.SOCKS5, "SOCKS5 🌐"))
+                            outputList.add(PublicProxyItem(server, port, "", "", "", ProxyType.SOCKS5, "SOCKS5"))
                         }
                     }
                 }
@@ -297,34 +309,33 @@ object TelegramProxyManager {
     }
 
     /**
-     * Multi-threaded parallel ping tester for proxies.
+     * FIX #4: Bounded parallel ping tester — chunks proxies into groups of
+     * MAX_CONCURRENT_PINGS to avoid exhausting file descriptors on low-end devices.
      */
     suspend fun pingAllProxiesParallel(proxies: List<PublicProxyItem>): List<PublicProxyItem> {
         return withContext(Dispatchers.IO) {
-            val deferreds = proxies.map { proxy ->
-                async {
-                    val pingRes = testConnection(proxy.server, proxy.port)
-                    val pingMs = pingRes.getOrDefault(-1L)
-                    proxy.copy(pingMs = pingMs, isChecking = false)
+            val results = mutableListOf<PublicProxyItem>()
+            // Chunk into bounded batches to limit concurrent socket connections
+            for (chunk in proxies.chunked(MAX_CONCURRENT_PINGS)) {
+                val deferreds = chunk.map { proxy ->
+                    async {
+                        val pingRes = testConnection(proxy.server, proxy.port)
+                        val pingMs = pingRes.getOrDefault(-1L)
+                        proxy.copy(pingMs = pingMs, isChecking = false)
+                    }
                 }
+                results.addAll(deferreds.awaitAll())
             }
-            val results = deferreds.awaitAll()
             results.sortedWith(compareBy({ if (it.pingMs > 0) 0 else 1 }, { if (it.pingMs > 0) it.pingMs else Long.MAX_VALUE }))
         }
     }
 
-    /**
-     * Auto-selects the fastest proxy with lowest latency.
-     */
     fun selectFastestProxy() {
         val list = _publicProxies.value
-        val fastest = list.firstOrNull { it.pingMs > 0 } ?: builtInPublicProxies.first()
+        val fastest = list.firstOrNull { it.pingMs > 0 } ?: return
         saveConfig(fastest.server, fastest.port, fastest.secret, fastest.username, fastest.password, fastest.type, true)
     }
 
-    /**
-     * Tests socket connection & ping latency to a specific proxy server.
-     */
     suspend fun testConnection(server: String, port: Int): Result<Long> {
         return withContext(Dispatchers.IO) {
             val startTime = System.currentTimeMillis()

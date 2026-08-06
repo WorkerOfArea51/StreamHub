@@ -2,12 +2,15 @@ package com.streamhub.app.data
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.util.Log
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -59,11 +62,22 @@ sealed class UpdateState {
  *    - Attempts api.github.com for asset metadata and release notes.
  *    - If API returns 403 or fails, seamlessly falls back to standard direct asset URLs:
  *      https://github.com/owner/repo/releases/download/{tag}/StreamHub-arm64-release.apk
+ *
+ * Security: Before triggering the system installer, the downloaded APK's signing
+ * certificate is verified against the currently installed app's certificate.
+ * This prevents installation of APKs from untrusted sources even if the download
+ * URL is compromised.
  */
 object AppUpdateManager {
 
     private const val TAG = "AppUpdateManager"
 
+    /**
+     * Managed coroutine scope tied to this singleton's lifecycle.
+     * SupervisorJob ensures one child failure doesn't cancel siblings.
+     * Call [cancelAll] to tear down (e.g. on app termination).
+     */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
@@ -85,7 +99,7 @@ object AppUpdateManager {
             .build()
     }
 
-    private var downloadJob: Job? = null
+    private var downloadJob: kotlinx.coroutines.Job? = null
 
     /**
      * Check GitHub Releases for a newer version.
@@ -107,7 +121,7 @@ object AppUpdateManager {
 
         _updateState.value = UpdateState.Checking
 
-        CoroutineScope(Dispatchers.IO).launch {
+        scope.launch {
             try {
                 var latestTag: String? = null
 
@@ -201,41 +215,8 @@ object AppUpdateManager {
                     isPreRelease = apiJson!!.optBoolean("prerelease", false)
                     val assets = apiJson!!.optJSONArray("assets")
                     if (assets != null) {
-                        // Look for arm64 first, then arm32, then any apk
-                        var chosenAsset: JSONObject? = null
-                        for (i in 0 until assets.length()) {
-                            val asset = assets.getJSONObject(i)
-                            val name = asset.optString("name", "")
-                            if (name.contains("arm64", ignoreCase = true) && name.endsWith(".apk")) {
-                                chosenAsset = asset
-                                break
-                            }
-                        }
-                        if (chosenAsset == null) {
-                            for (i in 0 until assets.length()) {
-                                val asset = assets.getJSONObject(i)
-                                val name = asset.optString("name", "")
-                                if (name.contains("arm32", ignoreCase = true) && name.endsWith(".apk")) {
-                                    chosenAsset = asset
-                                    break
-                                }
-                            }
-                        }
-                        if (chosenAsset == null) {
-                            for (i in 0 until assets.length()) {
-                                val asset = assets.getJSONObject(i)
-                                val name = asset.optString("name", "")
-                                if (name.endsWith(".apk")) {
-                                    chosenAsset = asset
-                                    break
-                                }
-                            }
-                        }
-
-                        if (chosenAsset != null) {
-                            downloadUrl = chosenAsset.optString("browser_download_url", "")
-                            apkSizeBytes = chosenAsset.optLong("size", 0L)
-                        }
+                        downloadUrl = findBestAssetUrl(assets)
+                        apkSizeBytes = findBestAssetSize(assets)
                     }
                 }
 
@@ -263,6 +244,46 @@ object AppUpdateManager {
     }
 
     /**
+     * Select the best APK asset from a GitHub release JSON assets array.
+     * Priority: arm64 > arm32 > any .apk
+     */
+    private fun findBestAssetUrl(assets: org.json.JSONArray): String {
+        return findBestAsset(assets)?.optString("browser_download_url", "") ?: ""
+    }
+
+    private fun findBestAssetSize(assets: org.json.JSONArray): Long {
+        return findBestAsset(assets)?.optLong("size", 0L) ?: 0L
+    }
+
+    private fun findBestAsset(assets: org.json.JSONArray): JSONObject? {
+        // Priority 1: arm64 APK
+        for (i in 0 until assets.length()) {
+            val asset = assets.getJSONObject(i)
+            val name = asset.optString("name", "")
+            if (name.contains("arm64", ignoreCase = true) && name.endsWith(".apk")) {
+                return asset
+            }
+        }
+        // Priority 2: arm32 APK
+        for (i in 0 until assets.length()) {
+            val asset = assets.getJSONObject(i)
+            val name = asset.optString("name", "")
+            if (name.contains("arm32", ignoreCase = true) && name.endsWith(".apk")) {
+                return asset
+            }
+        }
+        // Priority 3: any APK
+        for (i in 0 until assets.length()) {
+            val asset = assets.getJSONObject(i)
+            val name = asset.optString("name", "")
+            if (name.endsWith(".apk")) {
+                return asset
+            }
+        }
+        return null
+    }
+
+    /**
      * Download the APK with progress reporting.
      * Calls [installApk] automatically when download completes.
      */
@@ -274,7 +295,7 @@ object AppUpdateManager {
         }
 
         downloadJob?.cancel()
-        downloadJob = CoroutineScope(Dispatchers.IO).launch {
+        downloadJob = scope.launch {
             try {
                 val info = state.info
                 val totalBytes = if (info.apkSizeBytes > 0) info.apkSizeBytes else 0L
@@ -352,11 +373,25 @@ object AppUpdateManager {
     }
 
     /**
-     * Trigger the system APK installer.
+     * Trigger the system APK installer after verifying the downloaded APK's
+     * signing certificate matches the currently installed app's certificate.
+     *
+     * This prevents installation of APKs from untrusted sources even if the
+     * download URL is compromised (e.g. MITM or hijacked GitHub release).
+     *
      * Requires REQUEST_INSTALL_PACKAGES permission in the manifest.
      */
     private fun installApk(context: Context, apkFile: File) {
         try {
+            if (!verifyApkSignature(context, apkFile)) {
+                Log.e(TAG, "APK signature verification failed — rejecting install")
+                _updateState.value = UpdateState.Error(
+                    "Update rejected: signing certificate does not match the installed app. " +
+                    "This could indicate a tampered download."
+                )
+                return
+            }
+
             val uri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",
@@ -375,11 +410,73 @@ object AppUpdateManager {
     }
 
     /**
+     * Verify that the downloaded APK is signed with the same certificate as the
+     * currently installed application.
+     *
+     * Uses [PackageManager.getPackageInfo] with [PackageManager.GET_SIGNING_CERTIFICATES]
+     * to compare the SHA-256 hashes of the signing certificates. This is the recommended
+     * Android approach for signature verification (replaces the deprecated signature array).
+     *
+     * @return true if certificates match, false otherwise
+     */
+    private fun verifyApkSignature(context: Context, apkFile: File): Boolean {
+        try {
+            val pm = context.packageManager
+
+            val flags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                PackageManager.GET_SIGNING_CERTIFICATES
+            } else {
+                @Suppress("DEPRECATION")
+                PackageManager.GET_SIGNATURES
+            }
+
+            // Get the currently installed app's signing certificate hash
+            val installedInfo = pm.getPackageInfo(context.packageName, flags)
+            val installedHash = installedInfo.signingCertificateHash() ?: return false
+
+            // Get the downloaded APK's signing certificate hash
+            val apkInfo = pm.getPackageArchiveInfo(apkFile.absolutePath, flags) ?: return false
+            apkInfo.applicationInfo?.sourceDir = apkFile.absolutePath
+            apkInfo.applicationInfo?.publicSourceDir = apkFile.absolutePath
+            val apkHash = apkInfo.signingCertificateHash() ?: return false
+
+            return installedHash.contentEquals(apkHash)
+        } catch (e: Exception) {
+            Log.e(TAG, "Signature verification error", e)
+            return false
+        }
+    }
+
+    /**
+     * Compute the SHA-256 hash of the primary signing certificate.
+     */
+    @Suppress("DEPRECATION")
+    private fun PackageInfo.signingCertificateHash(): ByteArray? {
+        val signatures = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            signingInfo?.apkContentsSigners
+        } else {
+            signatures
+        } ?: return null
+
+        if (signatures.isEmpty()) return null
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        return md.digest(signatures[0].toByteArray())
+    }
+
+    /**
      * Reset state back to Idle.
      */
     fun resetState() {
         downloadJob?.cancel()
         _updateState.value = UpdateState.Idle
+    }
+
+    /**
+     * Cancel all in-flight coroutines. Call this when the application
+     * is being terminated to ensure no leaked work.
+     */
+    fun cancelAll() {
+        scope.cancel()
     }
 
     /**
@@ -403,6 +500,20 @@ object AppUpdateManager {
         return false
     }
 
+    /**
+     * Convert a semantic version tag to a monotonically increasing version code.
+     *
+     * Uses positional weighting to guarantee ordering for any valid semver:
+     *   major * 1_000_000 + minor * 1_000 + patch
+     * This supports minor versions up to 999 and patch versions up to 999,
+     * which is sufficient for any real-world app.
+     *
+     * Example: "v3.15.0" → 3_015_000 (correctly > "v3.9.0" → 3_009_000)
+     *
+     * Previous formula `(major * 100) + (minor * 10) + patch` was broken:
+     * it produced 465 for "3.15.0" vs 319 for "3.9.0" but also 465 for "4.6.5",
+     * causing version collisions and incorrect ordering.
+     */
     private fun parseVersionCodeFromTag(tagName: String): Long {
         val version = tagName.removePrefix("v").removePrefix("V")
         val parts = version.split(".")
@@ -410,10 +521,8 @@ object AppUpdateManager {
             val major = parts[0].toIntOrNull() ?: 0
             val minor = parts[1].toIntOrNull() ?: 0
             val patch = parts[2].split("-")[0].toIntOrNull() ?: 0
-            return (major.toLong() * 100L) + (minor.toLong() * 10L) + patch.toLong()
+            return (major.toLong() * 1_000_000L) + (minor.toLong() * 1_000L) + patch.toLong()
         }
         return 0L
     }
-
-    private fun String?.isNullOrBlank(): Boolean = this == null || this.isBlank()
 }

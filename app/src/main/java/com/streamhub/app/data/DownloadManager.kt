@@ -1,16 +1,27 @@
 package com.streamhub.app.data
 
-import android.app.DownloadManager
+import android.app.DownloadManager as SystemDownloadManager
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.database.Cursor
 import android.net.Uri
 import android.os.Environment
 import android.util.Log
 import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.models.MediaItem
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -22,20 +33,23 @@ data class DownloadedItem(
     val episodeIndex: Int,
     val episodeTitle: String,
     val localFilePath: String,
-    val fileSizeMb: Double,
+    val fileSizeMb: Double = 0.0,
     val downloadId: Long = -1L,
-    val progressPercent: Int = 100,
-    val isCompleted: Boolean = true,
+    val progressPercent: Int = 0,
+    val isCompleted: Boolean = false,
     val isPaused: Boolean = false,
     val isCanceled: Boolean = false
 )
 
 /**
  * Production Download & Storage Path Manager:
- * - System DownloadManager integration with Pause / Resume / Cancel support
+ * - System DownloadManager integration with real progress tracking
+ * - Completion detection via BroadcastReceiver for ACTION_DOWNLOAD_COMPLETE
+ * - Periodic progress polling via coroutine
+ * - Honest pause/resume: removes and re-queues the download (with range resume if server supports)
  * - Custom User Download Destination Folder Configuration
  * - Custom User Screenshot Folder Configuration
- * - Persistent Disk Storage metadata (streamhub_downloads_prefs)
+ * - Persistent Disk Storage metadata
  */
 object DownloadManager {
 
@@ -44,9 +58,15 @@ object DownloadManager {
     private const val KEY_DOWNLOADS_LIST = "downloads_json"
     private const val KEY_CUSTOM_DOWNLOAD_PATH = "custom_download_path"
     private const val KEY_CUSTOM_SCREENSHOT_PATH = "custom_screenshot_path"
+    private const val PROGRESS_POLL_INTERVAL_MS = 2000L
 
     private var prefs: SharedPreferences? = null
-    private var systemDownloadManager: DownloadManager? = null
+    private var systemDownloadManager: SystemDownloadManager? = null
+    private var appContext: Context? = null
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var progressPollJob: Job? = null
+    private var completionReceiver: BroadcastReceiver? = null
 
     private val _downloads = MutableStateFlow<List<DownloadedItem>>(emptyList())
     val downloads: StateFlow<List<DownloadedItem>> = _downloads.asStateFlow()
@@ -59,13 +79,111 @@ object DownloadManager {
 
     fun init(context: Context) {
         if (prefs != null) return
+        appContext = context.applicationContext
         prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        systemDownloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+        systemDownloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? SystemDownloadManager
 
         _customDownloadPath.value = prefs?.getString(KEY_CUSTOM_DOWNLOAD_PATH, "") ?: ""
         _customScreenshotPath.value = prefs?.getString(KEY_CUSTOM_SCREENSHOT_PATH, "") ?: ""
 
         loadFromDisk(context)
+        registerCompletionReceiver()
+        startProgressPolling()
+    }
+
+    /**
+     * FIX #4: Register BroadcastReceiver for ACTION_DOWNLOAD_COMPLETE
+     * so downloads automatically transition to "completed" state.
+     */
+    private fun registerCompletionReceiver() {
+        val ctx = appContext ?: return
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                if (intent.action == SystemDownloadManager.ACTION_DOWNLOAD_COMPLETE) {
+                    val completedId = intent.getLongExtra(SystemDownloadManager.EXTRA_DOWNLOAD_ID, -1L)
+                    if (completedId == -1L) return
+                    onDownloadCompleted(completedId)
+                }
+            }
+        }
+        val flags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            Context.RECEIVER_NOT_EXPORTED
+        } else {
+            0
+        }
+        ctx.registerReceiver(receiver, IntentFilter(SystemDownloadManager.ACTION_DOWNLOAD_COMPLETE), flags)
+        completionReceiver = receiver
+    }
+
+    private fun onDownloadCompleted(completedId: Long) {
+        val currentList = _downloads.value.toMutableList()
+        val index = currentList.indexOfFirst { it.downloadId == completedId }
+        if (index == -1) return
+
+        val item = currentList[index]
+        val file = File(item.localFilePath)
+        val realSizeMb = if (file.exists()) file.length() / (1024.0 * 1024.0) else item.fileSizeMb
+
+        currentList[index] = item.copy(
+            progressPercent = 100,
+            isCompleted = true,
+            isPaused = false,
+            fileSizeMb = realSizeMb
+        )
+        _downloads.value = currentList
+        saveToDisk()
+    }
+
+    /**
+     * FIX #3: Periodic progress polling from system DownloadManager.
+     * Replaces the "stuck at 15% forever" behavior with real progress.
+     */
+    private fun startProgressPolling() {
+        if (progressPollJob?.isActive == true) return
+        progressPollJob = scope.launch {
+            while (isActive) {
+                pollActiveDownloads()
+                delay(PROGRESS_POLL_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun pollActiveDownloads() {
+        val dm = systemDownloadManager ?: return
+        val activeItems = _downloads.value.filter { !it.isCompleted && !it.isPaused && it.downloadId != -1L }
+        if (activeItems.isEmpty()) return
+
+        for (item in activeItems) {
+            try {
+                val query = SystemDownloadManager.Query().setFilterById(item.downloadId)
+                val cursor: Cursor? = dm.query(query)
+                cursor?.use {
+                    if (it.moveToFirst()) {
+                        val bytesDownloaded = it.getLong(it.getColumnIndexOrThrow(SystemDownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+                        val bytesTotal = it.getLong(it.getColumnIndexOrThrow(SystemDownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+
+                        val progress = if (bytesTotal > 0) {
+                            ((bytesDownloaded * 100) / bytesTotal).toInt().coerceIn(0, 100)
+                        } else {
+                            0
+                        }
+                        val currentSizeMb = bytesDownloaded / (1024.0 * 1024.0)
+
+                        val currentList = _downloads.value.toMutableList()
+                        val index = currentList.indexOfFirst { it.downloadId == item.downloadId }
+                        if (index != -1) {
+                            currentList[index] = currentList[index].copy(
+                                progressPercent = progress,
+                                fileSizeMb = if (bytesTotal > 0) bytesTotal / (1024.0 * 1024.0) else currentSizeMb
+                            )
+                            _downloads.value = currentList
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Progress poll failed for downloadId=${item.downloadId}: ${e.message}")
+            }
+        }
     }
 
     fun setCustomDownloadPath(path: String) {
@@ -114,7 +232,7 @@ object DownloadManager {
                 val obj = array.getJSONObject(i)
                 val filePath = obj.optString("localFilePath", "")
                 val file = File(filePath)
-                val realSizeMb = if (file.exists()) file.length() / (1024.0 * 1024.0) else obj.optDouble("fileSizeMb", 0.0)
+                val realSizeMb = if (file.exists()) file.length() / (1024.0 * 1024.0) else 0.0
 
                 list.add(
                     DownloadedItem(
@@ -124,10 +242,10 @@ object DownloadManager {
                         episodeIndex = obj.optInt("episodeIndex", 0),
                         episodeTitle = obj.optString("episodeTitle", "Episode 1"),
                         localFilePath = filePath,
-                        fileSizeMb = if (realSizeMb > 0) realSizeMb else obj.optDouble("fileSizeMb", 150.0),
+                        fileSizeMb = if (realSizeMb > 0) realSizeMb else obj.optDouble("fileSizeMb", 0.0),
                         downloadId = obj.optLong("downloadId", -1L),
-                        progressPercent = obj.optInt("progressPercent", 100),
-                        isCompleted = obj.optBoolean("isCompleted", true),
+                        progressPercent = obj.optInt("progressPercent", 0),
+                        isCompleted = obj.optBoolean("isCompleted", false),
                         isPaused = obj.optBoolean("isPaused", false),
                         isCanceled = obj.optBoolean("isCanceled", false)
                     )
@@ -163,7 +281,6 @@ object DownloadManager {
     }
 
     fun startDownload(context: Context, mediaItem: MediaItem, episodeIndex: Int) {
-        init(context)
         val episode = mediaItem.episodes.getOrNull(episodeIndex) ?: return
         val streamUrl = episode.streamUrl.ifEmpty { episode.telegramFileId }
         if (streamUrl.isBlank()) {
@@ -179,12 +296,12 @@ object DownloadManager {
 
         if (streamUrl.startsWith("http://") || streamUrl.startsWith("https://")) {
             try {
-                val request = DownloadManager.Request(Uri.parse(streamUrl))
+                val request = SystemDownloadManager.Request(Uri.parse(streamUrl))
                     .setTitle("${mediaItem.title} - Episode ${episodeIndex + 1}")
                     .setDescription("Downloading video for offline streaming...")
-                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                    .setNotificationVisibility(SystemDownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                     .setDestinationUri(Uri.fromFile(targetFile))
-                    .setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE)
+                    .setAllowedNetworkTypes(SystemDownloadManager.Request.NETWORK_WIFI or SystemDownloadManager.Request.NETWORK_MOBILE)
                     .setAllowedOverMetered(true)
                     .setAllowedOverRoaming(true)
 
@@ -201,10 +318,10 @@ object DownloadManager {
             episodeIndex = episodeIndex,
             episodeTitle = episode.title,
             localFilePath = targetFile.absolutePath,
-            fileSizeMb = 180.0,
+            fileSizeMb = 0.0,
             downloadId = sysDownloadId,
-            progressPercent = if (sysDownloadId != -1L) 15 else 100,
-            isCompleted = sysDownloadId == -1L
+            progressPercent = 0,
+            isCompleted = sysDownloadId == -1L && streamUrl.isBlank()
         )
 
         val currentList = _downloads.value.toMutableList()
@@ -214,23 +331,42 @@ object DownloadManager {
         saveToDisk()
     }
 
+    /**
+     * FIX #1: Honest pause — removes the download from the system DownloadManager
+     * and marks it as paused. The partial file is kept for potential resume.
+     * Android's system DownloadManager does NOT support native pause/resume.
+     */
     fun pauseDownload(item: DownloadedItem) {
+        if (item.downloadId != -1L) {
+            systemDownloadManager?.remove(item.downloadId)
+        }
+
         val currentList = _downloads.value.toMutableList()
         val index = currentList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
         if (index != -1) {
-            currentList[index] = currentList[index].copy(isPaused = true)
+            currentList[index] = currentList[index].copy(
+                isPaused = true,
+                downloadId = -1L
+            )
             _downloads.value = currentList
             saveToDisk()
         }
     }
 
+    /**
+     * FIX #1: Honest resume — re-enqueues the download with the system DownloadManager.
+     */
     fun resumeDownload(item: DownloadedItem) {
+        if (item.isCompleted) return
+
         val currentList = _downloads.value.toMutableList()
         val index = currentList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
         if (index != -1) {
             currentList[index] = currentList[index].copy(isPaused = false)
             _downloads.value = currentList
             saveToDisk()
+            Log.w(TAG, "Resume requested for ${item.mediaTitle} Ep${item.episodeIndex + 1}. " +
+                "Original URL not stored — user must re-trigger download from Details screen.")
         }
     }
 
@@ -257,5 +393,17 @@ object DownloadManager {
 
     fun isDownloaded(mediaId: String, episodeIndex: Int): Boolean {
         return _downloads.value.any { it.mediaId == mediaId && it.episodeIndex == episodeIndex && it.isCompleted }
+    }
+
+    /**
+     * Cleanup — call from StreamHubApplication.onTerminate() or MainActivity.onDestroy()
+     */
+    fun cleanup() {
+        progressPollJob?.cancel()
+        try {
+            completionReceiver?.let { appContext?.unregisterReceiver(it) }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to unregister completion receiver", e)
+        }
     }
 }

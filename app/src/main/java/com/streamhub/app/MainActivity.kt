@@ -71,16 +71,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        com.streamhub.app.data.UserStatsManager.init(this)
-        com.streamhub.app.data.NotificationAlertManager.init(this)
-        com.streamhub.app.data.HomeScreenLayoutManager.init(this)
-        com.streamhub.app.data.SubtitleSettingsManager.init(this)
-        com.streamhub.app.data.telegram.TelegramAuthManager.init(this)
-        com.streamhub.app.data.telegram.TelegramProxyManager.init(this)
-        com.streamhub.app.data.AppUpdateManager.checkForUpdate(
-            currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
-            currentVersionName = BuildConfig.VERSION_NAME
-        )
+        // All managers are initialized in StreamHubApplication.onCreate().
+        // No manager init calls belong here — see StreamHubApplication KDoc.
 
         setContent {
             StreamHubTheme {
@@ -98,8 +90,8 @@ class MainActivity : ComponentActivity() {
      * Note: we cannot directly check ExoPlayer's.isPlaying from here (the
      * player is owned by StreamPlayerViewModel). The PlayerScreen sets
      * an instance field [shouldAutoEnterPip] via the activity cast.
-     * M5 will replace this with a proper MediaSessionService that exposes
-     * playback state to the activity via a Flow.
+     * A future refactor will replace this with a proper MediaSessionService
+     * that exposes playback state to the activity via a Flow.
      */
     @Volatile
     var shouldAutoEnterPip: Boolean = false
@@ -122,7 +114,7 @@ class MainActivity : ComponentActivity() {
     /**
      * Called when the system enters or exits PiP mode.
      *
-     * We log the transition for debugging. M5 will use this to:
+     * We log the transition for debugging. Future work will use this to:
      *   - Hide player controls on enter, show on exit
      *   - Pause background downloads on enter
      *   - Switch to compact HUD layout on enter

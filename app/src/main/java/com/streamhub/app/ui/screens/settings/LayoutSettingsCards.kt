@@ -1,0 +1,277 @@
+package com.streamhub.app.ui.screens.settings
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.streamhub.app.data.HomeScreenLayoutManager
+import com.streamhub.app.data.SubtitleSettingsManager
+import com.streamhub.app.ui.theme.CardBorderDark
+import com.streamhub.app.ui.theme.SurfaceDark
+import com.streamhub.app.ui.theme.TextPrimary
+import com.streamhub.app.ui.theme.TextSecondary
+import com.streamhub.app.ui.theme.AppThemeAccent
+import com.streamhub.app.ui.theme.CardBorderDark
+import com.streamhub.app.ui.theme.SurfaceDark
+import com.streamhub.app.ui.theme.TextPrimary
+import com.streamhub.app.ui.theme.TextSecondary
+
+@Composable
+fun HomeLayoutCard(currentAccent: AppThemeAccent) {
+    val layoutConfig by HomeScreenLayoutManager.layoutConfig.collectAsState()
+
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Dashboard,
+                    contentDescription = "Layout",
+                    tint = currentAccent.color,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text("Customize Home Screen Layout 🎨", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Reorder and toggle Home screen content sections", color = TextSecondary, fontSize = 11.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            LayoutToggleRow(
+                label = "Hero Banner Carousel 🖼️",
+                checked = layoutConfig.showHeroCarousel,
+                accentColor = currentAccent.color,
+                onCheckedChange = { HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showHeroCarousel = it)) }
+            )
+
+            LayoutToggleRow(
+                label = "Continue Watching Resume Bar 🍿",
+                checked = layoutConfig.showContinueWatching,
+                accentColor = currentAccent.color,
+                onCheckedChange = { HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showContinueWatching = it)) }
+            )
+
+            LayoutToggleRow(
+                label = "Show Continue Watching at Top ⬆️",
+                checked = layoutConfig.continueWatchingFirst,
+                accentColor = currentAccent.color,
+                onCheckedChange = { HomeScreenLayoutManager.updateConfig(layoutConfig.copy(continueWatchingFirst = it)) }
+            )
+
+            LayoutToggleRow(
+                label = "Trending Now Section 🔥",
+                checked = layoutConfig.showTrendingSection,
+                accentColor = currentAccent.color,
+                onCheckedChange = { HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showTrendingSection = it)) }
+            )
+
+            LayoutToggleRow(
+                label = "Top Anime Section 🎌",
+                checked = layoutConfig.showAnimeSection,
+                accentColor = currentAccent.color,
+                onCheckedChange = { HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showAnimeSection = it)) }
+            )
+
+            LayoutToggleRow(
+                label = "Blockbuster Movies Section 🎬",
+                checked = layoutConfig.showMoviesSection,
+                accentColor = currentAccent.color,
+                onCheckedChange = { HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showMoviesSection = it)) }
+            )
+        }
+    }
+}
+
+@Composable
+fun SubtitleAppearanceCard(currentAccent: AppThemeAccent) {
+    val subConfig by SubtitleSettingsManager.subtitleConfig.collectAsState()
+
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Subtitles,
+                    contentDescription = "Subtitles",
+                    tint = currentAccent.color,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text("Subtitle Styling & Appearance 📜", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Customize caption font size and text colors", color = TextSecondary, fontSize = 11.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Text("Font Size", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                listOf("Small (14sp)" to 14f, "Medium (18sp)" to 18f, "Large (24sp)" to 24f, "XL (30sp)" to 30f).forEach { (label, size) ->
+                    val isSelected = subConfig.fontSizeSp == size
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isSelected) currentAccent.color.copy(alpha = 0.25f) else Color(0xFF191924))
+                            .border(if (isSelected) 1.5.dp else 1.dp, if (isSelected) currentAccent.color else Color(0xFF2C2C3E), RoundedCornerShape(8.dp))
+                            .clickable { SubtitleSettingsManager.updateConfig(subConfig.copy(fontSizeSp = size)) }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(label.split(" ")[0], color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text("Subtitle Text Color", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                listOf(
+                    "Yellow 💛" to 0xFFFFE066L,
+                    "White 🤍" to 0xFFFFFFFFL,
+                    "Cyan 🩵" to 0xFF38BDF8L,
+                    "Green 💚" to 0xFF4ADE80L
+                ).forEach { (label, colorArgb) ->
+                    val isSelected = subConfig.textColorArgb == colorArgb
+                    val chipColor = Color(colorArgb.toULong())
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isSelected) currentAccent.color.copy(alpha = 0.2f) else Color(0xFF191924))
+                            .border(if (isSelected) 1.5.dp else 1.dp, if (isSelected) currentAccent.color else Color(0xFF2C2C3E), RoundedCornerShape(8.dp))
+                            .clickable { SubtitleSettingsManager.updateConfig(subConfig.copy(textColorArgb = colorArgb)) }
+                            .padding(vertical = 8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(chipColor)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(label.split(" ")[0], color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF0F0F16))
+                    .border(1.dp, CardBorderDark, RoundedCornerShape(8.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                val textColor = Color(subConfig.textColorArgb.toULong())
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(subConfig.backgroundColorArgb.toULong()))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "Preview: Hello! Watching StreamHub Subtitles",
+                        color = textColor,
+                        fontSize = (subConfig.fontSizeSp * 0.7f).sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LayoutToggleRow(
+    label: String,
+    checked: Boolean,
+    accentColor: Color,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = accentColor
+            )
+        )
+    }
+}

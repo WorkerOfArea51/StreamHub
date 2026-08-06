@@ -2,9 +2,8 @@ package com.streamhub.app.data.repository
 
 import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
-import com.streamhub.app.data.models.Episode
-import com.streamhub.app.data.models.MediaInfo
 import com.streamhub.app.data.models.MediaItem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -46,6 +45,9 @@ class FirebaseRepository {
 
     private val firestore by lazy { FirebaseFirestore.getInstance() }
 
+    /** Active Firestore snapshot listener registration. Only one at a time. */
+    private var listenerRegistration: ListenerRegistration? = null
+
     private val _mediaCatalog = MutableStateFlow<List<MediaItem>>(emptyList())
     val mediaCatalog: StateFlow<List<MediaItem>> = _mediaCatalog.asStateFlow()
 
@@ -63,10 +65,14 @@ class FirebaseRepository {
     /**
      * Re-attach the Firestore listener. Call from UI when user taps "Retry"
      * after a CatalogState.Error.
+     *
+     * The previous listener is removed before attaching a new one, preventing
+     * listener stacking and duplicate snapshot callbacks.
      */
     fun retry() {
         Log.d(TAG, "Manual retry requested")
         _catalogState.value = CatalogState.Loading
+        removeFirestoreListener()
         attachFirestoreListener()
     }
 
@@ -78,9 +84,19 @@ class FirebaseRepository {
         _adminOperationState.value = AdminOperationState.Idle
     }
 
+    /**
+     * Remove the active Firestore snapshot listener.
+     *
+     * Call this when the repository is no longer needed (e.g. Activity destroy)
+     * to prevent leaking the listener and receiving snapshots for a dead UI.
+     */
+    fun cleanup() {
+        removeFirestoreListener()
+    }
+
     private fun attachFirestoreListener() {
         try {
-            firestore.collection(COLLECTION_NAME)
+            listenerRegistration = firestore.collection(COLLECTION_NAME)
                 .orderBy("title", Query.Direction.ASCENDING)
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
@@ -92,8 +108,7 @@ class FirebaseRepository {
                             _catalogState.value = CatalogState.Error(error.message ?: "Unknown Firestore error")
                         } else {
                             // We have cached data — keep showing it, but mark as Ready
-                            // so SplashScreen doesn't hang. UI can optionally check
-                            // for a separate "stale data" indicator in M9.
+                            // so SplashScreen doesn't hang.
                             _catalogState.value = CatalogState.Ready
                         }
                         return@addSnapshotListener
@@ -119,9 +134,14 @@ class FirebaseRepository {
                 }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to attach Firestore listener", e)
-            // Mark Ready with cached sample data — do not hang on splash forever
+            // Mark Ready with empty catalog — do not hang on splash forever
             _catalogState.value = CatalogState.Ready
         }
+    }
+
+    private fun removeFirestoreListener() {
+        listenerRegistration?.remove()
+        listenerRegistration = null
     }
 
     /**
@@ -130,8 +150,16 @@ class FirebaseRepository {
      * Updates the local catalog immediately (optimistic UI), then pushes to
      * Firestore. The result is surfaced via [adminOperationState] — admin UI
      * should observe it to show "Saved" or "Save failed: <message>".
+     *
+     * On save failure, the optimistic update is reverted by restoring the
+     * previous item version (for updates) or removing the item (for new items).
      */
     fun saveMediaItem(item: MediaItem) {
+        // Snapshot the current catalog state before optimistic update
+        // so we can revert precisely on failure.
+        val catalogBeforeUpdate = _mediaCatalog.value.toList()
+        val existingItem = catalogBeforeUpdate.firstOrNull { it.id == item.id }
+
         // Optimistic local update — UI reflects the change immediately
         val current = _mediaCatalog.value.toMutableList()
         val index = current.indexOfFirst { it.id == item.id }
@@ -154,16 +182,12 @@ class FirebaseRepository {
             .addOnFailureListener { e ->
                 Log.e(TAG, "Failed to save media item: ${item.id}", e)
                 _adminOperationState.value = AdminOperationState.Error(e.message ?: "Unknown error")
-                // Revert the optimistic local update so UI matches remote state
-                val reverted = _mediaCatalog.value.toMutableList()
-                val revertIndex = reverted.indexOfFirst { it.id == item.id }
-                if (revertIndex >= 0) {
-                    // Item existed before — we can't easily revert to the previous
-                    // version without keeping a history. Remove it; next Firestore
-                    // snapshot will re-add the original if it exists remotely.
-                    reverted.removeAt(revertIndex)
-                    _mediaCatalog.value = reverted
-                }
+                // Revert the optimistic local update precisely:
+                // - If this was an update, restore the previous item version
+                // - If this was a new item, remove it from the catalog
+                // Either way, restoring the snapshot we took before the
+                // optimistic update gives the correct result.
+                _mediaCatalog.value = catalogBeforeUpdate
             }
     }
 
@@ -173,8 +197,10 @@ class FirebaseRepository {
      * Same optimistic pattern as [saveMediaItem].
      */
     fun deleteMediaItem(itemId: String) {
-        // Optimistic local update — keep the deleted item in case we need to restore
-        val deletedItem = _mediaCatalog.value.firstOrNull { it.id == itemId }
+        // Snapshot before optimistic update for precise revert
+        val catalogBeforeDelete = _mediaCatalog.value.toList()
+
+        // Optimistic local update — remove the item immediately
         val current = _mediaCatalog.value.toMutableList()
         current.removeAll { it.id == itemId }
         _mediaCatalog.value = current
@@ -190,18 +216,14 @@ class FirebaseRepository {
             .addOnFailureListener { e ->
                 Log.e(TAG, "Failed to delete media item: $itemId", e)
                 _adminOperationState.value = AdminOperationState.Error(e.message ?: "Unknown error")
-                // Restore the deleted item locally
-                if (deletedItem != null) {
-                    val restored = _mediaCatalog.value.toMutableList()
-                    restored.add(0, deletedItem)
-                    _mediaCatalog.value = restored
-                }
+                // Restore the entire catalog snapshot from before the delete
+                _mediaCatalog.value = catalogBeforeDelete
             }
     }
 
     private fun loadInitialCatalog() {
-        // M3.5: No sample data. Catalog starts empty. Firestore listener will
-        // populate it when the first snapshot arrives. If Firestore is empty
+        // Catalog starts empty. Firestore listener will populate it
+        // when the first snapshot arrives. If Firestore is empty
         // or unreachable, the catalog stays empty and UI shows empty states.
         _mediaCatalog.value = emptyList()
     }

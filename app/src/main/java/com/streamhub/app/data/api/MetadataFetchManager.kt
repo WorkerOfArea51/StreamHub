@@ -7,11 +7,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.net.URLEncoder
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.ConcurrentHashMap
 
-/**
- * Result data class for metadata autofetching.
- */
 data class FetchedMetadata(
     val title: String,
     val synopsis: String,
@@ -26,23 +23,30 @@ data class FetchedMetadata(
 
 /**
  * Metadata Auto-Fetcher Engine:
- * - Queries TMDB API (api.themoviedb.org/3) for Movies & Web Series.
- * - Queries MyAnimeList API (api.myanimelist.net/v2) for Anime.
+ * - Queries TMDB API for Movies & Series (with proper genre ID→name resolution)
+ * - Queries MyAnimeList API for Anime (already had proper genre parsing)
+ * - FIX #3: Reuses TmdbClient's shared OkHttpClient instead of creating a duplicate
+ * - FIX #2: Resolves TMDB genre_ids to human-readable genre names via /genre/list endpoint
  */
 object MetadataFetchManager {
 
     private const val TAG = "MetadataFetchManager"
-
-    private val httpClient by lazy {
-        OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .build()
-    }
+    private const val TMDB_BASE = "https://api.themoviedb.org/3"
 
     /**
-     * Auto-fetch metadata by query title and target category ("Movies", "Series", "Anime").
+     * FIX #3: Reuse TmdbClient's shared OkHttpClient (same connection pool, same interceptors)
+     * instead of creating a second client with a separate pool.
      */
+    private val httpClient: OkHttpClient
+        get() = TmdbClient.okHttpClient
+
+    /**
+     * FIX #2: Genre ID → name mapping cache.
+     * Populated lazily on first TMDB query by hitting /genre/{movie|tv}/list.
+     */
+    private val movieGenreMap = ConcurrentHashMap<Int, String>()
+    private val tvGenreMap = ConcurrentHashMap<Int, String>()
+
     suspend fun fetchMetadata(titleQuery: String, category: String): Result<FetchedMetadata> {
         return withContext(Dispatchers.IO) {
             try {
@@ -59,7 +63,36 @@ object MetadataFetchManager {
     }
 
     /**
-     * TMDB Search for Movies & Series.
+     * FIX #2: Fetch and cache TMDB genre ID→name mapping.
+     * Called once per app lifetime; results are cached in ConcurrentHashMap.
+     */
+    private fun ensureGenreCache(apiKey: String, isMovie: Boolean) {
+        val genreMap = if (isMovie) movieGenreMap else tvGenreMap
+        if (genreMap.isNotEmpty()) return
+
+        try {
+            val endpoint = if (isMovie) "genre/movie/list" else "genre/tv/list"
+            val url = "$TMDB_BASE/$endpoint?api_key=$apiKey"
+            val request = Request.Builder().url(url).header("Accept", "application/json").build()
+
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return
+                val body = response.body?.string() ?: return
+                val json = JSONObject(body)
+                val genres = json.optJSONArray("genres") ?: return
+                for (i in 0 until genres.length()) {
+                    val g = genres.getJSONObject(i)
+                    genreMap[g.getInt("id")] = g.getString("name")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to fetch TMDB genre list: ${e.message}")
+        }
+    }
+
+    /**
+     * FIX #1: TMDB Search — reuses shared OkHttpClient, resolves genre_ids to names,
+     * and returns honest releaseYear (0 instead of 2024).
      */
     private fun fetchFromTMDB(query: String, category: String): Result<FetchedMetadata> {
         val apiKey = Secrets.TMDB_API_KEY
@@ -70,7 +103,7 @@ object MetadataFetchManager {
         val isMovie = category.equals("Movies", ignoreCase = true)
         val endpoint = if (isMovie) "search/movie" else "search/tv"
         val encodedQuery = URLEncoder.encode(query.trim(), "UTF-8")
-        val url = "https://api.themoviedb.org/3/$endpoint?api_key=$apiKey&query=$encodedQuery&include_adult=false"
+        val url = "$TMDB_BASE/$endpoint?api_key=$apiKey&query=$encodedQuery&include_adult=false"
 
         val request = Request.Builder()
             .url(url)
@@ -97,15 +130,31 @@ object MetadataFetchManager {
             val posterPath = first.optString("poster_path", "")
             val backdropPath = first.optString("backdrop_path", "")
             val releaseDate = if (isMovie) first.optString("release_date", "") else first.optString("first_air_date", "")
-            val voteAverage = first.optDouble("vote_average", 8.0)
+            val voteAverage = first.optDouble("vote_average", 0.0)
 
+            // FIX #4: Default to 0 instead of 2024 — don't fabricate a year
             val releaseYear = if (releaseDate.length >= 4) {
-                releaseDate.substring(0, 4).toIntOrNull() ?: 2024
-            } else 2024
+                releaseDate.substring(0, 4).toIntOrNull() ?: 0
+            } else 0
 
             val posterUrl = if (posterPath.isNotBlank()) "https://image.tmdb.org/t/p/w500$posterPath" else ""
             val backdropUrl = if (backdropPath.isNotBlank()) "https://image.tmdb.org/t/p/w1280$backdropPath" else posterUrl
-            val rating = String.format("%.1f", voteAverage)
+            val rating = if (voteAverage > 0) String.format("%.1f", voteAverage) else ""
+
+            // FIX #2: Resolve genre_ids to human-readable names
+            ensureGenreCache(apiKey, isMovie)
+            val genreMap = if (isMovie) movieGenreMap else tvGenreMap
+            val genreIds = first.optJSONArray("genre_ids")
+            val genresList = mutableListOf<String>()
+            if (genreIds != null) {
+                for (i in 0 until genreIds.length()) {
+                    val id = genreIds.getInt(i)
+                    genreMap[id]?.let { genresList.add(it) }
+                }
+            }
+            if (genresList.isEmpty()) {
+                genresList.add(if (isMovie) "Movie" else "TV Series")
+            }
 
             val fetched = FetchedMetadata(
                 title = title,
@@ -115,14 +164,14 @@ object MetadataFetchManager {
                 releaseYear = releaseYear,
                 rating = rating,
                 category = if (isMovie) "Movies" else "Series",
-                genres = listOf(if (isMovie) "Movie" else "Series", "Popular")
+                genres = genresList.take(5)
             )
             return Result.success(fetched)
         }
     }
 
     /**
-     * MyAnimeList Search for Anime.
+     * MyAnimeList Search for Anime — reuses shared OkHttpClient.
      */
     private fun fetchFromMAL(query: String): Result<FetchedMetadata> {
         val clientId = Secrets.MAL_CLIENT_ID
@@ -159,12 +208,12 @@ object MetadataFetchManager {
             val synopsis = node.optString("synopsis", "No synopsis available.")
             val mainPic = node.optJSONObject("main_picture")
             val posterUrl = mainPic?.optString("large", mainPic.optString("medium", "")) ?: ""
-            val mean = node.optDouble("mean", 8.5)
+            val mean = node.optDouble("mean", 0.0)
             val startDate = node.optString("start_date", "")
 
             val releaseYear = if (startDate.length >= 4) {
-                startDate.substring(0, 4).toIntOrNull() ?: 2024
-            } else 2024
+                startDate.substring(0, 4).toIntOrNull() ?: 0
+            } else 0
 
             val genresList = mutableListOf<String>()
             val genresArr = node.optJSONArray("genres")
@@ -182,9 +231,9 @@ object MetadataFetchManager {
                 posterUrl = posterUrl,
                 backdropUrl = posterUrl,
                 releaseYear = releaseYear,
-                rating = String.format("%.1f", mean),
+                rating = if (mean > 0) String.format("%.1f", mean) else "",
                 category = "Anime",
-                genres = genresList.take(3)
+                genres = genresList.take(5)
             )
             return Result.success(fetched)
         }
