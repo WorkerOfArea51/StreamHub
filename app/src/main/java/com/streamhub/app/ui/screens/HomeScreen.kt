@@ -84,13 +84,16 @@ fun HomeScreen(
     var selectedCategoryFilter by remember { mutableStateOf("ALL") }
     var showAdminAddDialog by remember { mutableStateOf(false) }
 
-    val featuredItem = catalog.firstOrNull { it.isFeatured } ?: catalog.firstOrNull()
-
     val filteredCatalog = when (selectedCategoryFilter) {
         "ANIME" -> catalog.filter { it.category == "ANIME" }
         "MOVIES" -> catalog.filter { it.category == "MOVIE" }
         "SERIES" -> catalog.filter { it.category == "WEB_SERIES" }
         else -> catalog
+    }
+
+    val featuredItems = remember(filteredCatalog) {
+        val featured = filteredCatalog.filter { it.isFeatured }
+        if (featured.isNotEmpty()) featured else filteredCatalog.take(5)
     }
 
     val continueWatchingList = remember(catalog, watchHistoryMap) {
@@ -171,13 +174,13 @@ fun HomeScreen(
                 }
             }
 
-            // Featured Hero Banner
-            if (featuredItem != null) {
+            // Featured Hero Carousel
+            if (featuredItems.isNotEmpty()) {
                 item {
-                    HeroBanner(
-                        media = featuredItem,
+                    com.streamhub.app.ui.components.HeroCarousel(
+                        featuredItems = featuredItems,
                         onPlayClick = { media -> onPlayEpisode(media, 0) },
-                        onAddToListClick = { media -> onMediaClick(media) }
+                        onMediaClick = { media -> onMediaClick(media) }
                     )
                     Spacer(modifier = Modifier.height(20.dp))
                 }
