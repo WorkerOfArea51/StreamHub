@@ -74,6 +74,10 @@ class MainActivity : ComponentActivity() {
         com.streamhub.app.data.UserStatsManager.init(this)
         com.streamhub.app.data.telegram.TelegramAuthManager.init(this)
         com.streamhub.app.data.telegram.TelegramProxyManager.init(this)
+        com.streamhub.app.data.AppUpdateManager.checkForUpdate(
+            currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
+            currentVersionName = BuildConfig.VERSION_NAME
+        )
 
         setContent {
             StreamHubTheme {

@@ -80,6 +80,7 @@ fun HomeScreen(
     val catalogState by repository.catalogState.collectAsState()
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
     val watchHistoryMap by WatchHistoryManager.historyFlow.collectAsState()
+    val updateState by com.streamhub.app.data.AppUpdateManager.updateState.collectAsState()
 
     var selectedCategoryFilter by remember { mutableStateOf("ALL") }
     var showAdminAddDialog by remember { mutableStateOf(false) }
@@ -142,6 +143,19 @@ fun HomeScreen(
                     CategoryFilterChip("Anime", selectedCategoryFilter == "ANIME") { selectedCategoryFilter = "ANIME" }
                     CategoryFilterChip("Movies", selectedCategoryFilter == "MOVIES") { selectedCategoryFilter = "MOVIES" }
                     CategoryFilterChip("Web Series", selectedCategoryFilter == "SERIES") { selectedCategoryFilter = "SERIES" }
+                }
+            }
+
+            // Material 3 Expressive Update Banner Item
+            (updateState as? com.streamhub.app.data.UpdateState.UpdateAvailable)?.let { availableState ->
+                item {
+                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        com.streamhub.app.ui.components.UpdateBanner(
+                            updateInfo = availableState.info,
+                            onDismiss = { com.streamhub.app.data.AppUpdateManager.resetState() }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
                 }
             }
 
