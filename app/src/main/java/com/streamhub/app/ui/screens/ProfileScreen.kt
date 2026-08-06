@@ -207,7 +207,12 @@ fun ProfileScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(22.dp))
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Watch Analytics & Habit Breakdown Dashboard
+                com.streamhub.app.ui.components.WatchAnalyticsCard()
+
+                Spacer(modifier = Modifier.height(18.dp))
 
                 // OWNER-ONLY HIDDEN ADMIN PANEL CARD (Renders ONLY if isOwner == true)
                 if (state.isOwner) {
