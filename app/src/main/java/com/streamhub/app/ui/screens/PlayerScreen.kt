@@ -71,7 +71,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -138,6 +140,10 @@ fun PlayerScreen(
     var doubleTapRippleText by remember { mutableStateOf("") }
     var doubleTapAlignment by remember { mutableStateOf(Alignment.Center) }
     var showDoubleTapRipple by remember { mutableStateOf(false) }
+
+    // Seekbar Video Frame Preview Scrubbing States
+    var isScrubbing by remember { mutableStateOf(false) }
+    var scrubbingPositionMs by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
 
     // Volume & Brightness Drag States
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
@@ -532,9 +538,83 @@ fun PlayerScreen(
                             }
                         }
 
+                        // Floating Seekbar Video Frame Preview Thumbnail Card
+                        if (isScrubbing) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Card(
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                                    modifier = Modifier
+                                        .width(180.dp)
+                                        .height(115.dp)
+                                        .border(1.5.dp, primaryColor, RoundedCornerShape(12.dp))
+                                ) {
+                                    Column(
+                                        modifier = Modifier.fillMaxSize(),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(80.dp)
+                                                .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
+                                        ) {
+                                            AsyncImage(
+                                                model = mediaItem.bannerUrl.ifEmpty { mediaItem.posterUrl },
+                                                contentDescription = "Seek Frame Preview",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(Color(0x33000000)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.PlayArrow,
+                                                    contentDescription = "Preview",
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                            }
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .fillMaxHeight()
+                                                .background(Color(0xFF14141E)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = formatTime(scrubbingPositionMs),
+                                                color = AccentOrange,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         Slider(
-                            value = uiState.currentPositionMs.toFloat(),
-                            onValueChange = { viewModel.seekTo(it.toLong()) },
+                            value = if (isScrubbing) scrubbingPositionMs.toFloat() else uiState.currentPositionMs.toFloat(),
+                            onValueChange = { pos ->
+                                isScrubbing = true
+                                scrubbingPositionMs = pos.toLong()
+                            },
+                            onValueChangeFinished = {
+                                viewModel.seekTo(scrubbingPositionMs)
+                                isScrubbing = false
+                            },
                             valueRange = 0f..(uiState.durationMs.toFloat().coerceAtLeast(1f)),
                             colors = SliderDefaults.colors(
                                 thumbColor = primaryColor,
