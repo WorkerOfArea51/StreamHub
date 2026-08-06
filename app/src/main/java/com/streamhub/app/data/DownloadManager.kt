@@ -184,6 +184,7 @@ object DownloadManager {
                     .setDescription("Downloading video for offline streaming...")
                     .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                     .setDestinationUri(Uri.fromFile(targetFile))
+                    .setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE)
                     .setAllowedOverMetered(true)
                     .setAllowedOverRoaming(true)
 
