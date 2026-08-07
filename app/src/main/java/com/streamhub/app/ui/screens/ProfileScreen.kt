@@ -145,14 +145,134 @@ fun ProfileScreen(
                     fontWeight = FontWeight.Bold
                 )
 
-                OutlinedButton(
-                    onClick = { showProxyDialog = true },
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    IconButton(onClick = { showProxyDialog = true }) {
+                        Icon(Icons.Default.Security, contentDescription = "Proxy", tint = primaryColor)
+                    }
+                    IconButton(onClick = { onNavigateToSettings() }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = primaryColor)
+                    }
+                }
+            }
+        }
+
+        item(key = "profile_auth") {
+            when (val state = authState) {
+                is TelegramAuthState.Authenticated -> {
+                    M3ExpressiveVipProfileCard(
+                        user = state.user,
+                        isOwner = state.isOwner,
+                        primaryColor = primaryColor,
+                        onOpenTelegram = {
+                            val telegramUri = Uri.parse(
+                                if (state.user.username.isNotBlank()) "tg://resolve?domain=${state.user.username}"
+                                else "https://t.me/"
+                            )
+                            val intent = Intent(Intent.ACTION_VIEW, telegramUri)
+                            try {
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/"))) } catch (_: Exception) {}
+                            }
+                        },
+                        onLogout = { TelegramAuthManager.logout() }
+                    )
+                }
+                is TelegramAuthState.Error -> {
+                    Card(
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Login Error", color = TextPrimary, fontWeight = FontWeight.Bold)
+                            Text(state.message, color = TextSecondary, fontSize = 12.sp)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = { TelegramAuthManager.resetState() },
+                                colors = ButtonDefaults.buttonColors(containerColor = primaryColor)
+                            ) {
+                                Text("Retry", color = Color.White)
+                            }
+                        }
+                    }
+                }
+                else -> {
+                    TelegramLoginCard(authState = state, primaryColor = primaryColor)
+                }
+            }
+        }
+
+        item(key = "profile_stats") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                StatCard(
+                    icon = Icons.Default.Timer,
+                    label = "Total Watch",
+                    value = totalWatchHours,
+                    primaryColor = primaryColor,
+                    modifier = Modifier.weight(1f)
+                )
+                StatCard(
+                    icon = Icons.Default.SmartDisplay,
+                    label = "Today Usage",
+                    value = dailyWatchTime,
+                    primaryColor = primaryColor,
+                    modifier = Modifier.weight(1f)
+                )
+                StatCard(
+                    icon = Icons.Default.ElectricBolt,
+                    label = "Streak",
+                    value = "🔥 ${streakDays}d",
+                    primaryColor = primaryColor,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        item(key = "profile_analytics") {
+            com.streamhub.app.ui.components.WatchAnalyticsCard()
+        }
+
+        item(key = "profile_admin_entry") {
+            val isAdminMode by com.streamhub.app.data.AdminManager.isAdminMode.collectAsState()
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, primaryColor.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+                    .clickable {
+                        if (isAdminMode) onOpenAdminPanel() else showAdminPasswordDialog = true
+                    }
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Security, contentDescription = "Proxy Settings", tint = primaryColor)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Configure MTProto Proxy 🛡️ (Bypass Censorship)", color = primaryColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.AdminPanelSettings, contentDescription = "Admin", tint = primaryColor)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                if (isAdminMode) "Admin Dashboard (Unlocked) 🛡️" else "Owner Admin Dashboard 🛡️",
+                                color = TextPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                if (isAdminMode) "Manage catalog & upload content" else "Enter password to unlock admin features",
+                                color = TextSecondary,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open", tint = TextSecondary)
                 }
             }
         }
@@ -164,7 +284,6 @@ fun ProfileScreen(
         )
     }
 
-    // Owner Admin Password Verification Dialog
     if (showAdminPasswordDialog) {
         AdminPasswordDialog(
             onDismiss = { showAdminPasswordDialog = false },
