@@ -51,7 +51,9 @@ class FirebaseRepository private constructor() {
             }
     }
 
-    private val firestore by lazy { FirebaseFirestore.getInstance() }
+    private val firestore by lazy {
+        runCatching { FirebaseFirestore.getInstance() }.getOrNull()
+    }
 
     /** Active Firestore snapshot listener registration. Only one at a time. */
     private var listenerRegistration: ListenerRegistration? = null
@@ -108,8 +110,14 @@ class FirebaseRepository private constructor() {
     }
 
     private fun attachFirestoreListener() {
+        val db = firestore
+        if (db == null) {
+            Log.e(TAG, "Firestore instance not available")
+            _catalogState.value = CatalogState.Error("Firebase not initialized")
+            return
+        }
         try {
-            listenerRegistration = firestore.collection(COLLECTION_NAME)
+            listenerRegistration = db.collection(COLLECTION_NAME)
                 .orderBy("title", Query.Direction.ASCENDING)
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
@@ -185,7 +193,12 @@ class FirebaseRepository private constructor() {
 
         // Remote sync with proper success/failure callbacks
         _adminOperationState.value = AdminOperationState.Loading
-        firestore.collection(COLLECTION_NAME)
+        val db = firestore ?: run {
+            _adminOperationState.value = AdminOperationState.Error("Firebase not initialized")
+            _mediaCatalog.value = catalogBeforeUpdate
+            return
+        }
+        db.collection(COLLECTION_NAME)
             .document(item.id)
             .set(item)
             .addOnSuccessListener {
@@ -219,7 +232,12 @@ class FirebaseRepository private constructor() {
         _mediaCatalog.value = current
 
         _adminOperationState.value = AdminOperationState.Loading
-        firestore.collection(COLLECTION_NAME)
+        val dbDelete = firestore ?: run {
+            _adminOperationState.value = AdminOperationState.Error("Firebase not initialized")
+            _mediaCatalog.value = catalogBeforeDelete
+            return
+        }
+        dbDelete.collection(COLLECTION_NAME)
             .document(itemId)
             .delete()
             .addOnSuccessListener {
