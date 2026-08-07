@@ -1,7 +1,9 @@
 package com.streamhub.app
 
 import android.app.PictureInPictureParams
+import android.content.Intent
 import android.content.res.Configuration
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -67,16 +69,40 @@ class MainActivity : ComponentActivity() {
         private const val TAG = "MainActivity"
     }
 
+    /**
+     * FIX: Deep link mediaId extracted from streamhub://media/{id} intents.
+     */
+    val deepLinkMediaId = androidx.compose.runtime.mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleDeepLink(intent)
 
         // All managers are initialized in StreamHubApplication.onCreate().
         // No manager init calls belong here — see StreamHubApplication KDoc.
 
         setContent {
             StreamHubTheme {
-                StreamHubApp()
+                StreamHubApp(deepLinkMediaId = deepLinkMediaId)
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleDeepLink(intent)
+    }
+
+    private fun handleDeepLink(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_VIEW) {
+            val uri: Uri? = intent.data
+            if (uri != null && uri.scheme == "streamhub" && uri.host == "media") {
+                val mediaId = uri.lastPathSegment
+                if (!mediaId.isNullOrBlank()) {
+                    Log.d(TAG, "Deep link: streamhub://media/$mediaId")
+                    deepLinkMediaId.value = mediaId
+                }
             }
         }
     }
@@ -134,12 +160,21 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun StreamHubApp() {
+fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>? = null) {
     val navController = rememberNavController()
     val repository = remember { FirebaseRepository.getInstance() }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         repository.connect()
+    }
+
+    // FIX: Handle deep link navigation
+    androidx.compose.runtime.LaunchedEffect(deepLinkMediaId?.value) {
+        val mediaId = deepLinkMediaId?.value
+        if (mediaId != null) {
+            navController.navigate(Screen.Details.createRoute(mediaId))
+            deepLinkMediaId.value = null  // Consumed
+        }
     }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()

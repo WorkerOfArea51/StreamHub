@@ -13,6 +13,15 @@ import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
+/**
+ * ExoPlayer Download Manager — INTERNAL player component for stream caching.
+ *
+ * This is NOT the same as com.streamhub.app.data.DownloadManager (which handles
+ * user-initiated episode downloads via the system DownloadManager). This class
+ * manages ExoPlayer's built-in download/caching service for progressive downloads
+ * and stream buffering. It is used internally by the player and should not be
+ * called directly from UI code.
+ */
 @OptIn(UnstableApi::class)
 object StreamDownloadManager {
     private const val TAG = "StreamDownloadManager"

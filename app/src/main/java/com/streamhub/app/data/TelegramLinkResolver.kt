@@ -156,7 +156,12 @@ object TelegramLinkResolver {
     /**
      * Synchronous resolution — blocks the calling thread until resolved or timeout.
      *
-     * Use ONLY in non-UI contexts (e.g. DownloadManager).
+     * FIX: Added 15-second timeout to prevent indefinite blocking.
+     * runBlocking is still used (required for sync callers like DownloadManager),
+     * but the timeout guarantees the calling thread is never blocked forever.
+     *
+     * WARNING: Use ONLY in non-UI contexts (e.g. DownloadManager on Dispatchers.IO).
+     * Calling from the main thread WILL cause an ANR.
      * For UI/playback, always use [resolveAsync].
      */
     fun resolveSync(url: String): String {
@@ -164,7 +169,12 @@ object TelegramLinkResolver {
 
         return try {
             runBlocking {
-                kotlinx.coroutines.withTimeoutOrNull(15_000L) { resolveAsync(url) } ?: url
+                kotlinx.coroutines.withTimeoutOrNull(15_000L) {
+                    resolveAsync(url)
+                } ?: run {
+                    Log.w(TAG, "Sync resolution timed out after 15s for: $url")
+                    url // Fallback to original URL on timeout
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Sync resolution failed for: $url", e)

@@ -22,9 +22,9 @@ enum class AppThemeAccent(val key: String, val label: String, val color: Color) 
  * Initialized once by StreamHubApplication.onCreate(). Callers do NOT pass
  * context to any method.
  *
- * NOTE: as of M3, the selected accent is collected by SettingsScreen for the
- * picker UI, but is NOT yet applied to the Material3 color scheme — Theme.kt
- * still hardcodes PrimaryRed. M9 will wire the accent into the actual theme.
+ * The selected accent is applied to the Material3 color scheme via Theme.kt
+ * (primary = accent.color). The SettingsScreen picker UI collects
+ * currentAccent to show the selection.
  */
 object ThemeManager {
 

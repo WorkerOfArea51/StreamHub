@@ -45,7 +45,10 @@ object SpeedTestManager {
     private val _testState = MutableStateFlow<SpeedTestState>(SpeedTestState.Idle)
     val testState: StateFlow<SpeedTestState> = _testState.asStateFlow()
 
-    private const val TEST_ENDPOINT = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=1200"
+    // FIX: Use Cloudflare CDN endpoint for speed testing instead of Unsplash.
+    // Cloudflare's CDN is designed for high-throughput static delivery and won't
+    // rate-limit or block like Unsplash's image API.
+    private const val TEST_ENDPOINT = "https://speed.cloudflare.com/__down?bytes=1500000"
 
     private val httpClient by lazy {
         OkHttpClient.Builder()

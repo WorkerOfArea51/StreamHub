@@ -103,13 +103,12 @@ object TelegramProxyManager {
         "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt"
     )
 
-    // FIX #3: Removed fake built-in proxies with placeholder secrets.
-    // These were ee000000... hex strings that never work with any real server.
-    // Fallback to empty list — user must fetch live proxies or configure manually.
-    private val builtInFallbackProxies = listOf(
-        PublicProxyItem("149.154.175.50", 443, "", "", "", ProxyType.SOCKS5, "Telegram DC2 (US)"),
-        PublicProxyItem("149.154.167.51", 443, "", "", "", ProxyType.SOCKS5, "Telegram DC3 (EU)")
-    )
+    // FIX: Removed fake built-in "fallback" proxies.
+    // The previous entries (149.154.175.50:443, 149.154.167.51:443) were Telegram
+    // MTProto DC servers, NOT SOCKS5 proxies. Connecting to them as SOCKS5
+    // always fails because they speak MTProto, not SOCKS5. Removed entirely —
+    // user must fetch live proxies via autoFetchPublicProxies() or configure manually.
+    private val builtInFallbackProxies = emptyList<PublicProxyItem>()
 
     fun init(context: Context) {
         if (prefs != null) return

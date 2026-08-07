@@ -39,7 +39,8 @@ data class DownloadedItem(
     val progressPercent: Int = 0,
     val isCompleted: Boolean = false,
     val isPaused: Boolean = false,
-    val isCanceled: Boolean = false
+    val isCanceled: Boolean = false,
+    val streamUrl: String = ""  // FIX: Persist original stream URL for real resume support
 )
 
 /**
@@ -260,7 +261,8 @@ object DownloadManager {
                         progressPercent = obj.optInt("progressPercent", 0),
                         isCompleted = obj.optBoolean("isCompleted", false),
                         isPaused = obj.optBoolean("isPaused", false),
-                        isCanceled = obj.optBoolean("isCanceled", false)
+                        isCanceled = obj.optBoolean("isCanceled", false),
+                        streamUrl = obj.optString("streamUrl", "")
                     )
                 )
             }
@@ -287,6 +289,7 @@ object DownloadManager {
                 put("isCompleted", item.isCompleted)
                 put("isPaused", item.isPaused)
                 put("isCanceled", item.isCanceled)
+                put("streamUrl", item.streamUrl)
             }
             array.put(obj)
         }
@@ -337,7 +340,8 @@ object DownloadManager {
             fileSizeMb = 0.0,
             downloadId = sysDownloadId,
             progressPercent = 0,
-            isCompleted = false
+            isCompleted = false,
+            streamUrl = streamUrl
         )
 
         _downloads.update { currentList ->
@@ -372,19 +376,59 @@ object DownloadManager {
     }
 
     /**
-     * FIX #1: Honest resume — re-enqueues the download with the system DownloadManager.
+     * FIX: Real resume — re-enqueues the download with the system DownloadManager
+     * using the persisted streamUrl.
      */
-    fun resumeDownload(item: DownloadedItem) {
+    fun resumeDownload(item: DownloadedItem, context: Context? = null) {
         if (item.isCompleted) return
 
-        val currentList = _downloads.value.toMutableList()
-        val index = currentList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
-        if (index != -1) {
-            currentList.removeAt(index)
-            _downloads.value = currentList
-            saveToDisk()
-            Log.w(TAG, "Resume not supported without original URL. Removed stale download item for ${item.mediaTitle}. User can re-download from Details.")
+        val url = item.streamUrl
+        if (url.isNotBlank() && url.startsWith("http") && (context ?: appContext) != null) {
+            val ctx = context ?: appContext!!
+            val downloadsDir = getEffectiveDownloadDir(ctx)
+            val targetFile = File(item.localFilePath)
+
+            try {
+                val request = SystemDownloadManager.Request(Uri.parse(url))
+                    .setTitle("${item.mediaTitle} - ${item.episodeTitle}")
+                    .setDescription("Resuming download...")
+                    .setNotificationVisibility(SystemDownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                    .setDestinationUri(Uri.fromFile(targetFile))
+                    .setAllowedNetworkTypes(SystemDownloadManager.Request.NETWORK_WIFI or SystemDownloadManager.Request.NETWORK_MOBILE)
+                    .setAllowedOverMetered(true)
+                    .setAllowedOverRoaming(true)
+
+                val newDownloadId = systemDownloadManager?.enqueue(request) ?: -1L
+
+                _downloads.update { currentList ->
+                    val mutableList = currentList.toMutableList()
+                    val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
+                    if (index != -1) {
+                        mutableList[index] = item.copy(
+                            downloadId = newDownloadId,
+                            isPaused = false,
+                            progressPercent = 0
+                        )
+                    }
+                    mutableList
+                }
+                saveToDisk()
+                startProgressPolling()
+                Log.i(TAG, "Resumed download for ${item.mediaTitle} with new downloadId=$newDownloadId")
+                return
+            } catch (e: Exception) {
+                Log.e(TAG, "Resume re-enqueue failed for ${item.mediaTitle}", e)
+            }
         }
+
+        // Legacy fallback
+        _downloads.update { currentList ->
+            val mutableList = currentList.toMutableList()
+            mutableList.removeAll { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
+            mutableList
+        }
+        saveToDisk()
+        Log.w(TAG, "Resume not supported without original URL. Removed stale download for ${item.mediaTitle}.")
     }
 
     fun cancelDownload(item: DownloadedItem) {

@@ -29,8 +29,8 @@ android {
         applicationId = "com.streamhub.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 42
-        versionName = "3.5.9"
+        versionCode = 43
+        versionName = "3.6.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -47,6 +47,9 @@ android {
         buildConfigField("String", "TELEGRAM_MOVIES_CHANNEL", "\"${secret("streamhub.telegram_movies_channel")}\"")
         buildConfigField("String", "TELEGRAM_SERIES_CHANNEL", "\"${secret("streamhub.telegram_series_channel")}\"")
         buildConfigField("boolean", "DEBUG_LOGGING", "false")
+        // FIX: Configurable owner usernames for admin check — comma-separated list.
+        // Override via local.properties: streamhub.owner_usernames=WorkerOfArea51,StreamHubOwner
+        buildConfigField("String", "OWNER_USERNAMES", "\"${secret("streamhub.owner_usernames", "WorkerOfArea51,StreamHubOwner")}\"")
     }
 
     splits {
@@ -58,11 +61,13 @@ android {
         }
     }
 
-    // FIX #1: Use public filters API for APK renaming
+    // FIX: Use public VariantOutput API for APK renaming — no internal AGP classes.
     applicationVariants.all {
         val variant = this
         variant.outputs.all {
-            val output = this as com.android.build.gradle.internal.api.ApkVariantOutputImpl
+            // Must be com.android.build.gradle.api.ApkVariantOutput (public API)
+            // Cast is safe because all outputs of an application variant are APK outputs
+            val output = this as com.android.build.gradle.api.ApkVariantOutput
             val abi = output.filters.find { it.filterType == "ABI" }?.identifier
             val archName = when (abi) {
                 "armeabi-v7a" -> "arm32"
@@ -177,6 +182,11 @@ dependencies {
 
     // TDLib — Telegram Database Library (native MTProto client)
     implementation(libs.tdlib.java)
+
+    // FIX: Test dependencies for unit and instrumented tests
+    testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 
     debugImplementation(libs.androidx.ui.tooling)
 }

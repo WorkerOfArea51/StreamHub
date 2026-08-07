@@ -217,12 +217,36 @@ object TelegramAuthManager {
         }
     }
 
+    /**
+     * FIX: The small.remote.id is a TDLib file remote ID, NOT a direct HTTP URL.
+     * Coil cannot load "remote.id" as an image — it needs either an HTTP URL or
+     * a local file path. We now use TdLibManager to download the file and return
+     * the local file path that Coil can load. If the download fails or hasn't
+     * completed, we return an empty string (UI shows placeholder).
+     */
     private fun getProfilePhotoUrl(user: TdApi.User): String {
         val photo = user.profilePhoto
         if (photo != null) {
             val small = photo.small
-            if (small != null && small.remote != null) {
-                return small.remote.id
+            if (small != null) {
+                // If the file is already downloaded locally, return the local path
+                if (small.local.isDownloadingCompleted && small.local.path.isNotBlank()) {
+                    return small.local.path
+                }
+                // If the file is not yet downloaded, trigger async download
+                if (!small.local.isDownloadingActive && small.remote.id.isNotBlank()) {
+                    scope.launch {
+                        try {
+                            TdLibManager.send(org.drinkless.tdlib.TdApi.DownloadFile(small.id, 1, 0, 0, true))
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to download profile photo for user ${user.id}", e)
+                        }
+                    }
+                }
+                // Return the local path if available (may be empty if download not yet complete)
+                if (small.local.path.isNotBlank()) {
+                    return small.local.path
+                }
             }
         }
         return ""
@@ -383,18 +407,19 @@ object TelegramAuthManager {
     }
 
     /**
-     * Check if the user is an "owner" (admin) based on their Telegram username.
-     *
-     * Owner usernames are matched against a hardcoded list. This is intentional —
-     * the app owner's Telegram username is a known, public identifier.
+     * FIX: Owner usernames are now configurable via BuildConfig.OWNER_USERNAMES
+     * (comma-separated list, set via local.properties streamhub.owner_usernames).
+     * Falls back to "WorkerOfArea51,StreamHubOwner" if not configured.
      */
     private fun checkIsOwner(user: TelegramUser): Boolean {
         val apiId = Secrets.TELEGRAM_API_ID
         val apiHash = Secrets.TELEGRAM_API_HASH
         if (apiId.isBlank() || apiHash.isBlank()) return false
 
-        return user.username.equals("WorkerOfArea51", ignoreCase = true) ||
-               user.username.equals("StreamHubOwner", ignoreCase = true)
+        val ownerUsernames = com.streamhub.app.BuildConfig.OWNER_USERNAMES
+            .split(",")
+            .map { it.trim().lowercase() }
+        return user.username.lowercase() in ownerUsernames
     }
 
     /**
