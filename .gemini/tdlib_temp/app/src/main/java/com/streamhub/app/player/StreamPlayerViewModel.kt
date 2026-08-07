@@ -1,7 +1,6 @@
 package com.streamhub.app.player
 
 import android.content.Context
-import android.util.Log
 import androidx.annotation.OptIn
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope

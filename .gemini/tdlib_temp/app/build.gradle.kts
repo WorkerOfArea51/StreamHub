@@ -174,6 +174,8 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
 
     // TDLib — Telegram Database Library (native MTProto client)
+    // Provides: org.drinkless.tdlib.Client, org.drinkless.tdlib.TdApi
+    // Includes native .so for arm64-v8a, armeabi-v7a
     implementation(libs.tdlib.java)
 
     debugImplementation(libs.androidx.ui.tooling)

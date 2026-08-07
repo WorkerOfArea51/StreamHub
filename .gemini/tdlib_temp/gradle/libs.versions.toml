@@ -60,7 +60,7 @@ androidx-datastore-preferences = { group = "androidx.datastore", name = "datasto
 bcrypt = { group = "at.favre.lib", name = "bcrypt", version.ref = "bcrypt" }
 
 # TDLib — Telegram Database Library for full MTProto client access
-tdlib-java = { group = "com.github.tdlibx", name = "td", version = "1.8.56" }
+tdlib-java = { group = "org.drinkless.tdlib", name = "tdlib-java", version.ref = "tdlib" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

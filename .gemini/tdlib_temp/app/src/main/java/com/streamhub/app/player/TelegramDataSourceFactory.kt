@@ -5,7 +5,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.C
-import androidx.media3.datasource.DataSpec
+import androidx.media3.common.DataSpec
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSink
@@ -212,7 +212,7 @@ private class LocalFileDataSource : DataSource {
 
         val length = dataSpec.length
         bytesRemaining = if (length != C.LENGTH_UNSET.toLong()) {
-            kotlin.math.min(length, fileSize - position)
+            minOf(length, fileSize - position)
         } else {
             fileSize - position
         }
@@ -225,7 +225,7 @@ private class LocalFileDataSource : DataSource {
             return C.RESULT_END_OF_INPUT
         }
 
-        val toRead = kotlin.math.min(length.toLong(), bytesRemaining).toInt()
+        val toRead = minOf(length.toLong(), bytesRemaining).toInt()
         val read = inputStream?.read(buffer, offset, toRead)
             ?: throw IOException("InputStream not opened")
 
