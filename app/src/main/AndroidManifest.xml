@@ -45,6 +45,13 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- Disable automatic Firebase init provider to prevent runtime crashes when google-services.json is missing -->
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            android:exported="false"
+            android:enabled="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

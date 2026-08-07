@@ -68,6 +68,13 @@ class StreamHubApplication : Application() {
      * (e.g. corrupted JSON in prefs) and emitting an empty StateFlow as fallback.
      */
     private fun initializeManagers() {
+        // Manual Firebase init — only if google-services.json exists / not initialized
+        runCatching {
+            if (com.google.firebase.FirebaseApp.getApps(applicationContext).isEmpty()) {
+                com.google.firebase.FirebaseApp.initializeApp(applicationContext)
+            }
+        }.onFailure { Log.w(TAG, "Firebase init failed — running without Firestore", it) }
+
         // Layer 1 — Core preferences (no cross-dependencies)
         runCatching { PlayerSettingsManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "PlayerSettingsManager.init failed", it) }
