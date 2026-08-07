@@ -44,7 +44,8 @@ data class PlayerUiState(
     val showSubtitleDialog: Boolean = false,
     // FIX #3: Actual track lists from ExoPlayer, not hardcoded
     val availableAudioTracks: List<String> = emptyList(),
-    val availableSubtitleTracks: List<String> = listOf("Off")
+    val availableSubtitleTracks: List<String> = listOf("Off"),
+    val playerError: String? = null
 )
 
 @OptIn(UnstableApi::class)
@@ -60,8 +61,9 @@ class StreamPlayerViewModel : ViewModel() {
     private var episodesList: List<Episode> = emptyList()
     private var appContext: Context? = null
 
-    // FIX #1: Trackable Job for position tracker — can be cancelled on release
     private var positionTrackerJob: Job? = null
+    private var resolutionJob: Job? = null
+    private var playerListener: Player.Listener? = null
 
     fun getPlayer(): ExoPlayer? = exoPlayer
 
@@ -71,7 +73,6 @@ class StreamPlayerViewModel : ViewModel() {
         episodesList = mediaItem.episodes
 
         if (exoPlayer == null) {
-            // FIX #4: runCatching around player creation to prevent crash on failure
             val createResult = runCatching {
                 val dataSourceFactory = TelegramDataSourceFactory(context)
                 trackSelector = DefaultTrackSelector(context)
@@ -85,14 +86,15 @@ class StreamPlayerViewModel : ViewModel() {
 
             if (createResult.isFailure) {
                 _uiState.value = _uiState.value.copy(
-                    isBuffering = false
+                    isBuffering = false,
+                    playerError = createResult.exceptionOrNull()?.message ?: "Failed to initialize player"
                 )
                 return
             }
 
             exoPlayer = createResult.getOrNull()
 
-            exoPlayer?.addListener(object : Player.Listener {
+            val listener = object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     _uiState.value = _uiState.value.copy(isPlaying = isPlaying)
                 }
@@ -106,11 +108,19 @@ class StreamPlayerViewModel : ViewModel() {
                     )
                 }
 
-                // FIX #3: Listen for track changes and update available tracks list
+                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    _uiState.value = _uiState.value.copy(
+                        isBuffering = false,
+                        playerError = error.message ?: "Playback error"
+                    )
+                }
+
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                     updateAvailableTracks(tracks)
                 }
-            })
+            }
+            playerListener = listener
+            exoPlayer?.addListener(listener)
         }
 
         val savedProgress = WatchHistoryManager.getProgress(mediaItem.id)
@@ -188,9 +198,9 @@ class StreamPlayerViewModel : ViewModel() {
         val episode = episodesList[index]
         _uiState.value = _uiState.value.copy(currentEpisodeIndex = index)
 
-        // Resolve the stream URL — Telegram links are resolved via TDLib
         val rawUrl = episode.streamUrl.ifEmpty { episode.mirrorStreamUrl }
-        viewModelScope.launch {
+        resolutionJob?.cancel()
+        resolutionJob = viewModelScope.launch {
             val resolvedUrl = resolveStreamUrl(rawUrl)
             val mediaItem = ExoMediaItem.fromUri(resolvedUrl)
 
@@ -437,11 +447,13 @@ class StreamPlayerViewModel : ViewModel() {
     }
 
     fun releasePlayer() {
-        // FIX #1: Cancel position tracker — no more zombie while(true) loop
         positionTrackerJob?.cancel()
         positionTrackerJob = null
+        resolutionJob?.cancel()
+        resolutionJob = null
 
         exoPlayer?.let { player ->
+            playerListener?.let { player.removeListener(it) }
             currentMediaItem?.let { media ->
                 WatchHistoryManager.saveProgress(
                     mediaId = media.id,
@@ -452,6 +464,7 @@ class StreamPlayerViewModel : ViewModel() {
             }
             player.release()
         }
+        playerListener = null
         exoPlayer = null
         trackSelector = null
     }

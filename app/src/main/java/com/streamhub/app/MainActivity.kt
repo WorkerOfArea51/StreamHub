@@ -136,7 +136,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun StreamHubApp() {
     val navController = rememberNavController()
-    val repository = remember { FirebaseRepository() }
+    val repository = remember { FirebaseRepository.getInstance() }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         repository.connect()
@@ -145,13 +145,15 @@ fun StreamHubApp() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    val bottomBarScreens = listOf(
-        Screen.Home,
-        Screen.Search,
-        Screen.Downloads,
-        Screen.MyList,
-        Screen.Profile
-    )
+    val bottomBarScreens = remember {
+        listOf(
+            Screen.Home,
+            Screen.Search,
+            Screen.Downloads,
+            Screen.MyList,
+            Screen.Profile
+        )
+    }
 
     val showBottomBar = bottomBarScreens.any { it.route == currentRoute }
 
@@ -299,7 +301,8 @@ fun StreamHubApp() {
                 route = Screen.Details.route,
                 arguments = listOf(navArgument("mediaId") { type = NavType.StringType })
             ) { backStackEntry ->
-                val mediaId = backStackEntry.arguments?.getString("mediaId") ?: ""
+                val rawMediaId = backStackEntry.arguments?.getString("mediaId") ?: ""
+                val mediaId = java.net.URLDecoder.decode(rawMediaId, "UTF-8")
                 DetailsScreen(
                     mediaId = mediaId,
                     repository = repository,
@@ -318,11 +321,13 @@ fun StreamHubApp() {
                 )
             ) { backStackEntry ->
                 val playerViewModel: StreamPlayerViewModel = viewModel()
-                val mediaId = backStackEntry.arguments?.getString("mediaId") ?: ""
+                val rawMediaId = backStackEntry.arguments?.getString("mediaId") ?: ""
+                val mediaId = java.net.URLDecoder.decode(rawMediaId, "UTF-8")
                 val episodeIndex = backStackEntry.arguments?.getInt("episodeIndex") ?: 0
                 val catalogState by repository.catalogState.collectAsState()
-                val mediaItem = remember(mediaId, repository.mediaCatalog.value) {
-                    repository.mediaCatalog.value.firstOrNull { it.id == mediaId }
+                val catalog by repository.mediaCatalog.collectAsState()
+                val mediaItem = remember(mediaId, catalog) {
+                    catalog.firstOrNull { it.id == mediaId }
                 }
 
                 when {

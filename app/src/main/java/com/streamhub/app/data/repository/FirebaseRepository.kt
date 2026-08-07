@@ -36,11 +36,19 @@ sealed class AdminOperationState {
     data class Error(val message: String) : AdminOperationState()
 }
 
-class FirebaseRepository {
+class FirebaseRepository private constructor() {
 
     companion object {
         private const val TAG = "FirebaseRepository"
         private const val COLLECTION_NAME = "media_content"
+
+        @Volatile
+        private var INSTANCE: FirebaseRepository? = null
+
+        fun getInstance(): FirebaseRepository =
+            INSTANCE ?: synchronized(this) {
+                INSTANCE ?: FirebaseRepository().also { INSTANCE = it }
+            }
     }
 
     private val firestore by lazy { FirebaseFirestore.getInstance() }

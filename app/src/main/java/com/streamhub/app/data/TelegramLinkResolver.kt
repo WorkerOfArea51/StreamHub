@@ -164,7 +164,7 @@ object TelegramLinkResolver {
 
         return try {
             runBlocking {
-                resolveAsync(url)
+                kotlinx.coroutines.withTimeoutOrNull(15_000L) { resolveAsync(url) } ?: url
             }
         } catch (e: Exception) {
             Log.e(TAG, "Sync resolution failed for: $url", e)
@@ -176,7 +176,7 @@ object TelegramLinkResolver {
      * Check if a URL is a Telegram link that needs TDLib resolution.
      */
     fun isTelegramLink(url: String): Boolean {
-        return url.contains("t.me/")
+        return url.contains("://t.me/") || url.startsWith("t.me/")
     }
 
     /**

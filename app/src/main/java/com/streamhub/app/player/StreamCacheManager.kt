@@ -13,33 +13,27 @@ import java.io.File
 object StreamCacheManager {
     private const val TAG = "StreamCacheManager"
     private var simpleCache: SimpleCache? = null
+    private var databaseProvider: StandaloneDatabaseProvider? = null
+    private var cacheDir: File? = null
 
     @Synchronized
     fun getCache(context: Context): SimpleCache {
         if (simpleCache == null) {
-            val cacheDir = File(context.cacheDir, "media_stream_cache")
+            cacheDir = File(context.cacheDir, "media_stream_cache")
             val evictor = LeastRecentlyUsedCacheEvictor(500 * 1024 * 1024L) // 500 MB cache
-            val databaseProvider = StandaloneDatabaseProvider(context.applicationContext)
-            simpleCache = SimpleCache(cacheDir, evictor, databaseProvider)
+            databaseProvider = StandaloneDatabaseProvider(context.applicationContext)
+            simpleCache = SimpleCache(cacheDir!!, evictor, databaseProvider!!)
         }
         return simpleCache!!
     }
 
-    /**
-     * FIX #12: Null out simpleCache FIRST to prevent stale references if release() throws.
-     */
     @Synchronized
     fun clearCache(context: Context) {
         val cache = simpleCache
         simpleCache = null
-        try {
-            cache?.release()
-            val cacheDir = File(context.cacheDir, "media_stream_cache")
-            if (cacheDir.exists()) {
-                cacheDir.deleteRecursively()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to clear media stream cache", e)
-        }
+        databaseProvider = null
+        try { cache?.release() } catch (e: Exception) { Log.e(TAG, "Failed to release cache", e) }
+        try { (cacheDir ?: File(context.cacheDir, "media_stream_cache")).deleteRecursively() } catch (e: Exception) { Log.e(TAG, "Failed to delete cache dir", e) }
+        cacheDir = null
     }
 }

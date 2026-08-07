@@ -41,12 +41,13 @@ fun MyListScreen(
     onMediaClick: (MediaItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val catalog by repository.mediaCatalog.collectAsState()
     val myListSet by MyListManager.myListFlow.collectAsState()
     val primaryColor = MaterialTheme.colorScheme.primary
 
-    val bookmarkedItems = catalog.filter { myListSet.contains(it.id) }
+    val bookmarkedItems = androidx.compose.runtime.remember(catalog, myListSet) {
+        catalog.filter { myListSet.contains(it.id) }
+    }
 
     Column(
         modifier = modifier
@@ -113,7 +114,7 @@ fun MyListScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                items(bookmarkedItems) { item ->
+                items(bookmarkedItems, key = { it.id }) { item ->
                     MediaCard(
                         item = item,
                         onClick = { onMediaClick(item) },

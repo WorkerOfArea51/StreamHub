@@ -20,6 +20,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -108,31 +109,31 @@ object DownloadManager {
                 }
             }
         }
-        val flags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            Context.RECEIVER_NOT_EXPORTED
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            ctx.registerReceiver(receiver, IntentFilter(SystemDownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_NOT_EXPORTED)
         } else {
-            0
+            ctx.registerReceiver(receiver, IntentFilter(SystemDownloadManager.ACTION_DOWNLOAD_COMPLETE))
         }
-        ctx.registerReceiver(receiver, IntentFilter(SystemDownloadManager.ACTION_DOWNLOAD_COMPLETE), flags)
         completionReceiver = receiver
     }
 
     private fun onDownloadCompleted(completedId: Long) {
-        val currentList = _downloads.value.toMutableList()
-        val index = currentList.indexOfFirst { it.downloadId == completedId }
-        if (index == -1) return
-
-        val item = currentList[index]
-        val file = File(item.localFilePath)
-        val realSizeMb = if (file.exists()) file.length() / (1024.0 * 1024.0) else item.fileSizeMb
-
-        currentList[index] = item.copy(
-            progressPercent = 100,
-            isCompleted = true,
-            isPaused = false,
-            fileSizeMb = realSizeMb
-        )
-        _downloads.value = currentList
+        _downloads.update { currentList ->
+            val mutableList = currentList.toMutableList()
+            val index = mutableList.indexOfFirst { it.downloadId == completedId }
+            if (index != -1) {
+                val item = mutableList[index]
+                val file = File(item.localFilePath)
+                val realSizeMb = if (file.exists()) file.length() / (1024.0 * 1024.0) else item.fileSizeMb
+                mutableList[index] = item.copy(
+                    progressPercent = 100,
+                    isCompleted = true,
+                    isPaused = false,
+                    fileSizeMb = realSizeMb
+                )
+            }
+            mutableList
+        }
         saveToDisk()
     }
 
@@ -300,27 +301,30 @@ object DownloadManager {
             return
         }
 
+        if (!streamUrl.startsWith("http://") && !streamUrl.startsWith("https://")) {
+            Log.w(TAG, "Cannot download non-HTTP URL: $streamUrl")
+            return
+        }
+
         val downloadsDir = getEffectiveDownloadDir(context)
         val fileName = "${mediaItem.title.replace(Regex("[^a-zA-Z0-9]"), "_")}_Ep${episodeIndex + 1}.mp4"
         val targetFile = File(downloadsDir, fileName)
 
         var sysDownloadId = -1L
 
-        if (streamUrl.startsWith("http://") || streamUrl.startsWith("https://")) {
-            try {
-                val request = SystemDownloadManager.Request(Uri.parse(streamUrl))
-                    .setTitle("${mediaItem.title} - Episode ${episodeIndex + 1}")
-                    .setDescription("Downloading video for offline streaming...")
-                    .setNotificationVisibility(SystemDownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                    .setDestinationUri(Uri.fromFile(targetFile))
-                    .setAllowedNetworkTypes(SystemDownloadManager.Request.NETWORK_WIFI or SystemDownloadManager.Request.NETWORK_MOBILE)
-                    .setAllowedOverMetered(true)
-                    .setAllowedOverRoaming(true)
+        try {
+            val request = SystemDownloadManager.Request(Uri.parse(streamUrl))
+                .setTitle("${mediaItem.title} - Episode ${episodeIndex + 1}")
+                .setDescription("Downloading video for offline streaming...")
+                .setNotificationVisibility(SystemDownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationUri(Uri.fromFile(targetFile))
+                .setAllowedNetworkTypes(SystemDownloadManager.Request.NETWORK_WIFI or SystemDownloadManager.Request.NETWORK_MOBILE)
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(true)
 
-                sysDownloadId = systemDownloadManager?.enqueue(request) ?: -1L
-            } catch (e: Exception) {
-                Log.e(TAG, "DownloadManager enqueue failed", e)
-            }
+            sysDownloadId = systemDownloadManager?.enqueue(request) ?: -1L
+        } catch (e: Exception) {
+            Log.e(TAG, "DownloadManager enqueue failed", e)
         }
 
         val newItem = DownloadedItem(
@@ -333,13 +337,15 @@ object DownloadManager {
             fileSizeMb = 0.0,
             downloadId = sysDownloadId,
             progressPercent = 0,
-            isCompleted = sysDownloadId == -1L && streamUrl.isBlank()
+            isCompleted = false
         )
 
-        val currentList = _downloads.value.toMutableList()
-        currentList.removeAll { it.mediaId == mediaItem.id && it.episodeIndex == episodeIndex }
-        currentList.add(newItem)
-        _downloads.value = currentList
+        _downloads.update { currentList ->
+            val mutableList = currentList.toMutableList()
+            mutableList.removeAll { it.mediaId == mediaItem.id && it.episodeIndex == episodeIndex }
+            mutableList.add(newItem)
+            mutableList
+        }
         saveToDisk()
     }
 

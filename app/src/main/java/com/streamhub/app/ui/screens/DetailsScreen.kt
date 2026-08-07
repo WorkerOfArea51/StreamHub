@@ -106,11 +106,10 @@ fun DetailsScreen(
     var isPlayingTrailer by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
 
-    DisposableEffect(isPlayingTrailer) {
+    DisposableEffect(webViewRef) {
         onDispose {
             webViewRef?.stopLoading()
             webViewRef?.destroy()
-            webViewRef = null
         }
     }
 
@@ -492,7 +491,11 @@ fun DetailsScreen(
                                     onDismissRequest = { isSeasonDropdownExpanded = false }
                                 ) {
                                     DropdownMenuItem(
-                                        text = { Text("Season 1 (${mediaItem.episodes.count { it.seasonNumber == 1 || mediaItem.episodes.none { ep -> ep.seasonNumber == 1 } }} Episodes)") },
+                                        text = {
+                                            val s1Count = mediaItem.episodes.count { it.seasonNumber == 1 }
+                                            val displayCount = if (s1Count == 0) mediaItem.episodes.size else s1Count
+                                            Text("Season 1 ($displayCount Episodes)")
+                                        },
                                         onClick = {
                                             selectedSeasonNumber = 1
                                             isSeasonDropdownExpanded = false
@@ -529,14 +532,15 @@ fun DetailsScreen(
                         }
                     }
                 } else {
-                    itemsIndexed(seasonFilteredEpisodes) { index, episode ->
-                        val isDownloaded = DownloadManager.isDownloaded(mediaItem.id, index)
+                    itemsIndexed(seasonFilteredEpisodes, key = { _, episode -> "${episode.seasonNumber}_${episode.episodeNumber}_${episode.title}" }) { index, episode ->
+                        val originalIndex = remember(episode, mediaItem.episodes) { mediaItem.episodes.indexOf(episode).coerceAtLeast(0) }
+                        val isDownloaded = DownloadManager.isDownloaded(mediaItem.id, originalIndex)
                         EpisodeRowItem(
                             episode = episode,
                             index = index,
                             isDownloaded = isDownloaded,
-                            onPlay = { onPlayEpisode(mediaItem, index) },
-                            onDownload = { DownloadManager.startDownload(context, mediaItem, index) }
+                            onPlay = { onPlayEpisode(mediaItem, originalIndex) },
+                            onDownload = { DownloadManager.startDownload(context, mediaItem, originalIndex) }
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                     }

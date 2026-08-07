@@ -58,6 +58,7 @@ object SpeedTestManager {
         if (_testState.value is SpeedTestState.Testing) return
         _testState.value = SpeedTestState.Testing
 
+        testJob?.cancel()
         testJob = scope.launch {
             try {
                 // Phase 1: Measure ping latency (3 HEAD requests)
@@ -93,6 +94,8 @@ object SpeedTestManager {
                     speedMbps = roundedMbps,
                     qualityRating = quality
                 )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Speed test failed", e)
                 _testState.value = SpeedTestState.Error(e.localizedMessage ?: "Connection test failed")
@@ -122,12 +125,12 @@ object SpeedTestManager {
         return System.currentTimeMillis() - start
     }
 
-    private fun measureDownload(): Pair<Int, Long> {
+    private fun measureDownload(): Pair<Long, Long> {
         val request = Request.Builder()
             .url(TEST_ENDPOINT)
             .build()
 
-        var bytesRead = 0
+        var bytesRead = 0L
         val startTime = System.currentTimeMillis()
 
         httpClient.newCall(request).execute().use { response ->
@@ -138,7 +141,7 @@ object SpeedTestManager {
                 val buffer = ByteArray(8192)
                 var read: Int
                 while (input.read(buffer).also { read = it } != -1) {
-                    bytesRead += read
+                    bytesRead += read.toLong()
                 }
             } ?: throw Exception("Empty response body")
         }

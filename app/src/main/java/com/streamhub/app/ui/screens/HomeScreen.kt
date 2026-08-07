@@ -90,9 +90,10 @@ fun HomeScreen(
 
     val myListIds by com.streamhub.app.data.MyListManager.myListFlow.collectAsState()
 
+    val appContext = context.applicationContext
     LaunchedEffect(catalog, myListIds) {
         if (catalog.isNotEmpty()) {
-            com.streamhub.app.data.NotificationAlertManager.checkAndNotifyNewEpisodes(context, catalog, myListIds)
+            com.streamhub.app.data.NotificationAlertManager.checkAndNotifyNewEpisodes(appContext, catalog, myListIds)
         }
     }
 
@@ -118,10 +119,10 @@ fun HomeScreen(
             }
     }
 
-    val trendingItems = filteredCatalog.filter { it.isTrending }
-    val animeItems = filteredCatalog.filter { it.category == "ANIME" }
-    val movieItems = filteredCatalog.filter { it.category == "MOVIE" }
-    val webSeriesItems = filteredCatalog.filter { it.category == "WEB_SERIES" }
+    val trendingItems = remember(filteredCatalog) { filteredCatalog.filter { it.isTrending } }
+    val animeItems = remember(filteredCatalog) { filteredCatalog.filter { it.category == "ANIME" } }
+    val movieItems = remember(filteredCatalog) { filteredCatalog.filter { it.category == "MOVIE" } }
+    val webSeriesItems = remember(filteredCatalog) { filteredCatalog.filter { it.category == "WEB_SERIES" } }
 
     Scaffold(
         floatingActionButton = {
@@ -270,7 +271,7 @@ fun HomeScreen(
                             horizontalArrangement = Arrangement.spacedBy(14.dp),
                             modifier = Modifier.padding(horizontal = 16.dp)
                         ) {
-                            items(continueWatchingList) { (media, progress) ->
+                            items(continueWatchingList, key = { it.first.id }) { (media, progress) ->
                                 ContinueWatchingRowItem(
                                     media = media,
                                     progress = progress,
@@ -378,7 +379,7 @@ fun MediaSectionRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(horizontal = 16.dp)
         ) {
-            items(items) { item ->
+            items(items, key = { it.id }) { item ->
                 MediaCard(
                     item = item,
                     onClick = { onMediaClick(item) },

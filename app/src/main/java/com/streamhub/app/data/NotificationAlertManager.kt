@@ -73,6 +73,7 @@ object NotificationAlertManager {
         if (!_alertsEnabled.value || catalog.isEmpty() || myListIds.isEmpty()) return
 
         val p = prefs ?: return
+        val editor = p.edit()
 
         for (item in catalog) {
             if (!myListIds.contains(item.id)) continue
@@ -94,9 +95,9 @@ object NotificationAlertManager {
                 )
             }
 
-            // Save updated episode count
-            p.edit().putInt("$KEY_SEEN_EPISODE_COUNTS${item.id}", currentEpCount).apply()
+            editor.putInt("$KEY_SEEN_EPISODE_COUNTS${item.id}", currentEpCount)
         }
+        editor.apply()
     }
 
     private fun sendEpisodeNotification(

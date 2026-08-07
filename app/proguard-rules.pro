@@ -61,9 +61,11 @@
     public static *** v(...);
     public static *** d(...);
     public static *** i(...);
-    public static *** w(...);
-    public static *** e(...);
 }
+
+# --- ZXing ---
+-keep class com.google.zxing.** { *; }
+-dontwarn com.google.zxing.**
 
 # --- bcrypt (at.favre.lib:bcrypt) — used by AdminManager for PIN verification ---
 -keep class at.favre.lib.crypto.bcrypt.** { *; }

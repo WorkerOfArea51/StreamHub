@@ -80,6 +80,8 @@ class TelegramDataSourceFactory(
         }
 
         override fun open(dataSpec: DataSpec): Long {
+            try { currentSource?.close() } catch (_: Exception) {}
+            currentSource = null
             val uri = dataSpec.uri
             val scheme = uri.scheme?.lowercase()
 
@@ -207,7 +209,12 @@ private class LocalFileDataSource : DataSource {
 
         inputStream = FileInputStream(f)
         if (position > 0) {
-            inputStream!!.skip(position)
+            var remaining = position
+            while (remaining > 0) {
+                val skipped = inputStream!!.skip(remaining)
+                if (skipped == 0L) throw IOException("Failed to skip to position $position")
+                remaining -= skipped
+            }
         }
 
         val length = dataSpec.length

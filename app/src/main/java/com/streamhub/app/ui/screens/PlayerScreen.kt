@@ -122,11 +122,10 @@ fun PlayerScreen(
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         onDispose {
             activity?.requestedOrientation = originalOrientation
-            viewModel.releasePlayer()
         }
     }
 
-    LaunchedEffect(mediaItem, initialEpisodeIndex) {
+    LaunchedEffect(mediaItem.id, initialEpisodeIndex) {
         viewModel.initializePlayer(context, mediaItem, initialEpisodeIndex)
     }
 
@@ -151,7 +150,7 @@ fun PlayerScreen(
     var scrubbingPositionMs by remember { mutableLongStateOf(0L) }
 
     // Volume & Brightness Drag States
-    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    val audioManager = remember { context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
     val maxVolume = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).toFloat().coerceAtLeast(1f) }
     var currentVolumePercent by remember { mutableFloatStateOf((audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) / maxVolume) * 100f) }
 
@@ -317,8 +316,10 @@ fun PlayerScreen(
                     Row {
                         IconButton(onClick = {
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                val params = android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(16, 9)).build()
-                                activity?.enterPictureInPictureMode(params)
+                                try {
+                                    val params = android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(16, 9)).build()
+                                    activity?.enterPictureInPictureMode(params)
+                                } catch (e: IllegalStateException) { }
                             }
                         }) { Icon(Icons.Default.PictureInPicture, contentDescription = "PiP", tint = Color.White) }
                         IconButton(onClick = { viewModel.toggleAudioDialog() }) { Icon(Icons.Default.GraphicEq, contentDescription = "Audio", tint = AccentOrange) }
@@ -473,7 +474,7 @@ private fun EpisodeDrawerOverlay(
                 Text("Episodes", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(12.dp))
                 LazyColumn {
-                    itemsIndexed(episodes) { index, episode ->
+                    itemsIndexed(episodes, key = { index, ep -> ep.episodeNumber }) { index, episode ->
                         val isCurrent = index == currentIndex
                         Row(
                             modifier = Modifier

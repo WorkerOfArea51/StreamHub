@@ -176,6 +176,9 @@ object TelegramProxyManager {
 
         Log.i(TAG, "Saved Proxy Config: Server=$cleanServer, Port=$port, Type=$type, AuthUser=$cleanUser, Enabled=$isEnabled")
 
+        cachedProxyClient = null
+        cachedProxyConfig = null
+
         // Apply proxy to TDLib client for MTProto/SOCKS5 support
         applyProxyToTdLib(cleanServer, port, type, cleanSecret, cleanUser, cleanPass, isEnabled)
     }
@@ -232,18 +235,24 @@ object TelegramProxyManager {
      * FIX #1: Removed java.net.Authenticator.setDefault() — proxy auth is now
      * per-client via OkHttp's proxyAuthenticator, NOT a JVM-global side effect.
      */
+    @Volatile
+    private var cachedProxyClient: OkHttpClient? = null
+    @Volatile
+    private var cachedProxyConfig: ProxyConfig? = null
+
     fun getProxyOkHttpClient(): OkHttpClient {
         val config = _proxyConfig.value
         if (!config.isEnabled || config.server.isBlank()) {
             return httpClient
         }
 
-        // FIX #2: MTProto cannot work via java.net.Proxy — it's not SOCKS5.
-        // Log a warning and return the plain client. MTProto support requires TDLib.
         if (config.type == ProxyType.MTPROTO) {
-            Log.w(TAG, "MTProto proxy configured but not supported by OkHttpClient. " +
-                "MTProto requires TDLib integration. Using direct connection.")
+            Log.w(TAG, "MTProto proxy configured but not supported by OkHttpClient. Using direct connection.")
             return httpClient
+        }
+
+        if (cachedProxyClient != null && cachedProxyConfig == config) {
+            return cachedProxyClient!!
         }
 
         val builder = OkHttpClient.Builder()
@@ -253,13 +262,12 @@ object TelegramProxyManager {
         val pType = when (config.type) {
             ProxyType.SOCKS5 -> Proxy.Type.SOCKS
             ProxyType.HTTP -> Proxy.Type.HTTP
-            ProxyType.MTPROTO -> Proxy.Type.SOCKS // unreachable due to early return above
+            ProxyType.MTPROTO -> Proxy.Type.SOCKS
         }
 
         val proxy = Proxy(pType, InetSocketAddress(config.server, config.port))
         builder.proxy(proxy)
 
-        // FIX #1: Per-client authenticator only — NOT java.net.Authenticator.setDefault()
         if (config.username.isNotBlank()) {
             val proxyAuth = Authenticator { _, response ->
                 val credential = Credentials.basic(config.username, config.password)
@@ -270,7 +278,10 @@ object TelegramProxyManager {
             builder.proxyAuthenticator(proxyAuth)
         }
 
-        return builder.build()
+        val client = builder.build()
+        cachedProxyClient = client
+        cachedProxyConfig = config
+        return client
     }
 
     /**

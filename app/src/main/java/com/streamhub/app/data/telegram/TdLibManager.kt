@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
@@ -92,6 +93,7 @@ object TdLibManager {
     private var isInitialized = false
 
     /** Path to TDLib session database directory. */
+    @Volatile
     private var databaseDirectory: String = ""
 
     // ──────────────────────────────────────────────────────────────
@@ -559,11 +561,16 @@ object TdLibManager {
      */
     suspend fun destroy() {
         val c = client ?: return
+        scope.cancel()
         try {
             sendOk(TdApi.Close())
         } catch (e: Exception) {
             Log.w(TAG, "Error closing TDLib", e)
         }
+        for ((_, cont) in pendingRequests) {
+            try { cont.resumeWith(Result.failure(TdLibException(499, "TDLib client destroyed"))) } catch (_: Exception) {}
+        }
+        pendingRequests.clear()
         isInitialized = false
         client = null
     }

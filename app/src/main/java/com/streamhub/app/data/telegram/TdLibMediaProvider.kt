@@ -198,7 +198,7 @@ object TdLibMediaProvider {
             resolvedFiles[messageId] = waitResult
             TelegramStreamResult.LocalFile(waitResult, file.size)
         } else {
-            // File is still downloading — return the partial path if available
+            try { TdLibManager.sendOk(TdApi.CancelDownloadFile(fileId, false)) } catch (_: Exception) {}
             val partialPath = getLocalFilePath(fileId)
             if (partialPath.isNotBlank()) {
                 TelegramStreamResult.Downloading(
@@ -289,22 +289,16 @@ object TdLibMediaProvider {
      * @return The joined chat, or null on failure
      */
     suspend fun joinChannel(chatIdentifier: String): TdApi.Chat? {
-        // First, search for the chat to get its ID
         val chat = getChat(chatIdentifier) ?: run {
-            // If direct get fails, try searching by username
             val username = chatIdentifier.removePrefix("@")
             if (username.isBlank()) return null
             val searchResult = TdLibManager.send(TdApi.SearchPublicChat(username))
             if (searchResult is TdApi.Chat) searchResult else return null
         }
 
-        // Check if already a member
-        val chatMemberStatus = (chat.type as? TdApi.ChatTypeSupergroup)?.let {
-            // If we can read the chat, we're a member
-            return chat
-        }
+        val isMember = chat.chatLists.isNotEmpty()
+        if (isMember) return chat
 
-        // Try to join
         val result = TdLibManager.send(TdApi.JoinChat(chat.id))
         if (result is TdApi.Chat) {
             Log.i(TAG, "Joined channel: ${chat.title} (id=${chat.id})")
@@ -312,7 +306,6 @@ object TdLibMediaProvider {
         } else if (result is TdApi.Error) {
             Log.e(TAG, "Failed to join channel $chatIdentifier: ${result.message}")
         }
-
         return null
     }
 
@@ -449,18 +442,14 @@ object TdLibMediaProvider {
      *  - Public supergroup: same format
      */
     fun parseChatId(chatIdentifier: String): Long {
-        // If it's a numeric bare channel ID (from t.me/c/ URL)
         val bareId = chatIdentifier.toLongOrNull()
         if (bareId != null && bareId > 0) {
-            return if (bareId > 1000000000) {
-                // It's a bare ID, convert to TDLib supergroup chat ID
-                -(100L * 1_000_000_000L + bareId % 1_000_000_000L)
+            return if (bareId > 1_000_000_000L) {
+                -1_000_000_000_000L - bareId
             } else {
-                // It might already be a TDLib chat ID
                 bareId
             }
         }
-        // Not a numeric ID — it's a username, return 0 to indicate "search by username"
         return 0L
     }
 

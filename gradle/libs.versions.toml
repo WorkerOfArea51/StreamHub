@@ -5,7 +5,7 @@ googleServices = "4.4.2"
 coreKtx = "1.13.1"
 lifecycleRuntimeKtx = "2.8.0"
 activityCompose = "1.9.0"
-composeBom = "2024.05.00"
+composeBom = "2024.12.01"
 media3 = "1.3.1"
 coil = "2.6.0"
 navigationCompose = "2.7.7"
@@ -15,7 +15,7 @@ firestore = "25.0.0"
 coroutines = "1.8.1"
 datastore = "1.1.1"
 bcrypt = "0.10.2"
-tdlib = "1.8.29"
+tdlib = "1.8.56"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -60,7 +60,7 @@ androidx-datastore-preferences = { group = "androidx.datastore", name = "datasto
 bcrypt = { group = "at.favre.lib", name = "bcrypt", version.ref = "bcrypt" }
 
 # TDLib — Telegram Database Library for full MTProto client access
-tdlib-java = { group = "com.github.tdlibx", name = "td", version = "1.8.56" }
+tdlib-java = { group = "com.github.tdlibx", name = "td", version.ref = "tdlib" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

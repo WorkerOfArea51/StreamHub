@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -122,6 +123,7 @@ object AppUpdateManager {
 
         _updateState.value = UpdateState.Checking
 
+        checkJob?.cancel()
         checkJob = scope.launch {
             try {
                 var latestTag: String? = null
@@ -237,6 +239,8 @@ object AppUpdateManager {
 
                 _updateState.value = UpdateState.UpdateAvailable(info)
 
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Update check failed", e)
                 _updateState.value = UpdateState.Error(e.message ?: "Unknown update error")
@@ -352,6 +356,7 @@ object AppUpdateManager {
                 var totalRead = 0L
 
                 while (input.read(buffer).also { bytesRead = it } != -1) {
+                    if (downloadJob?.isActive == false) throw kotlinx.coroutines.CancellationException("Download cancelled")
                     output.write(buffer, 0, bytesRead)
                     totalRead += bytesRead
 

@@ -157,7 +157,7 @@ fun DownloadsScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                items(downloadsList) { downloadItem ->
+                items(downloadsList, key = { "${it.mediaId}_${it.episodeIndex}" }) { downloadItem ->
                     DownloadedEpisodeCard(
                         item = downloadItem,
                         onPlay = {

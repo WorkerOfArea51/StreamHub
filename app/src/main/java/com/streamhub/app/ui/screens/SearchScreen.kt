@@ -336,7 +336,7 @@ fun SearchScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                items(sortedCatalog) { item ->
+                items(sortedCatalog, key = { it.id }) { item ->
                     MediaCard(
                         item = item,
                         onClick = { onMediaClick(item) },

@@ -19,7 +19,7 @@ data class OfficialMalResponse(
 )
 
 data class OfficialMalNodeContainer(
-    val node: OfficialMalAnimeNode
+    val node: OfficialMalAnimeNode? = null
 )
 
 data class OfficialMalAnimeNode(
