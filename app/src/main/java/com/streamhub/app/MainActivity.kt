@@ -261,6 +261,21 @@ fun StreamHubApp() {
                 ProfileScreen(
                     onNavigateToSettings = {
                         navController.navigate(Screen.Settings.route)
+                    },
+                    onOpenAdminPanel = {
+                        navController.navigate(Screen.Admin.route)
+                    }
+                )
+            }
+
+            composable(Screen.Admin.route) {
+                HomeScreen(
+                    repository = repository,
+                    onMediaClick = { media ->
+                        navController.navigate(Screen.Details.createRoute(media.id))
+                    },
+                    onPlayEpisode = { media, episodeIndex ->
+                        navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
                     }
                 )
             }
