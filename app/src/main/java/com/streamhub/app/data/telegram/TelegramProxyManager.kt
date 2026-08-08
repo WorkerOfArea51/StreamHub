@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit
 enum class ProxyType {
     MTPROTO,
     SOCKS5,
+    SOCKS4,
     HTTP
 }
 
@@ -37,7 +38,17 @@ data class ProxyConfig(
     val password: String = "",
     val type: ProxyType = ProxyType.MTPROTO,
     val isEnabled: Boolean = false,
-    val pingMs: Long = -1L
+    val pingMs: Long = -1L,
+    val customLabel: String = "",
+    val authEnabled: Boolean = true,
+    val useSocks4a: Boolean = true,
+    val sendUserAgent: Boolean = true,
+    val useNtlm: Boolean = false,
+    val useKerberos: Boolean = false,
+    val useRemoteDns: Boolean = true,
+    val promptIfEmpty: Boolean = false,
+    val promptOnAuthFail: Boolean = true,
+    val useAuthUrl: Boolean = false
 )
 
 data class PublicProxyItem(
@@ -126,6 +137,17 @@ object TelegramProxyManager {
         val typeStr = p.getString(KEY_TYPE, ProxyType.MTPROTO.name) ?: ProxyType.MTPROTO.name
         val isEnabled = p.getBoolean(KEY_ENABLED, false)
 
+        val customLabel = p.getString("proxy_custom_label", "") ?: ""
+        val authEnabled = p.getBoolean("proxy_auth_enabled", true)
+        val useSocks4a = p.getBoolean("proxy_socks4a", true)
+        val sendUserAgent = p.getBoolean("proxy_send_user_agent", true)
+        val useNtlm = p.getBoolean("proxy_use_ntlm", false)
+        val useKerberos = p.getBoolean("proxy_use_kerberos", false)
+        val useRemoteDns = p.getBoolean("proxy_remote_dns", true)
+        val promptIfEmpty = p.getBoolean("proxy_prompt_empty", false)
+        val promptOnAuthFail = p.getBoolean("proxy_prompt_auth_fail", true)
+        val useAuthUrl = p.getBoolean("proxy_use_auth_url", false)
+
         val type = try { ProxyType.valueOf(typeStr) } catch (e: Exception) { ProxyType.MTPROTO }
 
         _proxyConfig.value = ProxyConfig(
@@ -135,7 +157,17 @@ object TelegramProxyManager {
             username = username,
             password = password,
             type = type,
-            isEnabled = isEnabled
+            isEnabled = isEnabled,
+            customLabel = customLabel,
+            authEnabled = authEnabled,
+            useSocks4a = useSocks4a,
+            sendUserAgent = sendUserAgent,
+            useNtlm = useNtlm,
+            useKerberos = useKerberos,
+            useRemoteDns = useRemoteDns,
+            promptIfEmpty = promptIfEmpty,
+            promptOnAuthFail = promptOnAuthFail,
+            useAuthUrl = useAuthUrl
         )
     }
 
@@ -146,12 +178,23 @@ object TelegramProxyManager {
         username: String = "",
         password: String = "",
         type: ProxyType,
-        isEnabled: Boolean
+        isEnabled: Boolean,
+        customLabel: String = "",
+        authEnabled: Boolean = true,
+        useSocks4a: Boolean = true,
+        sendUserAgent: Boolean = true,
+        useNtlm: Boolean = false,
+        useKerberos: Boolean = false,
+        useRemoteDns: Boolean = true,
+        promptIfEmpty: Boolean = false,
+        promptOnAuthFail: Boolean = true,
+        useAuthUrl: Boolean = false
     ) {
         val cleanServer = server.trim()
         val cleanSecret = secret.trim()
         val cleanUser = username.trim()
         val cleanPass = password.trim()
+        val cleanLabel = customLabel.trim()
 
         prefs?.edit()
             ?.putString(KEY_SERVER, cleanServer)
@@ -161,6 +204,16 @@ object TelegramProxyManager {
             ?.putString(KEY_PASSWORD, cleanPass)
             ?.putString(KEY_TYPE, type.name)
             ?.putBoolean(KEY_ENABLED, isEnabled)
+            ?.putString("proxy_custom_label", cleanLabel)
+            ?.putBoolean("proxy_auth_enabled", authEnabled)
+            ?.putBoolean("proxy_socks4a", useSocks4a)
+            ?.putBoolean("proxy_send_user_agent", sendUserAgent)
+            ?.putBoolean("proxy_use_ntlm", useNtlm)
+            ?.putBoolean("proxy_use_kerberos", useKerberos)
+            ?.putBoolean("proxy_remote_dns", useRemoteDns)
+            ?.putBoolean("proxy_prompt_empty", promptIfEmpty)
+            ?.putBoolean("proxy_prompt_auth_fail", promptOnAuthFail)
+            ?.putBoolean("proxy_use_auth_url", useAuthUrl)
             ?.apply()
 
         _proxyConfig.value = ProxyConfig(
@@ -170,7 +223,17 @@ object TelegramProxyManager {
             username = cleanUser,
             password = cleanPass,
             type = type,
-            isEnabled = isEnabled
+            isEnabled = isEnabled,
+            customLabel = cleanLabel,
+            authEnabled = authEnabled,
+            useSocks4a = useSocks4a,
+            sendUserAgent = sendUserAgent,
+            useNtlm = useNtlm,
+            useKerberos = useKerberos,
+            useRemoteDns = useRemoteDns,
+            promptIfEmpty = promptIfEmpty,
+            promptOnAuthFail = promptOnAuthFail,
+            useAuthUrl = useAuthUrl
         )
 
         Log.i(TAG, "Saved Proxy Config: Server=$cleanServer, Port=$port, Type=$type, AuthUser=$cleanUser, Enabled=$isEnabled")
@@ -178,20 +241,38 @@ object TelegramProxyManager {
         cachedProxyClient = null
         cachedProxyConfig = null
 
-        // Apply proxy to TDLib client for MTProto/SOCKS5 support
+        // Apply proxy to TDLib client for MTProto/SOCKS5/SOCKS4 support
         applyProxyToTdLib(cleanServer, port, type, cleanSecret, cleanUser, cleanPass, isEnabled)
     }
 
     fun setEnabled(enabled: Boolean) {
-        val current = _proxyConfig.value
-        saveConfig(current.server, current.port, current.secret, current.username, current.password, current.type, enabled)
+        val c = _proxyConfig.value
+        saveConfig(
+            server = c.server,
+            port = c.port,
+            secret = c.secret,
+            username = c.username,
+            password = c.password,
+            type = c.type,
+            isEnabled = enabled,
+            customLabel = c.customLabel,
+            authEnabled = c.authEnabled,
+            useSocks4a = c.useSocks4a,
+            sendUserAgent = c.sendUserAgent,
+            useNtlm = c.useNtlm,
+            useKerberos = c.useKerberos,
+            useRemoteDns = c.useRemoteDns,
+            promptIfEmpty = c.promptIfEmpty,
+            promptOnAuthFail = c.promptOnAuthFail,
+            useAuthUrl = c.useAuthUrl
+        )
     }
 
     /**
      * Apply the current proxy configuration to the TDLib client.
      *
      * MTProto proxies are TDLib's native proxy type and work directly.
-     * SOCKS5 proxies are also supported by TDLib.
+     * SOCKS5/SOCKS4 proxies are also supported by TDLib.
      * HTTP proxies are handled by OkHttpClient only (not TDLib).
      */
     private fun applyProxyToTdLib(
@@ -200,7 +281,6 @@ object TelegramProxyManager {
     ) {
         scope.launch {
             if (!isEnabled || server.isBlank()) {
-                // Remove proxy from TDLib (direct connection)
                 try {
                     TdLibManager.removeProxy()
                     Log.i(TAG, "Removed proxy from TDLib")
@@ -223,17 +303,6 @@ object TelegramProxyManager {
         }
     }
 
-    /**
-     * Builds an OkHttpClient configured with the active proxy.
-     *
-     * IMPORTANT: Only SOCKS5 and HTTP proxies are supported by OkHttpClient.
-     * MTProto proxies require TDLib's custom transport and CANNOT be used here.
-     * If an MTProto proxy is configured, this returns the plain client (no proxy)
-     * and logs a warning — the MTProto secret is stored for future TDLib use.
-     *
-     * FIX #1: Removed java.net.Authenticator.setDefault() — proxy auth is now
-     * per-client via OkHttp's proxyAuthenticator, NOT a JVM-global side effect.
-     */
     @Volatile
     private var cachedProxyClient: OkHttpClient? = null
     @Volatile
@@ -260,6 +329,7 @@ object TelegramProxyManager {
 
         val pType = when (config.type) {
             ProxyType.SOCKS5 -> Proxy.Type.SOCKS
+            ProxyType.SOCKS4 -> Proxy.Type.SOCKS
             ProxyType.HTTP -> Proxy.Type.HTTP
             ProxyType.MTPROTO -> Proxy.Type.SOCKS
         }
@@ -267,7 +337,7 @@ object TelegramProxyManager {
         val proxy = Proxy(pType, InetSocketAddress(config.server, config.port))
         builder.proxy(proxy)
 
-        if (config.username.isNotBlank()) {
+        if (config.authEnabled && config.username.isNotBlank()) {
             val proxyAuth = Authenticator { _, response ->
                 val credential = Credentials.basic(config.username, config.password)
                 response.request.newBuilder()

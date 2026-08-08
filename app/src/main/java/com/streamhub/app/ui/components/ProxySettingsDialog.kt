@@ -25,6 +25,9 @@ import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -41,6 +44,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -70,7 +75,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamhub.app.data.telegram.ProxyType
-import com.streamhub.app.data.telegram.PublicProxyItem
 import com.streamhub.app.data.telegram.TelegramProxyManager
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
@@ -97,6 +101,21 @@ fun ProxySettingsDialog(
     var username by remember(currentConfig.username) { mutableStateOf(currentConfig.username) }
     var password by remember(currentConfig.password) { mutableStateOf(currentConfig.password) }
 
+    // Proxifier Authentication & Protocol Extension States
+    var authEnabled by remember(currentConfig.authEnabled) { mutableStateOf(currentConfig.authEnabled) }
+    var useSocks4a by remember(currentConfig.useSocks4a) { mutableStateOf(currentConfig.useSocks4a) }
+    var sendUserAgent by remember(currentConfig.sendUserAgent) { mutableStateOf(currentConfig.sendUserAgent) }
+    var useNtlm by remember(currentConfig.useNtlm) { mutableStateOf(currentConfig.useNtlm) }
+    var useKerberos by remember(currentConfig.useKerberos) { mutableStateOf(currentConfig.useKerberos) }
+
+    // Proxifier Advanced Settings States
+    var showAdvancedDialog by remember { mutableStateOf(false) }
+    var customLabel by remember(currentConfig.customLabel) { mutableStateOf(currentConfig.customLabel) }
+    var useRemoteDns by remember(currentConfig.useRemoteDns) { mutableStateOf(currentConfig.useRemoteDns) }
+    var promptIfEmpty by remember(currentConfig.promptIfEmpty) { mutableStateOf(currentConfig.promptIfEmpty) }
+    var promptOnAuthFail by remember(currentConfig.promptOnAuthFail) { mutableStateOf(currentConfig.promptOnAuthFail) }
+    var useAuthUrl by remember(currentConfig.useAuthUrl) { mutableStateOf(currentConfig.useAuthUrl) }
+
     var isTesting by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<String?>(null) }
     var isSuccess by remember { mutableStateOf(false) }
@@ -109,10 +128,19 @@ fun ProxySettingsDialog(
         containerColor = SurfaceDark,
         shape = RoundedCornerShape(20.dp),
         title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Security, contentDescription = "Proxy", tint = primaryColor)
-                Spacer(modifier = Modifier.width(10.dp))
-                Text("Telegram MTProto & Proxy 🛡️", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Security, contentDescription = "Proxy", tint = primaryColor)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Proxy Server 🛡️", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                }
+                IconButton(onClick = { showAdvancedDialog = true }) {
+                    Icon(Icons.Default.Tune, contentDescription = "Advanced", tint = primaryColor, modifier = Modifier.size(20.dp))
+                }
             }
         },
         text = {
@@ -123,12 +151,12 @@ fun ProxySettingsDialog(
                     .verticalScroll(scrollState)
             ) {
                 Text(
-                    text = "Bypass regional Telegram blocks and ISP restrictions with MTProto, SOCKS5, or HTTP Proxies.",
+                    text = "Bypass regional network restrictions with MTProto, SOCKS5, SOCKS4, or HTTPS Proxies.",
                     color = TextSecondary,
                     fontSize = 11.sp
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // ENABLE PROXY TOGGLE
                 Row(
@@ -136,7 +164,7 @@ fun ProxySettingsDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Enable Telegram Proxy", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("Enable Proxy Routing", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     Switch(
                         checked = isEnabled,
                         onCheckedChange = {
@@ -190,7 +218,6 @@ fun ProxySettingsDialog(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 if (selectedTab == 0) {
-                    // TAB 1: TELSTREAM LIVE AUTO-FETCH PROXIES & PARALLEL PING TESTER
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -270,7 +297,11 @@ fun ProxySettingsDialog(
                                                 password = pItem.password
                                                 selectedType = pItem.type
                                                 isEnabled = true
-                                                TelegramProxyManager.saveConfig(pItem.server, pItem.port, pItem.secret, pItem.username, pItem.password, pItem.type, true)
+                                                TelegramProxyManager.saveConfig(
+                                                    pItem.server, pItem.port, pItem.secret, pItem.username, pItem.password,
+                                                    pItem.type, true, customLabel, authEnabled, useSocks4a, sendUserAgent,
+                                                    useNtlm, useKerberos, useRemoteDns, promptIfEmpty, promptOnAuthFail, useAuthUrl
+                                                )
                                             }
                                     ) {
                                         Row(
@@ -283,7 +314,7 @@ fun ProxySettingsDialog(
                                                 Spacer(modifier = Modifier.width(10.dp))
                                                 Column {
                                                     Text(pItem.server, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                                    Text("Port ${pItem.port} • MTProto", color = TextSecondary, fontSize = 10.sp)
+                                                    Text("Port ${pItem.port} • ${pItem.type.name}", color = TextSecondary, fontSize = 10.sp)
                                                 }
                                             }
 
@@ -308,43 +339,45 @@ fun ProxySettingsDialog(
                         }
                     }
                 } else {
-                    // TAB 2: CUSTOM MANUAL PROXY SETUP (MTProto, SOCKS5, HTTP)
+                    // TAB 2: CUSTOM PROXIFIER-STYLE SETUP (MTProto, SOCKS5, SOCKS4, HTTPS)
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        Text("Select Proxy Protocol:", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        // Protocol Selector Section
+                        Text("Protocol:", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(modifier = Modifier.height(6.dp))
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             listOf(
-                                ProxyType.MTPROTO to "MTProto 🛡️",
-                                ProxyType.SOCKS5 to "SOCKS5 🔌",
-                                ProxyType.HTTP to "HTTP 🌐"
+                                ProxyType.SOCKS5 to "SOCKS v5",
+                                ProxyType.SOCKS4 to "SOCKS v4",
+                                ProxyType.HTTP to "HTTPS",
+                                ProxyType.MTPROTO to "MTProto"
                             ).forEach { (pType, label) ->
                                 val isSel = selectedType == pType
                                 Card(
-                                    shape = RoundedCornerShape(10.dp),
+                                    shape = RoundedCornerShape(8.dp),
                                     colors = CardDefaults.cardColors(containerColor = if (isSel) primaryColor.copy(alpha = 0.25f) else Color(0xFF14141E)),
                                     modifier = Modifier
                                         .weight(1f)
-                                        .border(if (isSel) 1.5.dp else 1.dp, if (isSel) primaryColor else Color(0xFF2C2C3E), RoundedCornerShape(10.dp))
+                                        .border(if (isSel) 1.5.dp else 1.dp, if (isSel) primaryColor else Color(0xFF2C2C3E), RoundedCornerShape(8.dp))
                                         .clickable {
                                             selectedType = pType
                                             if (portText.isBlank() || portText == "443" || portText == "1080" || portText == "8080") {
                                                 portText = when (pType) {
                                                     ProxyType.MTPROTO -> "443"
-                                                    ProxyType.SOCKS5 -> "1080"
+                                                    ProxyType.SOCKS5, ProxyType.SOCKS4 -> "1080"
                                                     ProxyType.HTTP -> "8080"
                                                 }
                                             }
                                         }
                                 ) {
                                     Column(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Text(label, color = if (isSel) primaryColor else TextPrimary, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                        Text(label, color = if (isSel) primaryColor else TextPrimary, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                                     }
                                 }
                             }
@@ -352,148 +385,242 @@ fun ProxySettingsDialog(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        // Proxy Host / Server Address
-                        OutlinedTextField(
-                            value = server,
-                            onValueChange = { server = it },
-                            leadingIcon = { Icon(Icons.Default.Dns, contentDescription = "Host", tint = primaryColor, modifier = Modifier.size(18.dp)) },
-                            label = { Text("Proxy Server / Host IP", color = TextSecondary) },
-                            placeholder = { Text("e.g. 192.168.1.1 or proxy.tg.org", color = TextSecondary) },
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = primaryColor,
-                                unfocusedBorderColor = Color(0xFF2C2C3E),
-                                focusedTextColor = TextPrimary
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // Port Number
-                        OutlinedTextField(
-                            value = portText,
-                            onValueChange = { portText = it },
-                            label = { Text("Port", color = TextSecondary) },
-                            placeholder = { Text("443 / 1080 / 8080", color = TextSecondary) },
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = primaryColor,
-                                unfocusedBorderColor = Color(0xFF2C2C3E),
-                                focusedTextColor = TextPrimary
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        if (selectedType == ProxyType.MTPROTO) {
-                            // MTProto Secret Key
-                            Spacer(modifier = Modifier.height(8.dp))
+                        // Server Address and Port in Row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             OutlinedTextField(
-                                value = secret,
-                                onValueChange = { secret = it },
-                                leadingIcon = { Icon(Icons.Default.Key, contentDescription = "Secret", tint = primaryColor, modifier = Modifier.size(18.dp)) },
-                                label = { Text("Secret Key (MTProto)", color = TextSecondary) },
-                                placeholder = { Text("Hex secret (e.g. ee123456... or dd...)", color = TextSecondary) },
+                                value = server,
+                                onValueChange = { server = it },
+                                leadingIcon = { Icon(Icons.Default.Dns, contentDescription = "Address", tint = primaryColor, modifier = Modifier.size(16.dp)) },
+                                label = { Text("Address / IP", color = TextSecondary, fontSize = 11.sp) },
+                                placeholder = { Text("103.91.130.38", color = TextSecondary, fontSize = 11.sp) },
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = primaryColor,
                                     unfocusedBorderColor = Color(0xFF2C2C3E),
                                     focusedTextColor = TextPrimary
                                 ),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        } else {
-                            // SOCKS5 & HTTP Username & Password Auth
-                            Spacer(modifier = Modifier.height(8.dp))
-                            OutlinedTextField(
-                                value = username,
-                                onValueChange = { username = it },
-                                leadingIcon = { Icon(Icons.Default.Person, contentDescription = "User", tint = TextSecondary, modifier = Modifier.size(18.dp)) },
-                                label = { Text("Username (Optional)", color = TextSecondary) },
-                                placeholder = { Text("Proxy username", color = TextSecondary) },
-                                singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = primaryColor,
-                                    unfocusedBorderColor = Color(0xFF2C2C3E),
-                                    focusedTextColor = TextPrimary
-                                ),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.weight(2f)
                             )
 
-                            Spacer(modifier = Modifier.height(8.dp))
                             OutlinedTextField(
-                                value = password,
-                                onValueChange = { password = it },
-                                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = "Password", tint = TextSecondary, modifier = Modifier.size(18.dp)) },
-                                trailingIcon = {
-                                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                        Icon(
-                                            if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                            contentDescription = "Toggle password visibility",
-                                            tint = TextSecondary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                },
-                                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                                label = { Text("Password (Optional)", color = TextSecondary) },
-                                placeholder = { Text("Proxy password", color = TextSecondary) },
+                                value = portText,
+                                onValueChange = { portText = it },
+                                label = { Text("Port", color = TextSecondary, fontSize = 11.sp) },
+                                placeholder = { Text("1080", color = TextSecondary, fontSize = 11.sp) },
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = primaryColor,
                                     unfocusedBorderColor = Color(0xFF2C2C3E),
                                     focusedTextColor = TextPrimary
                                 ),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.weight(1f)
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                        // Test Connection Latency Button
-                        OutlinedButton(
-                            onClick = {
-                                isTesting = true
-                                testResult = null
-                                val p = portText.toIntOrNull()?.coerceIn(1, 65535) ?: 443
-                                scope.launch {
-                                    val res = TelegramProxyManager.testConnection(server, p)
-                                    res.fold(
-                                        onSuccess = { ping ->
-                                            isSuccess = true
-                                            testResult = "Proxy Online • Latency: ${ping}ms ⚡"
-                                        },
-                                        onFailure = { err ->
-                                            isSuccess = false
-                                            testResult = "Connection Failed: ${err.message}"
-                                        }
-                                    )
-                                    isTesting = false
-                                }
-                            },
-                            enabled = server.isNotBlank() && !isTesting,
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
+                        // SECTION: AUTHENTICATION (Matching Proxifier Screenshot 1 & 4)
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF14141E)),
+                            modifier = Modifier.fillMaxWidth().border(1.dp, Color(0xFF2C2C3E), RoundedCornerShape(12.dp))
                         ) {
-                            if (isTesting) {
-                                CircularProgressIndicator(modifier = Modifier.size(14.dp), color = primaryColor, strokeWidth = 2.dp)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Testing Proxy...", color = primaryColor, fontSize = 11.sp)
-                            } else {
-                                Icon(Icons.Default.ElectricalServices, contentDescription = "Test", tint = primaryColor, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Test Connection Latency", color = primaryColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                if (selectedType != ProxyType.MTPROTO) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Checkbox(
+                                            checked = authEnabled,
+                                            onCheckedChange = { authEnabled = it },
+                                            colors = CheckboxDefaults.colors(checkedColor = primaryColor, checkmarkColor = Color.White)
+                                        )
+                                        Text("Authentication Enable", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+
+                                        if (selectedType == ProxyType.HTTP) {
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Checkbox(
+                                                    checked = useNtlm,
+                                                    onCheckedChange = { useNtlm = it },
+                                                    colors = CheckboxDefaults.colors(checkedColor = primaryColor)
+                                                )
+                                                Text("NTLM", color = TextSecondary, fontSize = 10.sp)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (selectedType == ProxyType.MTPROTO) {
+                                    OutlinedTextField(
+                                        value = secret,
+                                        onValueChange = { secret = it },
+                                        leadingIcon = { Icon(Icons.Default.Key, contentDescription = "Secret", tint = primaryColor, modifier = Modifier.size(16.dp)) },
+                                        label = { Text("Secret Key (MTProto)", color = TextSecondary, fontSize = 11.sp) },
+                                        placeholder = { Text("ee123456... or dd...", color = TextSecondary, fontSize = 11.sp) },
+                                        singleLine = true,
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = primaryColor,
+                                            unfocusedBorderColor = Color(0xFF2C2C3E),
+                                            focusedTextColor = TextPrimary
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                } else if (selectedType == ProxyType.SOCKS4) {
+                                    // SOCKS4 User ID field
+                                    OutlinedTextField(
+                                        value = username,
+                                        onValueChange = { username = it },
+                                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = "User ID", tint = primaryColor, modifier = Modifier.size(16.dp)) },
+                                        label = { Text("User ID", color = TextSecondary, fontSize = 11.sp) },
+                                        placeholder = { Text("EC_QGT", color = TextSecondary, fontSize = 11.sp) },
+                                        singleLine = true,
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = primaryColor,
+                                            unfocusedBorderColor = Color(0xFF2C2C3E),
+                                            focusedTextColor = TextPrimary
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                } else {
+                                    // SOCKS5 & HTTPS Username & Password
+                                    OutlinedTextField(
+                                        value = username,
+                                        onValueChange = { username = it },
+                                        enabled = authEnabled,
+                                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = "Username", tint = primaryColor, modifier = Modifier.size(16.dp)) },
+                                        label = { Text("Username", color = TextSecondary, fontSize = 11.sp) },
+                                        placeholder = { Text("EC_QGT", color = TextSecondary, fontSize = 11.sp) },
+                                        singleLine = true,
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = primaryColor,
+                                            unfocusedBorderColor = Color(0xFF2C2C3E),
+                                            focusedTextColor = TextPrimary
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+
+                                    OutlinedTextField(
+                                        value = password,
+                                        onValueChange = { password = it },
+                                        enabled = authEnabled,
+                                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = "Password", tint = primaryColor, modifier = Modifier.size(16.dp)) },
+                                        trailingIcon = {
+                                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                                Icon(
+                                                    if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                    contentDescription = "Toggle password",
+                                                    tint = TextSecondary,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        },
+                                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                        label = { Text("Password", color = TextSecondary, fontSize = 11.sp) },
+                                        placeholder = { Text("••••••", color = TextSecondary, fontSize = 11.sp) },
+                                        singleLine = true,
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = primaryColor,
+                                            unfocusedBorderColor = Color(0xFF2C2C3E),
+                                            focusedTextColor = TextPrimary
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
                             }
                         }
 
-                        if (testResult != null) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = testResult!!,
-                                color = if (isSuccess) Color(0xFF10B981) else Color(0xFFEF4444),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                        // SECTION: PROTOCOL SPECIFIC OPTIONS (Matching Proxifier Screenshot 3 & 4)
+                        if (selectedType == ProxyType.SOCKS4) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = useSocks4a,
+                                    onCheckedChange = { useSocks4a = it },
+                                    colors = CheckboxDefaults.colors(checkedColor = primaryColor)
+                                )
+                                Text(
+                                    text = "Use SOCKS 4A extension (remote hostname resolving)",
+                                    color = TextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        } else if (selectedType == ProxyType.HTTP) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = sendUserAgent,
+                                    onCheckedChange = { sendUserAgent = it },
+                                    colors = CheckboxDefaults.colors(checkedColor = primaryColor)
+                                )
+                                Text(
+                                    text = "Send User-Agent header in HTTP proxy request",
+                                    color = TextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                        // ACTION ROW: Check & Advanced... (Matching Proxifier desktop)
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    isTesting = true
+                                    testResult = null
+                                    val p = portText.toIntOrNull()?.coerceIn(1, 65535) ?: 443
+                                    scope.launch {
+                                        val res = TelegramProxyManager.testConnection(server, p)
+                                        res.fold(
+                                            onSuccess = { ping ->
+                                                isSuccess = true
+                                                testResult = "Ready: ${ping}ms ⚡"
+                                            },
+                                            onFailure = { err ->
+                                                isSuccess = false
+                                                testResult = "Failed: ${err.message?.take(18)}"
+                                            }
+                                        )
+                                        isTesting = false
+                                    }
+                                },
+                                enabled = server.isNotBlank() && !isTesting,
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                if (isTesting) {
+                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), color = primaryColor, strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Checking...", color = primaryColor, fontSize = 11.sp)
+                                } else {
+                                    Icon(Icons.Default.Speed, contentDescription = "Check", tint = if (isSuccess && testResult != null) Color(0xFF10B981) else primaryColor, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        testResult ?: "Check ⚡",
+                                        color = if (isSuccess && testResult != null) Color(0xFF10B981) else primaryColor,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = { showAdvancedDialog = true },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.Tune, contentDescription = "Advanced", tint = primaryColor, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Advanced...", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                            }
                         }
                     }
                 }
@@ -503,13 +630,17 @@ fun ProxySettingsDialog(
             Button(
                 onClick = {
                     val p = portText.toIntOrNull()?.coerceIn(1, 65535) ?: 443
-                    TelegramProxyManager.saveConfig(server, p, secret, username, password, selectedType, isEnabled)
+                    TelegramProxyManager.saveConfig(
+                        server, p, secret, username, password, selectedType, isEnabled,
+                        customLabel, authEnabled, useSocks4a, sendUserAgent, useNtlm,
+                        useKerberos, useRemoteDns, promptIfEmpty, promptOnAuthFail, useAuthUrl
+                    )
                     onDismiss()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Text("Save & Apply", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("OK", color = Color.White, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
@@ -517,8 +648,109 @@ fun ProxySettingsDialog(
                 onClick = onDismiss,
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Text("Cancel")
+                Text("Cancel", color = TextSecondary)
             }
         }
     )
+
+    // ADVANCED PROXY SERVER SETTINGS MODAL (Matching Proxifier Screenshot 5)
+    if (showAdvancedDialog) {
+        AlertDialog(
+            onDismissRequest = { showAdvancedDialog = false },
+            containerColor = SurfaceDark,
+            shape = RoundedCornerShape(16.dp),
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Tune, contentDescription = "Advanced", tint = primaryColor)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Advanced Proxy Settings ⚙️", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                    // Appearance Section
+                    Text("Appearance", color = primaryColor, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = customLabel,
+                        onValueChange = { customLabel = it },
+                        label = { Text("Custom Label", color = TextSecondary, fontSize = 11.sp) },
+                        placeholder = { Text("(\"address:port\" by default)", color = TextSecondary, fontSize = 11.sp) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = primaryColor,
+                            unfocusedBorderColor = Color(0xFF2C2C3E),
+                            focusedTextColor = TextPrimary
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Authentication Behavior
+                    Text("Authentication", color = primaryColor, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = promptIfEmpty,
+                            onCheckedChange = { promptIfEmpty = it },
+                            colors = CheckboxDefaults.colors(checkedColor = primaryColor)
+                        )
+                        Text("Ask Username and Password if field is empty", color = TextSecondary, fontSize = 11.sp)
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = promptOnAuthFail,
+                            onCheckedChange = { promptOnAuthFail = it },
+                            colors = CheckboxDefaults.colors(checkedColor = primaryColor)
+                        )
+                        Text("Ask Username and Password if auth fails", color = TextSecondary, fontSize = 11.sp)
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = useAuthUrl,
+                            onCheckedChange = { useAuthUrl = it },
+                            colors = CheckboxDefaults.colors(checkedColor = primaryColor)
+                        )
+                        Text("Use Authentication URL", color = TextSecondary, fontSize = 11.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Other / DNS Resolution
+                    Text("DNS & Routing", color = primaryColor, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = useRemoteDns,
+                            onCheckedChange = { useRemoteDns = it },
+                            colors = CheckboxDefaults.colors(checkedColor = primaryColor)
+                        )
+                        Text("Use target hostname in proxy request (Remote DNS)", color = TextSecondary, fontSize = 11.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showAdvancedDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("OK", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showAdvancedDialog = false },
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
 }
