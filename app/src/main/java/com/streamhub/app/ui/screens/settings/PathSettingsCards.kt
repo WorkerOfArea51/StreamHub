@@ -1,7 +1,9 @@
 package com.streamhub.app.ui.screens.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -25,6 +27,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -43,11 +46,11 @@ fun DownloadPathCard(currentAccent: AppThemeAccent) {
     val context = LocalContext.current
 
     Card(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+            .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
     ) {
         Column(
             modifier = Modifier
@@ -55,15 +58,23 @@ fun DownloadPathCard(currentAccent: AppThemeAccent) {
                 .padding(16.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Folder,
-                    contentDescription = "Download Folder",
-                    tint = currentAccent.color,
-                    modifier = Modifier.size(24.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(currentAccent.color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Folder,
+                        contentDescription = "Download Folder",
+                        tint = currentAccent.color,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
-                    Text("Custom Download Path", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Custom Download Path 📁", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text(
                         text = customDownloadPath.ifEmpty { "Default: Movies/StreamHub" },
                         color = TextSecondary,
@@ -110,11 +121,11 @@ fun ScreenshotPathCard(currentAccent: AppThemeAccent) {
     val context = LocalContext.current
 
     Card(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+            .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
     ) {
         Column(
             modifier = Modifier
@@ -122,15 +133,23 @@ fun ScreenshotPathCard(currentAccent: AppThemeAccent) {
                 .padding(16.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.CameraAlt,
-                    contentDescription = "Screenshot Folder",
-                    tint = currentAccent.color,
-                    modifier = Modifier.size(24.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(currentAccent.color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CameraAlt,
+                        contentDescription = "Screenshot Folder",
+                        tint = currentAccent.color,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
-                    Text("Custom Screenshot Path", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Custom Screenshot Path 📸", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text(
                         text = customScreenshotPath.ifEmpty { "Default: Pictures/StreamHub_Screenshots" },
                         color = TextSecondary,

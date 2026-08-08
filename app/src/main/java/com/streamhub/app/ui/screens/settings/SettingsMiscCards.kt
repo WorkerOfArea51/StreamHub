@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,6 +38,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -63,11 +65,11 @@ fun SpeedTestCard(currentAccent: AppThemeAccent) {
     val scope = rememberCoroutineScope()
 
     Card(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+            .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
     ) {
         Column(
             modifier = Modifier
@@ -75,15 +77,23 @@ fun SpeedTestCard(currentAccent: AppThemeAccent) {
                 .padding(16.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Security,
-                    contentDescription = "Speed Test",
-                    tint = currentAccent.color,
-                    modifier = Modifier.size(24.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(currentAccent.color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Security,
+                        contentDescription = "Speed Test",
+                        tint = currentAccent.color,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
-                    Text("Stream Server Speed & Latency Test", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Stream Server Speed & Latency Test ⚡", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text("Benchmark streaming CDN ping & download bandwidth", color = TextSecondary, fontSize = 11.sp)
                 }
             }
@@ -166,11 +176,11 @@ fun SpeedTestCard(currentAccent: AppThemeAccent) {
 @Composable
 fun VideoSettingsEntryCard(currentAccent: AppThemeAccent, onNavigateToVideoSettings: () -> Unit) {
     Card(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, currentAccent.color.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+            .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
             .clickable { onNavigateToVideoSettings() }
     ) {
         Row(
@@ -180,11 +190,22 @@ fun VideoSettingsEntryCard(currentAccent: AppThemeAccent, onNavigateToVideoSetti
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.PlayCircle, contentDescription = "Video", tint = currentAccent.color)
-                Spacer(modifier = Modifier.width(10.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(currentAccent.color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.PlayCircle, contentDescription = "Video", tint = currentAccent.color, modifier = Modifier.size(20.dp))
+                }
+                Spacer(modifier = Modifier.width(12.dp))
                 Column {
-                    Text("Video Player Settings", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Video Player Settings 🎬", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text("Gestures, skip intro, auto-play next episode", color = TextSecondary, fontSize = 11.sp)
                 }
             }
@@ -196,11 +217,11 @@ fun VideoSettingsEntryCard(currentAccent: AppThemeAccent, onNavigateToVideoSetti
 @Composable
 fun ProxySettingsEntryCard(currentAccent: AppThemeAccent, onClick: () -> Unit) {
     Card(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, currentAccent.color.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+            .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
             .clickable { onClick() }
     ) {
         Row(
@@ -210,11 +231,22 @@ fun ProxySettingsEntryCard(currentAccent: AppThemeAccent, onClick: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Security, contentDescription = "Proxy", tint = currentAccent.color)
-                Spacer(modifier = Modifier.width(10.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(currentAccent.color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Security, contentDescription = "Proxy", tint = currentAccent.color, modifier = Modifier.size(20.dp))
+                }
+                Spacer(modifier = Modifier.width(12.dp))
                 Column {
-                    Text("MTProto & Censorship Bypass Proxy", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("MTProto & Censorship Bypass Proxy 🛡️", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text("Configure MTProto/SOCKS5 server to bypass ISP blocks", color = TextSecondary, fontSize = 11.sp)
                 }
             }
@@ -264,9 +296,11 @@ fun AppUpdateCard() {
     }
 
     Card(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -275,10 +309,18 @@ fun AppUpdateCard() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.SystemUpdate, contentDescription = "Update", tint = TextPrimary)
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(primaryColor.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.SystemUpdate, contentDescription = "Update", tint = primaryColor, modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
                     Column {
-                        Text("App Version", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("App Updates & Version 🚀", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Text("StreamHub v${BuildConfig.VERSION_NAME}", color = TextSecondary, fontSize = 11.sp)
                     }
                 }
@@ -340,17 +382,30 @@ fun AppUpdateCard() {
 @Composable
 fun AboutCard() {
     Card(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Info, contentDescription = "About", tint = TextSecondary)
-                Spacer(modifier = Modifier.width(10.dp))
-                Text("About StreamHub", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF38BDF8).copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Info, contentDescription = "About", tint = Color(0xFF38BDF8), modifier = Modifier.size(20.dp))
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text("About StreamHub ℹ️", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("High-performance native streaming platform", color = TextSecondary, fontSize = 11.sp)
+                }
             }
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             Text(
                 text = "StreamHub is a high-performance native Android media streaming application built with Jetpack Compose, Material 3, AndroidX Media3 ExoPlayer, and Cloud Firestore.",
                 color = TextSecondary,

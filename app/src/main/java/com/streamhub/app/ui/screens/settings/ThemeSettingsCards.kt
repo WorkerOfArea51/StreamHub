@@ -57,20 +57,23 @@ fun ThemeAccentCard(currentAccent: AppThemeAccent) {
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.ColorLens, contentDescription = "Theme Accent", tint = currentAccent.color)
-                Spacer(modifier = Modifier.width(10.dp))
-                Text("App Accent Theme Color 🎨", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(currentAccent.color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.ColorLens, contentDescription = "Theme Accent", tint = currentAccent.color, modifier = Modifier.size(20.dp))
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text("App Accent Theme Color 🎨", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Select your preferred primary accent color theme", color = TextSecondary, fontSize = 11.sp)
+                }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = "Select your preferred primary accent color theme:",
-                color = TextSecondary,
-                fontSize = 11.sp
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -80,7 +83,7 @@ fun ThemeAccentCard(currentAccent: AppThemeAccent) {
                     val isSelected = currentAccent == accent
                     Card(
                         shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = if (isSelected) accent.color.copy(alpha = 0.2f) else SurfaceDark),
+                        colors = CardDefaults.cardColors(containerColor = if (isSelected) accent.color.copy(alpha = 0.2f) else Color(0xFF14141E)),
                         modifier = Modifier
                             .border(if (isSelected) 2.dp else 1.dp, if (isSelected) accent.color else Color(0xFF2C2C3E), RoundedCornerShape(12.dp))
                             .clickable { ThemeManager.setAccent(accent) }
@@ -115,11 +118,11 @@ fun NotificationAlertCard(currentAccent: AppThemeAccent) {
     val context = LocalContext.current
 
     Card(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+            .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
     ) {
         Row(
             modifier = Modifier
@@ -128,13 +131,24 @@ fun NotificationAlertCard(currentAccent: AppThemeAccent) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Notifications,
-                    contentDescription = "Notifications",
-                    tint = currentAccent.color,
-                    modifier = Modifier.size(24.dp)
-                )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(currentAccent.color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = "Notifications",
+                        tint = currentAccent.color,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text("New Episode Alerts 🍿", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)

@@ -47,11 +47,11 @@ fun HomeLayoutCard(currentAccent: AppThemeAccent) {
     val layoutConfig by HomeScreenLayoutManager.layoutConfig.collectAsState()
 
     Card(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+            .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
     ) {
         Column(
             modifier = Modifier
@@ -59,12 +59,20 @@ fun HomeLayoutCard(currentAccent: AppThemeAccent) {
                 .padding(16.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Dashboard,
-                    contentDescription = "Layout",
-                    tint = currentAccent.color,
-                    modifier = Modifier.size(24.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(currentAccent.color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Dashboard,
+                        contentDescription = "Layout",
+                        tint = currentAccent.color,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text("Customize Home Screen Layout 🎨", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -124,11 +132,11 @@ fun SubtitleAppearanceCard(currentAccent: AppThemeAccent) {
     val subConfig by SubtitleSettingsManager.subtitleConfig.collectAsState()
 
     Card(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+            .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
     ) {
         Column(
             modifier = Modifier
@@ -136,12 +144,20 @@ fun SubtitleAppearanceCard(currentAccent: AppThemeAccent) {
                 .padding(16.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Subtitles,
-                    contentDescription = "Subtitles",
-                    tint = currentAccent.color,
-                    modifier = Modifier.size(24.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(currentAccent.color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Subtitles,
+                        contentDescription = "Subtitles",
+                        tint = currentAccent.color,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text("Subtitle Styling & Appearance 📜", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
