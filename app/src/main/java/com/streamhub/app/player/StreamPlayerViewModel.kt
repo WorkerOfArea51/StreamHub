@@ -77,8 +77,14 @@ class StreamPlayerViewModel : ViewModel() {
             val createResult = runCatching {
                 val dataSourceFactory = TelegramDataSourceFactory(context)
                 trackSelector = DefaultTrackSelector(context)
+                val audioAttributes = androidx.media3.common.AudioAttributes.Builder()
+                    .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
+                    .setUsage(androidx.media3.common.C.USAGE_MEDIA)
+                    .build()
                 ExoPlayer.Builder(context)
                     .setTrackSelector(trackSelector!!)
+                    .setAudioAttributes(audioAttributes, true)
+                    .setHandleAudioBecomingNoisy(true)
                     .setMediaSourceFactory(
                         androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
                     )
@@ -241,6 +247,8 @@ class StreamPlayerViewModel : ViewModel() {
     private suspend fun resolveStreamUrl(url: String): String {
         return try {
             TelegramLinkResolver.resolveAsync(url)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w("StreamPlayerViewModel", "Failed to resolve URL: $url", e)
             url // Fallback to original URL
@@ -248,7 +256,8 @@ class StreamPlayerViewModel : ViewModel() {
     }
 
     fun playNextEpisode() {
-        val nextIndex = _uiState.value.currentEpisodeIndex + 1
+        val currentState = _uiState.value
+        val nextIndex = currentState.currentEpisodeIndex + 1
         if (nextIndex in episodesList.indices) {
             playEpisode(nextIndex, 0L)
         }

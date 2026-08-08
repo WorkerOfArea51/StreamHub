@@ -90,31 +90,79 @@ class TelegramDataSourceFactory(
                 // Local file from TDLib download
                 scheme == LOCAL_FILE_SCHEME || scheme == null -> {
                     val path = uri.path ?: ""
-                    if (path.isNotBlank() && File(path).exists()) {
+                    val file = File(path)
+                    if (path.isNotBlank() && file.exists() && isPathWhitelisted(file)) {
                         Log.d(TAG, "Opening local file: $path")
                         currentSource = LocalFileDataSource()
                         true
                     } else {
-                        Log.e(TAG, "Local file not found: $path (URI: $uri)")
-                        throw IOException("Local media file not found: $path")
+                        Log.e(TAG, "Local file invalid or not found: $path (URI: $uri)")
+                        throw IOException("Access denied or local media file not found: $path")
                     }
                 }
 
                 // HTTP/HTTPS — standard network streaming
                 scheme == "http" || scheme == "https" -> {
                     Log.d(TAG, "Opening HTTP stream: $uri")
-                    currentSource = createCachedHttpDataSource()
+                    currentSource = createCachedHttpDataSource(uri.host)
                     false
                 }
 
                 else -> {
                     Log.w(TAG, "Unknown URI scheme '$scheme', trying HTTP: $uri")
-                    currentSource = createCachedHttpDataSource()
+                    currentSource = createCachedHttpDataSource(uri.host)
                     false
                 }
             }
 
             return currentSource?.open(dataSpec) ?: throw IOException("No DataSource available for $uri")
+        }
+
+        private fun isPathWhitelisted(file: File): Boolean {
+            return try {
+                val canonicalPath = file.canonicalPath
+                val cachePath = appContext.cacheDir.canonicalPath
+                val filesPath = appContext.filesDir.canonicalPath
+                val externalPath = appContext.getExternalFilesDir(null)?.canonicalPath
+
+                canonicalPath.startsWith(cachePath) ||
+                canonicalPath.startsWith(filesPath) ||
+                (externalPath != null && canonicalPath.startsWith(externalPath))
+            } catch (e: Exception) {
+                false
+            }
+        }
+
+        /**
+         * Create an HTTP DataSource with optional Bearer auth (for bot token).
+         */
+        private fun createHttpDataSource(host: String? = null): DefaultHttpDataSource {
+            val factory = DefaultHttpDataSource.Factory()
+                .setAllowCrossProtocolRedirects(false)
+                .setConnectTimeoutMs(15000)
+                .setReadTimeoutMs(15000)
+
+            if (!botToken.isNullOrEmpty() && host != null && host.endsWith("telegram.org", ignoreCase = true)) {
+                factory.setDefaultRequestProperties(
+                    mapOf("Authorization" to "Bearer $botToken")
+                )
+            }
+
+            return factory.createDataSource()
+        }
+
+        /**
+         * Create a cached HTTP DataSource (HTTP + 500MB LRU cache).
+         */
+        private fun createCachedHttpDataSource(host: String? = null): CacheDataSource {
+            val httpSource = createHttpDataSource(host)
+            val cache = StreamCacheManager.getCache(appContext)
+
+            return CacheDataSource(
+                cache,
+                httpSource,
+                CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR
+            )
         }
 
         override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
@@ -132,38 +180,6 @@ class TelegramDataSourceFactory(
         override fun getResponseHeaders(): Map<String, List<String>> {
             return currentSource?.responseHeaders ?: emptyMap()
         }
-    }
-
-    /**
-     * Create an HTTP DataSource with optional Bearer auth (for bot token).
-     */
-    private fun createHttpDataSource(): DefaultHttpDataSource {
-        val factory = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15000)
-            .setReadTimeoutMs(15000)
-
-        if (!botToken.isNullOrEmpty()) {
-            factory.setDefaultRequestProperties(
-                mapOf("Authorization" to "Bearer $botToken")
-            )
-        }
-
-        return factory.createDataSource()
-    }
-
-    /**
-     * Create a cached HTTP DataSource (HTTP + 500MB LRU cache).
-     */
-    private fun createCachedHttpDataSource(): CacheDataSource {
-        val httpSource = createHttpDataSource()
-        val cache = StreamCacheManager.getCache(appContext)
-
-        return CacheDataSource(
-            cache,
-            httpSource,
-            CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR
-        )
     }
 }
 

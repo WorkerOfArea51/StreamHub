@@ -6,6 +6,7 @@ import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 data class PlayerSettings(
     val skipIntroSeconds: Int = 90,
@@ -61,7 +62,7 @@ object PlayerSettingsManager {
             Log.w(TAG, "updateSkipIntro called before init — no-op")
             return
         }
-        _settingsFlow.value = _settingsFlow.value.copy(skipIntroSeconds = seconds)
+        _settingsFlow.update { it.copy(skipIntroSeconds = seconds) }
         getPrefs().edit().putInt(KEY_SKIP_INTRO, seconds).apply()
     }
 
@@ -70,7 +71,7 @@ object PlayerSettingsManager {
             Log.w(TAG, "updateNextEpisodeThreshold called before init — no-op")
             return
         }
-        _settingsFlow.value = _settingsFlow.value.copy(nextEpisodeThresholdSeconds = seconds)
+        _settingsFlow.update { it.copy(nextEpisodeThresholdSeconds = seconds) }
         getPrefs().edit().putInt(KEY_NEXT_EPISODE_THRESHOLD, seconds).apply()
     }
 
@@ -79,7 +80,7 @@ object PlayerSettingsManager {
             Log.w(TAG, "updateAutoPlayNext called before init — no-op")
             return
         }
-        _settingsFlow.value = _settingsFlow.value.copy(autoPlayNextEpisode = autoPlay)
+        _settingsFlow.update { it.copy(autoPlayNextEpisode = autoPlay) }
         getPrefs().edit().putBoolean(KEY_AUTO_PLAY, autoPlay).apply()
     }
 
@@ -88,7 +89,7 @@ object PlayerSettingsManager {
             Log.w(TAG, "updateVolumeSide called before init — no-op")
             return
         }
-        _settingsFlow.value = _settingsFlow.value.copy(volumeOnRight = volumeOnRight)
+        _settingsFlow.update { it.copy(volumeOnRight = volumeOnRight) }
         getPrefs().edit().putBoolean(KEY_VOLUME_ON_RIGHT, volumeOnRight).apply()
     }
 

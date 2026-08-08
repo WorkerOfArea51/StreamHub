@@ -45,6 +45,7 @@ object MyListManager {
      * Toggle bookmark state for a media item.
      * @return true if the item was added, false if it was removed
      */
+    @Synchronized
     fun toggleBookmark(mediaId: String): Boolean {
         if (!::appContext.isInitialized) {
             Log.w(TAG, "toggleBookmark called before init — no-op")
