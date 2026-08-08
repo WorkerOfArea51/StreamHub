@@ -13,6 +13,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -89,6 +101,9 @@ fun ProxySettingsDialog(
     var testResult by remember { mutableStateOf<String?>(null) }
     var isSuccess by remember { mutableStateOf(false) }
 
+    var passwordVisible by remember { mutableStateOf(false) }
+    val scrollState = rememberScrollState()
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = SurfaceDark,
@@ -97,17 +112,18 @@ fun ProxySettingsDialog(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Security, contentDescription = "Proxy", tint = primaryColor)
                 Spacer(modifier = Modifier.width(10.dp))
-                Text("Telegram MTProto Proxy 🛡️", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                Text("Telegram MTProto & Proxy 🛡️", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
             }
         },
         text = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(420.dp)
+                    .heightIn(max = 480.dp)
+                    .verticalScroll(scrollState)
             ) {
                 Text(
-                    text = "Bypass regional Telegram blocks and ISP restrictions with MTProto Proxies.",
+                    text = "Bypass regional Telegram blocks and ISP restrictions with MTProto, SOCKS5, or HTTP Proxies.",
                     color = TextSecondary,
                     fontSize = 11.sp
                 )
@@ -292,27 +308,43 @@ fun ProxySettingsDialog(
                         }
                     }
                 } else {
-                    // TAB 2: CUSTOM MANUAL PROXY SETUP
+                    // TAB 2: CUSTOM MANUAL PROXY SETUP (MTProto, SOCKS5, HTTP)
                     Column(modifier = Modifier.fillMaxWidth()) {
+                        Text("Select Proxy Protocol:", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(modifier = Modifier.height(6.dp))
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            ProxyType.entries.forEach { pType ->
+                            listOf(
+                                ProxyType.MTPROTO to "MTProto 🛡️",
+                                ProxyType.SOCKS5 to "SOCKS5 🔌",
+                                ProxyType.HTTP to "HTTP 🌐"
+                            ).forEach { (pType, label) ->
                                 val isSel = selectedType == pType
                                 Card(
                                     shape = RoundedCornerShape(10.dp),
-                                    colors = CardDefaults.cardColors(containerColor = if (isSel) primaryColor.copy(alpha = 0.2f) else Color(0xFF14141E)),
+                                    colors = CardDefaults.cardColors(containerColor = if (isSel) primaryColor.copy(alpha = 0.25f) else Color(0xFF14141E)),
                                     modifier = Modifier
                                         .weight(1f)
-                                        .border(1.dp, if (isSel) primaryColor else Color(0xFF2C2C3E), RoundedCornerShape(10.dp))
-                                        .clickable { selectedType = pType }
+                                        .border(if (isSel) 1.5.dp else 1.dp, if (isSel) primaryColor else Color(0xFF2C2C3E), RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            selectedType = pType
+                                            if (portText.isBlank() || portText == "443" || portText == "1080" || portText == "8080") {
+                                                portText = when (pType) {
+                                                    ProxyType.MTPROTO -> "443"
+                                                    ProxyType.SOCKS5 -> "1080"
+                                                    ProxyType.HTTP -> "8080"
+                                                }
+                                            }
+                                        }
                                 ) {
                                     Column(
                                         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
-                                        Text(pType.name, color = if (isSel) primaryColor else TextPrimary, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                        Text(label, color = if (isSel) primaryColor else TextPrimary, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                                     }
                                 }
                             }
@@ -320,11 +352,13 @@ fun ProxySettingsDialog(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
+                        // Proxy Host / Server Address
                         OutlinedTextField(
                             value = server,
                             onValueChange = { server = it },
-                            label = { Text("Proxy Server / Host", color = TextSecondary) },
-                            placeholder = { Text("e.g. 192.168.1.1 or proxy.tg.com", color = TextSecondary) },
+                            leadingIcon = { Icon(Icons.Default.Dns, contentDescription = "Host", tint = primaryColor, modifier = Modifier.size(18.dp)) },
+                            label = { Text("Proxy Server / Host IP", color = TextSecondary) },
+                            placeholder = { Text("e.g. 192.168.1.1 or proxy.tg.org", color = TextSecondary) },
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = primaryColor,
@@ -334,13 +368,14 @@ fun ProxySettingsDialog(
                             modifier = Modifier.fillMaxWidth()
                         )
 
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
 
+                        // Port Number
                         OutlinedTextField(
                             value = portText,
                             onValueChange = { portText = it },
                             label = { Text("Port", color = TextSecondary) },
-                            placeholder = { Text("443", color = TextSecondary) },
+                            placeholder = { Text("443 / 1080 / 8080", color = TextSecondary) },
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = primaryColor,
@@ -351,12 +386,14 @@ fun ProxySettingsDialog(
                         )
 
                         if (selectedType == ProxyType.MTPROTO) {
-                            Spacer(modifier = Modifier.height(6.dp))
+                            // MTProto Secret Key
+                            Spacer(modifier = Modifier.height(8.dp))
                             OutlinedTextField(
                                 value = secret,
                                 onValueChange = { secret = it },
+                                leadingIcon = { Icon(Icons.Default.Key, contentDescription = "Secret", tint = primaryColor, modifier = Modifier.size(18.dp)) },
                                 label = { Text("Secret Key (MTProto)", color = TextSecondary) },
-                                placeholder = { Text("e.g. ee1234567890...", color = TextSecondary) },
+                                placeholder = { Text("Hex secret (e.g. ee123456... or dd...)", color = TextSecondary) },
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = primaryColor,
@@ -366,13 +403,14 @@ fun ProxySettingsDialog(
                                 modifier = Modifier.fillMaxWidth()
                             )
                         } else {
-                            // SOCKS5 & HTTP USERNAME / PASSWORD AUTH
-                            Spacer(modifier = Modifier.height(6.dp))
+                            // SOCKS5 & HTTP Username & Password Auth
+                            Spacer(modifier = Modifier.height(8.dp))
                             OutlinedTextField(
                                 value = username,
                                 onValueChange = { username = it },
+                                leadingIcon = { Icon(Icons.Default.Person, contentDescription = "User", tint = TextSecondary, modifier = Modifier.size(18.dp)) },
                                 label = { Text("Username (Optional)", color = TextSecondary) },
-                                placeholder = { Text("Proxy Username", color = TextSecondary) },
+                                placeholder = { Text("Proxy username", color = TextSecondary) },
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = primaryColor,
@@ -382,12 +420,24 @@ fun ProxySettingsDialog(
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            Spacer(modifier = Modifier.height(6.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
                             OutlinedTextField(
                                 value = password,
                                 onValueChange = { password = it },
+                                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = "Password", tint = TextSecondary, modifier = Modifier.size(18.dp)) },
+                                trailingIcon = {
+                                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                        Icon(
+                                            if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                            contentDescription = "Toggle password visibility",
+                                            tint = TextSecondary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                },
+                                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                                 label = { Text("Password (Optional)", color = TextSecondary) },
-                                placeholder = { Text("Proxy Password", color = TextSecondary) },
+                                placeholder = { Text("Proxy password", color = TextSecondary) },
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = primaryColor,
@@ -398,8 +448,9 @@ fun ProxySettingsDialog(
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
+                        // Test Connection Latency Button
                         OutlinedButton(
                             onClick = {
                                 isTesting = true
@@ -436,7 +487,7 @@ fun ProxySettingsDialog(
                         }
 
                         if (testResult != null) {
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = testResult!!,
                                 color = if (isSuccess) Color(0xFF10B981) else Color(0xFFEF4444),
