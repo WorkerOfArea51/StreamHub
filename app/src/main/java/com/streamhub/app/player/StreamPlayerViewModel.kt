@@ -427,6 +427,9 @@ class StreamPlayerViewModel : ViewModel() {
                             durationMs = totalDuration
                         )
 
+                        // Real-time user stats accumulation (watch hours, today, active streak & categories)
+                        com.streamhub.app.data.UserStatsManager.addWatchTime(1L, currentMediaItem?.category ?: "ANIME")
+
                         val now = System.currentTimeMillis()
                         if (now - lastProgressSaveMs >= 10_000L) {
                             currentMediaItem?.let { media ->
