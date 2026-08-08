@@ -82,6 +82,12 @@
 -keep class com.streamhub.app.data.UpdateInfo { *; }
 -keep class com.streamhub.app.data.DownloadedItem { *; }
 -keep class com.streamhub.app.data.telegram.ProxyConfig { *; }
+# --- TDLib (Telegram Database Library) ---
+# TDLib JNI C++ code directly accesses Java classes and fields by reflection
+-keep class org.drinkless.tdlib.** { *; }
+-keepclassmembers class org.drinkless.tdlib.** { *; }
+-dontwarn org.drinkless.tdlib.**
+
 -keep class com.streamhub.app.data.telegram.PublicProxyItem { *; }
 -keep class com.streamhub.app.data.telegram.ProxyType { *; }
 -keep class com.streamhub.app.ui.theme.AppThemeAccent { *; }

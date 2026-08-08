@@ -166,14 +166,9 @@ object TdLibManager {
                 isInitialized = true
                 Log.i(TAG, "TDLib client created. Database: $databaseDirectory")
                 return true
-            } catch (e: UnsatisfiedLinkError) {
-                Log.e(TAG, "TDLib native library not found. Ensure tdlib-java dependency is included and " +
-                    "native .so files are packaged for the target ABI.", e)
-                _authState.value = TdLibAuthState.Error("TDLib native library failed to load.")
-                return false
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to create TDLib client", e)
-                _authState.value = TdLibAuthState.Error("TDLib initialization failed: ${e.message}")
+            } catch (t: Throwable) {
+                Log.e(TAG, "TDLib native library failed to load or initialize", t)
+                _authState.value = TdLibAuthState.Error("TDLib native library failed to load: ${t.message}")
                 return false
             }
         }
