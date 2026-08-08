@@ -406,16 +406,46 @@ object TelegramAuthManager {
     }
 
     /**
-     * FIX: Owner usernames are now configurable via BuildConfig.OWNER_USERNAMES
-     * (comma-separated list, set via local.properties streamhub.owner_usernames).
-     * Falls back to "WorkerOfArea51,StreamHubOwner" if not configured.
+     * Checks whether the logged-in user is an Admin/Owner.
+     * Regular users log in normally without admin access.
+     * Admin mode is activated if user is a Channel Administrator/Creator, matches OWNER_USERNAMES,
+     * or unlocks via Admin Password.
      */
     private fun checkIsOwner(user: TelegramUser): Boolean {
         val apiId = Secrets.TELEGRAM_API_ID
         val apiHash = Secrets.TELEGRAM_API_HASH
-        // Dynamic API credentials check — no hardcoded usernames!
-        // When logged in with valid Telegram API ID & Hash, Admin / Owner privileges are granted dynamically.
-        return apiId.isNotBlank() && apiHash.isNotBlank() && user.id != 0L
+        if (apiId.isBlank() || apiHash.isBlank() || user.id == 0L) return false
+
+        val ownerUsernames = com.streamhub.app.BuildConfig.OWNER_USERNAMES
+            .split(",")
+            .map { it.trim().lowercase().removePrefix("@") }
+            .filter { it.isNotBlank() }
+
+        val cleanUsername = user.username.lowercase().removePrefix("@")
+        if (cleanUsername.isNotBlank() && cleanUsername in ownerUsernames) {
+            return true
+        }
+
+        // Trigger async TDLib channel membership check
+        verifyChannelAdminStatus(user.id)
+
+        return false
+    }
+
+    private fun verifyChannelAdminStatus(userId: Long) {
+        scope.launch {
+            try {
+                val isChannelAdmin = TdLibMediaProvider.checkIfUserIsChannelAdmin(userId)
+                if (isChannelAdmin) {
+                    val currentAuth = _authState.value
+                    if (currentAuth is TelegramAuthState.Authenticated && !currentAuth.isOwner) {
+                        _authState.value = currentAuth.copy(isOwner = true)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to verify channel admin status for user $userId", e)
+            }
+        }
     }
 
     /**

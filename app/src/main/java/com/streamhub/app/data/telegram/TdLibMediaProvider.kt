@@ -505,4 +505,36 @@ object TdLibMediaProvider {
     fun clearCache() {
         resolvedFiles.clear()
     }
+
+    /**
+     * Checks whether the user is an Administrator or Creator of any of the configured channels.
+     */
+    suspend fun checkIfUserIsChannelAdmin(userId: Long): Boolean {
+        val channelUrls = listOf(
+            com.streamhub.app.data.api.Secrets.TELEGRAM_ANIME_CHANNEL,
+            com.streamhub.app.data.api.Secrets.TELEGRAM_MOVIES_CHANNEL,
+            com.streamhub.app.data.api.Secrets.TELEGRAM_SERIES_CHANNEL
+        ).filter { it.isNotBlank() }
+
+        for (channel in channelUrls) {
+            try {
+                val username = channel.substringAfter("t.me/").substringAfter("@").removePrefix("/").trim()
+                if (username.isNotBlank()) {
+                    val searchResult = TdLibManager.send(TdApi.SearchPublicChat(username))
+                    if (searchResult is TdApi.Chat) {
+                        val member = TdLibManager.send(TdApi.GetChatMember(searchResult.id, TdApi.MessageSenderUser(userId)))
+                        if (member is TdApi.ChatMember) {
+                            val status = member.status
+                            if (status is TdApi.ChatMemberStatusCreator || status is TdApi.ChatMemberStatusAdministrator) {
+                                return true
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed checking chat member status for $channel", e)
+            }
+        }
+        return false
+    }
 }
