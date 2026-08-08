@@ -29,8 +29,8 @@ android {
         applicationId = "com.streamhub.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 47
-        versionName = "3.6.4"
+        versionCode = 48
+        versionName = "3.6.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

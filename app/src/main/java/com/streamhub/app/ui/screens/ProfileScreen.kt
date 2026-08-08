@@ -36,8 +36,10 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartDisplay
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.filled.Shield
+import com.streamhub.app.ui.components.ProxySettingsDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -125,6 +127,7 @@ fun ProfileScreen(
     val streakDays by UserStatsManager.streakDays.collectAsState()
 
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
+    var showProxyDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier
@@ -133,11 +136,10 @@ fun ProfileScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // ── Top Bar: Title + Settings Gear ──
+        // ── Top Bar: Title ──
         item(key = "profile_top_bar") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
@@ -146,14 +148,6 @@ fun ProfileScreen(
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold
                 )
-
-                IconButton(onClick = onNavigateToSettings) {
-                    Icon(
-                        Icons.Default.Settings,
-                        contentDescription = "Settings",
-                        tint = TextSecondary
-                    )
-                }
             }
         }
 
@@ -185,6 +179,61 @@ fun ProfileScreen(
                     authState = authState,
                     primaryColor = primaryColor
                 )
+            }
+
+            // ── MTProto Proxy Shortcut (Bypass Censorship / Unblock Telegram) ──
+            item(key = "mtproto_proxy_shortcut") {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF14141E)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, Color(0xFF2C2C3E), RoundedCornerShape(16.dp))
+                        .clickable { showProxyDialog = true }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFF2A1010)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Shield,
+                                contentDescription = "Proxy",
+                                tint = Color(0xFFEF4444),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Telegram Blocked in Your Country?",
+                                color = TextPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                            Text(
+                                text = "Configure MTProto Proxy 🛡️ (Bypass Censorship)",
+                                color = Color(0xFFEF4444),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                        Icon(
+                            Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = "Configure Proxy",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
             }
         }
 
@@ -292,6 +341,13 @@ fun ProfileScreen(
                 showAdminPasswordDialog = false
                 onOpenAdminPanel()
             }
+        )
+    }
+
+    // MTProto Proxy Configuration Dialog
+    if (showProxyDialog) {
+        ProxySettingsDialog(
+            onDismiss = { showProxyDialog = false }
         )
     }
 }

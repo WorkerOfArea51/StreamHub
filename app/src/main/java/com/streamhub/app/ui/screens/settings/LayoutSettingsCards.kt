@@ -191,7 +191,7 @@ fun SubtitleAppearanceCard(currentAccent: AppThemeAccent) {
                     "Green 💚" to 0xFF4ADE80L
                 ).forEach { (label, colorArgb) ->
                     val isSelected = subConfig.textColorArgb == colorArgb
-                    val chipColor = Color(colorArgb.toULong())
+                    val chipColor = Color(colorArgb)
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -227,11 +227,11 @@ fun SubtitleAppearanceCard(currentAccent: AppThemeAccent) {
                     .border(1.dp, CardBorderDark, RoundedCornerShape(8.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                val textColor = Color(subConfig.textColorArgb.toULong())
+                val textColor = Color(subConfig.textColorArgb)
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
-                        .background(Color(subConfig.backgroundColorArgb.toULong()))
+                        .background(Color(subConfig.backgroundColorArgb))
                         .padding(horizontal = 10.dp, vertical = 4.dp)
                 ) {
                     Text(
