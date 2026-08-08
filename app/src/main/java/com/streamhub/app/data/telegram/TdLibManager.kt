@@ -382,11 +382,59 @@ object TdLibManager {
     // ──────────────────────────────────────────────────────────────
 
     /**
+     * Completely resets and re-creates the TDLib client JNI instance.
+     * Called automatically after logout or on session errors so users can log in cleanly.
+     */
+    suspend fun restartClient() {
+        initMutex.withLock {
+            try {
+                client?.send(TdApi.Close()) {}
+            } catch (_: Exception) {}
+            client = null
+            isInitialized = false
+            _currentUser.value = null
+            _authState.value = TdLibAuthState.Uninitialized
+
+            val apiId = Secrets.TELEGRAM_API_ID.trim()
+            val apiHash = Secrets.TELEGRAM_API_HASH.trim()
+            if (apiId.isBlank() || apiHash.isBlank()) return
+
+            val apiIdInt = apiId.toIntOrNull() ?: return
+            val handler = Client.ResultHandler { update -> handleUpdate(update) }
+            val exHandler = Client.ExceptionHandler { ex -> Log.e(TAG, "TDLib unhandled exception", ex) }
+
+            try {
+                client = Client.create(handler, exHandler, exHandler)
+                isInitialized = true
+                Log.i(TAG, "TDLib client successfully restarted.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to recreate TDLib client", e)
+            }
+        }
+    }
+
+    /**
      * Start phone number authentication.
      * TDLib will send an SMS/Telegram code to the phone number.
+     * Includes automatic smart recovery if the client was closed or uninitialized.
      */
     suspend fun setPhoneNumber(phoneNumber: String): Result<Unit> {
         pendingPhoneNumber = phoneNumber
+
+        // SMART RECOVERY: If client is null or auth state is closed/uninitialized, restart client first
+        val currentState = _authState.value
+        if (client == null || !isInitialized || currentState is TdLibAuthState.Closed || currentState is TdLibAuthState.Uninitialized) {
+            Log.i(TAG, "TDLib client closed or uninitialized. Restarting TDLib client before phone auth...")
+            restartClient()
+            // Wait briefly for TDLib parameters initialization
+            withTimeoutOrNull(5000L) {
+                while (_authState.value !is TdLibAuthState.WaitPhoneNumber && _authState.value !is TdLibAuthState.Ready) {
+                    kotlinx.coroutines.delay(100)
+                }
+                true
+            }
+        }
+
         return try {
             val settings = TdApi.PhoneNumberAuthenticationSettings(
                 false, // allowFlashCall
@@ -400,6 +448,21 @@ object TdLibManager {
             sendOk(TdApi.SetAuthenticationPhoneNumber(phoneNumber, settings))
             Result.success(Unit)
         } catch (e: TdLibException) {
+            // Smart Recovery: If request aborted or client closed, restart client ONCE and retry setPhoneNumber
+            if (e.message.contains("aborted", ignoreCase = true) || e.code == 400) {
+                Log.w(TAG, "Phone auth failed with '${e.message}', performing automatic smart client reset...")
+                restartClient()
+                kotlinx.coroutines.delay(800)
+                try {
+                    val settings = TdApi.PhoneNumberAuthenticationSettings(
+                        false, false, false, false, false, null, null
+                    )
+                    sendOk(TdApi.SetAuthenticationPhoneNumber(phoneNumber, settings))
+                    return Result.success(Unit)
+                } catch (retryEx: TdLibException) {
+                    return Result.failure(retryEx)
+                }
+            }
             Result.failure(e)
         }
     }
@@ -452,6 +515,7 @@ object TdLibManager {
 
     /**
      * Log out the current user. TDLib will destroy the session.
+     * Automatically restarts the client afterwards so a new user can log in immediately.
      */
     suspend fun logout() {
         try {
@@ -463,6 +527,11 @@ object TdLibManager {
         mainHandler.post {
             _currentUser.value = null
             _authState.value = TdLibAuthState.Uninitialized
+        }
+        // Auto-restart client so TDLib is immediately clean and ready for next login!
+        scope.launch {
+            kotlinx.coroutines.delay(500)
+            restartClient()
         }
     }
 

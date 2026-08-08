@@ -395,7 +395,10 @@ object TelegramAuthManager {
      */
     fun logout() {
         scope.launch {
-            // Tell TDLib to log out (destroys session)
+            // Disable admin mode
+            com.streamhub.app.data.AdminManager.disableAdmin()
+
+            // Tell TDLib to log out (destroys session & restarts client)
             TdLibManager.logout()
 
             // Clear SharedPreferences cache
