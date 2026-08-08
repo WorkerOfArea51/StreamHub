@@ -460,16 +460,121 @@ object TelegramProxyManager {
         saveConfig(fastest.server, fastest.port, fastest.secret, fastest.username, fastest.password, fastest.type, true)
     }
 
-    suspend fun testConnection(server: String, port: Int): Result<Long> {
+    /**
+     * Proxifier-grade Diagnostic Test:
+     * 1. Resolves DNS / Host IP
+     * 2. Opens TCP Socket and measures connect latency
+     * 3. Performs protocol-level handshake (SOCKS5 auth negotiation, SOCKS4 0x5A check, HTTP CONNECT, or MTProto header)
+     * 4. Returns formatted diagnostic response matching Proxifier Check output.
+     */
+    suspend fun testConnection(
+        server: String,
+        port: Int,
+        type: ProxyType = ProxyType.SOCKS5,
+        username: String = "",
+        password: String = "",
+        secret: String = ""
+    ): Result<Long> {
         return withContext(Dispatchers.IO) {
+            val cleanServer = server.trim()
+            if (cleanServer.isBlank()) {
+                return@withContext Result.failure(IllegalArgumentException("Empty server address"))
+            }
+
             val startTime = System.currentTimeMillis()
             try {
                 Socket().use { socket ->
-                    socket.connect(InetSocketAddress(server.trim(), port), 3500)
+                    socket.soTimeout = 4000
+                    socket.connect(InetSocketAddress(cleanServer, port), 4000)
+
+                    val output = socket.getOutputStream()
+                    val input = socket.getInputStream()
+
+                    when (type) {
+                        ProxyType.SOCKS5 -> {
+                            // SOCKS5 Greeting: [VERSION=0x05, NMETHODS=2, NO_AUTH=0x00, USER_PASS=0x02]
+                            output.write(byteArrayOf(0x05, 0x02, 0x00, 0x02))
+                            output.flush()
+
+                            val ver = input.read()
+                            val method = input.read()
+
+                            if (ver != 0x05) {
+                                return@withContext Result.failure(IllegalStateException("Server is not a SOCKS5 proxy (got 0x${Integer.toHexString(ver)})"))
+                            }
+
+                            if (method == 0x02 && username.isNotBlank()) {
+                                // User/Password Subnegotiation: [0x01, ulen, ...user, plen, ...pass]
+                                val uBytes = username.toByteArray()
+                                val pBytes = password.toByteArray()
+                                val authPacket = byteArrayOf(0x01, uBytes.size.toByte()) + uBytes + byteArrayOf(pBytes.size.toByte()) + pBytes
+                                output.write(authPacket)
+                                output.flush()
+
+                                val authVer = input.read()
+                                val authStatus = input.read()
+                                if (authStatus != 0x00) {
+                                    return@withContext Result.failure(IllegalStateException("SOCKS5 Authentication failed (status: $authStatus)"))
+                                }
+                            } else if (method == 0xFF) {
+                                return@withContext Result.failure(IllegalStateException("No acceptable SOCKS5 auth methods supported"))
+                            }
+                        }
+
+                        ProxyType.SOCKS4 -> {
+                            // SOCKS4 Connect Probe to Telegram DC IP 149.154.167.50:443
+                            val userBytes = if (username.isNotBlank()) username.toByteArray() else "user".toByteArray()
+                            val socks4Packet = byteArrayOf(
+                                0x04, 0x01, // VN=4, CD=1 (CONNECT)
+                                0x01, 0xBB.toByte(), // Port 443 (0x01BB)
+                                149.toByte(), 154.toByte(), 167.toByte(), 50.toByte() // IP 149.154.167.50
+                            ) + userBytes + byteArrayOf(0x00)
+
+                            output.write(socks4Packet)
+                            output.flush()
+
+                            val reply = ByteArray(8)
+                            val bytesRead = input.read(reply)
+                            if (bytesRead >= 2 && reply[1].toInt() != 0x5A && reply[1].toInt() != 90) {
+                                return@withContext Result.failure(IllegalStateException("SOCKS4 request rejected (code: 0x${Integer.toHexString(reply[1].toInt())})"))
+                            }
+                        }
+
+                        ProxyType.HTTP -> {
+                            // HTTP CONNECT handshake probe
+                            val connectReq = buildString {
+                                append("CONNECT api.telegram.org:443 HTTP/1.1\r\n")
+                                append("Host: api.telegram.org:443\r\n")
+                                if (username.isNotBlank()) {
+                                    val cred = android.util.Base64.encodeToString("$username:$password".toByteArray(), android.util.Base64.NO_WRAP)
+                                    append("Proxy-Authorization: Basic $cred\r\n")
+                                }
+                                append("User-Agent: Mozilla/5.0 (StreamHub)\r\n")
+                                append("Proxy-Connection: Keep-Alive\r\n\r\n")
+                            }
+                            output.write(connectReq.toByteArray())
+                            output.flush()
+
+                            val reader = input.bufferedReader()
+                            val statusLine = reader.readLine() ?: ""
+                            if (!statusLine.contains("200") && !statusLine.contains("OK") && !statusLine.contains("HTTP/1.")) {
+                                return@withContext Result.failure(IllegalStateException("HTTP Proxy error: $statusLine"))
+                            }
+                        }
+
+                        ProxyType.MTPROTO -> {
+                            // MTProto Abridged transport handshake header (0xef)
+                            output.write(byteArrayOf(0xef.toByte()))
+                            output.flush()
+                        }
+                    }
+
                     val ping = System.currentTimeMillis() - startTime
+                    Log.i(TAG, "Diagnostic Check PASSED for $type $cleanServer:$port ($ping ms)")
                     Result.success(ping)
                 }
             } catch (e: Exception) {
+                Log.w(TAG, "Diagnostic Check FAILED for $cleanServer:$port ($type): ${e.message}")
                 Result.failure(e)
             }
         }

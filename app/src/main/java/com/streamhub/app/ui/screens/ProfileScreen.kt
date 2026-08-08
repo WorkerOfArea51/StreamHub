@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -37,6 +38,7 @@ import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.Shield
 import com.streamhub.app.ui.components.ProxySettingsDialog
@@ -93,23 +95,287 @@ data class CountryCode(
 )
 
 val countryCodesList = listOf(
-    CountryCode("United States", "🇺🇸", "+1"),
-    CountryCode("India", "🇮🇳", "+91"),
-    CountryCode("Bangladesh", "🇧🇩", "+880"),
-    CountryCode("United Kingdom", "🇬🇧", "+44"),
-    CountryCode("Pakistan", "🇵🇰", "+92"),
-    CountryCode("Canada", "🇨🇦", "+1"),
+    CountryCode("Afghanistan", "🇦🇫", "+93"),
+    CountryCode("Albania", "🇦🇱", "+355"),
+    CountryCode("Algeria", "🇩🇿", "+213"),
+    CountryCode("Andorra", "🇦🇩", "+376"),
+    CountryCode("Angola", "🇦🇴", "+244"),
+    CountryCode("Argentina", "🇦🇷", "+54"),
+    CountryCode("Armenia", "🇦🇲", "+374"),
     CountryCode("Australia", "🇦🇺", "+61"),
-    CountryCode("Germany", "🇩🇪", "+49"),
-    CountryCode("France", "🇫🇷", "+33"),
-    CountryCode("Indonesia", "🇮🇩", "+62"),
+    CountryCode("Austria", "🇦🇹", "+43"),
+    CountryCode("Azerbaijan", "🇦🇿", "+994"),
+    CountryCode("Bahrain", "🇧🇭", "+973"),
+    CountryCode("Bangladesh", "🇧🇩", "+880"),
+    CountryCode("Belarus", "🇧🇾", "+375"),
+    CountryCode("Belgium", "🇧🇪", "+32"),
+    CountryCode("Bolivia", "🇧🇴", "+591"),
+    CountryCode("Bosnia and Herzegovina", "🇧🇦", "+387"),
     CountryCode("Brazil", "🇧🇷", "+55"),
+    CountryCode("Bulgaria", "🇧🇬", "+359"),
+    CountryCode("Cambodia", "🇰🇭", "+855"),
+    CountryCode("Cameroon", "🇨🇲", "+237"),
+    CountryCode("Canada", "🇨🇦", "+1"),
+    CountryCode("Chile", "🇨🇱", "+56"),
+    CountryCode("China", "🇨🇳", "+86"),
+    CountryCode("Colombia", "🇨🇴", "+57"),
+    CountryCode("Costa Rica", "🇨🇷", "+506"),
+    CountryCode("Croatia", "🇭🇷", "+385"),
+    CountryCode("Cuba", "🇨🇺", "+53"),
+    CountryCode("Cyprus", "🇨🇾", "+357"),
+    CountryCode("Czech Republic", "🇨🇿", "+420"),
+    CountryCode("Denmark", "🇩🇰", "+45"),
+    CountryCode("Dominican Republic", "🇩🇴", "+1"),
+    CountryCode("Ecuador", "🇪🇨", "+593"),
+    CountryCode("Egypt", "🇪🇬", "+20"),
+    CountryCode("Estonia", "🇪🇪", "+372"),
+    CountryCode("Ethiopia", "🇪🇹", "+251"),
+    CountryCode("Finland", "🇫🇮", "+358"),
+    CountryCode("France", "🇫🇷", "+33"),
+    CountryCode("Georgia", "🇬🇪", "+995"),
+    CountryCode("Germany", "🇩🇪", "+49"),
+    CountryCode("Ghana", "🇬🇭", "+233"),
+    CountryCode("Greece", "🇬🇷", "+30"),
+    CountryCode("Guatemala", "🇬🇹", "+502"),
+    CountryCode("Hong Kong", "🇭🇰", "+852"),
+    CountryCode("Hungary", "🇭🇺", "+36"),
+    CountryCode("Iceland", "🇮🇸", "+354"),
+    CountryCode("India", "🇮🇳", "+91"),
+    CountryCode("Indonesia", "🇮🇩", "+62"),
+    CountryCode("Iran", "🇮🇷", "+98"),
+    CountryCode("Iraq", "🇮🇶", "+964"),
+    CountryCode("Ireland", "🇮🇪", "+353"),
+    CountryCode("Israel", "🇮🇱", "+972"),
+    CountryCode("Italy", "🇮🇹", "+39"),
+    CountryCode("Jamaica", "🇯🇲", "+1"),
+    CountryCode("Japan", "🇯🇵", "+81"),
+    CountryCode("Jordan", "🇯🇴", "+962"),
+    CountryCode("Kazakhstan", "🇰🇿", "+7"),
+    CountryCode("Kenya", "🇰🇪", "+254"),
+    CountryCode("Kuwait", "🇰🇼", "+965"),
+    CountryCode("Kyrgyzstan", "🇰🇬", "+996"),
+    CountryCode("Latvia", "🇱🇻", "+371"),
+    CountryCode("Lebanon", "🇱🇧", "+961"),
+    CountryCode("Libya", "🇱🇾", "+218"),
+    CountryCode("Lithuania", "🇱🇹", "+370"),
+    CountryCode("Luxembourg", "🇱🇺", "+352"),
+    CountryCode("Malaysia", "🇲🇾", "+60"),
+    CountryCode("Maldives", "🇲🇻", "+960"),
+    CountryCode("Mexico", "🇲🇽", "+52"),
+    CountryCode("Moldova", "🇲🇩", "+373"),
+    CountryCode("Monaco", "🇲🇨", "+377"),
+    CountryCode("Mongolia", "🇲🇳", "+976"),
+    CountryCode("Montenegro", "🇲🇪", "+382"),
+    CountryCode("Morocco", "🇲🇦", "+212"),
+    CountryCode("Myanmar", "🇲🇲", "+95"),
+    CountryCode("Nepal", "🇳🇵", "+977"),
+    CountryCode("Netherlands", "🇳🇱", "+31"),
+    CountryCode("New Zealand", "🇳🇿", "+64"),
     CountryCode("Nigeria", "🇳🇬", "+234"),
+    CountryCode("North Macedonia", "🇲🇰", "+389"),
+    CountryCode("Norway", "🇳🇴", "+47"),
+    CountryCode("Oman", "🇴🇲", "+968"),
+    CountryCode("Pakistan", "🇵🇰", "+92"),
+    CountryCode("Palestine", "🇵🇸", "+970"),
+    CountryCode("Panama", "🇵🇦", "+507"),
+    CountryCode("Paraguay", "🇵🇾", "+595"),
+    CountryCode("Peru", "🇵🇪", "+51"),
     CountryCode("Philippines", "🇵🇭", "+63"),
+    CountryCode("Poland", "🇵🇱", "+48"),
+    CountryCode("Portugal", "🇵🇹", "+351"),
+    CountryCode("Qatar", "🇶🇦", "+974"),
+    CountryCode("Romania", "🇷🇴", "+40"),
+    CountryCode("Russia", "🇷🇺", "+7"),
+    CountryCode("Saudi Arabia", "🇸🇦", "+966"),
+    CountryCode("Senegal", "🇸🇳", "+221"),
+    CountryCode("Serbia", "🇷🇸", "+381"),
+    CountryCode("Singapore", "🇸🇬", "+65"),
+    CountryCode("Slovakia", "🇸🇰", "+421"),
+    CountryCode("Slovenia", "🇸🇮", "+386"),
+    CountryCode("South Africa", "🇿🇦", "+27"),
+    CountryCode("South Korea", "🇰🇷", "+82"),
+    CountryCode("Spain", "🇪🇸", "+34"),
+    CountryCode("Sri Lanka", "🇱🇰", "+94"),
+    CountryCode("Sweden", "🇸🇪", "+46"),
+    CountryCode("Switzerland", "🇨🇭", "+41"),
+    CountryCode("Syria", "🇸🇾", "+963"),
+    CountryCode("Taiwan", "🇹🇼", "+886"),
+    CountryCode("Tajikistan", "🇹🇯", "+992"),
+    CountryCode("Tanzania", "🇹🇿", "+255"),
+    CountryCode("Thailand", "🇹🇭", "+66"),
+    CountryCode("Tunisia", "🇹🇳", "+216"),
     CountryCode("Turkey", "🇹🇷", "+90"),
+    CountryCode("Turkmenistan", "🇹🇲", "+993"),
+    CountryCode("Uganda", "🇺🇬", "+256"),
+    CountryCode("Ukraine", "🇺🇦", "+380"),
     CountryCode("United Arab Emirates", "🇦🇪", "+971"),
-    CountryCode("Saudi Arabia", "🇸🇦", "+966")
+    CountryCode("United Kingdom", "🇬🇧", "+44"),
+    CountryCode("United States", "🇺🇸", "+1"),
+    CountryCode("Uruguay", "🇺🇾", "+598"),
+    CountryCode("Uzbekistan", "🇺🇿", "+998"),
+    CountryCode("Venezuela", "🇻🇪", "+58"),
+    CountryCode("Vietnam", "🇻🇳", "+84"),
+    CountryCode("Yemen", "🇾🇪", "+967"),
+    CountryCode("Zambia", "🇿🇲", "+260"),
+    CountryCode("Zimbabwe", "🇿🇼", "+263")
 )
+
+@Composable
+fun CountryPickerDialog(
+    countries: List<CountryCode>,
+    selectedCountry: CountryCode,
+    primaryColor: Color,
+    onSelectCountry: (CountryCode) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredCountries = remember(searchQuery) {
+        if (searchQuery.isBlank()) countries
+        else countries.filter {
+            it.name.contains(searchQuery, ignoreCase = true) ||
+            it.dialCode.contains(searchQuery)
+        }
+    }
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(
+            decorFitsSystemWindows = false,
+            usePlatformDefaultWidth = false
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.7f))
+                .clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .border(1.dp, Color(0xFF2C2C3E), RoundedCornerShape(20.dp))
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null,
+                        onClick = {} // prevent dismissing when clicking inside card
+                    )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Select Country 🌍",
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        )
+                        IconButton(onClick = onDismiss) {
+                            Text("✕", color = TextSecondary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Search country or dial code...", color = TextSecondary, fontSize = 12.sp) },
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = "Search", tint = primaryColor, modifier = Modifier.size(18.dp))
+                        },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = primaryColor,
+                            unfocusedBorderColor = Color(0xFF2C2C3E),
+                            focusedTextColor = TextPrimary
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        "${filteredCountries.size} countries available",
+                        color = TextSecondary,
+                        fontSize = 11.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(360.dp)
+                    ) {
+                        items(items = filteredCountries, key = { it.name + it.dialCode }) { country ->
+                            val isSelected = country.name == selectedCountry.name && country.dialCode == selectedCountry.dialCode
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isSelected) primaryColor.copy(alpha = 0.15f) else Color.Transparent)
+                                    .clickable {
+                                        onSelectCountry(country)
+                                        onDismiss()
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(country.flag, fontSize = 22.sp)
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        country.name,
+                                        color = if (isSelected) primaryColor else TextPrimary,
+                                        fontSize = 14.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Text(
+                                    country.dialCode,
+                                    color = primaryColor,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Close", color = TextSecondary)
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun ProfileScreen(
@@ -128,6 +394,8 @@ fun ProfileScreen(
 
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
     var showProxyDialog by remember { mutableStateOf(false) }
+    var showCountryPickerDialog by remember { mutableStateOf(false) }
+    var selectedCountry by remember { mutableStateOf(countryCodesList[0]) }
 
     LazyColumn(
         modifier = modifier
@@ -453,6 +721,8 @@ fun TelegramLoginCard(
     primaryColor: Color
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
+    var selectedCountry by remember { mutableStateOf(countryCodesList[0]) }
+    var showCountryPickerDialog by remember { mutableStateOf(false) }
     var phoneNumber by remember { mutableStateOf("") }
     var smsCode by remember { mutableStateOf("") }
 
@@ -577,33 +847,41 @@ fun TelegramLoginCard(
                             Text("Submit Password", color = Color.White, fontWeight = FontWeight.Bold)
                         }
                     }
-                    is TelegramAuthState.Error -> {
-                        // Show error message with retry button
-                        Text(authState.message, color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
-                        Spacer(modifier = Modifier.height(10.dp))
-                        OutlinedButton(
-                            onClick = { TelegramAuthManager.resetState() },
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Retry", color = primaryColor)
-                        }
-                    }
                     else -> {
-                        var expandedCountryDropdown by remember { mutableStateOf(false) }
-                        var selectedCountry by remember { mutableStateOf(countryCodesList[0]) }
+                        if (authState is TelegramAuthState.Error) {
+                            Card(
+                                shape = RoundedCornerShape(8.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.15f)),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(authState.message, color = MaterialTheme.colorScheme.error, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    OutlinedButton(
+                                        onClick = { TelegramAuthManager.resetState() },
+                                        shape = RoundedCornerShape(6.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Text("Dismiss", color = primaryColor, fontSize = 10.sp)
+                                    }
+                                }
+                            }
+                        }
 
                         Text("Country", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(4.dp))
 
-                        // TELEGRAM-STYLE COUNTRY SELECTOR BOX
+                        // TELEGRAM-STYLE SEARCHABLE COUNTRY SELECTOR BOX
                         Card(
+                            onClick = { showCountryPickerDialog = true },
                             shape = RoundedCornerShape(10.dp),
                             colors = CardDefaults.cardColors(containerColor = Color(0xFF14141E)),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .border(1.dp, Color(0xFF2C2C3E), RoundedCornerShape(10.dp))
-                                .clickable { expandedCountryDropdown = true }
                         ) {
                             Row(
                                 modifier = Modifier
@@ -612,42 +890,29 @@ fun TelegramLoginCard(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
                                     Text(selectedCountry.flag, fontSize = 18.sp)
                                     Spacer(modifier = Modifier.width(10.dp))
-                                    Text(selectedCountry.name, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        selectedCountry.name,
+                                        color = TextPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
-                                Text(selectedCountry.dialCode, color = primaryColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            }
-
-                            androidx.compose.material3.DropdownMenu(
-                                expanded = expandedCountryDropdown,
-                                onDismissRequest = { expandedCountryDropdown = false },
-                                modifier = Modifier
-                                    .background(SurfaceDark)
-                                    .border(1.dp, Color(0xFF2C2C3E))
-                            ) {
-                                countryCodesList.forEach { country ->
-                                    androidx.compose.material3.DropdownMenuItem(
-                                        text = {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Text(country.flag, fontSize = 16.sp)
-                                                    Spacer(modifier = Modifier.width(10.dp))
-                                                    Text(country.name, color = TextPrimary, fontSize = 12.sp)
-                                                }
-                                                Spacer(modifier = Modifier.width(16.dp))
-                                                Text(country.dialCode, color = primaryColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                        },
-                                        onClick = {
-                                            selectedCountry = country
-                                            expandedCountryDropdown = false
-                                        }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(selectedCountry.dialCode, color = primaryColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Icon(
+                                        Icons.Default.Search,
+                                        contentDescription = "Search Country",
+                                        tint = primaryColor,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                             }
@@ -727,6 +992,19 @@ fun TelegramLoginCard(
                 }
             }
         }
+    }
+
+    if (showCountryPickerDialog) {
+        CountryPickerDialog(
+            countries = countryCodesList,
+            selectedCountry = selectedCountry,
+            primaryColor = primaryColor,
+            onSelectCountry = { country ->
+                selectedCountry = country
+                showCountryPickerDialog = false
+            },
+            onDismiss = { showCountryPickerDialog = false }
+        )
     }
 }
 

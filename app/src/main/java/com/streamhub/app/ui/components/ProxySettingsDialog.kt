@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -127,6 +128,7 @@ fun ProxySettingsDialog(
         onDismissRequest = onDismiss,
         containerColor = SurfaceDark,
         shape = RoundedCornerShape(20.dp),
+        properties = DialogProperties(decorFitsSystemWindows = false),
         title = {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -572,15 +574,23 @@ fun ProxySettingsDialog(
                                     testResult = null
                                     val p = portText.toIntOrNull()?.coerceIn(1, 65535) ?: 443
                                     scope.launch {
-                                        val res = TelegramProxyManager.testConnection(server, p)
+                                        val res = TelegramProxyManager.testConnection(
+                                            server = server,
+                                            port = p,
+                                            type = selectedType,
+                                            username = username,
+                                            password = password,
+                                            secret = secret
+                                        )
                                         res.fold(
                                             onSuccess = { ping ->
                                                 isSuccess = true
-                                                testResult = "Ready: ${ping}ms ⚡"
+                                                testResult = "${selectedType.name} Ready: ${ping}ms ⚡"
                                             },
                                             onFailure = { err ->
                                                 isSuccess = false
-                                                testResult = "Failed: ${err.message?.take(18)}"
+                                                val msg = err.message ?: "Connect error"
+                                                testResult = if (msg.length > 22) msg.take(20) + "..." else msg
                                             }
                                         )
                                         isTesting = false
