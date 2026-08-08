@@ -293,12 +293,13 @@ object TdLibMediaProvider {
         val clean = chatIdentifier.trim()
         if (clean.isBlank()) return null
 
-        // 1. Private Invite Link (e.g. https://t.me/+Hash or t.me/joinchat/Hash)
-        if (clean.contains("+") || clean.contains("joinchat")) {
-            val inviteHash = clean.substringAfter("+").substringAfter("joinchat/").substringBefore("/").trim()
-            if (inviteHash.isNotBlank()) {
-                val joinLink = TdLibManager.send(TdApi.JoinChatByInviteLink(inviteHash))
-                if (joinLink is TdApi.Chat) return joinLink
+        // 1. Private Invite Link (Pass FULL URL to TDLib)
+        if (clean.contains("t.me/") && (clean.contains("+") || clean.contains("joinchat"))) {
+            val inviteLink = if (clean.startsWith("http")) clean else "https://$clean"
+            val joinLink = TdLibManager.send(TdApi.JoinChatByInviteLink(inviteLink))
+            if (joinLink is TdApi.Chat) return joinLink
+            if (joinLink is TdApi.Error) {
+                Log.e(TAG, "JoinChatByInviteLink failed for $inviteLink: ${joinLink.message}")
             }
         }
 
@@ -471,18 +472,17 @@ object TdLibMediaProvider {
      */
     fun parseChatId(chatIdentifier: String): Long {
         val clean = chatIdentifier.trim()
+        if (clean.startsWith("-100")) return clean.toLongOrNull() ?: 0L
+
         val rawNumberStr = when {
             clean.contains("/c/") -> clean.substringAfter("/c/").substringBefore("/")
-            clean.startsWith("-100") -> clean
             clean.all { it.isDigit() || it == '-' } -> clean
             else -> ""
         }
         val bareId = rawNumberStr.toLongOrNull() ?: return 0L
         if (bareId < 0L) return bareId
-        if (bareId > 1_000_000_000L) {
-            return -1_000_000_000_000L - (bareId % 1_000_000_000_000L)
-        }
-        return bareId
+
+        return -(100_000_000_000L + bareId)
     }
 
     // ──────────────────────────────────────────────────────────────

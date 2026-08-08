@@ -124,6 +124,8 @@ fun HomeScreen(
     val movieItems = remember(filteredCatalog) { filteredCatalog.filter { it.category == "MOVIE" } }
     val webSeriesItems = remember(filteredCatalog) { filteredCatalog.filter { it.category == "WEB_SERIES" } }
 
+    val tgState by com.streamhub.app.data.telegram.TelegramAuthManager.authState.collectAsState()
+
     Scaffold(
         floatingActionButton = {
             if (isAdminMode) {
@@ -144,6 +146,29 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            if (tgState !is com.streamhub.app.data.telegram.TelegramAuthState.Authenticated) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1B4B)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("🔑 Telegram Login Recommended", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text("Log in via Profile to auto-join streaming channels & unlock full media access.", color = Color(0xFFC7D2FE), fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            }
             // Category Filter Pills & Surprise Me Roulette Button
             item {
                 Row(

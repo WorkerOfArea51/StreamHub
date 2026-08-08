@@ -29,23 +29,22 @@ streamhub.tmdb_api_key=YOUR_TMDB_API_KEY_HERE                       # STREAMHUB_
 streamhub.mal_client_id=YOUR_MAL_CLIENT_ID_HERE                     # STREAMHUB_MAL_CLIENT_ID
 streamhub.mal_client_secret=                                        # STREAMHUB_MAL_CLIENT_SECRET
 
-# Telegram Bot Token from @BotFather
-# Required only for streaming from private Telegram channels (M4).
-# Bot must be a member of the target channel with read access.
-streamhub.telegram_bot_token=                                       # STREAMHUB_TELEGRAM_BOT_TOKEN
+# Telegram MTProto Credentials from https://my.telegram.org/apps
+streamhub.telegram_api_id=YOUR_TELEGRAM_API_ID                     # STREAMHUB_TELEGRAM_API_ID
+streamhub.telegram_api_hash=YOUR_TELEGRAM_API_HASH                 # STREAMHUB_TELEGRAM_API_HASH
 
-# Private Telegram channel ID (the negative number from t.me/c/<id>/...)
-# Example: if URL is https://t.me/c/2633457020/7159, the ID is -1002633457020
-# (Telegram private channel IDs are prefixed with -100 in Bot API.)
-streamhub.telegram_channel_id=                                      # STREAMHUB_TELEGRAM_CHANNEL_ID
+# ─── Telegram Channels (auto-joined on user login) ───
+# These are the channels your users join to access streaming content.
+# Supports 3 formats:
+#   1. Public channel username: "StreamHubAnime" (without @)
+#   2. Private invite link: "https://t.me/+AbCdEfGhIjKlMnOp"
+#   3. t.me/c/ bare ID: "2633457020" (the number from t.me/c/<ID>/...)
+streamhub.telegram_anime_channel=                                   # STREAMHUB_TELEGRAM_ANIME_CHANNEL
+streamhub.telegram_movies_channel=                                  # STREAMHUB_TELEGRAM_MOVIES_CHANNEL
+streamhub.telegram_series_channel=                                  # STREAMHUB_TELEGRAM_SERIES_CHANNEL
+
+# Owner usernames (comma-separated, without @) for Channel Owner Dashboard access
+streamhub.owner_usernames=                                          # STREAMHUB_OWNER_USERNAMES
 
 # Admin PIN — bcrypt hash (NOT the plaintext PIN)
-# Generate with Python:
-#   pip install bcrypt
-#   python3 -c "import bcrypt; print(bcrypt.hashpw(b'YOUR_PIN', bcrypt.gensalt()).decode())"
-# Or with Node:
-#   npm install bcryptjs
-#   node -e "console.log(require('bcryptjs').hashSync('YOUR_PIN', 12))"
-#
-# Default "0000" disables admin login (verification always fails).
 streamhub.admin_pin_hash=0000                                       # STREAMHUB_ADMIN_PIN_HASH

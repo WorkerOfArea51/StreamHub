@@ -154,6 +154,7 @@ object TdLibManager {
                 return false
             }
 
+            appContext = context.applicationContext
             // TDLib session database stored in app's internal storage
             databaseDirectory = "${context.filesDir.absolutePath}/tdlib"
 
@@ -330,6 +331,27 @@ object TdLibManager {
         }
     }
 
+    @Volatile
+    private var appContext: Context? = null
+
+    private fun getOrCreateDatabaseEncryptionKey(): ByteArray {
+        val ctx = appContext ?: return ByteArray(0)
+        val prefs = ctx.getSharedPreferences("streamhub_tdlib_sec", Context.MODE_PRIVATE)
+        var keyHex = prefs.getString("tdlib_db_key_hex", null)
+        if (keyHex == null || keyHex.length != 64) {
+            val keyBytes = ByteArray(32)
+            java.security.SecureRandom().nextBytes(keyBytes)
+            keyHex = keyBytes.joinToString("") { "%02x".format(it) }
+            prefs.edit().putString("tdlib_db_key_hex", keyHex).apply()
+        }
+        val resultBytes = ByteArray(32)
+        for (i in 0 until 32) {
+            val hexStr = keyHex.substring(i * 2, i * 2 + 2)
+            resultBytes[i] = hexStr.toInt(16).toByte()
+        }
+        return resultBytes
+    }
+
     private fun autoSetTdlibParameters() {
         val c = client ?: return
         val apiId = Secrets.TELEGRAM_API_ID.trim().toIntOrNull() ?: return
@@ -340,7 +362,7 @@ object TdLibManager {
                 false, // useTestDc
                 databaseDirectory, // databaseDirectory
                 "$databaseDirectory/files", // filesDirectory
-                ByteArray(0), // databaseEncryptionKey
+                getOrCreateDatabaseEncryptionKey(), // databaseEncryptionKey
                 true, // useFileDatabase
                 true, // useChatInfoDatabase
                 true, // useMessageDatabase

@@ -7,6 +7,7 @@ import com.streamhub.app.data.api.Secrets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -461,6 +462,18 @@ object TelegramAuthManager {
      */
     private fun autoJoinPrivateChannels() {
         scope.launch {
+            // Wait up to 10s for TDLib client to be fully in Ready state
+            val ready = kotlinx.coroutines.withTimeoutOrNull(10_000L) {
+                while (!TdLibManager.isReady()) {
+                    delay(200L)
+                }
+                true
+            }
+            if (ready != true) {
+                Log.e(TAG, "TDLib not ready after 10s — skipping auto-join")
+                return@launch
+            }
+
             try {
                 TdLibMediaProvider.autoJoinConfiguredChannels()
             } catch (e: Exception) {
