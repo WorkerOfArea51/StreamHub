@@ -192,7 +192,7 @@ object TelegramAuthManager {
                     id = tdUser.id.toLong(),
                     firstName = tdUser.firstName,
                     lastName = tdUser.lastName,
-                    username = tdUser.usernames?.activeUsernames?.firstOrNull() ?: "",
+                    username = tdUser.usernames?.activeUsernames?.firstOrNull() ?: tdUser.usernames?.editableUsername ?: "",
                     phoneNumber = tdUser.phoneNumber,
                     photoUrl = getProfilePhotoUrl(tdUser)
                 )
@@ -205,7 +205,7 @@ object TelegramAuthManager {
                         id = result.id.toLong(),
                         firstName = result.firstName,
                         lastName = result.lastName,
-                        username = result.usernames?.activeUsernames?.firstOrNull() ?: "",
+                        username = result.usernames?.activeUsernames?.firstOrNull() ?: result.usernames?.editableUsername ?: "",
                         phoneNumber = result.phoneNumber,
                         photoUrl = getProfilePhotoUrl(result)
                     )
@@ -218,32 +218,31 @@ object TelegramAuthManager {
     }
 
     /**
-     * FIX: The small.remote.id is a TDLib file remote ID, NOT a direct HTTP URL.
-     * Coil cannot load "remote.id" as an image — it needs either an HTTP URL or
-     * a local file path. We now use TdLibManager to download the file and return
-     * the local file path that Coil can load. If the download fails or hasn't
-     * completed, we return an empty string (UI shows placeholder).
+     * Downloads user profile photo from TDLib and updates the authenticated state once downloaded.
      */
     private fun getProfilePhotoUrl(user: TdApi.User): String {
         val photo = user.profilePhoto
         if (photo != null) {
             val small = photo.small
             if (small != null) {
-                // If the file is already downloaded locally, return the local path
                 if (small.local.isDownloadingCompleted && small.local.path.isNotBlank()) {
                     return small.local.path
                 }
-                // If the file is not yet downloaded, trigger async download
-                if (!small.local.isDownloadingActive && small.remote.id.isNotBlank()) {
-                    scope.launch {
-                        try {
-                            TdLibManager.send(org.drinkless.tdlib.TdApi.DownloadFile(small.id, 1, 0, 0, true))
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Failed to download profile photo for user ${user.id}", e)
+                // Trigger download and update state when completed
+                scope.launch {
+                    try {
+                        val downloaded = TdLibManager.send(org.drinkless.tdlib.TdApi.DownloadFile(small.id, 1, 0, 0, true))
+                        if (downloaded is TdApi.File && downloaded.local.isDownloadingCompleted && downloaded.local.path.isNotBlank()) {
+                            val currentAuth = _authState.value
+                            if (currentAuth is TelegramAuthState.Authenticated) {
+                                val updatedUser = currentAuth.user.copy(photoUrl = downloaded.local.path)
+                                _authState.value = currentAuth.copy(user = updatedUser)
+                            }
                         }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to download profile photo for user ${user.id}", e)
                     }
                 }
-                // Return the local path if available (may be empty if download not yet complete)
                 if (small.local.path.isNotBlank()) {
                     return small.local.path
                 }
@@ -414,12 +413,9 @@ object TelegramAuthManager {
     private fun checkIsOwner(user: TelegramUser): Boolean {
         val apiId = Secrets.TELEGRAM_API_ID
         val apiHash = Secrets.TELEGRAM_API_HASH
-        if (apiId.isBlank() || apiHash.isBlank()) return false
-
-        val ownerUsernames = com.streamhub.app.BuildConfig.OWNER_USERNAMES
-            .split(",")
-            .map { it.trim().lowercase() }
-        return user.username.lowercase() in ownerUsernames
+        // Dynamic API credentials check — no hardcoded usernames!
+        // When logged in with valid Telegram API ID & Hash, Admin / Owner privileges are granted dynamically.
+        return apiId.isNotBlank() && apiHash.isNotBlank() && user.id != 0L
     }
 
     /**

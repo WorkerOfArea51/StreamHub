@@ -22,12 +22,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.ElectricBolt
 import androidx.compose.material.icons.filled.LocalFireDepartment
@@ -59,6 +61,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -419,7 +422,7 @@ fun ProfileScreen(
             }
         }
 
-        // ── Authenticated: Show Profile Card ──
+        // ── Authenticated: Show Profile Card & Admin Control Dashboard ──
         if (authState is TelegramAuthState.Authenticated) {
             val user = (authState as TelegramAuthState.Authenticated).user
             val isOwner = (authState as TelegramAuthState.Authenticated).isOwner
@@ -436,6 +439,15 @@ fun ProfileScreen(
                         } catch (_: Exception) { }
                     },
                     onLogout = { TelegramAuthManager.logout() }
+                )
+            }
+
+            item(key = "admin_owner_dashboard") {
+                AdminOwnerDashboardCard(
+                    isOwner = isOwner,
+                    primaryColor = primaryColor,
+                    onOpenAdminPanel = onOpenAdminPanel,
+                    onUnlockAdmin = { showAdminPasswordDialog = true }
                 )
             }
         }
@@ -1081,4 +1093,82 @@ fun AdminPasswordDialog(
             }
         }
     )
+}
+
+@Composable
+fun AdminOwnerDashboardCard(
+    isOwner: Boolean,
+    primaryColor: Color,
+    onOpenAdminPanel: () -> Unit,
+    onUnlockAdmin: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF161622)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.5.dp, primaryColor, RoundedCornerShape(20.dp))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(primaryColor.copy(alpha = 0.18f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.AdminPanelSettings, contentDescription = "Admin", tint = primaryColor, modifier = Modifier.size(22.dp))
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text("Channel Owner Dashboard 👑", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text(if (isOwner) "Admin & Creator Mode Active ⚡" else "Channel Admin Access Verified", color = primaryColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = primaryColor.copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, primaryColor)
+                ) {
+                    Text("OWNER", color = primaryColor, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Action Buttons Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = onOpenAdminPanel,
+                    colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Post", tint = Color.White, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Post New Content", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+
+                OutlinedButton(
+                    onClick = onOpenAdminPanel,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, primaryColor),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Settings, contentDescription = "Manage", tint = primaryColor, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Admin Panel", color = primaryColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
 }

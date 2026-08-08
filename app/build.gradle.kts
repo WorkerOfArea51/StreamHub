@@ -29,8 +29,8 @@ android {
         applicationId = "com.streamhub.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 55
-        versionName = "3.7.2"
+        versionCode = 56
+        versionName = "3.8.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -47,9 +47,7 @@ android {
         buildConfigField("String", "TELEGRAM_MOVIES_CHANNEL", "\"${secret("streamhub.telegram_movies_channel")}\"")
         buildConfigField("String", "TELEGRAM_SERIES_CHANNEL", "\"${secret("streamhub.telegram_series_channel")}\"")
         buildConfigField("boolean", "DEBUG_LOGGING", "false")
-        // FIX: Configurable owner usernames for admin check — comma-separated list.
-        // Override via local.properties: streamhub.owner_usernames=WorkerOfArea51,StreamHubOwner
-        buildConfigField("String", "OWNER_USERNAMES", "\"${secret("streamhub.owner_usernames", "WorkerOfArea51,StreamHubOwner")}\"")
+        buildConfigField("String", "OWNER_USERNAMES", "\"${secret("streamhub.owner_usernames", "")}\"")
     }
 
     splits {
