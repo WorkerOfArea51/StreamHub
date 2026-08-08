@@ -176,6 +176,8 @@ object TelegramLinkResolver {
                     url // Fallback to original URL on timeout
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Sync resolution failed for: $url", e)
             url

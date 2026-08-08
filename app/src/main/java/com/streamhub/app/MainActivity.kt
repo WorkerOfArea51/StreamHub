@@ -306,13 +306,11 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
             }
 
             composable(Screen.Admin.route) {
-                HomeScreen(
-                    repository = repository,
-                    onMediaClick = { media ->
-                        navController.navigate(Screen.Details.createRoute(media.id))
-                    },
-                    onPlayEpisode = { media, episodeIndex ->
-                        navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
+                com.streamhub.app.ui.components.AdminEditorDialog(
+                    onDismiss = { navController.popBackStack() },
+                    onSave = { item ->
+                        repository.saveMediaItem(item)
+                        navController.popBackStack()
                     }
                 )
             }

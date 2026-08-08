@@ -443,6 +443,7 @@ object TelegramAuthManager {
                 val isChannelAdmin = TdLibMediaProvider.checkIfUserIsChannelAdmin(userId)
                 if (isChannelAdmin) {
                     com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
+                    prefs.edit().putBoolean(KEY_IS_OWNER, true).apply()
                     val currentAuth = _authState.value
                     if (currentAuth is TelegramAuthState.Authenticated && !currentAuth.isOwner) {
                         _authState.value = currentAuth.copy(isOwner = true)

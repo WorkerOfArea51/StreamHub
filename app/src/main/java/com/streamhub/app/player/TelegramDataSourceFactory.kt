@@ -150,11 +150,11 @@ class TelegramDataSourceFactory(
             val httpSource = createHttpDataSource(host)
             val cache = StreamCacheManager.getCache(appContext)
 
-            return CacheDataSource(
-                cache,
-                httpSource,
-                CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR
-            )
+            return CacheDataSource.Factory()
+                .setCache(cache)
+                .setUpstreamDataSourceFactory { httpSource }
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                .createDataSource()
         }
 
         override fun read(buffer: ByteArray, offset: Int, length: Int): Int {

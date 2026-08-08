@@ -55,6 +55,8 @@ object MetadataFetchManager {
                 } else {
                     fetchFromTMDB(titleQuery, category)
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Metadata fetch failed for: $titleQuery", e)
                 Result.failure(e)

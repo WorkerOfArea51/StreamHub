@@ -5,9 +5,13 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.streamhub.app.data.models.MediaItem
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * State of the media catalog fetch.
@@ -54,6 +58,8 @@ class FirebaseRepository private constructor() {
     private val firestore by lazy {
         runCatching { FirebaseFirestore.getInstance() }.getOrNull()
     }
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Active Firestore snapshot listener registration. Only one at a time. */
     private var listenerRegistration: ListenerRegistration? = null
@@ -141,17 +147,19 @@ class FirebaseRepository private constructor() {
                         return@addSnapshotListener
                     }
 
-                    val items = snapshot.documents.mapNotNull { doc ->
-                        try {
-                            doc.toObject(MediaItem::class.java)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Failed to parse document ${doc.id}", e)
-                            null
+                    scope.launch(Dispatchers.IO) {
+                        val items = snapshot.documents.mapNotNull { doc ->
+                            try {
+                                doc.toObject(MediaItem::class.java)
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Failed to parse document ${doc.id}", e)
+                                null
+                            }
                         }
-                    }
 
-                    _mediaCatalog.value = items
-                    _catalogState.value = CatalogState.Ready
+                        _mediaCatalog.value = items
+                        _catalogState.value = CatalogState.Ready
+                    }
                 }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to attach Firestore listener", e)
