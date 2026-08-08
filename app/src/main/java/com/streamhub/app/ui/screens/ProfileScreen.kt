@@ -197,7 +197,7 @@ fun ProfileScreen(
                 StatCard(
                     icon = Icons.Default.PlayArrow,
                     label = "Watch Hours",
-                    value = String.format("%.1f", totalWatchHours),
+                    value = totalWatchHours,
                     primaryColor = primaryColor,
                     modifier = Modifier.weight(1f)
                 )
