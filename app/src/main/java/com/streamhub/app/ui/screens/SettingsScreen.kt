@@ -102,13 +102,13 @@ fun SettingsScreen(
             }
             item(key = "settings_theme_accent") { ThemeAccentCard(currentAccent = currentAccent) }
             item(key = "settings_home_layout") { HomeLayoutCard(currentAccent = currentAccent) }
-            item(key = "settings_subtitle") { SubtitleAppearanceCard(currentAccent = currentAccent) }
 
             // --- CATEGORY 2: PLAYBACK & MEDIA ---
             item(key = "cat_playback") {
                 SettingsCategoryHeader(title = "PLAYBACK & MEDIA", accentColor = currentAccent.color)
             }
             item(key = "settings_video_entry") { VideoSettingsEntryCard(currentAccent = currentAccent, onNavigateToVideoSettings = onNavigateToVideoSettings) }
+            item(key = "settings_subtitle") { SubtitleAppearanceCard(currentAccent = currentAccent) }
 
             // --- CATEGORY 3: NETWORK & CONNECTION ---
             item(key = "cat_network") {

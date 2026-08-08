@@ -38,11 +38,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamhub.app.data.PlayerSettingsManager
+import com.streamhub.app.ui.screens.settings.SubtitleAppearanceCard
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
+import com.streamhub.app.ui.theme.ThemeManager
 
 /**
  * Video Settings sub-screen — contains player-specific settings that were
@@ -62,6 +64,7 @@ fun VideoSettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val playerSettings by PlayerSettingsManager.settingsFlow.collectAsState()
+    val currentAccent by ThemeManager.currentAccent.collectAsState()
 
     Column(
         modifier = modifier
@@ -83,7 +86,7 @@ fun VideoSettingsScreen(
                 )
             }
             Text(
-                text = "Video Settings",
+                text = "Video & Subtitle Settings",
                 color = TextPrimary,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
@@ -94,18 +97,25 @@ fun VideoSettingsScreen(
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // Subtitle Styling & Appearance
+            item {
+                SubtitleAppearanceCard(currentAccent = currentAccent)
+            }
+
             // Vertical Drag Gesture Controls
             item {
                 Card(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, currentAccent.color.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Gesture, contentDescription = "Gestures", tint = androidx.compose.material3.MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Default.Gesture, contentDescription = "Gestures", tint = currentAccent.color)
                             Spacer(modifier = Modifier.width(10.dp))
                             Text("Vertical Drag Gesture Controls", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
@@ -138,19 +148,21 @@ fun VideoSettingsScreen(
             // Next Episode Auto-Prompt Threshold
             item {
                 Card(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, currentAccent.color.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.SkipNext, contentDescription = "Next Ep", tint = androidx.compose.material3.MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Default.SkipNext, contentDescription = "Next Ep", tint = currentAccent.color)
                             Spacer(modifier = Modifier.width(10.dp))
                             Text("Next Episode Auto-Prompt", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "Show 'Next Episode' button when remaining time reaches:",
+                            "Seconds before video end to prompt Next Episode button:",
                             color = TextSecondary,
                             fontSize = 11.sp
                         )
@@ -179,13 +191,15 @@ fun VideoSettingsScreen(
             // Skip Intro Duration
             item {
                 Card(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, currentAccent.color.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.FastForward, contentDescription = "Skip Intro", tint = androidx.compose.material3.MaterialTheme.colorScheme.primary)
+                            Icon(Icons.Default.FastForward, contentDescription = "Skip Intro", tint = currentAccent.color)
                             Spacer(modifier = Modifier.width(10.dp))
                             Text("Skip Intro Duration", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
