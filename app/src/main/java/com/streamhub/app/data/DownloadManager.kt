@@ -173,14 +173,16 @@ object DownloadManager {
                         }
                         val currentSizeMb = bytesDownloaded / (1024.0 * 1024.0)
 
-                        val currentList = _downloads.value.toMutableList()
-                        val index = currentList.indexOfFirst { it.downloadId == item.downloadId }
-                        if (index != -1) {
-                            currentList[index] = currentList[index].copy(
-                                progressPercent = progress,
-                                fileSizeMb = if (bytesTotal > 0) bytesTotal / (1024.0 * 1024.0) else currentSizeMb
-                            )
-                            _downloads.value = currentList
+                        _downloads.update { list ->
+                            val mutableList = list.toMutableList()
+                            val index = mutableList.indexOfFirst { it.downloadId == item.downloadId }
+                            if (index != -1) {
+                                mutableList[index] = mutableList[index].copy(
+                                    progressPercent = progress,
+                                    fileSizeMb = if (bytesTotal > 0) bytesTotal / (1024.0 * 1024.0) else currentSizeMb
+                                )
+                            }
+                            mutableList
                         }
                     }
                 }
@@ -363,16 +365,18 @@ object DownloadManager {
             systemDownloadManager?.remove(item.downloadId)
         }
 
-        val currentList = _downloads.value.toMutableList()
-        val index = currentList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
-        if (index != -1) {
-            currentList[index] = currentList[index].copy(
-                isPaused = true,
-                downloadId = -1L
-            )
-            _downloads.value = currentList
-            saveToDisk()
+        _downloads.update { currentList ->
+            val mutableList = currentList.toMutableList()
+            val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
+            if (index != -1) {
+                mutableList[index] = mutableList[index].copy(
+                    isPaused = true,
+                    downloadId = -1L
+                )
+            }
+            mutableList
         }
+        saveToDisk()
     }
 
     /**
@@ -446,9 +450,11 @@ object DownloadManager {
             Log.e(TAG, "Error deleting download file", e)
         }
 
-        val currentList = _downloads.value.toMutableList()
-        currentList.removeAll { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
-        _downloads.value = currentList
+        _downloads.update { currentList ->
+            val mutableList = currentList.toMutableList()
+            mutableList.removeAll { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
+            mutableList
+        }
         saveToDisk()
     }
 

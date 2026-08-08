@@ -4,5 +4,5 @@
     The APK is downloaded to cacheDir and shared via FileProvider.
 -->
 <paths>
-    <cache-path name="cache" path="." />
+    <cache-path name="update_apk" path="streamhub_update.apk" />
 </paths>

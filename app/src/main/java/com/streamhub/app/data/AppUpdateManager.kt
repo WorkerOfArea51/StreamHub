@@ -332,6 +332,8 @@ object AppUpdateManager {
 
                     downloadStreamToApk(context, response, totalBytes)
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Download failed", e)
                 _updateState.value = UpdateState.Error(e.message ?: "Download failed")

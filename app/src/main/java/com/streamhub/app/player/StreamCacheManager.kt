@@ -15,6 +15,7 @@ object StreamCacheManager {
     private var simpleCache: SimpleCache? = null
     private var databaseProvider: StandaloneDatabaseProvider? = null
     private var cacheDir: File? = null
+    private var activeReaderCount: Int = 0
 
     @Synchronized
     fun getCache(context: Context): SimpleCache {
@@ -28,7 +29,21 @@ object StreamCacheManager {
     }
 
     @Synchronized
+    fun acquireReader() {
+        activeReaderCount++
+    }
+
+    @Synchronized
+    fun releaseReader() {
+        if (activeReaderCount > 0) activeReaderCount--
+    }
+
+    @Synchronized
     fun clearCache(context: Context) {
+        if (activeReaderCount > 0) {
+            Log.w(TAG, "Cannot clear cache while player is actively reading ($activeReaderCount active readers)")
+            return
+        }
         val cache = simpleCache
         simpleCache = null
         databaseProvider = null

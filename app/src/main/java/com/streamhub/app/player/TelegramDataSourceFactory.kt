@@ -95,10 +95,8 @@ class TelegramDataSourceFactory(
                         currentSource = LocalFileDataSource()
                         true
                     } else {
-                        // Fall back to HTTP — might be a not-yet-resolved t.me link
-                        Log.d(TAG, "File not found, falling back to HTTP: $uri")
-                        currentSource = createHttpDataSource()
-                        false
+                        Log.e(TAG, "Local file not found: $path (URI: $uri)")
+                        throw IOException("Local media file not found: $path")
                     }
                 }
 

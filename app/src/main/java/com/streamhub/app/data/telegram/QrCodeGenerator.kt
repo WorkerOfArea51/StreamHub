@@ -18,15 +18,15 @@ object QrCodeGenerator {
             val bitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, sizePx, sizePx)
             val width = bitMatrix.width
             val height = bitMatrix.height
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-
-            for (x in 0 until width) {
-                for (y in 0 until height) {
-                    // FIX: Inverted colors for dark theme — white pattern on near-black background
-                    val color = if (bitMatrix.get(x, y)) 0xFFFFFFFF.toInt() else 0xFF0A0A0F.toInt()
-                    bitmap.setPixel(x, y, color)
+            val pixels = IntArray(width * height)
+            for (y in 0 until height) {
+                val offset = y * width
+                for (x in 0 until width) {
+                    pixels[offset + x] = if (bitMatrix.get(x, y)) 0xFFFFFFFF.toInt() else 0xFF0A0A0F.toInt()
                 }
             }
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
             bitmap.asImageBitmap()
         } catch (e: Exception) {
             null

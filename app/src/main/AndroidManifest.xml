@@ -22,7 +22,8 @@
 
     <application
         android:name=".StreamHubApplication"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        tools:replace="android:allowBackup"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
@@ -33,6 +34,16 @@
         android:theme="@style/Theme.StreamHub"
         android:enableOnBackInvokedCallback="true"
         tools:targetApi="34">
+
+        <!-- Background Media Session Service (CRITICAL-1) -->
+        <service
+            android:name=".player.StreamMediaService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
 
         <!-- FileProvider for in-app APK installer (M3.5 in-app updater) -->
         <provider

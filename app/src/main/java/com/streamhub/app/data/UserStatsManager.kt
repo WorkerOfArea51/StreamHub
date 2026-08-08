@@ -103,6 +103,7 @@ object UserStatsManager {
         _seriesPercent.value = (100 - _animePercent.value - _moviePercent.value).coerceAtLeast(0)
     }
 
+    @Synchronized
     fun addWatchTime(seconds: Long, category: String = "ANIME") {
         val p = prefs ?: return
         val todayStr = getTodayDateString()
@@ -160,22 +161,18 @@ object UserStatsManager {
         }
     }
 
-    private val dateFormatter by lazy {
-        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd", java.util.Locale.US)
-    }
-
     private fun getTodayDateString(): String {
-        return java.time.LocalDate.now().format(dateFormatter)
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        return sdf.format(Date())
     }
 
-    /**
-     * FIX #19 & #20: Thread-safe java.time date comparison.
-     * Only exactly 1 day ago counts as "yesterday".
-     */
     private fun isYesterday(dateStr: String): Boolean {
         return try {
-            val date = java.time.LocalDate.parse(dateStr, dateFormatter)
-            date == java.time.LocalDate.now().minusDays(1)
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            val calYesterday = java.util.Calendar.getInstance()
+            calYesterday.add(java.util.Calendar.DAY_OF_YEAR, -1)
+            val yesterdayStr = sdf.format(calYesterday.time)
+            dateStr == yesterdayStr
         } catch (e: Exception) {
             false
         }

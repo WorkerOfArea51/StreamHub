@@ -58,7 +58,7 @@ fun CategoryRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(items) { media ->
+            items(items, key = { it.id }) { media ->
                 MediaCard(
                     item = media,
                     onClick = { onMediaClick(media) }

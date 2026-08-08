@@ -35,11 +35,13 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,6 +75,12 @@ fun SearchScreen(
 ) {
     val catalog by repository.mediaCatalog.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
+    var debouncedQuery by remember { mutableStateOf("") }
+    LaunchedEffect(searchQuery) {
+        delay(300L)
+        debouncedQuery = searchQuery
+    }
+
     var selectedCategoryFilter by remember { mutableStateOf("ALL") }
     var minRatingFilter by remember { mutableStateOf(0.0) }
     var selectedYearFilter by remember { mutableStateOf("ALL") }
@@ -107,14 +115,14 @@ fun SearchScreen(
     val primaryColor = MaterialTheme.colorScheme.primary
 
     // Filter Logic
-    val filteredCatalog = remember(catalog, searchQuery, selectedCategoryFilter, minRatingFilter, selectedYearFilter, currentYear) {
+    val filteredCatalog = remember(catalog, debouncedQuery, selectedCategoryFilter, minRatingFilter, selectedYearFilter, currentYear) {
         catalog.filter { item ->
-            val matchesQuery = searchQuery.isEmpty() ||
-                    item.title.contains(searchQuery, ignoreCase = true) ||
-                    item.synonyms.contains(searchQuery, ignoreCase = true) ||
-                    item.category.contains(searchQuery, ignoreCase = true) ||
-                    item.studio.contains(searchQuery, ignoreCase = true) ||
-                    item.genres.any { genre -> genre.contains(searchQuery, ignoreCase = true) }
+            val matchesQuery = debouncedQuery.isEmpty() ||
+                    item.title.contains(debouncedQuery, ignoreCase = true) ||
+                    item.synonyms.contains(debouncedQuery, ignoreCase = true) ||
+                    item.category.contains(debouncedQuery, ignoreCase = true) ||
+                    item.studio.contains(debouncedQuery, ignoreCase = true) ||
+                    item.genres.any { genre -> genre.contains(debouncedQuery, ignoreCase = true) }
 
             val matchesCategory = when (selectedCategoryFilter) {
                 "ALL" -> true

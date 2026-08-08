@@ -19,7 +19,7 @@ object TmdbClient {
         if (Secrets.DEBUG_LOGGING) {
             builder.addInterceptor(
                 HttpLoggingInterceptor().apply {
-                    level = HttpLoggingInterceptor.Level.BODY
+                    level = HttpLoggingInterceptor.Level.BASIC
                 }
             )
         }

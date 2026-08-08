@@ -20,6 +20,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -85,10 +86,12 @@ class StreamPlayerViewModel : ViewModel() {
             }
 
             if (createResult.isFailure) {
-                _uiState.value = _uiState.value.copy(
-                    isBuffering = false,
-                    playerError = createResult.exceptionOrNull()?.message ?: "Failed to initialize player"
-                )
+                _uiState.update {
+                    it.copy(
+                        isBuffering = false,
+                        playerError = createResult.exceptionOrNull()?.message ?: "Failed to initialize player"
+                    )
+                }
                 return
             }
 
@@ -96,23 +99,30 @@ class StreamPlayerViewModel : ViewModel() {
 
             val listener = object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    _uiState.value = _uiState.value.copy(isPlaying = isPlaying)
+                    _uiState.update { it.copy(isPlaying = isPlaying) }
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     val isBuffering = playbackState == Player.STATE_BUFFERING
                     val duration = exoPlayer?.duration?.coerceAtLeast(0L) ?: 0L
-                    _uiState.value = _uiState.value.copy(
-                        isBuffering = isBuffering,
-                        durationMs = duration
-                    )
+                    _uiState.update {
+                        it.copy(
+                            isBuffering = isBuffering,
+                            durationMs = duration
+                        )
+                    }
+                    if (playbackState == Player.STATE_ENDED) {
+                        playNextEpisode()
+                    }
                 }
 
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                    _uiState.value = _uiState.value.copy(
-                        isBuffering = false,
-                        playerError = error.message ?: "Playback error"
-                    )
+                    _uiState.update {
+                        it.copy(
+                            isBuffering = false,
+                            playerError = error.message ?: "Playback error"
+                        )
+                    }
                 }
 
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
@@ -187,21 +197,31 @@ class StreamPlayerViewModel : ViewModel() {
             }
         }
 
-        _uiState.value = _uiState.value.copy(
-            availableAudioTracks = if (audioTrackNames.isNotEmpty()) audioTrackNames else listOf("Default"),
-            availableSubtitleTracks = subtitleTrackNames
-        )
+        _uiState.update {
+            it.copy(
+                availableAudioTracks = if (audioTrackNames.isNotEmpty()) audioTrackNames else listOf("Default"),
+                availableSubtitleTracks = subtitleTrackNames
+            )
+        }
     }
 
     fun playEpisode(index: Int, startPositionMs: Long = 0L) {
         if (episodesList.isEmpty() || index !in episodesList.indices) return
         val episode = episodesList[index]
-        _uiState.value = _uiState.value.copy(currentEpisodeIndex = index)
-
         val rawUrl = episode.streamUrl.ifEmpty { episode.mirrorStreamUrl }
+        if (rawUrl.isBlank()) {
+            _uiState.update { it.copy(playerError = "Episode stream link is missing or empty") }
+            return
+        }
+        _uiState.update { it.copy(currentEpisodeIndex = index, playerError = null) }
+
         resolutionJob?.cancel()
         resolutionJob = viewModelScope.launch {
             val resolvedUrl = resolveStreamUrl(rawUrl)
+            if (resolvedUrl.isBlank()) {
+                _uiState.update { it.copy(playerError = "Failed to resolve stream link") }
+                return@launch
+            }
             val mediaItem = ExoMediaItem.fromUri(resolvedUrl)
 
             exoPlayer?.apply {
@@ -217,10 +237,6 @@ class StreamPlayerViewModel : ViewModel() {
 
     /**
      * Resolve a stream URL before playback.
-     *
-     * - Telegram links (t.me/...) are resolved via TdLibMediaProvider to local file paths
-     * - HTTP URLs are passed through directly
-     * - Local file paths are passed through directly
      */
     private suspend fun resolveStreamUrl(url: String): String {
         return try {
@@ -238,12 +254,20 @@ class StreamPlayerViewModel : ViewModel() {
         }
     }
 
+    fun retryCurrentEpisode() {
+        _uiState.update { it.copy(playerError = null, isBuffering = true) }
+        playEpisode(_uiState.value.currentEpisodeIndex, _uiState.value.currentPositionMs)
+    }
+
     fun skipIntro(seconds: Int = 90) {
         exoPlayer?.let {
+            val duration = it.duration.coerceAtLeast(0L)
+            if (duration <= 0L) return@let
             val skipMs = seconds * 1000L
-            val target = (it.currentPosition + skipMs).coerceAtMost(it.duration)
+            val currentPos = it.currentPosition.coerceAtLeast(0L)
+            val target = (currentPos + skipMs).coerceAtMost(duration)
             it.seekTo(target)
-            _uiState.value = _uiState.value.copy(currentPositionMs = target)
+            _uiState.update { state -> state.copy(currentPositionMs = target) }
         }
     }
 
@@ -284,10 +308,12 @@ class StreamPlayerViewModel : ViewModel() {
             selector.parameters = parameters.build()
         }
 
-        _uiState.value = _uiState.value.copy(
-            selectedAudioTrack = trackName,
-            showAudioDialog = false
-        )
+        _uiState.update {
+            it.copy(
+                selectedAudioTrack = trackName,
+                showAudioDialog = false
+            )
+        }
     }
 
     /**
@@ -334,24 +360,30 @@ class StreamPlayerViewModel : ViewModel() {
             }
         }
 
-        _uiState.value = _uiState.value.copy(
-            selectedSubtitleTrack = trackName,
-            showSubtitleDialog = false
-        )
+        _uiState.update {
+            it.copy(
+                selectedSubtitleTrack = trackName,
+                showSubtitleDialog = false
+            )
+        }
     }
 
     fun toggleAudioDialog() {
-        _uiState.value = _uiState.value.copy(
-            showAudioDialog = !_uiState.value.showAudioDialog,
-            showSubtitleDialog = false
-        )
+        _uiState.update {
+            it.copy(
+                showAudioDialog = !it.showAudioDialog,
+                showSubtitleDialog = false
+            )
+        }
     }
 
     fun toggleSubtitleDialog() {
-        _uiState.value = _uiState.value.copy(
-            showSubtitleDialog = !_uiState.value.showSubtitleDialog,
-            showAudioDialog = false
-        )
+        _uiState.update {
+            it.copy(
+                showSubtitleDialog = !it.showSubtitleDialog,
+                showAudioDialog = false
+            )
+        }
     }
 
     fun togglePlayPause() {
@@ -362,7 +394,7 @@ class StreamPlayerViewModel : ViewModel() {
 
     fun seekTo(positionMs: Long) {
         exoPlayer?.seekTo(positionMs)
-        _uiState.value = _uiState.value.copy(currentPositionMs = positionMs)
+        _uiState.update { it.copy(currentPositionMs = positionMs) }
     }
 
     fun seekForward() {
@@ -381,7 +413,7 @@ class StreamPlayerViewModel : ViewModel() {
 
     fun setPlaybackSpeed(speed: Float) {
         exoPlayer?.setPlaybackSpeed(speed)
-        _uiState.value = _uiState.value.copy(playbackSpeed = speed)
+        _uiState.update { it.copy(playbackSpeed = speed) }
     }
 
     fun cycleAspectRatio() {
@@ -391,20 +423,20 @@ class StreamPlayerViewModel : ViewModel() {
             AspectRatioMode.STRETCH -> AspectRatioMode.FILL
             AspectRatioMode.FILL -> AspectRatioMode.FIT
         }
-        _uiState.value = _uiState.value.copy(aspectRatioMode = nextMode)
+        _uiState.update { it.copy(aspectRatioMode = nextMode) }
     }
 
     fun toggleLock() {
-        _uiState.value = _uiState.value.copy(isLocked = !_uiState.value.isLocked)
+        _uiState.update { it.copy(isLocked = !it.isLocked) }
     }
 
     fun toggleEpisodeDrawer() {
-        _uiState.value = _uiState.value.copy(showEpisodeDrawer = !_uiState.value.showEpisodeDrawer)
+        _uiState.update { it.copy(showEpisodeDrawer = !it.showEpisodeDrawer) }
     }
 
     fun toggleControlsVisibility() {
         if (!_uiState.value.isLocked) {
-            _uiState.value = _uiState.value.copy(isControlsVisible = !_uiState.value.isControlsVisible)
+            _uiState.update { it.copy(isControlsVisible = !it.isControlsVisible) }
         }
     }
 
@@ -422,10 +454,12 @@ class StreamPlayerViewModel : ViewModel() {
                     if (player.isPlaying) {
                         val currentPos = player.currentPosition
                         val totalDuration = player.duration.coerceAtLeast(0L)
-                        _uiState.value = _uiState.value.copy(
-                            currentPositionMs = currentPos,
-                            durationMs = totalDuration
-                        )
+                        _uiState.update {
+                            it.copy(
+                                currentPositionMs = currentPos,
+                                durationMs = totalDuration
+                            )
+                        }
 
                         // Real-time user stats accumulation (watch hours, today, active streak & categories)
                         com.streamhub.app.data.UserStatsManager.addWatchTime(1L, currentMediaItem?.category ?: "ANIME")

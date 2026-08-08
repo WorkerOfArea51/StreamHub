@@ -8,6 +8,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withTimeoutOrNull
 import org.drinkless.tdlib.TdApi
 import java.util.concurrent.ConcurrentHashMap
@@ -492,15 +493,15 @@ object TdLibMediaProvider {
         // Update download progress
         if (file.local.isDownloadingActive && file.size > 0) {
             val progress = file.local.downloadedSize.toFloat() / file.size
-            _downloadProgress.value = _downloadProgress.value.toMutableMap().apply {
-                this[file.id] = progress
+            _downloadProgress.update { currentMap ->
+                currentMap.toMutableMap().apply { this[file.id] = progress }
             }
         }
 
         // Remove from progress map when done
         if (file.local.isDownloadingCompleted) {
-            _downloadProgress.value = _downloadProgress.value.toMutableMap().apply {
-                remove(file.id)
+            _downloadProgress.update { currentMap ->
+                currentMap.toMutableMap().apply { remove(file.id) }
             }
             Log.i(TAG, "File download completed: ${file.local.path} (${file.size} bytes)")
         }

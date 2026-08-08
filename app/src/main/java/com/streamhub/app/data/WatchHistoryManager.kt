@@ -76,6 +76,7 @@ object WatchHistoryManager {
         _historyFlow.value = historyMap
     }
 
+    @Synchronized
     fun saveProgress(
         mediaId: String,
         episodeNumber: Int,
@@ -125,6 +126,7 @@ object WatchHistoryManager {
         return _historyFlow.value[mediaId]
     }
 
+    @Synchronized
     fun removeMediaProgress(mediaId: String) {
         if (!::appContext.isInitialized) {
             Log.w(TAG, "removeMediaProgress called before init — no-op")

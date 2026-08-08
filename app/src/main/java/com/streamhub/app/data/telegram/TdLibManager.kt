@@ -340,7 +340,7 @@ object TdLibManager {
                 false, // useTestDc
                 databaseDirectory, // databaseDirectory
                 "$databaseDirectory/files", // filesDirectory
-                null, // databaseEncryptionKey
+                ByteArray(0), // databaseEncryptionKey
                 true, // useFileDatabase
                 true, // useChatInfoDatabase
                 true, // useMessageDatabase
