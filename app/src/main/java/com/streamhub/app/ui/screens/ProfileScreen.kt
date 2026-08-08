@@ -25,13 +25,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.ElectricBolt
+import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QrCode
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Timer
@@ -123,7 +125,6 @@ fun ProfileScreen(
     val streakDays by UserStatsManager.streakDays.collectAsState()
 
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
-    var showProxyDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier
@@ -132,6 +133,7 @@ fun ProfileScreen(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // ── Top Bar: Title + Settings Gear ──
         item(key = "profile_top_bar") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -145,23 +147,141 @@ fun ProfileScreen(
                     fontWeight = FontWeight.Bold
                 )
 
-                OutlinedButton(
-                    onClick = { showProxyDialog = true },
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.Security, contentDescription = "Proxy Settings", tint = primaryColor)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Configure MTProto Proxy 🛡️ (Bypass Censorship)", color = primaryColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                IconButton(onClick = onNavigateToSettings) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = "Settings",
+                        tint = TextSecondary
+                    )
                 }
             }
         }
-    }
 
-    if (showProxyDialog) {
-        com.streamhub.app.ui.components.ProxySettingsDialog(
-            onDismiss = { showProxyDialog = false }
-        )
+        // ── Authenticated: Show Profile Card ──
+        if (authState is TelegramAuthState.Authenticated) {
+            val user = (authState as TelegramAuthState.Authenticated).user
+            val isOwner = (authState as TelegramAuthState.Authenticated).isOwner
+
+            item(key = "profile_card") {
+                M3ExpressiveVipProfileCard(
+                    user = user,
+                    isOwner = isOwner,
+                    primaryColor = primaryColor,
+                    onOpenTelegram = {
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/${user.username}"))
+                            context.startActivity(intent)
+                        } catch (_: Exception) { }
+                    },
+                    onLogout = { TelegramAuthManager.logout() }
+                )
+            }
+        }
+
+        // ── Not Authenticated: Show Telegram Login Card ──
+        if (authState !is TelegramAuthState.Authenticated) {
+            item(key = "telegram_login") {
+                TelegramLoginCard(
+                    authState = authState,
+                    primaryColor = primaryColor
+                )
+            }
+        }
+
+        // ── Watch Stats Row ──
+        item(key = "stats_row") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                StatCard(
+                    icon = Icons.Default.PlayArrow,
+                    label = "Watch Hours",
+                    value = String.format("%.1f", totalWatchHours),
+                    primaryColor = primaryColor,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                StatCard(
+                    icon = Icons.Default.ElectricBolt,
+                    label = "Today",
+                    value = dailyWatchTime,
+                    primaryColor = primaryColor,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                StatCard(
+                    icon = Icons.Default.LocalFireDepartment,
+                    label = "Streak",
+                    value = "${streakDays}d",
+                    primaryColor = primaryColor,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        // ── Settings Card ──
+        item(key = "settings_entry") {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToSettings() }
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = "Settings",
+                        tint = primaryColor,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text("Settings & Preferences", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("Theme, notifications, downloads, proxy, about", color = TextSecondary, fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+
+        // ── Admin Panel Entry (only shown for owner accounts) ──
+        if (authState is TelegramAuthState.Authenticated && (authState as TelegramAuthState.Authenticated).isOwner) {
+            item(key = "admin_entry") {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, primaryColor.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                        .clickable { showAdminPasswordDialog = true }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.AdminPanelSettings,
+                            contentDescription = "Admin Panel",
+                            tint = primaryColor,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("Owner Admin Dashboard", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Manage catalog, users and content", color = TextSecondary, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Owner Admin Password Verification Dialog
@@ -264,7 +384,7 @@ fun M3ExpressiveVipProfileCard(
                 }
 
                 IconButton(onClick = onLogout) {
-                    Icon(Icons.Default.Logout, contentDescription = "Log out", tint = Color(0xFFEF4444))
+                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Log out", tint = Color(0xFFEF4444))
                 }
             }
         }
