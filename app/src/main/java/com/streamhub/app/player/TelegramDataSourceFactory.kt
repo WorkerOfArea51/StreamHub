@@ -46,8 +46,7 @@ import java.io.IOException
  */
 @OptIn(UnstableApi::class)
 class TelegramDataSourceFactory(
-    context: Context,
-    private val botToken: String? = null
+    context: Context
 ) : DataSource.Factory {
 
     private val appContext: Context = context.applicationContext
@@ -60,7 +59,7 @@ class TelegramDataSourceFactory(
     }
 
     override fun createDataSource(): DataSource {
-        return TelegramDataSource(appContext, botToken)
+        return TelegramDataSource(appContext)
     }
 
     /**
@@ -68,8 +67,7 @@ class TelegramDataSourceFactory(
      * depending on the URI scheme of each DataSpec.
      */
     private inner class TelegramDataSource(
-        private val context: Context,
-        private val botToken: String?
+        private val context: Context
     ) : DataSource {
 
         private var currentSource: DataSource? = null
@@ -134,19 +132,13 @@ class TelegramDataSourceFactory(
         }
 
         /**
-         * Create an HTTP DataSource with optional Bearer auth (for bot token).
+         * Create a standard HTTP DataSource for direct video links.
          */
         private fun createHttpDataSource(host: String? = null): DefaultHttpDataSource {
             val factory = DefaultHttpDataSource.Factory()
                 .setAllowCrossProtocolRedirects(false)
                 .setConnectTimeoutMs(15000)
                 .setReadTimeoutMs(15000)
-
-            if (!botToken.isNullOrEmpty() && host != null && host.endsWith("telegram.org", ignoreCase = true)) {
-                factory.setDefaultRequestProperties(
-                    mapOf("Authorization" to "Bearer $botToken")
-                )
-            }
 
             return factory.createDataSource()
         }
