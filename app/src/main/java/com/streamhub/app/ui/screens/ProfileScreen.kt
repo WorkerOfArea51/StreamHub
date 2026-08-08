@@ -641,11 +641,11 @@ fun M3ExpressiveVipProfileCard(
     onLogout: () -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF141420)),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, primaryColor.copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+            .border(1.5.dp, primaryColor.copy(alpha = 0.45f), RoundedCornerShape(22.dp))
             .clickable { onOpenTelegram() }
     ) {
         Column(
@@ -659,18 +659,40 @@ fun M3ExpressiveVipProfileCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Glowing avatar box with fallback initials
                     Box(
                         modifier = Modifier
-                            .size(64.dp)
+                            .size(68.dp)
                             .clip(CircleShape)
-                            .border(2.dp, primaryColor, CircleShape)
+                            .background(
+                                androidx.compose.ui.graphics.Brush.linearGradient(
+                                    colors = listOf(primaryColor.copy(alpha = 0.85f), Color(0xFF1E1E2E))
+                                )
+                            )
+                            .border(2.dp, primaryColor, CircleShape),
+                        contentAlignment = Alignment.Center
                     ) {
-                        AsyncImage(
-                            model = user.photoUrl,
-                            contentDescription = user.displayName,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        if (user.photoUrl.isNotBlank()) {
+                            AsyncImage(
+                                model = user.photoUrl,
+                                contentDescription = user.displayName,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            val initials = user.displayName
+                                .split(" ")
+                                .mapNotNull { it.firstOrNull()?.uppercase() }
+                                .take(2)
+                                .joinToString("")
+                                .ifBlank { "U" }
+                            Text(
+                                text = initials,
+                                color = Color.White,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 22.sp
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.width(14.dp))
@@ -680,13 +702,13 @@ fun M3ExpressiveVipProfileCard(
                             Text(
                                 text = user.displayName,
                                 color = TextPrimary,
-                                fontSize = 17.sp,
+                                fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Icon(Icons.Default.Verified, contentDescription = "Verified", tint = primaryColor, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Verified, contentDescription = "Verified", tint = primaryColor, modifier = Modifier.size(17.dp))
                         }
 
                         if (user.formattedUsername.isNotBlank()) {
@@ -705,22 +727,27 @@ fun M3ExpressiveVipProfileCard(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
 
                         AssistChip(
                             onClick = { onOpenTelegram() },
-                            label = { Text(if (isOwner) "Owner Account ✅" else "Telegram Connected ✅", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                            label = { Text(if (isOwner) "Owner Account 👑" else "Telegram Connected ✅", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
                             colors = AssistChipDefaults.assistChipColors(
-                                containerColor = primaryColor.copy(alpha = 0.15f),
+                                containerColor = primaryColor.copy(alpha = 0.18f),
                                 labelColor = primaryColor
                             ),
-                            border = AssistChipDefaults.assistChipBorder(borderColor = primaryColor.copy(alpha = 0.3f), enabled = true)
+                            border = AssistChipDefaults.assistChipBorder(borderColor = primaryColor.copy(alpha = 0.4f), enabled = true)
                         )
                     }
                 }
 
-                IconButton(onClick = onLogout) {
-                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Log out", tint = Color(0xFFEF4444))
+                IconButton(
+                    onClick = onLogout,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(Color(0xFF2B1414))
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Log out", tint = Color(0xFFEF4444), modifier = Modifier.size(20.dp))
                 }
             }
         }
@@ -1029,18 +1056,29 @@ fun StatCard(
     modifier: Modifier = Modifier
 ) {
     Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-        modifier = modifier.border(1.dp, Color(0xFF2C2C3E), RoundedCornerShape(14.dp))
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF141420)),
+        modifier = modifier.border(1.dp, primaryColor.copy(alpha = 0.35f), RoundedCornerShape(18.dp))
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(icon, contentDescription = label, tint = primaryColor, modifier = Modifier.size(20.dp))
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(value, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            Text(label, color = TextSecondary, fontSize = 10.sp)
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(primaryColor.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = label, tint = primaryColor, modifier = Modifier.size(20.dp))
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(value, color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(label, color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }

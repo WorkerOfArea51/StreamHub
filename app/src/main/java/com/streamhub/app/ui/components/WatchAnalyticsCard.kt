@@ -57,16 +57,16 @@ fun WatchAnalyticsCard(
     val primaryColor = MaterialTheme.colorScheme.primary
 
     Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF141420)),
         modifier = modifier
             .fillMaxWidth()
-            .border(1.dp, primaryColor.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+            .border(1.5.dp, primaryColor.copy(alpha = 0.4f), RoundedCornerShape(20.dp))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(18.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -74,22 +74,30 @@ fun WatchAnalyticsCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Analytics, contentDescription = "Analytics", tint = primaryColor, modifier = Modifier.size(24.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(primaryColor.copy(alpha = 0.18f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Analytics, contentDescription = "Analytics", tint = primaryColor, modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
                     Text(
                         text = "Watch Analytics & Habits 📊",
                         color = TextPrimary,
-                        fontSize = 15.sp,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(8.dp))
                         .background(AccentOrange.copy(alpha = 0.2f))
-                        .border(1.dp, AccentOrange.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                        .border(1.dp, AccentOrange.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 9.dp, vertical = 4.dp)
                 ) {
                     Text(
                         text = "🔥 $streakDays Day Streak",
@@ -100,7 +108,7 @@ fun WatchAnalyticsCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Stat Badges Row
             Row(
@@ -124,7 +132,7 @@ fun WatchAnalyticsCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             Text(
                 text = "Favorite Genres Breakdown 🎌",
@@ -133,7 +141,7 @@ fun WatchAnalyticsCard(
                 fontWeight = FontWeight.SemiBold
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Anime Progress Bar
             GenreProgressBar(
@@ -142,7 +150,7 @@ fun WatchAnalyticsCard(
                 barColor = primaryColor
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Movies Progress Bar
             GenreProgressBar(
@@ -151,7 +159,7 @@ fun WatchAnalyticsCard(
                 barColor = AccentGold
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Web Series Progress Bar
             GenreProgressBar(
@@ -174,16 +182,24 @@ private fun AnalyticsBadgeItem(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color(0xFF14141E))
-            .border(1.dp, CardBorderDark, RoundedCornerShape(10.dp))
-            .padding(10.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF1A1A28))
+            .border(1.dp, color.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
+            .padding(12.dp)
     ) {
-        Icon(icon, contentDescription = title, tint = color, modifier = Modifier.size(20.dp))
-        Spacer(modifier = Modifier.width(8.dp))
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(color.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = title, tint = color, modifier = Modifier.size(18.dp))
+        }
+        Spacer(modifier = Modifier.width(10.dp))
         Column {
             Text(title, color = TextSecondary, fontSize = 10.sp)
-            Text(value, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(value, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -199,20 +215,20 @@ private fun GenreProgressBar(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(label, color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-            Text("$percentage%", color = barColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text(label, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text("$percentage%", color = barColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
         LinearProgressIndicator(
             progress = { (percentage / 100f).coerceIn(0f, 1f) },
             color = barColor,
-            trackColor = Color(0xFF14141E),
+            trackColor = Color(0xFF1E1E2C),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp))
+                .height(8.dp)
+                .clip(RoundedCornerShape(4.dp))
         )
     }
 }
