@@ -108,7 +108,6 @@ fun SettingsScreen(
                 SettingsCategoryHeader(title = "PLAYBACK & MEDIA", accentColor = currentAccent.color)
             }
             item(key = "settings_video_entry") { VideoSettingsEntryCard(currentAccent = currentAccent, onNavigateToVideoSettings = onNavigateToVideoSettings) }
-            item(key = "settings_subtitle") { SubtitleAppearanceCard(currentAccent = currentAccent) }
 
             // --- CATEGORY 3: NETWORK & CONNECTION ---
             item(key = "cat_network") {

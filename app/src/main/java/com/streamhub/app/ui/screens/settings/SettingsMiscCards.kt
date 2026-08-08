@@ -205,8 +205,8 @@ fun VideoSettingsEntryCard(currentAccent: AppThemeAccent, onNavigateToVideoSetti
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
-                    Text("Video Player Settings 🎬", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text("Gestures, skip intro, auto-play next episode", color = TextSecondary, fontSize = 11.sp)
+                    Text("Video & Subtitle Player Settings 🎬", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Gestures, subtitles, skip intro, auto-play next episode", color = TextSecondary, fontSize = 11.sp)
                 }
             }
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open", tint = TextSecondary)
