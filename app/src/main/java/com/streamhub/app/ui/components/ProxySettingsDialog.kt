@@ -130,17 +130,11 @@ fun ProxySettingsDialog(
         title = {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Security, contentDescription = "Proxy", tint = primaryColor)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Proxy Server 🛡️", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                }
-                IconButton(onClick = { showAdvancedDialog = true }) {
-                    Icon(Icons.Default.Tune, contentDescription = "Advanced", tint = primaryColor, modifier = Modifier.size(20.dp))
-                }
+                Icon(Icons.Default.Security, contentDescription = "Proxy", tint = primaryColor)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Proxy Server 🛡️", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
             }
         },
         text = {
