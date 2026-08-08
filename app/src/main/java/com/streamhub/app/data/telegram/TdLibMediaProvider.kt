@@ -283,29 +283,56 @@ object TdLibMediaProvider {
     }
 
     /**
-     * Join a channel/supergroup.
+     * Join a channel/supergroup via username, numeric ID, or private invite link.
      *
-     * @param chatIdentifier Channel ID or username
+     * @param chatIdentifier Channel ID, username, or t.me link
      * @return The joined chat, or null on failure
      */
     suspend fun joinChannel(chatIdentifier: String): TdApi.Chat? {
-        val chat = getChat(chatIdentifier) ?: run {
-            val username = chatIdentifier.removePrefix("@")
-            if (username.isBlank()) return null
+        val clean = chatIdentifier.trim()
+        if (clean.isBlank()) return null
+
+        // 1. Private Invite Link (e.g. https://t.me/+Hash or t.me/joinchat/Hash)
+        if (clean.contains("+") || clean.contains("joinchat")) {
+            val inviteHash = clean.substringAfter("+").substringAfter("joinchat/").substringBefore("/").trim()
+            if (inviteHash.isNotBlank()) {
+                val joinLink = TdLibManager.send(TdApi.JoinChatByInviteLink(inviteHash))
+                if (joinLink is TdApi.Chat) return joinLink
+            }
+        }
+
+        // 2. Try as numeric chat ID (e.g. t.me/c/2633457020 or -1002633457020)
+        val numericId = parseChatId(clean)
+        if (numericId != 0L) {
+            val getResult = TdLibManager.send(TdApi.GetChat(numericId))
+            if (getResult is TdApi.Chat) {
+                val isMember = getResult.chatLists.isNotEmpty()
+                if (isMember) return getResult
+                val joinResult = TdLibManager.send(TdApi.JoinChat(getResult.id))
+                if (joinResult is TdApi.Chat) return joinResult
+                return getResult
+            }
+        }
+
+        // 3. Extract public username (e.g. "https://t.me/MyChannel" -> "MyChannel", "@MyChannel" -> "MyChannel")
+        val username = clean
+            .substringAfter("t.me/")
+            .substringAfter("@")
+            .removePrefix("/")
+            .substringBefore("/")
+            .trim()
+
+        if (username.isNotBlank()) {
             val searchResult = TdLibManager.send(TdApi.SearchPublicChat(username))
-            if (searchResult is TdApi.Chat) searchResult else return null
+            if (searchResult is TdApi.Chat) {
+                val isMember = searchResult.chatLists.isNotEmpty()
+                if (isMember) return searchResult
+                val joinResult = TdLibManager.send(TdApi.JoinChat(searchResult.id))
+                if (joinResult is TdApi.Chat) return joinResult
+                return searchResult
+            }
         }
 
-        val isMember = chat.chatLists.isNotEmpty()
-        if (isMember) return chat
-
-        val result = TdLibManager.send(TdApi.JoinChat(chat.id))
-        if (result is TdApi.Chat) {
-            Log.i(TAG, "Joined channel: ${chat.title} (id=${chat.id})")
-            return result
-        } else if (result is TdApi.Error) {
-            Log.e(TAG, "Failed to join channel $chatIdentifier: ${result.message}")
-        }
         return null
     }
 
@@ -442,15 +469,19 @@ object TdLibMediaProvider {
      *  - Public supergroup: same format
      */
     fun parseChatId(chatIdentifier: String): Long {
-        val bareId = chatIdentifier.toLongOrNull()
-        if (bareId != null && bareId > 0) {
-            return if (bareId > 1_000_000_000L) {
-                -1_000_000_000_000L - bareId
-            } else {
-                bareId
-            }
+        val clean = chatIdentifier.trim()
+        val rawNumberStr = when {
+            clean.contains("/c/") -> clean.substringAfter("/c/").substringBefore("/")
+            clean.startsWith("-100") -> clean
+            clean.all { it.isDigit() || it == '-' } -> clean
+            else -> ""
         }
-        return 0L
+        val bareId = rawNumberStr.toLongOrNull() ?: return 0L
+        if (bareId < 0L) return bareId
+        if (bareId > 1_000_000_000L) {
+            return -1_000_000_000_000L - (bareId % 1_000_000_000_000L)
+        }
+        return bareId
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -518,16 +549,13 @@ object TdLibMediaProvider {
 
         for (channel in channelUrls) {
             try {
-                val username = channel.substringAfter("t.me/").substringAfter("@").removePrefix("/").trim()
-                if (username.isNotBlank()) {
-                    val searchResult = TdLibManager.send(TdApi.SearchPublicChat(username))
-                    if (searchResult is TdApi.Chat) {
-                        val member = TdLibManager.send(TdApi.GetChatMember(searchResult.id, TdApi.MessageSenderUser(userId)))
-                        if (member is TdApi.ChatMember) {
-                            val status = member.status
-                            if (status is TdApi.ChatMemberStatusCreator || status is TdApi.ChatMemberStatusAdministrator) {
-                                return true
-                            }
+                val chat = joinChannel(channel)
+                if (chat != null) {
+                    val member = TdLibManager.send(TdApi.GetChatMember(chat.id, TdApi.MessageSenderUser(userId)))
+                    if (member is TdApi.ChatMember) {
+                        val status = member.status
+                        if (status is TdApi.ChatMemberStatusCreator || status is TdApi.ChatMemberStatusAdministrator) {
+                            return true
                         }
                     }
                 }

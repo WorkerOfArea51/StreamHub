@@ -454,20 +454,22 @@ fun ProfileScreen(
                 )
             }
 
-            item(key = "admin_owner_dashboard") {
-                AdminOwnerDashboardCard(
-                    isOwner = isOwner,
-                    primaryColor = primaryColor,
-                    onOpenAddContent = {
-                        com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
-                        showAddContentDialog = true
-                    },
-                    onOpenAdminPanel = {
-                        com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
-                        onOpenAdminPanel()
-                    },
-                    onUnlockAdmin = { showAdminPasswordDialog = true }
-                )
+            if (isOwner) {
+                item(key = "admin_owner_dashboard") {
+                    AdminOwnerDashboardCard(
+                        isOwner = isOwner,
+                        primaryColor = primaryColor,
+                        onOpenAddContent = {
+                            com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
+                            showAddContentDialog = true
+                        },
+                        onOpenAdminPanel = {
+                            com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
+                            onOpenAdminPanel()
+                        },
+                        onUnlockAdmin = { showAdminPasswordDialog = true }
+                    )
+                }
             }
         }
 
