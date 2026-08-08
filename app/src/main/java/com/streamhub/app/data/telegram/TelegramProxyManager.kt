@@ -127,13 +127,41 @@ object TelegramProxyManager {
         loadFromDisk()
     }
 
+    private fun obfuscate(value: String): String {
+        if (value.isBlank()) return ""
+        val bytes = value.toByteArray(Charsets.UTF_8)
+        val key = "StreamHub2024ProxyKey".toByteArray(Charsets.UTF_8)
+        val result = ByteArray(bytes.size)
+        for (i in bytes.indices) {
+            result[i] = (bytes[i].toInt() xor key[i % key.size].toInt()).toByte()
+        }
+        return android.util.Base64.encodeToString(result, android.util.Base64.NO_WRAP)
+    }
+
+    private fun deobfuscate(value: String): String {
+        if (value.isBlank()) return ""
+        return try {
+            val bytes = android.util.Base64.decode(value, android.util.Base64.NO_WRAP)
+            val key = "StreamHub2024ProxyKey".toByteArray(Charsets.UTF_8)
+            val result = ByteArray(bytes.size)
+            for (i in bytes.indices) {
+                result[i] = (bytes[i].toInt() xor key[i % key.size].toInt()).toByte()
+            }
+            String(result, Charsets.UTF_8)
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
     private fun loadFromDisk() {
         val p = prefs ?: return
         val server = p.getString(KEY_SERVER, "") ?: ""
         val port = p.getInt(KEY_PORT, 443)
         val secret = p.getString(KEY_SECRET, "") ?: ""
-        val username = p.getString(KEY_USERNAME, "") ?: ""
-        val password = p.getString(KEY_PASSWORD, "") ?: ""
+        val rawUser = p.getString(KEY_USERNAME, "") ?: ""
+        val rawPass = p.getString(KEY_PASSWORD, "") ?: ""
+        val username = deobfuscate(rawUser).ifBlank { rawUser }
+        val password = deobfuscate(rawPass).ifBlank { rawPass }
         val typeStr = p.getString(KEY_TYPE, ProxyType.MTPROTO.name) ?: ProxyType.MTPROTO.name
         val isEnabled = p.getBoolean(KEY_ENABLED, false)
 
@@ -200,8 +228,8 @@ object TelegramProxyManager {
             ?.putString(KEY_SERVER, cleanServer)
             ?.putInt(KEY_PORT, port)
             ?.putString(KEY_SECRET, cleanSecret)
-            ?.putString(KEY_USERNAME, cleanUser)
-            ?.putString(KEY_PASSWORD, cleanPass)
+            ?.putString(KEY_USERNAME, obfuscate(cleanUser))
+            ?.putString(KEY_PASSWORD, obfuscate(cleanPass))
             ?.putString(KEY_TYPE, type.name)
             ?.putBoolean(KEY_ENABLED, isEnabled)
             ?.putString("proxy_custom_label", cleanLabel)
@@ -236,7 +264,7 @@ object TelegramProxyManager {
             useAuthUrl = useAuthUrl
         )
 
-        Log.i(TAG, "Saved Proxy Config: Server=$cleanServer, Port=$port, Type=$type, AuthUser=$cleanUser, Enabled=$isEnabled")
+        Log.i(TAG, "Saved Proxy Config: Server=$cleanServer, Port=$port, Type=$type, Enabled=$isEnabled")
 
         cachedProxyClient = null
         cachedProxyConfig = null

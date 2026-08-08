@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -155,7 +156,11 @@ object DownloadManager {
     private fun pollActiveDownloads() {
         val dm = systemDownloadManager ?: return
         val activeItems = _downloads.value.filter { !it.isCompleted && !it.isPaused && it.downloadId != -1L }
-        if (activeItems.isEmpty()) return
+        if (activeItems.isEmpty()) {
+            progressPollJob?.cancel()
+            progressPollJob = null
+            return
+        }
 
         for (item in activeItems) {
             try {
@@ -190,11 +195,6 @@ object DownloadManager {
                 Log.w(TAG, "Progress poll failed for downloadId=${item.downloadId}: ${e.message}")
             }
         }
-    }
-
-    fun setCustomDownloadPath(path: String) {
-        _customDownloadPath.value = path
-        prefs?.edit()?.putString(KEY_CUSTOM_DOWNLOAD_PATH, path)?.apply()
     }
 
     fun setCustomScreenshotPath(path: String) {
@@ -425,14 +425,38 @@ object DownloadManager {
             }
         }
 
-        // Legacy fallback
+        // H19 FIX: Mark as paused instead of deleting on resume failure
         _downloads.update { currentList ->
             val mutableList = currentList.toMutableList()
-            mutableList.removeAll { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
+            val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
+            if (index != -1) {
+                mutableList[index] = item.copy(isPaused = true)
+            }
             mutableList
         }
         saveToDisk()
-        Log.w(TAG, "Resume not supported without original URL. Removed stale download for ${item.mediaTitle}.")
+        Log.w(TAG, "Resume failed for ${item.mediaTitle} — marked as paused instead of deleting")
+    }
+
+    fun setCustomDownloadPath(path: String) {
+        if (path.isNotBlank()) {
+            val file = File(path)
+            if (!file.exists() && !file.mkdirs()) {
+                Log.w(TAG, "Cannot create directory: $path — using default")
+                return
+            }
+            if (!file.canWrite()) {
+                Log.w(TAG, "Directory not writable: $path — using default")
+                return
+            }
+            val canonical = file.canonicalPath
+            val suspiciousPaths = listOf("/data/", "/system/", "/proc/", "/dev/")
+            if (suspiciousPaths.any { canonical.startsWith(it) }) {
+                Log.w(TAG, "Suspicious path rejected: $path")
+                return
+            }
+        }
+        prefs?.edit()?.putString(KEY_CUSTOM_DOWNLOAD_PATH, path)?.apply()
     }
 
     fun cancelDownload(item: DownloadedItem) {
@@ -466,6 +490,7 @@ object DownloadManager {
      * Cleanup — call from StreamHubApplication.onTerminate() or MainActivity.onDestroy()
      */
     fun cleanup() {
+        scope.cancel()
         progressPollJob?.cancel()
         try {
             completionReceiver?.let { appContext?.unregisterReceiver(it) }

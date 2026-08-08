@@ -132,4 +132,9 @@ class StreamHubApplication : Application() {
             )
         }.onFailure { Log.e(TAG, "AppUpdateManager.checkForUpdate failed", it) }
     }
+
+    override fun onTerminate() {
+        runCatching { com.streamhub.app.player.StreamDownloadManager.release() }
+        super.onTerminate()
+    }
 }

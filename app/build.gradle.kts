@@ -29,8 +29,8 @@ android {
         applicationId = "com.streamhub.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 67
-        versionName = "3.9.8"
+        versionCode = 68
+        versionName = "4.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -40,7 +40,7 @@ android {
         buildConfigField("String", "TMDB_API_KEY", "\"${secret("streamhub.tmdb_api_key")}\"")
         buildConfigField("String", "MAL_CLIENT_ID", "\"${secret("streamhub.mal_client_id")}\"")
         buildConfigField("String", "MAL_CLIENT_SECRET", "\"${secret("streamhub.mal_client_secret")}\"")
-        buildConfigField("String", "ADMIN_PIN_HASH", "\"${secret("streamhub.admin_pin_hash", "0000")}\"")
+        buildConfigField("String", "ADMIN_PIN_HASH", "\"${secret("streamhub.admin_pin_hash", "\$2a\$10\$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")}\"")
         buildConfigField("String", "TELEGRAM_API_ID", "\"${secret("streamhub.telegram_api_id")}\"")
         buildConfigField("String", "TELEGRAM_API_HASH", "\"${secret("streamhub.telegram_api_hash")}\"")
         buildConfigField("String", "TELEGRAM_ANIME_CHANNEL", "\"${secret("streamhub.telegram_anime_channel", "2633457020")}\"")

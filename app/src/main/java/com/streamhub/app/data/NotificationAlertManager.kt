@@ -100,6 +100,9 @@ object NotificationAlertManager {
         editor.apply()
     }
 
+    private val lastNotificationTime = mutableMapOf<String, Long>()
+    private const val NOTIFICATION_COOLDOWN_MS = 60 * 60 * 1000L
+
     private fun sendEpisodeNotification(
         context: Context,
         mediaTitle: String,
@@ -107,6 +110,21 @@ object NotificationAlertManager {
         mediaId: String,
         notificationId: Int
     ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val permissionStatus = context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+            if (permissionStatus != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                Log.w(TAG, "POST_NOTIFICATIONS permission not granted — skipping notification")
+                return
+            }
+        }
+
+        val lastTime = lastNotificationTime[mediaId] ?: 0L
+        if (System.currentTimeMillis() - lastTime < NOTIFICATION_COOLDOWN_MS) {
+            Log.d(TAG, "Notification rate limited for mediaId: $mediaId")
+            return
+        }
+        lastNotificationTime[mediaId] = System.currentTimeMillis()
+
         try {
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP

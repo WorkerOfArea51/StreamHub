@@ -336,20 +336,66 @@ object TdLibManager {
 
     private fun getOrCreateDatabaseEncryptionKey(): ByteArray {
         val ctx = appContext ?: return ByteArray(0)
-        val prefs = ctx.getSharedPreferences("streamhub_tdlib_sec", Context.MODE_PRIVATE)
-        var keyHex = prefs.getString("tdlib_db_key_hex", null)
-        if (keyHex == null || keyHex.length != 64) {
-            val keyBytes = ByteArray(32)
-            java.security.SecureRandom().nextBytes(keyBytes)
-            keyHex = keyBytes.joinToString("") { "%02x".format(it) }
-            prefs.edit().putString("tdlib_db_key_hex", keyHex).apply()
+        return try {
+            val keyAlias = "streamhub_tdlib_db_key_alias"
+            val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+
+            if (!keyStore.containsAlias(keyAlias)) {
+                val keyGenerator = javax.crypto.KeyGenerator.getInstance("AES", "AndroidKeyStore")
+                keyGenerator.init(
+                    android.security.keystore.KeyGenParameterSpec.Builder(
+                        keyAlias,
+                        android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT
+                    )
+                    .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setKeySize(256)
+                    .build()
+                )
+                keyGenerator.generateKey()
+            }
+
+            val prefs = ctx.getSharedPreferences("streamhub_tdlib_sec", Context.MODE_PRIVATE)
+            val encryptedKeyBase64 = prefs.getString("encrypted_db_key_gcm", null)
+
+            if (encryptedKeyBase64 != null) {
+                val secretKey = keyStore.getKey(keyAlias, null) as javax.crypto.SecretKey
+                val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+                val encryptedBytes = android.util.Base64.decode(encryptedKeyBase64, android.util.Base64.DEFAULT)
+                val iv = encryptedBytes.copyOfRange(0, 12)
+                val ciphertext = encryptedBytes.copyOfRange(12, encryptedBytes.size)
+                cipher.init(javax.crypto.Cipher.DECRYPT_MODE, secretKey, javax.crypto.spec.GCMParameterSpec(128, iv))
+                cipher.doFinal(ciphertext)
+            } else {
+                val randomKey = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+                val secretKey = keyStore.getKey(keyAlias, null) as javax.crypto.SecretKey
+                val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+                cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey)
+                val iv = cipher.iv
+                val encrypted = cipher.doFinal(randomKey)
+                val combined = iv + encrypted
+                prefs.edit()
+                    .putString("encrypted_db_key_gcm", android.util.Base64.encodeToString(combined, android.util.Base64.DEFAULT))
+                    .apply()
+                randomKey
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Keystore unavailable, falling back to secure prefs", e)
+            val prefs = ctx.getSharedPreferences("streamhub_tdlib_sec", Context.MODE_PRIVATE)
+            var keyHex = prefs.getString("tdlib_db_key_hex", null)
+            if (keyHex == null || keyHex.length != 64) {
+                val keyBytes = ByteArray(32)
+                java.security.SecureRandom().nextBytes(keyBytes)
+                keyHex = keyBytes.joinToString("") { "%02x".format(it) }
+                prefs.edit().putString("tdlib_db_key_hex", keyHex).apply()
+            }
+            val resultBytes = ByteArray(32)
+            for (i in 0 until 32) {
+                val hexStr = keyHex.substring(i * 2, i * 2 + 2)
+                resultBytes[i] = hexStr.toInt(16).toByte()
+            }
+            resultBytes
         }
-        val resultBytes = ByteArray(32)
-        for (i in 0 until 32) {
-            val hexStr = keyHex.substring(i * 2, i * 2 + 2)
-            resultBytes[i] = hexStr.toInt(16).toByte()
-        }
-        return resultBytes
     }
 
     private fun autoSetTdlibParameters() {

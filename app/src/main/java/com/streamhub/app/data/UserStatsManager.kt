@@ -56,6 +56,7 @@ object UserStatsManager {
         loadStats()
     }
 
+    @Synchronized
     private fun loadStats() {
         val p = prefs ?: return
         // FIX #1: All defaults are 0 — no fabricated engagement on fresh install

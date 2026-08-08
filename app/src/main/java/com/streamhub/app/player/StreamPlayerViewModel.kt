@@ -52,6 +52,12 @@ data class PlayerUiState(
 @OptIn(UnstableApi::class)
 class StreamPlayerViewModel : ViewModel() {
 
+    companion object {
+        @Volatile
+        var currentPlayer: ExoPlayer? = null
+            private set
+    }
+
     private var exoPlayer: ExoPlayer? = null
     private var trackSelector: DefaultTrackSelector? = null
 
@@ -81,10 +87,19 @@ class StreamPlayerViewModel : ViewModel() {
                     .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)
                     .build()
+                val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(
+                        10_000,
+                        50_000,
+                        5_000,
+                        5_000
+                    )
+                    .build()
                 ExoPlayer.Builder(context)
                     .setTrackSelector(trackSelector!!)
                     .setAudioAttributes(audioAttributes, true)
                     .setHandleAudioBecomingNoisy(true)
+                    .setLoadControl(loadControl)
                     .setMediaSourceFactory(
                         androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
                     )
@@ -102,6 +117,8 @@ class StreamPlayerViewModel : ViewModel() {
             }
 
             exoPlayer = createResult.getOrNull()
+            currentPlayer = exoPlayer
+            appContext?.let { StreamCacheManager.acquireReader() }
 
             val listener = object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -508,10 +525,12 @@ class StreamPlayerViewModel : ViewModel() {
                     durationMs = player.duration.coerceAtLeast(0L)
                 )
             }
+            StreamCacheManager.releaseReader()
             player.release()
         }
         playerListener = null
         exoPlayer = null
+        currentPlayer = null
         trackSelector = null
     }
 

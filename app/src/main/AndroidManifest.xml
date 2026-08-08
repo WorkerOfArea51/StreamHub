@@ -38,7 +38,7 @@
         <!-- Background Media Session Service (CRITICAL-1) -->
         <service
             android:name=".player.StreamMediaService"
-            android:exported="true"
+            android:exported="false"
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaSessionService" />

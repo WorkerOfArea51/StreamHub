@@ -146,6 +146,7 @@ object WatchHistoryManager {
             .apply()
     }
 
+    @Synchronized
     fun clearAllHistory() {
         if (!::appContext.isInitialized) {
             Log.w(TAG, "clearAllHistory called before init — no-op")

@@ -57,6 +57,7 @@ object PlayerSettingsManager {
         }
     }
 
+    @Synchronized
     fun updateSkipIntro(seconds: Int) {
         if (!::appContext.isInitialized) {
             Log.w(TAG, "updateSkipIntro called before init — no-op")
@@ -66,6 +67,7 @@ object PlayerSettingsManager {
         getPrefs().edit().putInt(KEY_SKIP_INTRO, seconds).apply()
     }
 
+    @Synchronized
     fun updateNextEpisodeThreshold(seconds: Int) {
         if (!::appContext.isInitialized) {
             Log.w(TAG, "updateNextEpisodeThreshold called before init — no-op")
@@ -75,6 +77,7 @@ object PlayerSettingsManager {
         getPrefs().edit().putInt(KEY_NEXT_EPISODE_THRESHOLD, seconds).apply()
     }
 
+    @Synchronized
     fun updateAutoPlayNext(autoPlay: Boolean) {
         if (!::appContext.isInitialized) {
             Log.w(TAG, "updateAutoPlayNext called before init — no-op")
@@ -84,6 +87,7 @@ object PlayerSettingsManager {
         getPrefs().edit().putBoolean(KEY_AUTO_PLAY, autoPlay).apply()
     }
 
+    @Synchronized
     fun updateVolumeSide(volumeOnRight: Boolean) {
         if (!::appContext.isInitialized) {
             Log.w(TAG, "updateVolumeSide called before init — no-op")

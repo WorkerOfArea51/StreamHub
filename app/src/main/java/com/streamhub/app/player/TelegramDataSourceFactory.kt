@@ -72,9 +72,11 @@ class TelegramDataSourceFactory(
 
         private var currentSource: DataSource? = null
         private var isLocalFile = false
+        private var transferListener: TransferListener? = null
 
         override fun addTransferListener(transferListener: TransferListener) {
-            // Transfer listeners are added to the underlying DataSource on open
+            this.transferListener = transferListener
+            currentSource?.addTransferListener(transferListener)
         }
 
         override fun open(dataSpec: DataSpec): Long {
@@ -113,6 +115,7 @@ class TelegramDataSourceFactory(
                 }
             }
 
+            transferListener?.let { currentSource?.addTransferListener(it) }
             return currentSource?.open(dataSpec) ?: throw IOException("No DataSource available for $uri")
         }
 

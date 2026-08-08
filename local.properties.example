@@ -18,9 +18,7 @@
 #                              ──────────────────────────────     ─────────────────────────────────────
 # TMDB v3 API key
 # Get one at: https://www.themoviedb.org/settings/api
-# After getting a key, REVOKE the previously leaked key
-#   ec562d9f2a8a07ffb7fa3308fb5bec9c
-# from your TMDB dashboard — it was committed to public git history.
+# IMPORTANT: Never commit API keys to git repository.
 streamhub.tmdb_api_key=YOUR_TMDB_API_KEY_HERE                       # STREAMHUB_TMDB_API_KEY
 
 # MyAnimeList v2 client ID
