@@ -44,6 +44,8 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.Shield
 import com.streamhub.app.ui.components.ProxySettingsDialog
+import com.streamhub.app.ui.components.AdminEditorDialog
+import com.streamhub.app.data.repository.FirebaseRepository
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -385,6 +387,8 @@ fun ProfileScreen(
     onNavigateToSettings: () -> Unit = {},
     onNavigateToVideoSettings: () -> Unit = {},
     onOpenAdminPanel: () -> Unit = {},
+    onOpenAddContent: () -> Unit = {},
+    repository: FirebaseRepository = remember { FirebaseRepository.getInstance() },
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -396,9 +400,17 @@ fun ProfileScreen(
     val streakDays by UserStatsManager.streakDays.collectAsState()
 
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
+    var showAddContentDialog by remember { mutableStateOf(false) }
     var showProxyDialog by remember { mutableStateOf(false) }
     var showCountryPickerDialog by remember { mutableStateOf(false) }
     var selectedCountry by remember { mutableStateOf(countryCodesList[0]) }
+
+    val isOwnerUser = (authState as? TelegramAuthState.Authenticated)?.isOwner == true
+    androidx.compose.runtime.LaunchedEffect(isOwnerUser) {
+        if (isOwnerUser) {
+            com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
+        }
+    }
 
     LazyColumn(
         modifier = modifier
@@ -446,7 +458,14 @@ fun ProfileScreen(
                 AdminOwnerDashboardCard(
                     isOwner = isOwner,
                     primaryColor = primaryColor,
-                    onOpenAdminPanel = onOpenAdminPanel,
+                    onOpenAddContent = {
+                        com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
+                        showAddContentDialog = true
+                    },
+                    onOpenAdminPanel = {
+                        com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
+                        onOpenAdminPanel()
+                    },
                     onUnlockAdmin = { showAdminPasswordDialog = true }
                 )
             }
@@ -620,6 +639,18 @@ fun ProfileScreen(
             onSuccess = {
                 showAdminPasswordDialog = false
                 onOpenAdminPanel()
+            }
+        )
+    }
+
+    // Post New Content Dialog (Admin/Owner Form)
+    if (showAddContentDialog) {
+        AdminEditorDialog(
+            initialItem = null,
+            onDismiss = { showAddContentDialog = false },
+            onSave = { newItem ->
+                repository.saveMediaItem(newItem)
+                showAddContentDialog = false
             }
         )
     }
@@ -1137,6 +1168,7 @@ fun AdminPasswordDialog(
 fun AdminOwnerDashboardCard(
     isOwner: Boolean,
     primaryColor: Color,
+    onOpenAddContent: () -> Unit,
     onOpenAdminPanel: () -> Unit,
     onUnlockAdmin: () -> Unit
 ) {
@@ -1186,7 +1218,7 @@ fun AdminOwnerDashboardCard(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Button(
-                    onClick = onOpenAdminPanel,
+                    onClick = onOpenAddContent,
                     colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f)

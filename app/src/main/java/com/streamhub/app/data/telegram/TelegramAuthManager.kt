@@ -423,6 +423,7 @@ object TelegramAuthManager {
 
         val cleanUsername = user.username.lowercase().removePrefix("@")
         if (cleanUsername.isNotBlank() && cleanUsername in ownerUsernames) {
+            com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
             return true
         }
 
@@ -437,6 +438,7 @@ object TelegramAuthManager {
             try {
                 val isChannelAdmin = TdLibMediaProvider.checkIfUserIsChannelAdmin(userId)
                 if (isChannelAdmin) {
+                    com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
                     val currentAuth = _authState.value
                     if (currentAuth is TelegramAuthState.Authenticated && !currentAuth.isOwner) {
                         _authState.value = currentAuth.copy(isOwner = true)

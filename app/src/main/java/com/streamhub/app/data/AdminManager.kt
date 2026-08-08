@@ -70,6 +70,14 @@ object AdminManager {
     }
 
     /**
+     * Dynamically enable admin mode when user is recognized as Telegram Channel Owner/Admin.
+     */
+    fun enableAdminModeFromOwner() {
+        _isAdminMode.value = true
+        Log.d(TAG, "Admin mode enabled dynamically for Telegram Channel Owner/Admin")
+    }
+
+    /**
      * Disable admin mode. The user must re-enter the PIN to re-enable.
      * Safe to call from any thread — StateFlow is thread-safe.
      */
