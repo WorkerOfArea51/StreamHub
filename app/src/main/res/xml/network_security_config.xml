@@ -21,23 +21,16 @@
         </trust-anchors>
     </base-config>
 
-    <!-- Telegram API — pinned to DigiCert root -->
+    <!-- Telegram API domain -->
     <domain-config>
         <domain includeSubdomains="true">api.telegram.org</domain>
         <domain includeSubdomains="true">t.me</domain>
-        <pin-set>
-            <pin digest="SHA-256">r/mnE7H1RJPSR8GPGP5cEeSORtSJnjlD2bPzjP7F3EM=</pin>
-            <pin digest="SHA-256">WoiWRyIOVNa9QhNBj2YVflQlYTcVId5nSg5lqJ40Q7E=</pin>
-        </pin-set>
     </domain-config>
 
-    <!-- TMDB API — pinned to Let's Encrypt -->
+    <!-- TMDB API domain -->
     <domain-config>
         <domain includeSubdomains="true">api.themoviedb.org</domain>
         <domain includeSubdomains="true">image.tmdb.org</domain>
-        <pin-set>
-            <pin digest="SHA-256">LP5N2qqqSz1xk1cWf5nGcKvYw0dY4Y6bY6Y6Y6Y6Y6Y=</pin>
-        </pin-set>
     </domain-config>
 
     <!-- Firebase / Google Services -->
@@ -47,13 +40,9 @@
         <domain includeSubdomains="true">securetoken.googleapis.com</domain>
     </domain-config>
 
-    <!-- GitHub Releases (In-App Updater) — pinned to DigiCert -->
+    <!-- GitHub Releases (In-App Updater) -->
     <domain-config>
         <domain includeSubdomains="true">github.com</domain>
         <domain includeSubdomains="true">api.github.com</domain>
-        <pin-set>
-            <pin digest="SHA-256">iiePtD3kk3A1lYgGZfE0QQgVnX5M5M5M5M5M5M5M5M=</pin>
-            <pin digest="SHA-256">r/mnE7H1RJPSR8GPGP5cEeSORtSJnjlD2bPzjP7F3EM=</pin>
-        </pin-set>
     </domain-config>
 </network-security-config>
