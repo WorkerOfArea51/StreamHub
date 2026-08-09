@@ -82,7 +82,15 @@ class StreamPlayerViewModel : ViewModel() {
         if (exoPlayer == null) {
             val createResult = runCatching {
                 val dataSourceFactory = TelegramDataSourceFactory(context)
-                trackSelector = DefaultTrackSelector(context)
+                trackSelector = DefaultTrackSelector(context).apply {
+                    parameters = buildUponParameters()
+                        .setMinVideoBitrate(200_000)
+                        .setMaxVideoBitrate(12_000_000)
+                        .setMinVideoSize(320, 240)
+                        .setMaxVideoSize(1920, 1080)
+                        .setViewportSizeToPhysicalDisplaySize(context, true)
+                        .build()
+                }
                 val audioAttributes = androidx.media3.common.AudioAttributes.Builder()
                     .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)

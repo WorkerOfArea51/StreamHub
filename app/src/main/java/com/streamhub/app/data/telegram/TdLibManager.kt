@@ -688,6 +688,17 @@ object TdLibManager {
     // ──────────────────────────────────────────────────────────────
 
     /**
+     * M11 FIX: Send a request and throw TdLibException on Error response.
+     */
+    suspend fun sendOrThrow(function: TdApi.Function<*>): TdApi.Object {
+        val result = send(function)
+        if (result is TdApi.Error) {
+            throw TdLibException(result.code, result.message)
+        }
+        return result
+    }
+
+    /**
      * Gracefully close the TDLib client.
      * Called on app termination. TDLib persists its database, so
      * the session is restored on next [initialize].

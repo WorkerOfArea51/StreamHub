@@ -405,6 +405,15 @@ object TelegramAuthManager {
             // Tell TDLib to log out (destroys session & restarts client)
             TdLibManager.logout()
 
+            // M13 FIX: Wait for TDLib session destruction before clearing SharedPreferences
+            kotlinx.coroutines.withTimeoutOrNull(5_000L) {
+                TdLibManager.authState.collect { state ->
+                    if (state is TdLibAuthState.Closed) {
+                        return@collect
+                    }
+                }
+            }
+
             // Clear SharedPreferences cache
             prefs.edit().clear().apply()
 

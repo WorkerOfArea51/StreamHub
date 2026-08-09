@@ -65,6 +65,9 @@ fun HeroBanner(
             model = media.bannerUrl.ifEmpty { media.posterUrl },
             contentDescription = media.title,
             contentScale = ContentScale.Crop,
+            placeholder = androidx.compose.ui.graphics.painter.ColorPainter(Color(0xFF2A2A2A)),
+            error = androidx.compose.ui.graphics.painter.ColorPainter(Color(0xFF2A2A2A)),
+            fallback = androidx.compose.ui.graphics.painter.ColorPainter(Color(0xFF2A2A2A)),
             modifier = Modifier.fillMaxSize()
         )
 

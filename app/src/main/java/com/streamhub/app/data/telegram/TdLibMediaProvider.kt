@@ -219,22 +219,30 @@ object TdLibMediaProvider {
      * TDLib sends UpdateFile updates which update our file tracking.
      */
     private suspend fun waitForFileReady(fileId: Int): String? {
-        var attempts = 0
-        while (attempts < 600) { // 600 * 100ms = 60s max
-            attempts++
-            val result = TdLibManager.send(TdApi.GetFile(fileId))
-            if (result is TdApi.File) {
-                if (result.local.isDownloadingCompleted && result.local.path.isNotBlank()) {
-                    return result.local.path
-                }
-                if (!result.local.isDownloadingActive && !result.local.isDownloadingCompleted) {
-                    // Download was cancelled or failed
-                    return null
+        val current = TdLibManager.send(TdApi.GetFile(fileId))
+        if (current is TdApi.File && current.local.isDownloadingCompleted && current.local.path.isNotBlank()) {
+            return current.local.path
+        }
+
+        return withTimeoutOrNull(FILE_DOWNLOAD_TIMEOUT_MS) {
+            var lastPath: String? = null
+            downloadProgress.collect { progressMap ->
+                if (!progressMap.containsKey(fileId)) {
+                    val result = TdLibManager.send(TdApi.GetFile(fileId))
+                    if (result is TdApi.File) {
+                        if (result.local.isDownloadingCompleted && result.local.path.isNotBlank()) {
+                            lastPath = result.local.path
+                            return@collect
+                        }
+                        if (!result.local.isDownloadingActive && !result.local.isDownloadingCompleted) {
+                            lastPath = null
+                            return@collect
+                        }
+                    }
                 }
             }
-            delay(100)
+            lastPath
         }
-        return null
     }
 
     // ──────────────────────────────────────────────────────────────

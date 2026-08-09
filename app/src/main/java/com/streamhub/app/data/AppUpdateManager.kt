@@ -84,18 +84,16 @@ object AppUpdateManager {
 
     // Follow redirects enabled for asset downloads
     private val httpClient by lazy {
-        OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
+        com.streamhub.app.data.api.SharedHttpClient.baseClient.newBuilder()
             .readTimeout(30, TimeUnit.SECONDS)
             .build()
     }
 
     // Follow redirects disabled for checking the /latest 302 location header
     private val redirectCheckingClient by lazy {
-        OkHttpClient.Builder()
+        com.streamhub.app.data.api.SharedHttpClient.baseClient.newBuilder()
             .followRedirects(false)
             .followSslRedirects(false)
-            .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .build()
     }

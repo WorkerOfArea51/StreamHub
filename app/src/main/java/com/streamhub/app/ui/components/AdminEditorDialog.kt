@@ -411,7 +411,7 @@ fun AdminEditorDialog(
                                     }
 
                                     val mediaItem = MediaItem(
-                                        id = initialItem?.id ?: "media_${System.currentTimeMillis()}",
+                                        id = initialItem?.id ?: "media_${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(8)}",
                                         title = title,
                                         type = type,
                                         category = category,

@@ -50,7 +50,7 @@ fun EmptyStateCard(
         ) {
             Icon(
                 imageVector = icon,
-                contentDescription = null,
+                contentDescription = title,
                 tint = TextSecondary,
                 modifier = Modifier.size(64.dp)
             )

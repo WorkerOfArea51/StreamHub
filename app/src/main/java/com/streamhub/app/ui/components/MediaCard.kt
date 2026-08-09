@@ -61,6 +61,9 @@ fun MediaCard(
                 model = item.posterUrl,
                 contentDescription = item.title,
                 contentScale = ContentScale.Crop,
+                placeholder = androidx.compose.ui.graphics.painter.ColorPainter(Color(0xFF2A2A2A)),
+                error = androidx.compose.ui.graphics.painter.ColorPainter(Color(0xFF2A2A2A)),
+                fallback = androidx.compose.ui.graphics.painter.ColorPainter(Color(0xFF2A2A2A)),
                 modifier = Modifier.fillMaxSize()
             )
 

@@ -99,6 +99,16 @@ object WatchHistoryManager {
 
         val updatedMap = _historyFlow.value.toMutableMap()
         updatedMap[mediaId] = progress
+
+        // M9 FIX: Evict oldest entries if history exceeds MAX_HISTORY_ENTRIES (100)
+        if (updatedMap.size > 100) {
+            val sortedByAge = updatedMap.entries.sortedBy { it.value.lastUpdated }
+            val toRemove = sortedByAge.take(updatedMap.size - 100)
+            for ((oldKey, _) in toRemove) {
+                updatedMap.remove(oldKey)
+            }
+        }
+
         _historyFlow.value = updatedMap
 
         try {
