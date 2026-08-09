@@ -73,7 +73,10 @@ object StreamDownloadManager {
             }
 
             val dbProvider = getDatabaseProvider(context)
-            downloadCache = SimpleCache(downloadContentDirectory, NoOpCacheEvictor(), dbProvider)
+            val evictor = androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor(
+                2L * 1024L * 1024L * 1024L
+            )
+            downloadCache = SimpleCache(downloadContentDirectory, evictor, dbProvider)
         }
         return downloadCache!!
     }

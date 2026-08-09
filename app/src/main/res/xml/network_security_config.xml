@@ -20,4 +20,29 @@
             <certificates src="system" />
         </trust-anchors>
     </base-config>
+
+    <!-- Telegram API domain -->
+    <domain-config>
+        <domain includeSubdomains="true">api.telegram.org</domain>
+        <domain includeSubdomains="true">t.me</domain>
+    </domain-config>
+
+    <!-- TMDB API domain -->
+    <domain-config>
+        <domain includeSubdomains="true">api.themoviedb.org</domain>
+        <domain includeSubdomains="true">image.tmdb.org</domain>
+    </domain-config>
+
+    <!-- Firebase / Google Services -->
+    <domain-config>
+        <domain includeSubdomains="true">firestore.googleapis.com</domain>
+        <domain includeSubdomains="true">firebase.googleapis.com</domain>
+        <domain includeSubdomains="true">securetoken.googleapis.com</domain>
+    </domain-config>
+
+    <!-- GitHub Releases (In-App Updater) -->
+    <domain-config>
+        <domain includeSubdomains="true">github.com</domain>
+        <domain includeSubdomains="true">api.github.com</domain>
+    </domain-config>
 </network-security-config>

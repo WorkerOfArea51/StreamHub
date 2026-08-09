@@ -34,6 +34,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,11 +70,14 @@ fun HeroCarousel(
     val primaryColor = MaterialTheme.colorScheme.primary
     val myListSet by MyListManager.myListFlow.collectAsState()
 
-    // Auto-advance hero carousel every 5 seconds
-    LaunchedEffect(pagerState, featuredItems) {
+    var lastInteractionTime by remember { mutableLongStateOf(0L) }
+
+    // Auto-advance hero carousel every 5 seconds (pauses 10s on tap/drag)
+    LaunchedEffect(pagerState, featuredItems, lastInteractionTime) {
         while (true) {
             delay(5000)
-            if (featuredItems.isNotEmpty() && !pagerState.isScrollInProgress) {
+            val isInteractionPaused = System.currentTimeMillis() - lastInteractionTime < 10_000L
+            if (featuredItems.isNotEmpty() && !pagerState.isScrollInProgress && !isInteractionPaused) {
                 val nextPage = (pagerState.currentPage + 1) % featuredItems.size
                 pagerState.animateScrollToPage(nextPage)
             }
@@ -190,7 +196,10 @@ fun HeroCarousel(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Button(
-                            onClick = { onPlayClick(media) },
+                            onClick = {
+                                lastInteractionTime = System.currentTimeMillis()
+                                onPlayClick(media)
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f)
@@ -201,7 +210,10 @@ fun HeroCarousel(
                         }
 
                         OutlinedButton(
-                            onClick = { MyListManager.toggleBookmark(media.id) },
+                            onClick = {
+                                lastInteractionTime = System.currentTimeMillis()
+                                MyListManager.toggleBookmark(media.id)
+                            },
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f)
                         ) {

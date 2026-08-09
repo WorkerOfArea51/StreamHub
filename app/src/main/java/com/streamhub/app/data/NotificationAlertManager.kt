@@ -140,7 +140,7 @@ object NotificationAlertManager {
 
             val builder = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle("🍿 New Episode Available!")
+                .setContentTitle("New Episode Available!")
                 .setContentText("$mediaTitle - $episodeTitle is now ready to stream!")
                 .setStyle(
                     NotificationCompat.BigTextStyle()

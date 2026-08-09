@@ -382,10 +382,13 @@ object TelegramAuthManager {
             .putBoolean(KEY_IS_OWNER, isOwner)
             .apply()
 
-        _authState.value = TelegramAuthState.Authenticated(user, isOwner)
-
-        // Auto-join configured private channels
-        autoJoinPrivateChannels()
+        // C12 FIX: Auto-join channels BEFORE emitting Authenticated state.
+        // This guarantees the user can't navigate to content until channel
+        // membership is established, preventing "Cannot access chat" errors.
+        scope.launch {
+            autoJoinPrivateChannels()
+            _authState.value = TelegramAuthState.Authenticated(user, isOwner)
+        }
     }
 
     /**
@@ -461,25 +464,23 @@ object TelegramAuthManager {
      * Uses TdLibMediaProvider which handles the TDLib join chat API.
      * Called after successful authentication.
      */
-    private fun autoJoinPrivateChannels() {
-        scope.launch {
-            // Wait up to 10s for TDLib client to be fully in Ready state
-            val ready = kotlinx.coroutines.withTimeoutOrNull(10_000L) {
-                while (!TdLibManager.isReady()) {
-                    delay(200L)
-                }
-                true
+    private suspend fun autoJoinPrivateChannels() {
+        // Wait up to 10s for TDLib client to be fully in Ready state
+        val ready = kotlinx.coroutines.withTimeoutOrNull(10_000L) {
+            while (!TdLibManager.isReady()) {
+                delay(200L)
             }
-            if (ready != true) {
-                Log.e(TAG, "TDLib not ready after 10s — skipping auto-join")
-                return@launch
-            }
+            true
+        }
+        if (ready != true) {
+            Log.e(TAG, "TDLib not ready after 10s — skipping auto-join")
+            return
+        }
 
-            try {
-                TdLibMediaProvider.autoJoinConfiguredChannels()
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to auto-join channels", e)
-            }
+        try {
+            TdLibMediaProvider.autoJoinConfiguredChannels()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to auto-join channels", e)
         }
     }
 

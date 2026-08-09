@@ -34,13 +34,13 @@ fun MediaInfoBadges(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         // Resolution Badge
-        BadgeItem(text = mediaInfo.resolution, borderColor = PrimaryRed)
+        if (mediaInfo.resolution.isNotBlank()) BadgeItem(text = mediaInfo.resolution, borderColor = PrimaryRed)
 
         // Codec Badge
-        BadgeItem(text = mediaInfo.videoCodec, borderColor = AccentOrange)
+        if (mediaInfo.videoCodec.isNotBlank()) BadgeItem(text = mediaInfo.videoCodec, borderColor = AccentOrange)
 
         // File Size Badge
-        BadgeItem(text = mediaInfo.fileSize, borderColor = Color(0xFF3B82F6))
+        if (mediaInfo.fileSize.isNotBlank()) BadgeItem(text = mediaInfo.fileSize, borderColor = Color(0xFF3B82F6))
 
         // Audio Tracks Badges
         mediaInfo.audioTracks.forEach { audio ->
