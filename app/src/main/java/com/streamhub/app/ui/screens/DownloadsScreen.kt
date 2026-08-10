@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,9 +59,30 @@ fun DownloadsScreen(
     onPlayEpisode: (MediaItem, Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val downloadsList by DownloadManager.downloads.collectAsState()
     val totalMbUsed = downloadsList.filter { it.isCompleted }.sumOf { it.fileSizeMb }
     val primaryColor = MaterialTheme.colorScheme.primary
+
+    // Real Device Storage Calculation
+    val storageInfo = remember(downloadsList) {
+        try {
+            val stat = android.os.StatFs(android.os.Environment.getDataDirectory().path)
+            val freeBytes = stat.availableBlocksLong * stat.blockSizeLong
+            val totalBytes = stat.blockCountLong * stat.blockSizeLong
+            val freeGb = freeBytes / (1024.0 * 1024.0 * 1024.0)
+            val totalGb = totalBytes / (1024.0 * 1024.0 * 1024.0)
+            val dirs = androidx.core.content.ContextCompat.getExternalFilesDirs(context, null)
+            val isSdCard = dirs.size > 1 && dirs[1] != null && android.os.Environment.isExternalStorageRemovable(dirs[1])
+            Triple(if (isSdCard) "SD Card" else "Internal Storage", freeGb, totalGb)
+        } catch (e: Exception) {
+            Triple("Internal Storage", 0.0, 0.0)
+        }
+    }
+
+    val (storageLocation, freeGb, totalGb) = storageInfo
+    val appUsedGb = totalMbUsed / 1024.0
+    val storageFraction = if (totalGb > 0) (appUsedGb / totalGb).toFloat().coerceIn(0f, 1f) else 0f
 
     Column(
         modifier = modifier
@@ -85,34 +107,91 @@ fun DownloadsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Storage Usage Banner
+        // Expressive Storage Usage & Location Banner
         Card(
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(14.dp),
             colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(14.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.SdCard, contentDescription = "Storage", tint = primaryColor)
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text("Offline Local Storage", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Text("${String.format("%.1f", totalMbUsed)} MB Used", color = TextSecondary, fontSize = 11.sp)
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(primaryColor.copy(alpha = 0.15f))
+                                .padding(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (storageLocation == "SD Card") Icons.Default.SdCard else Icons.Default.SdCard,
+                                contentDescription = "Storage",
+                                tint = primaryColor
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = storageLocation,
+                                    color = TextPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0x2210B981))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                ) {
+                                    Text("Active", color = Color(0xFF10B981), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Text(
+                                text = if (totalMbUsed > 0)
+                                    "${String.format("%.1f", totalMbUsed)} MB used (${String.format("%.1f", freeGb)} GB free)"
+                                else
+                                    "0.0 MB used / ${String.format("%.1f", freeGb)} GB free of ${String.format("%.1f", totalGb)} GB",
+                                color = TextSecondary,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(primaryColor.copy(alpha = 0.2f))
+                            .border(1.dp, primaryColor.copy(alpha = 0.4f), RoundedCornerShape(20.dp))
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "${downloadsList.size} Downloads",
+                            color = primaryColor,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        )
                     }
                 }
 
-                Text(
-                    text = "${downloadsList.size} Episodes",
-                    color = primaryColor,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp
-                )
+                if (totalMbUsed > 0) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    LinearProgressIndicator(
+                        progress = { storageFraction.coerceAtLeast(0.02f) },
+                        color = primaryColor,
+                        trackColor = Color(0x33FFFFFF),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                    )
+                }
             }
         }
 

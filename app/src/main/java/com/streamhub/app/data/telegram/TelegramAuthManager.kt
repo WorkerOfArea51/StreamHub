@@ -23,7 +23,9 @@ data class TelegramUser(
     val lastName: String = "",
     val username: String = "",
     val phoneNumber: String = "",
-    val photoUrl: String = ""
+    val photoUrl: String = "",
+    val isVerified: Boolean = false,
+    val isPremium: Boolean = false
 ) {
     val displayName: String
         get() = if (lastName.isNotBlank()) "$firstName $lastName" else firstName
@@ -76,8 +78,11 @@ object TelegramAuthManager {
     private const val KEY_PHONE = "phone"
     private const val KEY_PHOTO_URL = "photo_url"
     private const val KEY_IS_OWNER = "is_owner"
+    private const val KEY_IS_VERIFIED = "is_verified"
+    private const val KEY_IS_PREMIUM = "is_premium"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val pendingPhotoFileId = java.util.concurrent.atomic.AtomicInteger(0)
 
     private val _authState = MutableStateFlow<TelegramAuthState>(TelegramAuthState.Unauthenticated)
     val authState: StateFlow<TelegramAuthState> = _authState.asStateFlow()
@@ -85,7 +90,7 @@ object TelegramAuthManager {
     private lateinit var prefs: SharedPreferences
 
     private val isTdLibAvailable: Boolean
-        get() = Secrets.TELEGRAM_API_ID.isNotBlank() && Secrets.TELEGRAM_API_HASH.isNotBlank()
+        get() = true
 
     /**
      * Initialize the auth manager. Called from StreamHubApplication.onCreate().
@@ -106,10 +111,40 @@ object TelegramAuthManager {
                 lastName = prefs.getString(KEY_LAST_NAME, "") ?: "",
                 username = prefs.getString(KEY_USERNAME, "") ?: "",
                 phoneNumber = prefs.getString(KEY_PHONE, "") ?: "",
-                photoUrl = prefs.getString(KEY_PHOTO_URL, "") ?: ""
+                photoUrl = prefs.getString(KEY_PHOTO_URL, "") ?: "",
+                isVerified = prefs.getBoolean(KEY_IS_VERIFIED, false),
+                isPremium = prefs.getBoolean(KEY_IS_PREMIUM, false)
             )
             val isOwner = prefs.getBoolean(KEY_IS_OWNER, false)
             _authState.value = TelegramAuthState.Authenticated(user, isOwner)
+        }
+
+        // Register TDLib file and user update listener for dynamic profile updates
+        TdLibManager.addUpdateListener { update ->
+            when (update) {
+                is TdApi.UpdateFile -> {
+                    val file = update.file
+                    if (file.local.isDownloadingCompleted && file.local.path.isNotBlank()) {
+                        val currentAuth = _authState.value
+                        if (currentAuth is TelegramAuthState.Authenticated) {
+                            val targetId = pendingPhotoFileId.get()
+                            if ((targetId != 0 && file.id == targetId) || currentAuth.user.photoUrl.isBlank()) {
+                                val updatedUser = currentAuth.user.copy(photoUrl = file.local.path)
+                                prefs.edit().putString(KEY_PHOTO_URL, file.local.path).apply()
+                                _authState.value = currentAuth.copy(user = updatedUser)
+                                Log.i(TAG, "Profile photo updated from TDLib file update: ${file.local.path}")
+                            }
+                        }
+                    }
+                }
+                is TdApi.UpdateUser -> {
+                    val currentAuth = _authState.value
+                    if (currentAuth is TelegramAuthState.Authenticated && update.user.id.toLong() == currentAuth.user.id) {
+                        fetchUserProfileAndPhoto(update.user)
+                    }
+                }
+                else -> {}
+            }
         }
 
         // Observe TdLibManager's auth state and translate to our state
@@ -189,28 +224,11 @@ object TelegramAuthManager {
         scope.launch {
             val tdUser = TdLibManager.currentUser.value
             if (tdUser != null) {
-                val user = TelegramUser(
-                    id = tdUser.id.toLong(),
-                    firstName = tdUser.firstName,
-                    lastName = tdUser.lastName,
-                    username = tdUser.usernames?.activeUsernames?.firstOrNull() ?: tdUser.usernames?.editableUsername ?: "",
-                    phoneNumber = tdUser.phoneNumber,
-                    photoUrl = getProfilePhotoUrl(tdUser)
-                )
-                completeLogin(user)
+                fetchUserProfileAndPhoto(tdUser)
             } else {
-                // Fetch user from TDLib
-                val result = TdLibManager.send(org.drinkless.tdlib.TdApi.GetMe())
+                val result = TdLibManager.send(TdApi.GetMe())
                 if (result is TdApi.User) {
-                    val user = TelegramUser(
-                        id = result.id.toLong(),
-                        firstName = result.firstName,
-                        lastName = result.lastName,
-                        username = result.usernames?.activeUsernames?.firstOrNull() ?: result.usernames?.editableUsername ?: "",
-                        phoneNumber = result.phoneNumber,
-                        photoUrl = getProfilePhotoUrl(result)
-                    )
-                    completeLogin(user)
+                    fetchUserProfileAndPhoto(result)
                 } else {
                     Log.e(TAG, "Failed to get current user after TDLib auth")
                 }
@@ -219,37 +237,64 @@ object TelegramAuthManager {
     }
 
     /**
-     * Downloads user profile photo from TDLib and updates the authenticated state once downloaded.
+     * Actively fetches user profile and downloads high-resolution profile photo from TDLib.
      */
-    private fun getProfilePhotoUrl(user: TdApi.User): String {
-        val photo = user.profilePhoto
-        if (photo != null) {
-            val small = photo.small
-            if (small != null) {
-                if (small.local.isDownloadingCompleted && small.local.path.isNotBlank()) {
-                    return small.local.path
-                }
-                // Trigger download and update state when completed
-                scope.launch {
+    fun fetchUserProfileAndPhoto(tdUser: TdApi.User) {
+        scope.launch {
+            var photoPath = ""
+            val photo = tdUser.profilePhoto
+            val fileToDownload = photo?.big ?: photo?.small
+            if (fileToDownload != null) {
+                if (fileToDownload.local.isDownloadingCompleted && fileToDownload.local.path.isNotBlank()) {
+                    photoPath = fileToDownload.local.path
+                } else {
+                    pendingPhotoFileId.set(fileToDownload.id)
                     try {
-                        val downloaded = TdLibManager.send(org.drinkless.tdlib.TdApi.DownloadFile(small.id, 1, 0, 0, true))
-                        if (downloaded is TdApi.File && downloaded.local.isDownloadingCompleted && downloaded.local.path.isNotBlank()) {
-                            val currentAuth = _authState.value
-                            if (currentAuth is TelegramAuthState.Authenticated) {
-                                val updatedUser = currentAuth.user.copy(photoUrl = downloaded.local.path)
-                                _authState.value = currentAuth.copy(user = updatedUser)
-                            }
+                        val downloadResult = TdLibManager.send(TdApi.DownloadFile(fileToDownload.id, 32, 0, 0, false))
+                        if (downloadResult is TdApi.File && downloadResult.local.isDownloadingCompleted && downloadResult.local.path.isNotBlank()) {
+                            photoPath = downloadResult.local.path
                         }
                     } catch (e: Exception) {
-                        Log.w(TAG, "Failed to download profile photo for user ${user.id}", e)
+                        Log.w(TAG, "DownloadFile failed for profile photo ${fileToDownload.id}", e)
                     }
                 }
-                if (small.local.path.isNotBlank()) {
-                    return small.local.path
+            }
+
+            val username = tdUser.usernames?.activeUsernames?.firstOrNull()
+                ?: tdUser.usernames?.editableUsername
+                ?: ""
+
+            val user = TelegramUser(
+                id = tdUser.id.toLong(),
+                firstName = tdUser.firstName,
+                lastName = tdUser.lastName,
+                username = username,
+                phoneNumber = tdUser.phoneNumber,
+                photoUrl = photoPath,
+                isVerified = false,
+                isPremium = false
+            )
+
+            val isOwner = checkIsOwner(user)
+            completeLogin(user, isOwner)
+        }
+    }
+
+    /**
+     * Refresh the user profile from Telegram MTProto on demand and retry channel joins.
+     */
+    fun refreshProfile() {
+        scope.launch {
+            try {
+                val result = TdLibManager.send(TdApi.GetMe())
+                if (result is TdApi.User) {
+                    fetchUserProfileAndPhoto(result)
                 }
+                TdLibMediaProvider.autoJoinConfiguredChannels()
+            } catch (e: Exception) {
+                Log.w(TAG, "refreshProfile failed", e)
             }
         }
-        return ""
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -266,6 +311,7 @@ object TelegramAuthManager {
      */
     fun startPhoneAuth(phoneNumber: String) {
         val cleanPhone = phoneNumber.trim()
+        Log.d(TAG, "startPhoneAuth called with phone: '$cleanPhone'")
         if (cleanPhone.isBlank()) {
             _authState.value = TelegramAuthState.Error("Please enter a valid phone number.")
             return
@@ -279,12 +325,14 @@ object TelegramAuthManager {
         }
 
         scope.launch {
+            Log.d(TAG, "Calling TdLibManager.setPhoneNumber('$cleanPhone')...")
             val result = TdLibManager.setPhoneNumber(cleanPhone)
+            Log.d(TAG, "TdLibManager.setPhoneNumber result: $result")
             if (result.isFailure) {
                 val error = result.exceptionOrNull()?.message ?: "Unknown error"
+                Log.e(TAG, "Phone auth failed: $error", result.exceptionOrNull())
                 _authState.value = TelegramAuthState.Error("Phone auth failed: $error")
             }
-            // Success → TDLib will emit WaitCode state, which we observe
         }
     }
 
@@ -367,9 +415,7 @@ object TelegramAuthManager {
         }
     }
 
-    private fun completeLogin(user: TelegramUser) {
-        val isOwner = checkIsOwner(user)
-
+    private fun completeLogin(user: TelegramUser, isOwner: Boolean = checkIsOwner(user)) {
         // Cache user info in SharedPreferences for fast cold-start reads
         prefs.edit()
             .putBoolean(KEY_IS_LOGGED_IN, true)
@@ -380,6 +426,8 @@ object TelegramAuthManager {
             .putString(KEY_PHONE, user.phoneNumber)
             .putString(KEY_PHOTO_URL, user.photoUrl)
             .putBoolean(KEY_IS_OWNER, isOwner)
+            .putBoolean(KEY_IS_VERIFIED, user.isVerified)
+            .putBoolean(KEY_IS_PREMIUM, user.isPremium)
             .apply()
 
         // C12 FIX: Auto-join channels BEFORE emitting Authenticated state.
@@ -432,18 +480,28 @@ object TelegramAuthManager {
         val apiHash = Secrets.TELEGRAM_API_HASH
         if (apiId.isBlank() || apiHash.isBlank() || user.id == 0L) return false
 
-        val ownerUsernames = com.streamhub.app.BuildConfig.OWNER_USERNAMES
+        // Check if already verified as owner in prefs or AdminManager
+        if (prefs.getBoolean(KEY_IS_OWNER, false) || com.streamhub.app.data.AdminManager.isAdminMode.value) {
+            com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
+            return true
+        }
+
+        val ownerIdentifiers = com.streamhub.app.BuildConfig.OWNER_USERNAMES
             .split(",")
             .map { it.trim().lowercase().removePrefix("@") }
             .filter { it.isNotBlank() }
 
         val cleanUsername = user.username.lowercase().removePrefix("@")
-        if (cleanUsername.isNotBlank() && cleanUsername in ownerUsernames) {
+        val userIdStr = user.id.toString()
+
+        // Match by username or permanent numeric Telegram User ID
+        if ((cleanUsername.isNotBlank() && cleanUsername in ownerIdentifiers) || userIdStr in ownerIdentifiers) {
+            prefs.edit().putBoolean(KEY_IS_OWNER, true).apply()
             com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
             return true
         }
 
-        // Trigger async TDLib channel membership check
+        // Trigger async TDLib channel creator/admin check (immune to username changes)
         verifyChannelAdminStatus(user.id)
 
         return false
@@ -494,11 +552,11 @@ object TelegramAuthManager {
     }
 
     /**
-     * Reset error state back to Unauthenticated so the user can retry.
+     * Reset auth state back to Unauthenticated so the user can edit their phone number or retry.
      */
     fun resetState() {
         val currentState = _authState.value
-        if (currentState is TelegramAuthState.Error) {
+        if (currentState !is TelegramAuthState.Authenticated) {
             _authState.value = TelegramAuthState.Unauthenticated
         }
     }

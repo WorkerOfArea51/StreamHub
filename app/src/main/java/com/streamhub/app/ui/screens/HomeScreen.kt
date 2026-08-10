@@ -87,6 +87,12 @@ fun HomeScreen(
     var selectedCategoryFilter by remember { mutableStateOf("ALL") }
     var showAdminAddDialog by remember { mutableStateOf(false) }
     var showSurpriseMeDialog by remember { mutableStateOf(false) }
+    var isTelegramBannerDismissed by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(10_000L)
+        isTelegramBannerDismissed = true
+    }
 
     val myListIds by com.streamhub.app.data.MyListManager.myListFlow.collectAsState()
 
@@ -146,7 +152,7 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            if (tgState !is com.streamhub.app.data.telegram.TelegramAuthState.Authenticated) {
+            if (!isTelegramBannerDismissed && tgState !is com.streamhub.app.data.telegram.TelegramAuthState.Authenticated) {
                 item {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1B4B)),
@@ -157,13 +163,23 @@ fun HomeScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("🔑 Telegram Login Recommended", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                 Text("Log in via Profile to auto-join streaming channels & unlock full media access.", color = Color(0xFFC7D2FE), fontSize = 11.sp)
+                            }
+                            IconButton(
+                                onClick = { isTelegramBannerDismissed = true },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Dismiss",
+                                    tint = Color(0xFFC7D2FE)
+                                )
                             }
                         }
                     }
@@ -193,12 +209,37 @@ fun HomeScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
-                            .background(AccentOrange.copy(alpha = 0.2f))
-                            .border(1.dp, AccentOrange, RoundedCornerShape(20.dp))
+                            .background(
+                                androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                    colors = listOf(
+                                        AccentOrange.copy(alpha = 0.22f),
+                                        Color(0xFFE11D48).copy(alpha = 0.22f)
+                                    )
+                                )
+                            )
+                            .border(
+                                width = 1.dp,
+                                brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                    colors = listOf(AccentOrange, Color(0xFFE11D48))
+                                ),
+                                shape = RoundedCornerShape(20.dp)
+                            )
                             .clickable { showSurpriseMeDialog = true }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text("Surprise 🎰", color = AccentOrange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text("🎰", fontSize = 12.sp)
+                            Text(
+                                text = "Surprise Me",
+                                color = AccentOrange,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }

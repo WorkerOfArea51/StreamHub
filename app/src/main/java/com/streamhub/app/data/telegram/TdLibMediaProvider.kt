@@ -490,7 +490,7 @@ object TdLibMediaProvider {
         val bareId = rawNumberStr.toLongOrNull() ?: return 0L
         if (bareId < 0L) return bareId
 
-        return -(100_000_000_000L + bareId)
+        return "-100$bareId".toLongOrNull() ?: 0L
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -547,7 +547,8 @@ object TdLibMediaProvider {
     }
 
     /**
-     * Checks whether the user is an Administrator or Creator of any of the configured channels.
+     * Checks whether the user is an Administrator or Creator of any of the configured channels,
+     * or owns/admins any channel supergroup in their account.
      */
     suspend fun checkIfUserIsChannelAdmin(userId: Long): Boolean {
         val channelUrls = listOf(
@@ -556,6 +557,7 @@ object TdLibMediaProvider {
             com.streamhub.app.data.api.Secrets.TELEGRAM_SERIES_CHANNEL
         ).filter { it.isNotBlank() }
 
+        // 1. Check explicitly configured channels
         for (channel in channelUrls) {
             try {
                 val chat = joinChannel(channel)
@@ -572,6 +574,30 @@ object TdLibMediaProvider {
                 Log.w(TAG, "Failed checking chat member status for $channel", e)
             }
         }
+
+        // 2. Scan user's joined chats for any channel/supergroup where they are Creator/Admin
+        try {
+            val chatsResult = TdLibManager.send(TdApi.GetChats(TdApi.ChatListMain(), 50))
+            if (chatsResult is TdApi.Chats) {
+                for (chatId in chatsResult.chatIds) {
+                    val chat = TdLibManager.send(TdApi.GetChat(chatId))
+                    if (chat is TdApi.Chat && chat.type is TdApi.ChatTypeSupergroup) {
+                        val supergroupType = chat.type as TdApi.ChatTypeSupergroup
+                        val supergroup = TdLibManager.send(TdApi.GetSupergroup(supergroupType.supergroupId))
+                        if (supergroup is TdApi.Supergroup) {
+                            val status = supergroup.status
+                            if (status is TdApi.ChatMemberStatusCreator || status is TdApi.ChatMemberStatusAdministrator) {
+                                Log.i(TAG, "User is Creator/Admin of channel: ${chat.title}")
+                                return true
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed checking user chat list for admin status", e)
+        }
+
         return false
     }
 }

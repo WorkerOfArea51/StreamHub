@@ -92,6 +92,7 @@ jobs:
           STREAMHUB_TELEGRAM_ANIME_CHANNEL: ${{ secrets.STREAMHUB_TELEGRAM_ANIME_CHANNEL }}
           STREAMHUB_TELEGRAM_MOVIES_CHANNEL: ${{ secrets.STREAMHUB_TELEGRAM_MOVIES_CHANNEL }}
           STREAMHUB_TELEGRAM_SERIES_CHANNEL: ${{ secrets.STREAMHUB_TELEGRAM_SERIES_CHANNEL }}
+          STREAMHUB_OWNER_USERNAMES: ${{ secrets.STREAMHUB_OWNER_USERNAMES }}
         run: ./gradlew assembleRelease --stacktrace
 
       - name: Verify APKs are signed

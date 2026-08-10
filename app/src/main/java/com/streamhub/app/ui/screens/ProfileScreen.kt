@@ -2,6 +2,13 @@ package com.streamhub.app.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import java.io.File
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,25 +35,38 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ElectricBolt
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.material.icons.filled.Shield
 import com.streamhub.app.ui.components.ProxySettingsDialog
 import com.streamhub.app.ui.components.AdminEditorDialog
 import com.streamhub.app.data.repository.FirebaseRepository
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -398,17 +419,22 @@ fun ProfileScreen(
     val totalWatchHours by UserStatsManager.totalWatchHours.collectAsState()
     val dailyWatchTime by UserStatsManager.dailyWatchFormatted.collectAsState()
     val streakDays by UserStatsManager.streakDays.collectAsState()
+    val isAdminMode by com.streamhub.app.data.AdminManager.isAdminMode.collectAsState()
 
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
     var showAddContentDialog by remember { mutableStateOf(false) }
     var showProxyDialog by remember { mutableStateOf(false) }
     var showCountryPickerDialog by remember { mutableStateOf(false) }
-    var selectedCountry by remember { mutableStateOf(countryCodesList[0]) }
-
     val isOwnerUser = (authState as? TelegramAuthState.Authenticated)?.isOwner == true
     androidx.compose.runtime.LaunchedEffect(isOwnerUser) {
         if (isOwnerUser) {
             com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(authState) {
+        if (authState is TelegramAuthState.Authenticated) {
+            TelegramAuthManager.refreshProfile()
         }
     }
 
@@ -446,10 +472,12 @@ fun ProfileScreen(
                     primaryColor = primaryColor,
                     onOpenTelegram = {
                         try {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/${user.username}"))
+                            val target = if (user.username.isNotBlank()) "https://t.me/${user.username}" else "tg://resolve?domain=telegram"
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(target))
                             context.startActivity(intent)
                         } catch (_: Exception) { }
                     },
+                    onRefresh = { TelegramAuthManager.refreshProfile() },
                     onLogout = { TelegramAuthManager.logout() }
                 )
             }
@@ -459,15 +487,10 @@ fun ProfileScreen(
                     AdminOwnerDashboardCard(
                         isOwner = isOwner,
                         primaryColor = primaryColor,
-                        onOpenAddContent = {
+                        onOpenAdminStudio = {
                             com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
                             showAddContentDialog = true
-                        },
-                        onOpenAdminPanel = {
-                            com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
-                            onOpenAdminPanel()
-                        },
-                        onUnlockAdmin = { showAdminPasswordDialog = true }
+                        }
                     )
                 }
             }
@@ -480,6 +503,16 @@ fun ProfileScreen(
                     authState = authState,
                     primaryColor = primaryColor
                 )
+            }
+
+            if (isAdminMode) {
+                item(key = "admin_owner_dashboard_card") {
+                    AdminOwnerDashboardCard(
+                        isOwner = isOwnerUser,
+                        primaryColor = primaryColor,
+                        onOpenAdminStudio = { showAddContentDialog = true }
+                    )
+                }
             }
 
             // ── MTProto Proxy Shortcut (Bypass Censorship / Unblock Telegram) ──
@@ -565,72 +598,33 @@ fun ProfileScreen(
                     label = "Streak",
                     value = "${streakDays}d",
                     primaryColor = primaryColor,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    isStreak = true
                 )
             }
         }
 
-        // ── Settings Card ──
-        item(key = "settings_entry") {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigateToSettings() }
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Settings,
-                        contentDescription = "Settings",
-                        tint = primaryColor,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text("Settings & Preferences", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("Theme, notifications, downloads, proxy, about", color = TextSecondary, fontSize = 11.sp)
-                    }
-                }
-            }
+        // ── Streamlined Preferences Hub ──
+        item(key = "section_header_prefs") {
+            Text(
+                text = "STREAMING & APP PREFERENCES",
+                color = TextSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(top = 8.dp, bottom = 2.dp, start = 4.dp)
+            )
         }
 
-        // ── Admin Panel Entry (only shown for owner accounts) ──
-        if (authState is TelegramAuthState.Authenticated && (authState as TelegramAuthState.Authenticated).isOwner) {
-            item(key = "admin_entry") {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, primaryColor.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-                        .clickable { showAdminPasswordDialog = true }
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.AdminPanelSettings,
-                            contentDescription = "Admin Panel",
-                            tint = primaryColor,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Owner Admin Dashboard", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("Manage catalog, users and content", color = TextSecondary, fontSize = 11.sp)
-                        }
-                    }
-                }
-            }
+        item(key = "settings_all_prefs") {
+            SettingsPreferenceItem(
+                icon = Icons.Default.Settings,
+                iconTint = primaryColor,
+                title = "Settings & Preferences",
+                subtitle = "Themes, player playback, downloads, proxy & alerts",
+                badge = "Customize",
+                onClick = onNavigateToSettings
+            )
         }
     }
 
@@ -665,125 +659,487 @@ fun ProfileScreen(
     }
 }
 
+fun getTelegramAvatarGradient(userId: Long): androidx.compose.ui.graphics.Brush {
+    val gradients = listOf(
+        listOf(Color(0xFFE17076), Color(0xFFFF885E)), // Red/Orange
+        listOf(Color(0xFFFAA774), Color(0xFFFF7E36)), // Orange
+        listOf(Color(0xFFA695E7), Color(0xFF7E60E6)), // Violet
+        listOf(Color(0xFF7BC862), Color(0xFF4FAE4E)), // Green
+        listOf(Color(0xFF6EC9CB), Color(0xFF35A7C4)), // Cyan
+        listOf(Color(0xFF65AADD), Color(0xFF2F7DE1)), // Blue
+        listOf(Color(0xFFEE7AAE), Color(0xFFE64A8D))  // Pink
+    )
+    val index = (kotlin.math.abs(userId) % gradients.size).toInt()
+    val colors = gradients[index]
+    return androidx.compose.ui.graphics.Brush.linearGradient(
+        colors = colors,
+        start = androidx.compose.ui.geometry.Offset(0f, 0f),
+        end = androidx.compose.ui.geometry.Offset(200f, 200f)
+    )
+}
+
 @Composable
 fun M3ExpressiveVipProfileCard(
     user: com.streamhub.app.data.telegram.TelegramUser,
     isOwner: Boolean,
     primaryColor: Color,
     onOpenTelegram: () -> Unit,
+    onRefresh: () -> Unit,
     onLogout: () -> Unit
 ) {
+    val context = LocalContext.current
+    val photoFile = remember(user.photoUrl) {
+        if (user.photoUrl.isNotBlank()) File(user.photoUrl) else null
+    }
+    val hasValidPhoto = photoFile != null && photoFile.exists() && photoFile.length() > 0
+
+    // Pulsing halo animation for live status
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.6f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.6f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
+
+    var showLogoutConfirmDialog by remember { mutableStateOf(false) }
+
     Card(
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF141420)),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0F101A)),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.5.dp, primaryColor.copy(alpha = 0.45f), RoundedCornerShape(22.dp))
-            .clickable { onOpenTelegram() }
+            .border(
+                1.5.dp,
+                if (isOwner) {
+                    Brush.linearGradient(
+                        listOf(Color(0xFFFFD700), Color(0xFFF59E0B), Color(0xFF8B5CF6))
+                    )
+                } else {
+                    Brush.linearGradient(
+                        listOf(primaryColor.copy(alpha = 0.6f), Color(0xFF38BDF8).copy(alpha = 0.4f))
+                    )
+                },
+                RoundedCornerShape(28.dp)
+            )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // ── Top Cover Banner ──
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(96.dp)
+                    .background(
+                        Brush.linearGradient(
+                            colors = if (isOwner) {
+                                listOf(Color(0xFF2E1065), Color(0xFF1E1B4B), Color(0xFF451A03))
+                            } else {
+                                listOf(Color(0xFF1A1528), Color(0xFF0F172A), Color(0xFF111827))
+                            }
+                        )
+                    )
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Glowing avatar box with fallback initials
-                    Box(
-                        modifier = Modifier
-                            .size(68.dp)
-                            .clip(CircleShape)
-                            .background(
-                                androidx.compose.ui.graphics.Brush.linearGradient(
-                                    colors = listOf(primaryColor.copy(alpha = 0.85f), Color(0xFF1E1E2E))
+                // Diagonal cosmic neon highlight
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    (if (isOwner) Color(0xFFFFD700) else primaryColor).copy(alpha = 0.18f),
+                                    Color.Transparent
                                 )
                             )
-                            .border(2.dp, primaryColor, CircleShape),
+                        )
+                )
+
+                // Top Badge: Protocol & Encryption indicator
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.Black.copy(alpha = 0.45f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                    modifier = Modifier.align(Alignment.TopStart)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = if (isOwner) Color(0xFFFFD700) else Color(0xFF38BDF8),
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (isOwner) "VIP OWNER ACCESS" else "MTPROTO ENCRYPTED",
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 0.8.sp
+                        )
+                    }
+                }
+
+                // Top Right Quick Controls: Logout Button
+                IconButton(
+                    onClick = { showLogoutConfirmDialog = true },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF3B1212).copy(alpha = 0.8f))
+                        .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.4f), CircleShape)
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Logout,
+                        contentDescription = "Log out",
+                        tint = Color(0xFFEF4444),
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+            }
+
+            // ── Main Body with 3D Overlapping Avatar ──
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 20.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    // Floating Avatar with 3D Ring
+                    Box(
+                        modifier = Modifier
+                            .offset(y = (-32).dp)
+                            .size(80.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (user.photoUrl.isNotBlank()) {
-                            AsyncImage(
-                                model = user.photoUrl,
-                                contentDescription = user.displayName,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
+                        Box(
+                            modifier = Modifier
+                                .size(78.dp)
+                                .clip(CircleShape)
+                                .background(getTelegramAvatarGradient(user.id))
+                                .border(
+                                    3.dp,
+                                    if (isOwner) {
+                                        Brush.linearGradient(listOf(Color(0xFFFFD700), Color(0xFFF59E0B)))
+                                    } else {
+                                        Brush.linearGradient(listOf(Color(0xFF38BDF8), primaryColor))
+                                    },
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (hasValidPhoto) {
+                                AsyncImage(
+                                    model = coil.request.ImageRequest.Builder(context)
+                                        .data(photoFile)
+                                        .crossfade(true)
+                                        .build(),
+                                    contentDescription = user.displayName,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                val initials = user.displayName
+                                    .split(" ")
+                                    .filter { it.isNotBlank() }
+                                    .mapNotNull { it.firstOrNull()?.uppercase() }
+                                    .take(2)
+                                    .joinToString("")
+                                    .ifBlank { "U" }
+                                Text(
+                                    text = initials,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 26.sp,
+                                    letterSpacing = 1.sp
+                                )
+                            }
+                        }
+
+                        // Live status indicator dot with pulsing halo
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .size(18.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(18.dp * pulseScale)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF10B981).copy(alpha = pulseAlpha))
                             )
-                        } else {
-                            val initials = user.displayName
-                                .split(" ")
-                                .mapNotNull { it.firstOrNull()?.uppercase() }
-                                .take(2)
-                                .joinToString("")
-                                .ifBlank { "U" }
-                            Text(
-                                text = initials,
-                                color = Color.White,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 22.sp
+                            Box(
+                                modifier = Modifier
+                                    .size(13.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF10B981))
+                                    .border(2.dp, Color(0xFF0F101A), CircleShape)
                             )
                         }
                     }
 
                     Spacer(modifier = Modifier.width(14.dp))
 
-                    Column {
+                    // User name & verified/owner badge
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .offset(y = (-14).dp)
+                    ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = user.displayName,
                                 color = TextPrimary,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.ExtraBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(Icons.Default.Verified, contentDescription = "Verified", tint = primaryColor, modifier = Modifier.size(17.dp))
+                            if (isOwner) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color(0xFFFFD700).copy(alpha = 0.2f),
+                                    border = BorderStroke(1.dp, Color(0xFFFFD700).copy(alpha = 0.6f))
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text("👑", fontSize = 10.sp)
+                                        Spacer(modifier = Modifier.width(2.dp))
+                                        Text(
+                                            text = "Owner",
+                                            color = Color(0xFFFFD700),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            } else if (user.isVerified) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    Icons.Default.Verified,
+                                    contentDescription = "Verified",
+                                    tint = primaryColor,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                         }
 
                         if (user.formattedUsername.isNotBlank()) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.clickable { onOpenTelegram() }
+                                modifier = Modifier
+                                    .padding(top = 2.dp)
+                                    .clickable { onOpenTelegram() }
                             ) {
                                 Text(
                                     text = user.formattedUsername,
-                                    color = primaryColor,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium
+                                    color = if (isOwner) Color(0xFFFFD700) else Color(0xFF38BDF8),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open Telegram", tint = primaryColor, modifier = Modifier.size(12.dp))
+                                Icon(
+                                    Icons.AutoMirrored.Filled.OpenInNew,
+                                    contentDescription = "Open Telegram",
+                                    tint = if (isOwner) Color(0xFFFFD700).copy(alpha = 0.8f) else Color(0xFF38BDF8).copy(alpha = 0.8f),
+                                    modifier = Modifier.size(12.dp)
+                                )
                             }
                         }
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        AssistChip(
-                            onClick = { onOpenTelegram() },
-                            label = { Text(if (isOwner) "Owner Account 👑" else "Telegram Connected ✅", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
-                            colors = AssistChipDefaults.assistChipColors(
-                                containerColor = primaryColor.copy(alpha = 0.18f),
-                                labelColor = primaryColor
-                            ),
-                            border = AssistChipDefaults.assistChipBorder(borderColor = primaryColor.copy(alpha = 0.4f), enabled = true)
-                        )
                     }
                 }
 
-                IconButton(
-                    onClick = onLogout,
+                // Chips / Metadata row
+                Row(
                     modifier = Modifier
-                        .clip(CircleShape)
-                        .background(Color(0xFF2B1414))
+                        .fillMaxWidth()
+                        .offset(y = (-8).dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Log out", tint = Color(0xFFEF4444), modifier = Modifier.size(20.dp))
+                    // Status Pill
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isOwner) Color(0xFFFFD700).copy(alpha = 0.12f) else Color(0xFF0F2618),
+                        border = BorderStroke(
+                            1.dp,
+                            if (isOwner) Color(0xFFFFD700).copy(alpha = 0.35f) else Color(0xFF10B981).copy(alpha = 0.35f)
+                        )
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isOwner) Color(0xFFFFD700) else Color(0xFF10B981))
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = if (isOwner) "Creator Mode Active" else "Telegram Connected",
+                                color = if (isOwner) Color(0xFFFFD700) else Color(0xFF34D399),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    if (user.phoneNumber.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFF171726),
+                            border = BorderStroke(1.dp, Color(0xFF28283E))
+                        ) {
+                            Text(
+                                text = "📱 ${user.phoneNumber}",
+                                color = TextSecondary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // ── Sleek Action Bar ──
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Primary Action: Open Telegram
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color.Transparent,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(Color(0xFF0088CC), Color(0xFF00B2FE))
+                                )
+                            )
+                            .clickable { onOpenTelegram() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(vertical = 11.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.OpenInNew,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Open Telegram",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    // Secondary Action: Sync
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFF1B1B2C),
+                        border = BorderStroke(1.dp, Color(0xFF2E2E48)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { onRefresh() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = null,
+                                tint = Color.White.copy(alpha = 0.85f),
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Sync",
+                                color = Color.White.copy(alpha = 0.9f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
             }
         }
+    }
+
+    // Logout confirmation dialog
+    if (showLogoutConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutConfirmDialog = false },
+            title = {
+                Text(
+                    text = "Log Out from Telegram?",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
+                    color = TextPrimary
+                )
+            },
+            text = {
+                Text(
+                    text = "Your Telegram session on StreamHub will be disconnected. You can log back in at any time.",
+                    color = TextSecondary,
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLogoutConfirmDialog = false
+                        onLogout()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text("Log Out", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showLogoutConfirmDialog = false }
+                ) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            },
+            containerColor = Color(0xFF161626)
+        )
     }
 }
 
@@ -793,10 +1149,17 @@ fun TelegramLoginCard(
     primaryColor: Color
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    var selectedCountry by remember { mutableStateOf(countryCodesList[0]) }
+    var selectedCountry by remember { mutableStateOf(countryCodesList.find { it.dialCode == "+880" } ?: countryCodesList[0]) }
     var showCountryPickerDialog by remember { mutableStateOf(false) }
     var phoneNumber by remember { mutableStateOf("") }
     var smsCode by remember { mutableStateOf("") }
+    var isSubmitting by remember { mutableStateOf(false) }
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+
+    // Reset submitting state whenever authState changes
+    androidx.compose.runtime.LaunchedEffect(authState) {
+        isSubmitting = false
+    }
 
     // Generate real scannable QR Code image bitmap
     val qrBitmap = remember(authState) {
@@ -823,39 +1186,44 @@ fun TelegramLoginCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            TabRow(
-                selectedTabIndex = selectedTab,
-                containerColor = Color(0xFF14141E),
-                contentColor = primaryColor,
-                indicator = { tabPositions ->
-                    TabRowDefaults.SecondaryIndicator(
-                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                        color = primaryColor
-                    )
-                }
+            // MODERN SEGMENTED TOGGLE SWITCH
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF14141E))
+                    .padding(4.dp)
             ) {
-                Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Phone, contentDescription = "Phone Auth", modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Phone SMS Code", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { selectedTab = 0 }
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (selectedTab == 0) primaryColor else Color.Transparent)
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Phone, contentDescription = "Phone Auth", tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Phone SMS Code", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
-                )
-                Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.QrCode, contentDescription = "QR Scan", modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("QR Code Scan", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { selectedTab = 1 }
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (selectedTab == 1) primaryColor else Color.Transparent)
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.QrCode, contentDescription = "QR Scan", tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("QR Code Scan", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
-                )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -880,12 +1248,42 @@ fun TelegramLoginCard(
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         Button(
-                            onClick = { TelegramAuthManager.submitVerificationCode(smsCode) },
-                            colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
+                            enabled = !isSubmitting,
+                            onClick = {
+                                isSubmitting = true
+                                TelegramAuthManager.submitVerificationCode(smsCode)
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = primaryColor,
+                                disabledContainerColor = primaryColor.copy(alpha = 0.5f)
+                            ),
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Verify Code", color = Color.White, fontWeight = FontWeight.Bold)
+                            if (isSubmitting) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Verifying Code...", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            } else {
+                                Text("Verify Code ✅", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = {
+                                isSubmitting = false
+                                smsCode = ""
+                                TelegramAuthManager.resetState()
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2C2C3E)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextSecondary, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Wrong Number? Edit / Go Back", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                     is TelegramAuthState.WaitingPassword -> {
@@ -918,6 +1316,21 @@ fun TelegramLoginCard(
                         ) {
                             Text("Submit Password", color = Color.White, fontWeight = FontWeight.Bold)
                         }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = {
+                                isSubmitting = false
+                                twoFaPassword = ""
+                                TelegramAuthManager.resetState()
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2C2C3E)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextSecondary, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Go Back / Cancel", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                     else -> {
                         if (authState is TelegramAuthState.Error) {
@@ -948,7 +1361,6 @@ fun TelegramLoginCard(
 
                         // TELEGRAM-STYLE SEARCHABLE COUNTRY SELECTOR BOX
                         Card(
-                            onClick = { showCountryPickerDialog = true },
                             shape = RoundedCornerShape(10.dp),
                             colors = CardDefaults.cardColors(containerColor = Color(0xFF14141E)),
                             modifier = Modifier
@@ -958,28 +1370,24 @@ fun TelegramLoginCard(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .clickable { showCountryPickerDialog = true }
                                     .padding(horizontal = 14.dp, vertical = 12.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text(selectedCountry.flag, fontSize = 18.sp)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(selectedCountry.flag, fontSize = 20.sp)
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Text(
                                         selectedCountry.name,
                                         color = TextPrimary,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold
                                     )
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(selectedCountry.dialCode, color = primaryColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Icon(
                                         Icons.Default.Search,
                                         contentDescription = "Search Country",
@@ -997,12 +1405,35 @@ fun TelegramLoginCard(
                         Spacer(modifier = Modifier.height(4.dp))
                         OutlinedTextField(
                             value = phoneNumber,
-                            onValueChange = { phoneNumber = it },
+                            onValueChange = { input ->
+                                val clean = input.filter { it.isDigit() || it == '+' }
+                                phoneNumber = if (clean.startsWith(selectedCountry.dialCode)) {
+                                    clean.removePrefix(selectedCountry.dialCode)
+                                } else {
+                                    clean
+                                }
+                            },
                             prefix = {
                                 Text("${selectedCountry.flag} ${selectedCountry.dialCode} ", color = primaryColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             },
-                            placeholder = { Text("000 000 0000", color = TextSecondary) },
+                            placeholder = { Text("17X XXX XXXX", color = TextSecondary.copy(alpha = 0.5f)) },
                             singleLine = true,
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone,
+                                imeAction = androidx.compose.ui.text.input.ImeAction.Send
+                            ),
+                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                                onSend = {
+                                    keyboardController?.hide()
+                                    val cleanNum = phoneNumber.trim()
+                                    if (cleanNum.isNotBlank()) {
+                                        isSubmitting = true
+                                        val nationalNumber = cleanNum.removePrefix(selectedCountry.dialCode).trimStart('0')
+                                        val fullNumber = if (cleanNum.startsWith("+")) cleanNum else "${selectedCountry.dialCode}$nationalNumber"
+                                        TelegramAuthManager.startPhoneAuth(fullNumber)
+                                    }
+                                }
+                            ),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = primaryColor,
                                 unfocusedBorderColor = Color(0xFF2C2C3E),
@@ -1012,15 +1443,33 @@ fun TelegramLoginCard(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Button(
+                            enabled = !isSubmitting && phoneNumber.isNotBlank(),
                             onClick = {
-                                val fullNumber = if (phoneNumber.startsWith("+")) phoneNumber else "${selectedCountry.dialCode}$phoneNumber"
-                                TelegramAuthManager.startPhoneAuth(fullNumber)
+                                keyboardController?.hide()
+                                val cleanNum = phoneNumber.trim()
+                                if (cleanNum.isNotBlank()) {
+                                    isSubmitting = true
+                                    val nationalNumber = cleanNum.removePrefix(selectedCountry.dialCode).trimStart('0')
+                                    val fullNumber = if (cleanNum.startsWith("+")) cleanNum else "${selectedCountry.dialCode}$nationalNumber"
+                                    TelegramAuthManager.startPhoneAuth(fullNumber)
+                                }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = primaryColor,
+                                disabledContainerColor = primaryColor.copy(alpha = 0.5f)
+                            ),
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Send Verification Code", color = Color.White, fontWeight = FontWeight.Bold)
+                            if (isSubmitting) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Connecting to Telegram MTProto...", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            } else {
+                                Text("Send Verification Code 🚀", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -1086,12 +1535,28 @@ fun StatCard(
     label: String,
     value: String,
     primaryColor: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isStreak: Boolean = false
 ) {
     Card(
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF141420)),
-        modifier = modifier.border(1.dp, primaryColor.copy(alpha = 0.35f), RoundedCornerShape(18.dp))
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isStreak) Color(0xFF1B1116) else Color(0xFF10101C)
+        ),
+        modifier = modifier
+            .border(
+                1.dp,
+                if (isStreak) {
+                    Brush.verticalGradient(
+                        listOf(Color(0xFFEF4444).copy(alpha = 0.6f), Color(0xFFF97316).copy(alpha = 0.2f))
+                    )
+                } else {
+                    Brush.verticalGradient(
+                        listOf(primaryColor.copy(alpha = 0.45f), Color.Transparent)
+                    )
+                },
+                RoundedCornerShape(20.dp)
+            )
     ) {
         Column(
             modifier = Modifier
@@ -1101,17 +1566,127 @@ fun StatCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(primaryColor.copy(alpha = 0.16f)),
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        if (isStreak) {
+                            Brush.linearGradient(
+                                listOf(Color(0xFFDC2626).copy(alpha = 0.35f), Color(0xFFF97316).copy(alpha = 0.2f))
+                            )
+                        } else {
+                            Brush.linearGradient(
+                                listOf(primaryColor.copy(alpha = 0.25f), Color(0xFF38BDF8).copy(alpha = 0.15f))
+                            )
+                        }
+                    )
+                    .border(
+                        1.dp,
+                        if (isStreak) Color(0xFFEF4444).copy(alpha = 0.5f) else primaryColor.copy(alpha = 0.4f),
+                        RoundedCornerShape(12.dp)
+                    ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, contentDescription = label, tint = primaryColor, modifier = Modifier.size(20.dp))
+                Icon(
+                    icon,
+                    contentDescription = label,
+                    tint = if (isStreak) Color(0xFFFF6B6B) else primaryColor,
+                    modifier = Modifier.size(22.dp)
+                )
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(value, color = TextPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = value,
+                color = TextPrimary,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 17.sp
+            )
             Spacer(modifier = Modifier.height(2.dp))
-            Text(label, color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                text = label,
+                color = if (isStreak) Color(0xFFFCA5A5) else TextSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+@Composable
+fun SettingsPreferenceItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconTint: Color,
+    title: String,
+    subtitle: String,
+    badge: String? = null,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFF131320),
+        border = BorderStroke(1.dp, Color(0xFF222238)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable { onClick() }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(iconTint.copy(alpha = 0.15f))
+                    .border(1.dp, iconTint.copy(alpha = 0.35f), RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = title,
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                    if (badge != null) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = iconTint.copy(alpha = 0.2f),
+                            border = BorderStroke(1.dp, iconTint.copy(alpha = 0.4f))
+                        ) {
+                            Text(
+                                text = badge,
+                                color = iconTint,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    color = TextSecondary,
+                    fontSize = 11.sp
+                )
+            }
+
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForwardIos,
+                contentDescription = null,
+                tint = Color(0xFF4A4A6A),
+                modifier = Modifier.size(13.dp)
+            )
         }
     }
 }
@@ -1170,18 +1745,40 @@ fun AdminPasswordDialog(
 fun AdminOwnerDashboardCard(
     isOwner: Boolean,
     primaryColor: Color,
-    onOpenAddContent: () -> Unit,
-    onOpenAdminPanel: () -> Unit,
-    onUnlockAdmin: () -> Unit
+    onOpenAdminStudio: () -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF161622)),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF141320)),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.5.dp, primaryColor, RoundedCornerShape(20.dp))
+            .border(
+                border = BorderStroke(
+                    width = 1.5.dp,
+                    brush = Brush.horizontalGradient(
+                        listOf(
+                            Color(0xFFFFD700),
+                            primaryColor,
+                            Color(0xFFFF4500)
+                        )
+                    )
+                ),
+                shape = RoundedCornerShape(22.dp)
+            )
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(
+            modifier = Modifier
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF261D10).copy(alpha = 0.6f),
+                            Color(0xFF141320)
+                        )
+                    )
+                )
+                .padding(18.dp)
+        ) {
+            // Header Row with Gold Icon, Title & VIP Badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1190,55 +1787,159 @@ fun AdminOwnerDashboardCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(38.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(primaryColor.copy(alpha = 0.18f)),
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(
+                                brush = Brush.linearGradient(
+                                    listOf(Color(0xFFFFD700), Color(0xFFFF4500))
+                                )
+                            )
+                            .padding(2.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.AdminPanelSettings, contentDescription = "Admin", tint = primaryColor, modifier = Modifier.size(22.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape)
+                                .background(Color(0xFF141320)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AdminPanelSettings,
+                                contentDescription = "Studio",
+                                tint = Color(0xFFFFD700),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
-                        Text("Channel Owner Dashboard 👑", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Text(if (isOwner) "Admin & Creator Mode Active ⚡" else "Channel Admin Access Verified", color = primaryColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Creator & Admin Studio",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(text = "👑", fontSize = 14.sp)
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = if (isOwner) "Full Creator & Channel Management Active" else "Channel Admin Privileges Verified",
+                            color = Color(0xFFFFC107),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
+
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = primaryColor.copy(alpha = 0.15f),
-                    border = BorderStroke(1.dp, primaryColor)
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0xFFFFD700).copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, Color(0xFFFFD700))
                 ) {
-                    Text("OWNER", color = primaryColor, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                    Text(
+                        text = "VIP CREATOR",
+                        color = Color(0xFFFFD700),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Action Buttons Row
+            // Studio Capabilities Badges Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Button(
-                    onClick = onOpenAddContent,
-                    colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.weight(1f)
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF222035)
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Post", tint = Color.White, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Post New Content", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = "🎬 TMDB Auto-Fetch",
+                        color = Color(0xFFB0B0D0),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
                 }
-
-                OutlinedButton(
-                    onClick = onOpenAdminPanel,
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, primaryColor),
-                    modifier = Modifier.weight(1f)
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF222035)
                 ) {
-                    Icon(Icons.Default.Settings, contentDescription = "Manage", tint = primaryColor, modifier = Modifier.size(18.dp))
+                    Text(
+                        text = "📡 Telegram Indexing",
+                        color = Color(0xFFB0B0D0),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF222035)
+                ) {
+                    Text(
+                        text = "⚡ Instant Stream",
+                        color = Color(0xFFB0B0D0),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Single Hero Unified Button
+            Button(
+                onClick = onOpenAdminStudio,
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                contentPadding = PaddingValues(),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .background(
+                        brush = Brush.horizontalGradient(
+                            listOf(
+                                primaryColor,
+                                Color(0xFFE50914),
+                                Color(0xFFFF5252)
+                            )
+                        ),
+                        shape = RoundedCornerShape(14.dp)
+                    )
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Add",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Open Creator Studio & Post Content",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Admin Panel", color = primaryColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                        contentDescription = "Open",
+                        tint = Color.White,
+                        modifier = Modifier.size(12.dp)
+                    )
                 }
             }
         }

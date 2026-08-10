@@ -48,12 +48,15 @@ object SpeedTestManager {
     // FIX: Use Cloudflare CDN endpoint for speed testing instead of Unsplash.
     // Cloudflare's CDN is designed for high-throughput static delivery and won't
     // rate-limit or block like Unsplash's image API.
-    private const val TEST_ENDPOINT = "https://speed.cloudflare.com/__down?bytes=1500000"
+    // Cloudflare ultra-fast CDN trace endpoint for instant latency measurement
+    private const val PING_ENDPOINT = "https://1.1.1.1/cdn-cgi/trace"
+    // Cloudflare speed benchmark download endpoint (2.5 MB)
+    private const val TEST_ENDPOINT = "https://speed.cloudflare.com/__down?bytes=2500000"
 
     private val httpClient by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(4, TimeUnit.SECONDS)
-            .readTimeout(8, TimeUnit.SECONDS)
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
             .build()
     }
 
@@ -64,7 +67,7 @@ object SpeedTestManager {
         testJob?.cancel()
         testJob = scope.launch {
             try {
-                // Phase 1: Measure ping latency (3 HEAD requests)
+                // Phase 1: Measure ping latency (3 GET requests to Cloudflare trace endpoint)
                 var totalPing = 0L
                 val pingCount = 3
                 for (i in 1..pingCount) {
@@ -117,20 +120,51 @@ object SpeedTestManager {
 
     private fun measurePingMillis(): Long {
         val request = Request.Builder()
-            .url(TEST_ENDPOINT)
-            .head()
+            .url(PING_ENDPOINT)
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) StreamHub/4.0.3")
+            .get()
             .build()
 
         val start = System.currentTimeMillis()
-        httpClient.newCall(request).execute().use { response ->
-            response.code
-        }
+        try {
+            httpClient.newCall(request).execute().use { response ->
+                response.code
+            }
+        } catch (_: Exception) { }
         return System.currentTimeMillis() - start
     }
 
     private fun measureDownload(): Pair<Long, Long> {
         val request = Request.Builder()
             .url(TEST_ENDPOINT)
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) StreamHub/4.0.3")
+            .build()
+
+        var bytesRead = 0L
+        val startTime = System.currentTimeMillis()
+
+        httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                // Fallback to cachefly if Cloudflare rate limits
+                return measureDownloadFallback()
+            }
+            response.body?.byteStream()?.use { input ->
+                val buffer = ByteArray(8192)
+                var read: Int
+                while (input.read(buffer).also { read = it } != -1) {
+                    bytesRead += read.toLong()
+                }
+            } ?: throw Exception("Empty response body")
+        }
+
+        val durationMs = System.currentTimeMillis() - startTime
+        return Pair(bytesRead, durationMs)
+    }
+
+    private fun measureDownloadFallback(): Pair<Long, Long> {
+        val request = Request.Builder()
+            .url("https://cachefly.cachefly.net/2mb.test")
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) StreamHub/4.0.3")
             .build()
 
         var bytesRead = 0L

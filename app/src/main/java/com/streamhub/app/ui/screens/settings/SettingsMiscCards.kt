@@ -1,5 +1,6 @@
 package com.streamhub.app.ui.screens.settings
 
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -64,6 +65,17 @@ fun SpeedTestCard(currentAccent: AppThemeAccent) {
     val testState by SpeedTestManager.testState.collectAsState()
     val scope = rememberCoroutineScope()
 
+    val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.9f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(800, easing = androidx.compose.animation.core.LinearEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
+
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
@@ -76,25 +88,31 @@ fun SpeedTestCard(currentAccent: AppThemeAccent) {
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(currentAccent.color.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Security,
-                        contentDescription = "Speed Test",
-                        tint = currentAccent.color,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text("Stream Server Speed & Latency Test ⚡", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text("Benchmark streaming CDN ping & download bandwidth", color = TextSecondary, fontSize = 11.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(currentAccent.color.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Security,
+                            contentDescription = "Speed Test",
+                            tint = currentAccent.color,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text("Stream CDN & Latency Speedometer ⚡", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("Real-time network ping & download bandwidth benchmark", color = TextSecondary, fontSize = 11.sp)
+                    }
                 }
             }
 
@@ -105,18 +123,44 @@ fun SpeedTestCard(currentAccent: AppThemeAccent) {
                     Button(
                         onClick = { scope.launch { SpeedTestManager.runSpeedTest() } },
                         colors = ButtonDefaults.buttonColors(containerColor = currentAccent.color),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Run Speed Test", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("🚀 Run Speed Test", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
                     }
                 }
 
                 is SpeedTestState.Testing -> {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                        CircularProgressIndicator(color = currentAccent.color, modifier = Modifier.size(28.dp))
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Testing connection ping & bandwidth...", color = TextSecondary, fontSize = 12.sp)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF161622), RoundedCornerShape(12.dp))
+                            .padding(16.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                color = currentAccent.color.copy(alpha = pulseAlpha),
+                                strokeWidth = 3.dp,
+                                modifier = Modifier.size(54.dp)
+                            )
+                            Text("⚡", fontSize = 20.sp)
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text("Benchmarking CDN ping & streaming throughput...", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Measuring Cloudflare & Telegram Media edge servers", color = TextSecondary, fontSize = 10.sp)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = { SpeedTestManager.cancelTest() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0x33EF4444)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Text("Cancel", color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
 
@@ -125,47 +169,100 @@ fun SpeedTestCard(currentAccent: AppThemeAccent) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFF161622), RoundedCornerShape(10.dp))
-                            .padding(12.dp)
+                            .background(Color(0xFF13131F), RoundedCornerShape(12.dp))
+                            .border(1.dp, Color(0xFF2A2A3E), RoundedCornerShape(12.dp))
+                            .padding(14.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column {
-                                Text("Latency Ping", color = TextSecondary, fontSize = 11.sp)
-                                Text("${res.pingMs} ms", color = Color(0xFF4ADE80), fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Text("LATENCY PING", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("${res.pingMs} ms", color = Color(0xFF10B981), fontWeight = FontWeight.Bold, fontSize = 18.sp)
                             }
+
+                            Box(
+                                modifier = Modifier
+                                    .height(28.dp)
+                                    .width(1.dp)
+                                    .background(Color(0xFF2A2A3E))
+                            )
+
                             Column {
-                                Text("Bandwidth Speed", color = TextSecondary, fontSize = 11.sp)
-                                Text("${res.speedMbps} Mbps", color = AccentOrange, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Text("DOWNLOAD BANDWIDTH", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("${res.speedMbps} Mbps", color = AccentOrange, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .height(28.dp)
+                                    .width(1.dp)
+                                    .background(Color(0xFF2A2A3E))
+                            )
+
+                            Column {
+                                Text("RATING", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    text = if (res.speedMbps >= 35.0) "4K Ready" else if (res.speedMbps >= 15.0) "1080p Ready" else "720p Ready",
+                                    color = currentAccent.color,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
                             }
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Recommended: ${res.qualityRating}", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(currentAccent.color.copy(alpha = 0.12f))
+                                .padding(10.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("✨ ", fontSize = 12.sp)
+                                Text(
+                                    text = "Streaming Quality: ${res.qualityRating}",
+                                    color = TextPrimary,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
                     }
+
                     Spacer(modifier = Modifier.height(10.dp))
                     Button(
                         onClick = { scope.launch { SpeedTestManager.runSpeedTest() } },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E1E2D)),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Retest Connection", color = TextPrimary, fontSize = 11.sp)
+                        Text("🔄 Retest Connection", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                     }
                 }
 
                 is SpeedTestState.Error -> {
                     val err = testState as SpeedTestState.Error
-                    Text("Test failed: ${err.message}", color = PrimaryRed, fontSize = 12.sp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0x22EF4444), RoundedCornerShape(10.dp))
+                            .padding(12.dp)
+                    ) {
+                        Text("Test failed: ${err.message}", color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
                     Button(
                         onClick = { scope.launch { SpeedTestManager.runSpeedTest() } },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Retry Test", color = Color.White, fontSize = 11.sp)
+                        Text("Retry Speed Test", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

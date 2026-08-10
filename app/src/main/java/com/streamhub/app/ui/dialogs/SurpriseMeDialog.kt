@@ -67,7 +67,42 @@ fun SurpriseMeDialog(
     onDismiss: () -> Unit,
     onMediaClick: (MediaItem) -> Unit
 ) {
-    if (catalog.isEmpty()) return
+    if (catalog.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xB3000000))
+                .clickable { onDismiss() },
+            contentAlignment = Alignment.Center
+        ) {
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                modifier = Modifier
+                    .width(320.dp)
+                    .padding(20.dp)
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("🎰 Surprise Me Roulette", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "No shows in catalog yet!\nLog into Telegram via Profile or add content as Admin to spin the roulette.",
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = { onDismiss() },
+                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary)
+                    ) {
+                        Text("Got it", color = Color.White)
+                    }
+                }
+            }
+        }
+        return
+    }
 
     var selectedIndex by remember { mutableIntStateOf(0) }
     var isSpinning by remember { mutableStateOf(true) }

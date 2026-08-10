@@ -224,7 +224,7 @@ fun HeroCarousel(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (isBookmarked) "In My List" else "+ My List",
+                                text = if (isBookmarked) "In My List" else "My List",
                                 color = primaryColor,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp

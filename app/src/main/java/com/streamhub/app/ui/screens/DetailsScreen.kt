@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
@@ -281,6 +282,8 @@ fun DetailsScreen(
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
                     }
+
+
                 }
             }
 
@@ -605,6 +608,11 @@ fun DetailsScreen(
             onSave = { updatedItem ->
                 repository.saveMediaItem(updatedItem)
                 showAdminEditDialog = false
+            },
+            onDelete = { itemId ->
+                repository.deleteMediaItem(itemId)
+                showAdminEditDialog = false
+                onBackClick()
             }
         )
     }
