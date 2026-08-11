@@ -374,13 +374,15 @@ object MetadataFetchManager {
             }
             val studioStr = studioList.joinToString(", ")
 
-            // Producers
+            // Producers (filtering out Studio names so studios never appear in producers list)
             val producerList = mutableListOf<String>()
             val producersArr = node.optJSONArray("producers")
             if (producersArr != null) {
                 for (pi in 0 until producersArr.length()) {
                     val pName = producersArr.getJSONObject(pi).optString("name", "")
-                    if (pName.isNotBlank()) producerList.add(pName)
+                    if (pName.isNotBlank() && !studioList.contains(pName) && !pName.equalsIgnoreCase(studioStr)) {
+                        producerList.add(pName)
+                    }
                 }
             }
             var producerStr = producerList.joinToString(", ")
@@ -421,7 +423,12 @@ object MetadataFetchManager {
                 tmdbResult.getOrNull()?.let { tmdbMeta ->
                     if (youtubeTrailerId.isBlank()) youtubeTrailerId = tmdbMeta.youtubeTrailerId
                     if (castListStr.isBlank()) castListStr = tmdbMeta.castList
-                    if (producerStr.isBlank()) producerStr = tmdbMeta.producers
+                    if (producerStr.isBlank()) {
+                        producerStr = tmdbMeta.producers.split(", ")
+                            .map { it.trim() }
+                            .filter { p -> p.isNotBlank() && !studioList.contains(p) && !p.equalsIgnoreCase(studioStr) }
+                            .joinToString(", ")
+                    }
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "TMDB anime fallback failed: ${e.message}")
