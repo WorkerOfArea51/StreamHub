@@ -47,6 +47,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -56,12 +57,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.streamhub.app.data.api.MetadataFetchManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -107,17 +112,25 @@ fun DetailsScreen(
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     var selectedSeasonNumber by remember { mutableIntStateOf(1) }
     var isSeasonDropdownExpanded by remember { mutableStateOf(false) }
-    var isPlayingTrailer by remember { mutableStateOf(false) }
-    var webViewRef by remember { mutableStateOf<WebView?>(null) }
-
-    DisposableEffect(webViewRef) {
-        onDispose {
-            webViewRef?.stopLoading()
-            webViewRef?.destroy()
-        }
-    }
+    var showTrailerDialog by remember { mutableStateOf(false) }
+    var activeTrailerId by remember { mutableStateOf("") }
+    var malRecs by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
 
     val mediaItem = catalog.firstOrNull { it.id == mediaId }
+
+    LaunchedEffect(mediaItem?.malId) {
+        val mId = mediaItem?.malId ?: ""
+        if (mId.isNotBlank()) {
+            try {
+                val fetched = MetadataFetchManager.fetchMALRecommendations(mId)
+                if (fetched.isNotEmpty()) {
+                    malRecs = fetched
+                }
+            } catch (e: Exception) {
+                Log.w("DetailsScreen", "Failed to load MAL recs: ${e.message}")
+            }
+        }
+    }
 
     if (mediaItem == null) {
         Box(
@@ -150,21 +163,23 @@ fun DetailsScreen(
         if (filtered.isEmpty() && selectedSeasonNumber == 1) mediaItem.episodes else filtered
     }
 
-    // Populate 10 Recommendations under MORE LIKE THIS tab
-    val recommendations = remember(catalog, mediaId) {
+    // Populate Recommendations under MORE LIKE THIS tab (Prefers real MAL recommendations)
+    val fallbackRecommendations = remember(catalog, mediaId) {
         listOf(
             MediaItem(id = "rec_1", title = "Sword Art Online", category = "ANIME", rating = "7.20", releaseYear = "2012", posterUrl = "https://cdn.myanimelist.net/images/anime/11/39717l.jpg", description = "VRMMO fantasy game survival."),
             MediaItem(id = "rec_2", title = "Shangri-La Frontier", category = "ANIME", rating = "8.05", releaseYear = "2023", posterUrl = "https://cdn.myanimelist.net/images/anime/1622/137688l.jpg", description = "God-tier VR gaming adventure."),
             MediaItem(id = "rec_3", title = "DanMachi (Dungeon)", category = "ANIME", rating = "7.55", releaseYear = "2015", posterUrl = "https://cdn.myanimelist.net/images/anime/8/72117l.jpg", description = "Bell Cranel levels up in Orario dungeon."),
-            MediaItem(id = "rec_4", title = "Jujutsu Kaisen", category = "ANIME", rating = "8.65", releaseYear = "2020", posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600", description = "Cursed sorcery and high-octane battles."),
-            MediaItem(id = "rec_5", title = "Demon Slayer", category = "ANIME", rating = "8.82", releaseYear = "2022", posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600", description = "Tanjiro fights Upper Moon demons."),
-            MediaItem(id = "rec_6", title = "Attack on Titan", category = "ANIME", rating = "9.05", releaseYear = "2013", posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600", description = "Humanity fights massive Titans."),
-            MediaItem(id = "rec_7", title = "Chainsaw Man", category = "ANIME", rating = "8.50", releaseYear = "2022", posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600", description = "Denji fuses with Pochita."),
-            MediaItem(id = "rec_8", title = "Bleach: TYBW", category = "ANIME", rating = "9.00", releaseYear = "2022", posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600", description = "Soul Reapers vs Quincies."),
-            MediaItem(id = "rec_9", title = "FMA: Brotherhood", category = "ANIME", rating = "9.10", releaseYear = "2009", posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600", description = "Elric brothers search for Philosopher Stone."),
-            MediaItem(id = "rec_10", title = "Hunter x Hunter", category = "ANIME", rating = "9.04", releaseYear = "2011", posterUrl = "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600", description = "Gon Freecss seeks to become a Hunter.")
+            MediaItem(id = "rec_4", title = "Jujutsu Kaisen", category = "ANIME", rating = "8.65", releaseYear = "2020", posterUrl = "https://cdn.myanimelist.net/images/anime/1171/109222l.jpg", description = "Cursed sorcery and high-octane battles."),
+            MediaItem(id = "rec_5", title = "Demon Slayer", category = "ANIME", rating = "8.82", releaseYear = "2022", posterUrl = "https://cdn.myanimelist.net/images/anime/1286/99889l.jpg", description = "Tanjiro fights Upper Moon demons."),
+            MediaItem(id = "rec_6", title = "Attack on Titan", category = "ANIME", rating = "9.05", releaseYear = "2013", posterUrl = "https://cdn.myanimelist.net/images/anime/10/47347l.jpg", description = "Humanity fights massive Titans."),
+            MediaItem(id = "rec_7", title = "Chainsaw Man", category = "ANIME", rating = "8.50", releaseYear = "2022", posterUrl = "https://cdn.myanimelist.net/images/anime/1806/126216l.jpg", description = "Denji fuses with Pochita."),
+            MediaItem(id = "rec_8", title = "Bleach: TYBW", category = "ANIME", rating = "9.00", releaseYear = "2022", posterUrl = "https://cdn.myanimelist.net/images/anime/1764/126627l.jpg", description = "Soul Reapers vs Quincies."),
+            MediaItem(id = "rec_9", title = "FMA: Brotherhood", category = "ANIME", rating = "9.10", releaseYear = "2009", posterUrl = "https://cdn.myanimelist.net/images/anime/1221/91661l.jpg", description = "Elric brothers search for Philosopher Stone."),
+            MediaItem(id = "rec_10", title = "Hunter x Hunter", category = "ANIME", rating = "9.04", releaseYear = "2011", posterUrl = "https://cdn.myanimelist.net/images/anime/1337/99013l.jpg", description = "Gon Freecss seeks to become a Hunter.")
         )
     }
+
+    val recommendations = if (malRecs.isNotEmpty()) malRecs else fallbackRecommendations
 
     Scaffold(
         floatingActionButton = {
@@ -186,7 +201,7 @@ fun DetailsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Header Backdrop Container (Native YouTube Trailer Launcher)
+            // Header Backdrop Container (In-App YouTube Trailer Launcher)
             item {
                 val playTrailer = {
                     val rawId = mediaItem.trailerId.ifEmpty { "HkIKAnwLZCw" }
@@ -195,12 +210,8 @@ fun DetailsScreen(
                         rawId.contains("youtu.be/") -> rawId.substringAfter("youtu.be/").substringBefore("?")
                         else -> rawId
                     }
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$cleanId"))
-                    try {
-                        context.startActivity(intent)
-                    } catch (e: Exception) {
-                        Log.e("DetailsScreen", "Failed to open trailer intent: ${e.message}")
-                    }
+                    activeTrailerId = cleanId
+                    showTrailerDialog = true
                 }
 
                 Box(
@@ -588,6 +599,48 @@ fun DetailsScreen(
                 onBackClick()
             }
         )
+    }
+
+    if (showTrailerDialog && activeTrailerId.isNotBlank()) {
+        Dialog(
+            onDismissRequest = { showTrailerDialog = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+            ) {
+                AndroidView(
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            setBackgroundColor(android.graphics.Color.BLACK)
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.mediaPlaybackRequiresUserGesture = false
+                            webChromeClient = WebChromeClient()
+                            webViewClient = WebViewClient()
+                            loadUrl("https://www.youtube.com/embed/$activeTrailerId?autoplay=1&playsinline=1")
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .align(Alignment.Center)
+                )
+
+                IconButton(
+                    onClick = { showTrailerDialog = false },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(24.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xAA000000))
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Close Trailer", tint = Color.White)
+                }
+            }
+        }
     }
 }
 

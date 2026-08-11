@@ -5,6 +5,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import com.streamhub.app.data.models.MediaItem
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
@@ -460,6 +462,54 @@ object MetadataFetchManager {
                 maturityRating = maturityStr
             )
             return Result.success(fetched)
+        }
+    }
+
+    suspend fun fetchMALRecommendations(malId: String): List<MediaItem> = withContext(Dispatchers.IO) {
+        if (malId.isBlank()) return@withContext emptyList()
+        val clientId = Secrets.MAL_CLIENT_ID
+        if (clientId.isBlank()) return@withContext emptyList()
+
+        val url = "${Secrets.MAL_BASE_URL}anime/$malId?fields=recommendations"
+        val request = Request.Builder()
+            .url(url)
+            .header("X-MAL-CLIENT-ID", clientId)
+            .build()
+
+        try {
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext emptyList()
+                val body = response.body?.string() ?: return@withContext emptyList()
+                val json = JSONObject(body)
+                val recsArr = json.optJSONArray("recommendations") ?: return@withContext emptyList()
+                val result = mutableListOf<MediaItem>()
+
+                for (i in 0 until minOf(10, recsArr.length())) {
+                    val recNode = recsArr.getJSONObject(i).optJSONObject("node") ?: continue
+                    val id = recNode.optInt("id", 0).toString()
+                    val title = recNode.optString("title", "")
+                    val mainPic = recNode.optJSONObject("main_picture")
+                    val posterUrl = mainPic?.optString("large", mainPic.optString("medium", "")) ?: ""
+
+                    if (title.isNotBlank() && posterUrl.isNotBlank()) {
+                        result.add(
+                            MediaItem(
+                                id = "mal_rec_$id",
+                                title = title,
+                                category = "ANIME",
+                                posterUrl = posterUrl,
+                                bannerUrl = posterUrl,
+                                malId = id,
+                                description = "Recommended by MyAnimeList community."
+                            )
+                        )
+                    }
+                }
+                result
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to fetch MAL recommendations: ${e.message}")
+            emptyList()
         }
     }
 
