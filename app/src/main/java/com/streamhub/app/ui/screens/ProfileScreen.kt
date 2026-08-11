@@ -429,6 +429,8 @@ fun ProfileScreen(
     androidx.compose.runtime.LaunchedEffect(isOwnerUser) {
         if (isOwnerUser) {
             com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
+        } else {
+            com.streamhub.app.data.AdminManager.disableAdmin()
         }
     }
 

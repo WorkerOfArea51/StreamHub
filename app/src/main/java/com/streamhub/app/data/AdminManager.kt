@@ -23,7 +23,7 @@ object AdminManager {
 
     private const val TAG = "AdminManager"
 
-    private val _isAdminMode = MutableStateFlow(true)
+    private val _isAdminMode = MutableStateFlow(false)
     val isAdminMode: StateFlow<Boolean> = _isAdminMode.asStateFlow()
 
     /**
