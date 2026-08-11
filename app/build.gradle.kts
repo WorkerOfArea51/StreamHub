@@ -29,8 +29,9 @@ android {
         applicationId = "com.streamhub.app"
         minSdk = 24
         targetSdk = 34
-        versionCode = 71
-        versionName = "4.0.3"
+        val envVersionName = System.getenv("VERSION_NAME")?.removePrefix("v")?.removePrefix("V")
+        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 78
+        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.78"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
