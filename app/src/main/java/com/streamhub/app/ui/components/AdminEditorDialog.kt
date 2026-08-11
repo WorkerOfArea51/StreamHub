@@ -382,6 +382,19 @@ fun AdminEditorDialog(
                                             if (meta.releaseYear > 0) {
                                                 premiered = meta.releaseYear.toString()
                                             }
+                                            if (meta.studio.isNotBlank()) studio = meta.studio
+                                            if (meta.producers.isNotBlank()) producers = meta.producers
+                                            if (meta.source.isNotBlank()) source = meta.source
+                                            if (meta.duration.isNotBlank()) duration = meta.duration
+                                            if (meta.status.isNotBlank()) status = meta.status
+                                            if (meta.totalEpisodes.isNotBlank()) totalEpisodes = meta.totalEpisodes
+                                            if (meta.alternativeTitles.isNotBlank()) synonyms = meta.alternativeTitles
+                                            if (meta.malId.isNotBlank()) malId = meta.malId
+                                            if (meta.tmdbId.isNotBlank()) tmdbId = meta.tmdbId
+                                            if (meta.castList.isNotBlank()) castText = meta.castList
+                                            if (meta.youtubeTrailerId.isNotBlank()) trailerId = meta.youtubeTrailerId
+                                            if (meta.aired.isNotBlank()) aired = meta.aired
+                                            if (meta.maturityRating.isNotBlank()) maturityRating = meta.maturityRating
                                             isFeatured = true
                                             isTrending = true
                                         },
