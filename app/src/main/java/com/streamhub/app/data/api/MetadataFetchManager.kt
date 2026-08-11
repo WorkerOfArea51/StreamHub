@@ -412,82 +412,19 @@ object MetadataFetchManager {
                 if (endDate.isNotBlank()) "$startDate to $endDate" else "$startDate to Ongoing"
             } else ""
 
-            // Fetch Cast List & YouTube Trailer ID via Jikan API & TMDB fallback
+            // Fetch YouTube Trailer ID & Cast List via TMDB fallback if needed
             var youtubeTrailerId = ""
             var castListStr = ""
 
-            if (malIdNum > 0) {
-                try {
-                    val jikanUrl = "https://api.jikan.moe/v4/anime/$malIdNum/full"
-                    val jReq = Request.Builder().url(jikanUrl).header("Accept", "application/json").build()
-
-                    httpClient.newCall(jReq).execute().use { jResp ->
-                        if (jResp.isSuccessful) {
-                            val jBody = jResp.body?.string()
-                            if (!jBody.isNullOrBlank()) {
-                                val jJson = JSONObject(jBody).optJSONObject("data")
-                                if (jJson != null) {
-                                    val trailerObj = jJson.optJSONObject("trailer")
-                                    youtubeTrailerId = trailerObj?.optString("youtube_id", "") ?: ""
-
-                                    if (producerStr.isBlank()) {
-                                        val jProdArr = jJson.optJSONArray("producers")
-                                        if (jProdArr != null) {
-                                            val jProds = mutableListOf<String>()
-                                            for (jpi in 0 until jProdArr.length()) {
-                                                val jpName = jProdArr.getJSONObject(jpi).optString("name", "")
-                                                if (jpName.isNotBlank()) jProds.add(jpName)
-                                            }
-                                            producerStr = jProds.joinToString(", ")
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Jikan full details fetch failed: ${e.message}")
+            try {
+                val tmdbResult = fetchFromTMDB(finalTitle, "Anime")
+                tmdbResult.getOrNull()?.let { tmdbMeta ->
+                    if (youtubeTrailerId.isBlank()) youtubeTrailerId = tmdbMeta.youtubeTrailerId
+                    if (castListStr.isBlank()) castListStr = tmdbMeta.castList
+                    if (producerStr.isBlank()) producerStr = tmdbMeta.producers
                 }
-
-                // Fetch anime characters for cast list
-                try {
-                    val charUrl = "https://api.jikan.moe/v4/anime/$malIdNum/characters"
-                    val cReq = Request.Builder().url(charUrl).header("Accept", "application/json").build()
-
-                    httpClient.newCall(cReq).execute().use { cResp ->
-                        if (cResp.isSuccessful) {
-                            val cBody = cResp.body?.string()
-                            if (!cBody.isNullOrBlank()) {
-                                val cData = JSONObject(cBody).optJSONArray("data")
-                                if (cData != null) {
-                                    val castNames = mutableListOf<String>()
-                                    for (ci in 0 until minOf(8, cData.length())) {
-                                        val charObj = cData.getJSONObject(ci).optJSONObject("character")
-                                        val charName = charObj?.optString("name", "")
-                                        if (!charName.isNullOrBlank()) castNames.add(charName)
-                                    }
-                                    castListStr = castNames.joinToString(", ")
-                                }
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Jikan characters fetch failed: ${e.message}")
-                }
-            }
-
-            // TMDB fallback for trailer ID or cast list if Jikan didn't return trailer
-            if (youtubeTrailerId.isBlank()) {
-                try {
-                    val tmdbResult = fetchFromTMDB(finalTitle, "Anime")
-                    tmdbResult.getOrNull()?.let { tmdbMeta ->
-                        if (youtubeTrailerId.isBlank()) youtubeTrailerId = tmdbMeta.youtubeTrailerId
-                        if (castListStr.isBlank()) castListStr = tmdbMeta.castList
-                        if (producerStr.isBlank()) producerStr = tmdbMeta.producers
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "TMDB anime fallback failed: ${e.message}")
-                }
+            } catch (e: Exception) {
+                Log.w(TAG, "TMDB anime fallback failed: ${e.message}")
             }
 
             // Score precision: e.g. 8.14 instead of 8.1
