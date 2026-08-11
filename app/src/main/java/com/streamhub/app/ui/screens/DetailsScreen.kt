@@ -1,5 +1,8 @@
 package com.streamhub.app.ui.screens
 
+import android.content.Intent
+import android.net.Uri
+import android.util.Log
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -183,93 +186,65 @@ fun DetailsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Header Backdrop Container (In-App HTML5 YouTube Trailer Player)
+            // Header Backdrop Container (Native YouTube Trailer Launcher)
             item {
+                val playTrailer = {
+                    val rawId = mediaItem.trailerId.ifEmpty { "HkIKAnwLZCw" }
+                    val cleanId = when {
+                        rawId.contains("v=") -> rawId.substringAfter("v=").substringBefore("&")
+                        rawId.contains("youtu.be/") -> rawId.substringAfter("youtu.be/").substringBefore("?")
+                        else -> rawId
+                    }
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/watch?v=$cleanId"))
+                    try {
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        Log.e("DetailsScreen", "Failed to open trailer intent: ${e.message}")
+                    }
+                }
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(280.dp)
                 ) {
-                    if (isPlayingTrailer && mediaItem.trailerId.isNotEmpty()) {
-                        // Embedded HTML5 YouTube Trailer Video Player
-                        AndroidView(
-                            factory = { ctx ->
-                                WebView(ctx).apply {
-                                    settings.javaScriptEnabled = true
-                                    settings.domStorageEnabled = true
-                                    settings.mediaPlaybackRequiresUserGesture = false
-                                    settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
-                                    webChromeClient = WebChromeClient()
-                                    webViewClient = object : WebViewClient() {
-                                        override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
-                                            val host = request.url.host ?: ""
-                                            return !(host.endsWith("youtube-nocookie.com") || host.endsWith("youtube.com"))
-                                        }
-                                    }
+                    // MAL YouTube Cover Backdrop Image
+                    AsyncImage(
+                        model = backdropUrl,
+                        contentDescription = mediaItem.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable { playTrailer() }
+                    )
 
-                                    val embedHtml = """
-                                        <!DOCTYPE html>
-                                        <html>
-                                        <head>
-                                            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                                            <style>
-                                                body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #000; overflow: hidden; }
-                                                .embed-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; }
-                                                .embed-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
-                                            </style>
-                                        </head>
-                                        <body>
-                                            <div class="embed-container">
-                                                <iframe src="https://www.youtube-nocookie.com/embed/${mediaItem.trailerId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-                                            </div>
-                                        </body>
-                                        </html>
-                                    """.trimIndent()
-
-                                    loadDataWithBaseURL("https://www.youtube.com", embedHtml, "text/html", "utf-8", null)
-                                }.also { webViewRef = it }
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        // MAL YouTube Cover Backdrop Image (Photo 1)
-                        AsyncImage(
-                            model = backdropUrl,
-                            contentDescription = mediaItem.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clickable { isPlayingTrailer = true }
-                        )
-
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(Color(0x550A0A0F), Color(0x990A0A0F), BackgroundDark)
-                                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(Color(0x550A0A0F), Color(0x990A0A0F), BackgroundDark)
                                 )
-                        )
-
-                        // YouTube Red Play Icon Overlay
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .clip(CircleShape)
-                                .background(Color(0xEEFF0000))
-                                .clickable { isPlayingTrailer = true }
-                                .padding(18.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PlayArrow,
-                                contentDescription = "Play In-App YouTube Trailer",
-                                tint = Color.White,
-                                modifier = Modifier
-                                    .width(36.dp)
-                                    .height(36.dp)
                             )
-                        }
+                    )
+
+                    // YouTube Red Play Icon Overlay
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .clip(CircleShape)
+                            .background(Color(0xEEFF0000))
+                            .clickable { playTrailer() }
+                            .padding(18.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Play YouTube Trailer",
+                            tint = Color.White,
+                            modifier = Modifier
+                                .width(36.dp)
+                                .height(36.dp)
+                        )
                     }
 
                     IconButton(
@@ -282,8 +257,6 @@ fun DetailsScreen(
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
                     }
-
-
                 }
             }
 
