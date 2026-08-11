@@ -270,7 +270,7 @@ object MetadataFetchManager {
         }
 
         val encodedQuery = URLEncoder.encode(query.trim(), "UTF-8")
-        val url = "${Secrets.MAL_BASE_URL}anime?q=$encodedQuery&limit=1&fields=id,title,main_picture,synopsis,mean,start_date,end_date,genres,alternative_titles,num_episodes,status,media_type,source,average_episode_duration,studios,rating"
+        val url = "${Secrets.MAL_BASE_URL}anime?q=$encodedQuery&limit=1&fields=id,title,main_picture,synopsis,mean,start_date,end_date,genres,alternative_titles,num_episodes,status,media_type,source,average_episode_duration,studios,producers,rating"
 
         val request = Request.Builder()
             .url(url)
@@ -361,7 +361,7 @@ object MetadataFetchManager {
             }
 
             val avgDurationSec = node.optInt("average_episode_duration", 0)
-            val durationStr = if (avgDurationSec > 0) "${avgDurationSec / 60}m" else ""
+            val durationStr = if (avgDurationSec > 0) "${avgDurationSec / 60} min. per ep." else ""
 
             // Studios
             val studioList = mutableListOf<String>()
@@ -374,15 +374,26 @@ object MetadataFetchManager {
             }
             val studioStr = studioList.joinToString(", ")
 
+            // Producers
+            val producerList = mutableListOf<String>()
+            val producersArr = node.optJSONArray("producers")
+            if (producersArr != null) {
+                for (pi in 0 until producersArr.length()) {
+                    val pName = producersArr.getJSONObject(pi).optString("name", "")
+                    if (pName.isNotBlank()) producerList.add(pName)
+                }
+            }
+            var producerStr = producerList.joinToString(", ")
+
             // Rating / Maturity
             val rawMaturity = node.optString("rating", "")
             val maturityStr = when (rawMaturity.lowercase()) {
-                "pg_13" -> "13+"
-                "r" -> "17+"
-                "r+" -> "17+"
-                "rx" -> "18+"
-                "g" -> "All Ages"
-                "pg" -> "PG"
+                "g" -> "G - All Ages"
+                "pg" -> "PG - Children"
+                "pg_13" -> "PG-13 - Teens 13+"
+                "r" -> "R - 17+ (violence & profanity)"
+                "r+" -> "R+ - Mild Nudity"
+                "rx" -> "Rx - Hentai"
                 else -> rawMaturity.uppercase()
             }
 
@@ -401,22 +412,106 @@ object MetadataFetchManager {
                 if (endDate.isNotBlank()) "$startDate to $endDate" else "$startDate to Ongoing"
             } else ""
 
+            // Fetch Cast List & YouTube Trailer ID via Jikan API & TMDB fallback
+            var youtubeTrailerId = ""
+            var castListStr = ""
+
+            if (malIdNum > 0) {
+                try {
+                    val jikanUrl = "https://api.jikan.moe/v4/anime/$malIdNum/full"
+                    val jReq = Request.Builder().url(jikanUrl).header("Accept", "application/json").build()
+
+                    httpClient.newCall(jReq).execute().use { jResp ->
+                        if (jResp.isSuccessful) {
+                            val jBody = jResp.body?.string()
+                            if (!jBody.isNullOrBlank()) {
+                                val jJson = JSONObject(jBody).optJSONObject("data")
+                                if (jJson != null) {
+                                    val trailerObj = jJson.optJSONObject("trailer")
+                                    youtubeTrailerId = trailerObj?.optString("youtube_id", "") ?: ""
+
+                                    if (producerStr.isBlank()) {
+                                        val jProdArr = jJson.optJSONArray("producers")
+                                        if (jProdArr != null) {
+                                            val jProds = mutableListOf<String>()
+                                            for (jpi in 0 until jProdArr.length()) {
+                                                val jpName = jProdArr.getJSONObject(jpi).optString("name", "")
+                                                if (jpName.isNotBlank()) jProds.add(jpName)
+                                            }
+                                            producerStr = jProds.joinToString(", ")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Jikan full details fetch failed: ${e.message}")
+                }
+
+                // Fetch anime characters for cast list
+                try {
+                    val charUrl = "https://api.jikan.moe/v4/anime/$malIdNum/characters"
+                    val cReq = Request.Builder().url(charUrl).header("Accept", "application/json").build()
+
+                    httpClient.newCall(cReq).execute().use { cResp ->
+                        if (cResp.isSuccessful) {
+                            val cBody = cResp.body?.string()
+                            if (!cBody.isNullOrBlank()) {
+                                val cData = JSONObject(cBody).optJSONArray("data")
+                                if (cData != null) {
+                                    val castNames = mutableListOf<String>()
+                                    for (ci in 0 until minOf(8, cData.length())) {
+                                        val charObj = cData.getJSONObject(ci).optJSONObject("character")
+                                        val charName = charObj?.optString("name", "")
+                                        if (!charName.isNullOrBlank()) castNames.add(charName)
+                                    }
+                                    castListStr = castNames.joinToString(", ")
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Jikan characters fetch failed: ${e.message}")
+                }
+            }
+
+            // TMDB fallback for trailer ID or cast list if Jikan didn't return trailer
+            if (youtubeTrailerId.isBlank()) {
+                try {
+                    val tmdbResult = fetchFromTMDB(finalTitle, "Anime")
+                    tmdbResult.getOrNull()?.let { tmdbMeta ->
+                        if (youtubeTrailerId.isBlank()) youtubeTrailerId = tmdbMeta.youtubeTrailerId
+                        if (castListStr.isBlank()) castListStr = tmdbMeta.castList
+                        if (producerStr.isBlank()) producerStr = tmdbMeta.producers
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "TMDB anime fallback failed: ${e.message}")
+                }
+            }
+
+            // Score precision: e.g. 8.14 instead of 8.1
+            val formattedRating = if (mean > 0) String.format("%.2f", mean).trimEnd('0').trimEnd('.') else ""
+
             val fetched = FetchedMetadata(
                 title = finalTitle,
                 synopsis = synopsis,
                 posterUrl = posterUrl,
                 backdropUrl = posterUrl,
                 releaseYear = releaseYear,
-                rating = if (mean > 0) String.format("%.1f", mean) else "",
+                rating = formattedRating,
                 category = "Anime",
                 genres = genresList.take(5),
                 studio = studioStr,
+                producers = producerStr,
                 source = formattedSource,
                 duration = durationStr,
                 status = formattedStatus,
                 totalEpisodes = totalEpisodesStr,
                 alternativeTitles = altTitlesCombo.distinct().take(4).joinToString(", "),
                 malId = if (malIdNum > 0) malIdNum.toString() else "",
+                castList = castListStr,
+                youtubeTrailerId = youtubeTrailerId,
                 aired = airedRange,
                 maturityRating = maturityStr
             )
