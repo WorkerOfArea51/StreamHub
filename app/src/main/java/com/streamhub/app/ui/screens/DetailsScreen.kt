@@ -618,9 +618,26 @@ fun DetailsScreen(
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             settings.mediaPlaybackRequiresUserGesture = false
+                            settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
                             webChromeClient = WebChromeClient()
                             webViewClient = WebViewClient()
-                            loadUrl("https://www.youtube.com/embed/$activeTrailerId?autoplay=1&playsinline=1")
+
+                            val embedHtml = """
+                                <!DOCTYPE html>
+                                <html>
+                                <head>
+                                    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+                                    <style>
+                                        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #000; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+                                        iframe { width: 100%; height: 100%; border: 0; }
+                                    </style>
+                                </head>
+                                <body>
+                                    <iframe src="https://www.youtube-nocookie.com/embed/$activeTrailerId?autoplay=1&playsinline=1&rel=0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                                </body>
+                                </html>
+                            """.trimIndent()
+                            loadDataWithBaseURL("https://www.youtube.com", embedHtml, "text/html", "utf-8", null)
                         }
                     },
                     modifier = Modifier

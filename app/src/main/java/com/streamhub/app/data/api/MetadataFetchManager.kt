@@ -470,7 +470,7 @@ object MetadataFetchManager {
         val clientId = Secrets.MAL_CLIENT_ID
         if (clientId.isBlank()) return@withContext emptyList()
 
-        val url = "${Secrets.MAL_BASE_URL}anime/$malId?fields=recommendations"
+        val url = "${Secrets.MAL_BASE_URL}anime/$malId?fields=recommendations{alternative_titles,main_picture}"
         val request = Request.Builder()
             .url(url)
             .header("X-MAL-CLIENT-ID", clientId)
@@ -487,15 +487,23 @@ object MetadataFetchManager {
                 for (i in 0 until minOf(10, recsArr.length())) {
                     val recNode = recsArr.getJSONObject(i).optJSONObject("node") ?: continue
                     val id = recNode.optInt("id", 0).toString()
-                    val title = recNode.optString("title", "")
+                    val defaultTitle = recNode.optString("title", "")
+                    
+                    var englishTitle = ""
+                    val altTitlesObj = recNode.optJSONObject("alternative_titles")
+                    if (altTitlesObj != null) {
+                        englishTitle = altTitlesObj.optString("en", "").trim()
+                    }
+                    val finalTitle = if (englishTitle.isNotBlank()) englishTitle else defaultTitle
+
                     val mainPic = recNode.optJSONObject("main_picture")
                     val posterUrl = mainPic?.optString("large", mainPic.optString("medium", "")) ?: ""
 
-                    if (title.isNotBlank() && posterUrl.isNotBlank()) {
+                    if (finalTitle.isNotBlank() && posterUrl.isNotBlank()) {
                         result.add(
                             MediaItem(
                                 id = "mal_rec_$id",
-                                title = title,
+                                title = finalTitle,
                                 category = "ANIME",
                                 posterUrl = posterUrl,
                                 bannerUrl = posterUrl,

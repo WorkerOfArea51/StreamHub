@@ -155,15 +155,71 @@ class FirebaseRepository private constructor() {
         _adminOperationState.value = AdminOperationState.Success()
 
         val db = firestore ?: return
+        val docMap = mediaItemToMap(item)
         db.collection(COLLECTION_NAME)
             .document(item.id)
-            .set(item)
+            .set(docMap)
             .addOnSuccessListener {
                 Log.d(TAG, "Successfully synced media item to Firestore: ${item.id}")
             }
             .addOnFailureListener { e ->
                 Log.e(TAG, "Failed to sync media item to Firestore: ${item.id}", e)
             }
+    }
+
+    private fun mediaItemToMap(item: MediaItem): Map<String, Any?> {
+        return mapOf(
+            "id" to item.id,
+            "title" to item.title,
+            "type" to item.type,
+            "category" to item.category,
+            "genres" to item.genres,
+            "rating" to item.rating,
+            "releaseYear" to item.releaseYear,
+            "maturityRating" to item.maturityRating,
+            "studio" to item.studio,
+            "trailerId" to item.trailerId,
+            "malId" to item.malId,
+            "tmdbId" to item.tmdbId,
+            "synonyms" to item.synonyms,
+            "totalEpisodes" to item.totalEpisodes,
+            "status" to item.status,
+            "aired" to item.aired,
+            "premiered" to item.premiered,
+            "producers" to item.producers,
+            "source" to item.source,
+            "duration" to item.duration,
+            "budgetBoxOffice" to item.budgetBoxOffice,
+            "castList" to item.castList,
+            "posterUrl" to item.posterUrl,
+            "bannerUrl" to item.bannerUrl,
+            "description" to item.description,
+            "isFeatured" to item.isFeatured,
+            "isTrending" to item.isTrending,
+            "mediaInfo" to mapOf(
+                "resolution" to item.mediaInfo.resolution,
+                "videoCodec" to item.mediaInfo.videoCodec,
+                "bitrate" to item.mediaInfo.bitrate,
+                "frameRate" to item.mediaInfo.frameRate,
+                "aspectRatio" to item.mediaInfo.aspectRatio,
+                "fileSize" to item.mediaInfo.fileSize,
+                "audioTracks" to item.mediaInfo.audioTracks,
+                "subtitleTracks" to item.mediaInfo.subtitleTracks,
+                "qualityBadges" to item.mediaInfo.qualityBadges
+            ),
+            "episodes" to item.episodes.map { ep ->
+                mapOf(
+                    "episodeNumber" to ep.episodeNumber,
+                    "seasonNumber" to ep.seasonNumber,
+                    "title" to ep.title,
+                    "thumbnailUrl" to ep.thumbnailUrl,
+                    "streamUrl" to ep.streamUrl,
+                    "mirrorStreamUrl" to ep.mirrorStreamUrl,
+                    "telegramFileId" to ep.telegramFileId,
+                    "durationMs" to ep.durationMs
+                )
+            }
+        )
     }
 
     /**
