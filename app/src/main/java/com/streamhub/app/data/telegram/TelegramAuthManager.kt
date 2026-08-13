@@ -447,7 +447,7 @@ object TelegramAuthManager {
             ?.putBoolean(KEY_IS_OWNER, isOwner)
             ?.putBoolean(KEY_IS_VERIFIED, user.isVerified)
             ?.putBoolean(KEY_IS_PREMIUM, user.isPremium)
-            ?.commit()
+            ?.apply()
 
         autoJoinPrivateChannels()
         _authState.value = TelegramAuthState.Authenticated(user, isOwner)
@@ -496,6 +496,7 @@ object TelegramAuthManager {
 
         // Check if already verified as owner in prefs or AdminManager
         if (prefs?.getBoolean(KEY_IS_OWNER, false) == true || com.streamhub.app.data.AdminManager.isAdminMode.value) {
+            com.streamhub.app.data.AdminManager.markOwnerVerified()
             com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
             return true
         }
@@ -511,6 +512,7 @@ object TelegramAuthManager {
         // Match by username or permanent numeric Telegram User ID
         if ((cleanUsername.isNotBlank() && cleanUsername in ownerIdentifiers) || userIdStr in ownerIdentifiers) {
             prefs?.edit()?.putBoolean(KEY_IS_OWNER, true)?.apply()
+            com.streamhub.app.data.AdminManager.markOwnerVerified()
             com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
             return true
         }
@@ -526,6 +528,7 @@ object TelegramAuthManager {
             try {
                 val isChannelAdmin = TdLibMediaProvider.checkIfUserIsChannelAdmin(userId)
                 if (isChannelAdmin) {
+                    com.streamhub.app.data.AdminManager.markOwnerVerified()
                     com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
                     prefs?.edit()?.putBoolean(KEY_IS_OWNER, true)?.apply()
                     val currentAuth = _authState.value

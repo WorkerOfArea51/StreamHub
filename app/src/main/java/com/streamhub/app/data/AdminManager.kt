@@ -19,7 +19,7 @@ object AdminManager {
     private var prefs: android.content.SharedPreferences? = null
 
     private var ownerVerified: Boolean = false
-        get() = prefs?.getBoolean("owner_verified", false) ?: field
+        get() = (prefs?.getBoolean("owner_verified", false) == true) || (prefs?.getBoolean("is_owner", false) == true) || field
         set(value) {
             field = value
             prefs?.edit()?.putBoolean("owner_verified", value)?.apply()

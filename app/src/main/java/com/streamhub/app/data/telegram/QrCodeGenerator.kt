@@ -11,9 +11,10 @@ import com.google.zxing.qrcode.QRCodeWriter
  */
 object QrCodeGenerator {
 
-    fun generateQrBitmap(content: String, sizePx: Int = 512): ImageBitmap? {
-        if (content.isBlank() || sizePx <= 0) return null
-        return try {
+    fun generateQrBitmapResult(content: String, sizePx: Int = 512): Result<ImageBitmap> {
+        if (content.isBlank()) return Result.failure(IllegalArgumentException("Content cannot be blank"))
+        if (sizePx <= 0) return Result.failure(IllegalArgumentException("Size must be positive"))
+        return runCatching {
             val writer = QRCodeWriter()
             val bitMatrix = writer.encode(content, BarcodeFormat.QR_CODE, sizePx, sizePx)
             val width = bitMatrix.width
@@ -28,9 +29,10 @@ object QrCodeGenerator {
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
             bitmap.asImageBitmap()
-        } catch (e: Exception) {
-            android.util.Log.e("QrCodeGenerator", "Failed to generate QR bitmap", e)
-            null
         }
+    }
+
+    fun generateQrBitmap(content: String, sizePx: Int = 512): ImageBitmap? {
+        return generateQrBitmapResult(content, sizePx).getOrNull()
     }
 }

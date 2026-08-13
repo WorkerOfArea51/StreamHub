@@ -52,7 +52,6 @@ fun HeroBanner(
     onAddToListClick: (MediaItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val myListSet by MyListManager.myListFlow.collectAsState()
     val isBookmarked = myListSet.contains(media.id)
 

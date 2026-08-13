@@ -54,7 +54,7 @@ object SpeedTestManager {
     private const val TEST_ENDPOINT = "https://speed.cloudflare.com/__down?bytes=2500000"
 
     private val httpClient by lazy {
-        OkHttpClient.Builder()
+        com.streamhub.app.data.api.SharedHttpClient.baseClient.newBuilder()
             .connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(10, TimeUnit.SECONDS)
             .build()
