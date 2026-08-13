@@ -39,10 +39,11 @@ object NotificationAlertManager {
 
     fun init(context: Context) {
         if (prefs != null) return
-        prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val appContext = context.applicationContext
+        prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         _alertsEnabled.value = prefs?.getBoolean(KEY_ALERTS_ENABLED, true) ?: true
 
-        createNotificationChannel(context)
+        createNotificationChannel(appContext)
     }
 
     fun setAlertsEnabled(context: Context, enabled: Boolean) {

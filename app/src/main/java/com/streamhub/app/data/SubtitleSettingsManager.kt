@@ -40,7 +40,7 @@ object SubtitleSettingsManager {
 
     fun init(context: Context) {
         if (prefs != null) return
-        prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         loadFromDisk()
     }
 

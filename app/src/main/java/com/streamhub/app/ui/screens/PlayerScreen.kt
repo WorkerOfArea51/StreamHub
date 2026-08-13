@@ -117,12 +117,15 @@ fun PlayerScreen(
     val playerSettings by PlayerSettingsManager.settingsFlow.collectAsState()
     val subConfig by SubtitleSettingsManager.subtitleConfig.collectAsState()
 
-    // Force Landscape for video playback
+    // Force Landscape & Keep Screen On for video playback
     DisposableEffect(Unit) {
         val originalOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        val window = activity?.window
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose {
             activity?.requestedOrientation = originalOrientation
+            window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 

@@ -40,8 +40,8 @@ object AdminManager {
                 androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize EncryptedSharedPreferences for AdminManager — falling back to plain prefs", e)
-            appContext.getSharedPreferences("streamhub_admin_prefs", android.content.Context.MODE_PRIVATE)
+            Log.e(TAG, "Failed to initialize EncryptedSharedPreferences for AdminManager — admin mode disabled for security", e)
+            null
         }
         if (ownerVerified) {
             _isAdminMode.value = true

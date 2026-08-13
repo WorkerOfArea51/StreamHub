@@ -105,15 +105,15 @@ class StreamMediaService : MediaSessionService() {
                 setShowBadge(false)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
-            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.createNotificationChannel(channel)
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            nm?.createNotificationChannel(channel)
         }
     }
 
     private fun acquireWakeLock() {
         if (wakeLock == null) {
-            val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-            wakeLock = pm.newWakeLock(
+            val pm = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+            wakeLock = pm?.newWakeLock(
                 android.os.PowerManager.PARTIAL_WAKE_LOCK,
                 "StreamHub::PlaybackWakeLock"
             )

@@ -84,8 +84,8 @@ object DownloadManager {
     fun init(context: Context) {
         if (prefs != null) return
         appContext = context.applicationContext
-        prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        systemDownloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? SystemDownloadManager
+        prefs = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        systemDownloadManager = appContext?.getSystemService(Context.DOWNLOAD_SERVICE) as? SystemDownloadManager
 
         _customDownloadPath.value = prefs?.getString(KEY_CUSTOM_DOWNLOAD_PATH, "") ?: ""
         _customScreenshotPath.value = prefs?.getString(KEY_CUSTOM_SCREENSHOT_PATH, "") ?: ""
@@ -293,11 +293,27 @@ object DownloadManager {
                 put("isCompleted", item.isCompleted)
                 put("isPaused", item.isPaused)
                 put("isCanceled", item.isCanceled)
-                put("streamUrl", item.streamUrl)
+                put("streamUrl", sanitizeStreamUrl(item.streamUrl))
             }
             array.put(obj)
         }
         prefs?.edit()?.putString(KEY_DOWNLOADS_LIST, array.toString())?.apply()
+    }
+
+    private fun sanitizeStreamUrl(url: String): String {
+        return runCatching {
+            val uri = android.net.Uri.parse(url)
+            val names = uri.queryParameterNames
+            if (names.isEmpty()) return@runCatching url
+            val builder = uri.buildUpon().clearQuery()
+            names.forEach { name ->
+                val lower = name.lowercase()
+                if (!lower.contains("token") && !lower.contains("auth") && !lower.contains("key") && !lower.contains("sig") && !lower.contains("hash") && !lower.contains("secret")) {
+                    builder.appendQueryParameter(name, uri.getQueryParameter(name))
+                }
+            }
+            builder.build().toString()
+        }.getOrDefault(url)
     }
 
     fun startDownload(context: Context, mediaItem: MediaItem, episodeIndex: Int) {
