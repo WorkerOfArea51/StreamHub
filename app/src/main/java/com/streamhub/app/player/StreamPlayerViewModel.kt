@@ -54,13 +54,13 @@ data class PlayerUiState(
 class StreamPlayerViewModel : ViewModel() {
 
     companion object {
-        private val _currentPlayerFlow = MutableStateFlow<ExoPlayer?>(null)
-        val currentPlayerFlow: StateFlow<ExoPlayer?> = _currentPlayerFlow.asStateFlow()
+        val currentPlayerFlow: StateFlow<ExoPlayer?>
+            get() = PlayerHolder.currentPlayerFlow
 
         var currentPlayer: ExoPlayer?
-            get() = _currentPlayerFlow.value
+            get() = PlayerHolder.currentPlayer
             internal set(value) {
-                _currentPlayerFlow.value = value
+                PlayerHolder.currentPlayer = value
             }
     }
 

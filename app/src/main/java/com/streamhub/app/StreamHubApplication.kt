@@ -153,6 +153,7 @@ class StreamHubApplication : Application() {
 
     override fun onTerminate() {
         runCatching { com.streamhub.app.player.StreamDownloadManager.release() }
+        runCatching { com.streamhub.app.data.DownloadManager.cleanup() }
         super.onTerminate()
     }
 }

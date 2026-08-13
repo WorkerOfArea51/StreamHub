@@ -135,7 +135,6 @@ fun SurpriseMeDialog(
             modifier = Modifier
                 .width(320.dp)
                 .border(1.5.dp, if (isSpinning) AccentOrange else primaryColor, RoundedCornerShape(20.dp))
-                .clickable(enabled = false) {}
                 .padding(18.dp)
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {

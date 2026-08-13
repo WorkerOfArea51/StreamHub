@@ -3,6 +3,10 @@ package com.streamhub.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -608,6 +612,10 @@ fun CategoryFilterChip(
         modifier = Modifier
             .clip(RoundedCornerShape(20.dp))
             .background(if (isSelected) accentColor else SurfaceDark)
+            .semantics {
+                contentDescription = "$text filter, ${if (isSelected) "selected" else "not selected"}"
+                role = Role.Button
+            }
             .clickable { onClick() }
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {

@@ -58,6 +58,7 @@ object DownloadManager {
 
     private const val TAG = "DownloadManager"
     private const val PREFS_NAME = "streamhub_downloads_prefs"
+    private val FILENAME_SANITIZE_REGEX = Regex("[^a-zA-Z0-9]")
     private const val KEY_DOWNLOADS_LIST = "downloads_json"
     private const val KEY_CUSTOM_DOWNLOAD_PATH = "custom_download_path"
     private const val KEY_CUSTOM_SCREENSHOT_PATH = "custom_screenshot_path"

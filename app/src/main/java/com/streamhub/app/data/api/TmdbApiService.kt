@@ -6,7 +6,6 @@ import retrofit2.http.Query
 interface TmdbApiService {
     @GET("search/multi")
     suspend fun searchMulti(
-        @Query("api_key") apiKey: String,
         @Query("query") query: String
     ): TmdbSearchResponse
 }

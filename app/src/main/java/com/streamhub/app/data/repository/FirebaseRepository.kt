@@ -67,6 +67,12 @@ class FirebaseRepository private constructor() {
 
     init {
         loadInitialCatalog()
+        scope.launch {
+            kotlinx.coroutines.delay(30_000L)
+            if (_catalogState.value is CatalogState.Loading) {
+                _catalogState.value = CatalogState.Error("Catalog connection timeout")
+            }
+        }
     }
 
     suspend fun connect() {
@@ -78,7 +84,6 @@ class FirebaseRepository private constructor() {
     fun retry() {
         Log.d(TAG, "Manual retry requested")
         _catalogState.value = CatalogState.Loading
-        removeFirestoreListener()
         attachFirestoreListener()
     }
 
@@ -93,17 +98,18 @@ class FirebaseRepository private constructor() {
     private fun attachFirestoreListener() {
         val db = firestore
         if (db == null) {
-            Log.e(TAG, "Firestore instance not available")
-            _catalogState.value = CatalogState.Error("Firebase not initialized")
+            Log.w(TAG, "Firestore instance is null — using empty catalog")
+            _catalogState.value = CatalogState.Ready
             return
         }
+
         try {
+            listenerRegistration?.remove()
             listenerRegistration = db.collection(COLLECTION_NAME)
-                .orderBy("title", Query.Direction.ASCENDING)
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
-                        Log.e(TAG, "Firestore listener error", error)
-                        _catalogState.value = CatalogState.Error(error.message ?: "Firestore listener error")
+                        Log.e(TAG, "Firestore snapshot listener error", error)
+                        _catalogState.value = CatalogState.Error(error.message ?: "Firestore error")
                         return@addSnapshotListener
                     }
 
@@ -115,7 +121,9 @@ class FirebaseRepository private constructor() {
                     scope.launch(Dispatchers.IO) {
                         val remoteItems = snapshot.documents.mapNotNull { doc ->
                             try {
-                                doc.toObject(MediaItem::class.java)
+                                doc.toObject(MediaItem::class.java)?.let { item ->
+                                    if (item.id.isBlank()) item.copy(id = doc.id) else item
+                                }
                             } catch (e: Exception) {
                                 Log.w(TAG, "Failed to parse document ${doc.id}", e)
                                 null
@@ -123,7 +131,7 @@ class FirebaseRepository private constructor() {
                         }
 
                         if (remoteItems.isNotEmpty()) {
-                            _mediaCatalog.update { current -> (remoteItems + current).distinctBy { it.id } }
+                            _mediaCatalog.update { current -> (current + remoteItems).distinctBy { it.id } }
                         }
                         _catalogState.value = CatalogState.Ready
                     }

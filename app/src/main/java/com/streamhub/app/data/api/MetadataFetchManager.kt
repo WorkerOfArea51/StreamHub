@@ -110,7 +110,7 @@ object MetadataFetchManager {
         val isMovie = category.equals("Movies", ignoreCase = true)
         val endpoint = if (isMovie) "search/movie" else "search/tv"
         val encodedQuery = URLEncoder.encode(query.trim(), "UTF-8")
-        val searchUrl = "$TMDB_BASE/$endpoint?api_key=$apiKey&query=$encodedQuery&include_adult=false"
+        val searchUrl = "$TMDB_BASE/$endpoint?query=$encodedQuery&include_adult=false"
 
         val request = Request.Builder()
             .url(searchUrl)
@@ -175,7 +175,7 @@ object MetadataFetchManager {
             if (tmdbIdNum > 0) {
                 try {
                     val detailType = if (isMovie) "movie" else "tv"
-                    val detailUrl = "$TMDB_BASE/$detailType/$tmdbIdNum?api_key=$apiKey&append_to_response=credits,videos"
+                    val detailUrl = "$TMDB_BASE/$detailType/$tmdbIdNum?append_to_response=credits,videos"
                     val detailReq = Request.Builder().url(detailUrl).header("Accept", "application/json").build()
 
                     httpClient.newCall(detailReq).execute().use { dResp ->

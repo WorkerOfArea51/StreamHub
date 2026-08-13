@@ -42,11 +42,12 @@ import com.streamhub.app.ui.theme.TextSecondary
 fun MediaCard(
     item: MediaItem,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    cardWidth: androidx.compose.ui.unit.Dp = 135.dp
 ) {
     Column(
         modifier = modifier
-            .width(135.dp)
+            .width(cardWidth)
             .clickable { onClick() }
     ) {
         Box(
