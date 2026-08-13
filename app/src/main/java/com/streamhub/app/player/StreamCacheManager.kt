@@ -65,6 +65,7 @@ object StreamCacheManager {
             val cache = simpleCache
             simpleCache = null
             databaseProvider = null
+            cacheDir = null
             try {
                 cache?.release()
             } catch (e: Exception) {

@@ -172,7 +172,12 @@ object TelegramProxyManager {
         val promptOnAuthFail = p.getBoolean("proxy_prompt_auth_fail", true)
         val useAuthUrl = p.getBoolean("proxy_use_auth_url", false)
 
-        val type = try { ProxyType.valueOf(typeStr) } catch (e: Exception) { ProxyType.MTPROTO }
+        var type = try { ProxyType.valueOf(typeStr) } catch (e: Exception) { ProxyType.MTPROTO }
+        if (type == ProxyType.SOCKS4) {
+            Log.w(TAG, "Migrating legacy SOCKS4 proxy to SOCKS5 (SOCKS4 no longer supported)")
+            type = ProxyType.SOCKS5
+            p.edit().putString(KEY_TYPE, ProxyType.SOCKS5.name).apply()
+        }
 
         _proxyConfig.value = ProxyConfig(
             server = server,

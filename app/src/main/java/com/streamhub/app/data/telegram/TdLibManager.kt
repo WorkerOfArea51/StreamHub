@@ -695,7 +695,7 @@ object TdLibManager {
     suspend fun destroy() {
         val c = client ?: return
         scope.cancel()
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         try {
             sendOk(TdApi.Close())
         } catch (e: Exception) {

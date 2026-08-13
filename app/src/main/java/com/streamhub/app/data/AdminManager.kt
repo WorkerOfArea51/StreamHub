@@ -27,7 +27,22 @@ object AdminManager {
 
     fun init(context: android.content.Context) {
         if (prefs != null) return
-        prefs = context.applicationContext.getSharedPreferences("streamhub_admin_prefs", android.content.Context.MODE_PRIVATE)
+        val appContext = context.applicationContext
+        prefs = try {
+            val masterKey = androidx.security.crypto.MasterKey.Builder(appContext)
+                .setKeyScheme(androidx.security.crypto.MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            androidx.security.crypto.EncryptedSharedPreferences.create(
+                appContext,
+                "streamhub_admin_prefs",
+                masterKey,
+                androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize EncryptedSharedPreferences for AdminManager — falling back to plain prefs", e)
+            appContext.getSharedPreferences("streamhub_admin_prefs", android.content.Context.MODE_PRIVATE)
+        }
         if (ownerVerified) {
             _isAdminMode.value = true
         }

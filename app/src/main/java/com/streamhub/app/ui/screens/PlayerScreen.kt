@@ -151,9 +151,9 @@ fun PlayerScreen(
     var scrubbingPositionMs by remember { mutableLongStateOf(0L) }
 
     // Volume & Brightness Drag States
-    val audioManager = remember { context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
-    val maxVolume = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).toFloat().coerceAtLeast(1f) }
-    var currentVolumePercent by remember { mutableFloatStateOf((audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) / maxVolume) * 100f) }
+    val audioManager = remember { context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
+    val maxVolume = remember { audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC)?.toFloat()?.coerceAtLeast(1f) ?: 1f }
+    var currentVolumePercent by remember { mutableFloatStateOf(((audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0) / maxVolume) * 100f) }
 
     // FIX #3: Read actual brightness from system instead of hardcoding 70%
     var currentBrightnessPercent by remember {
@@ -230,7 +230,7 @@ fun PlayerScreen(
                             showVolumeIndicator = true
                             currentVolumePercent = (currentVolumePercent + delta).coerceIn(0f, 100f)
                             val targetVol = ((currentVolumePercent / 100f) * maxVolume).toInt()
-                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
                         } else {
                             showBrightnessIndicator = true
                             currentBrightnessPercent = (currentBrightnessPercent + delta).coerceIn(10f, 100f)

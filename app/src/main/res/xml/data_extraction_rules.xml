@@ -11,17 +11,21 @@
         <include domain="sharedpref" path="streamhub_my_list.xml"/>
         <include domain="sharedpref" path="streamhub_theme_prefs.xml"/>
         <include domain="sharedpref" path="streamhub_player_settings.xml"/>
-        <include domain="sharedpref" path="streamhub_subtitle_settings.xml"/>
-        <include domain="sharedpref" path="streamhub_home_layout.xml"/>
+        <include domain="sharedpref" path="streamhub_subtitle_prefs.xml"/>
+        <include domain="sharedpref" path="streamhub_home_layout_prefs.xml"/>
         <include domain="sharedpref" path="streamhub_downloads_prefs.xml"/>
+        <include domain="sharedpref" path="streamhub_user_stats.xml"/>
+        <include domain="sharedpref" path="streamhub_notification_prefs.xml"/>
     </cloud-backup>
     <device-transfer>
         <include domain="device_sharedpref" path="streamhub_watch_history.xml"/>
         <include domain="device_sharedpref" path="streamhub_my_list.xml"/>
         <include domain="device_sharedpref" path="streamhub_theme_prefs.xml"/>
         <include domain="device_sharedpref" path="streamhub_player_settings.xml"/>
-        <include domain="device_sharedpref" path="streamhub_subtitle_settings.xml"/>
-        <include domain="device_sharedpref" path="streamhub_home_layout.xml"/>
+        <include domain="device_sharedpref" path="streamhub_subtitle_prefs.xml"/>
+        <include domain="device_sharedpref" path="streamhub_home_layout_prefs.xml"/>
         <include domain="device_sharedpref" path="streamhub_downloads_prefs.xml"/>
+        <include domain="device_sharedpref" path="streamhub_user_stats.xml"/>
+        <include domain="device_sharedpref" path="streamhub_notification_prefs.xml"/>
     </device-transfer>
 </data-extraction-rules>

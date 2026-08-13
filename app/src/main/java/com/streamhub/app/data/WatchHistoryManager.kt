@@ -174,9 +174,9 @@ object WatchHistoryManager {
     private var prefs: SharedPreferences? = null
 
     private fun getPrefs(): SharedPreferences {
-        if (prefs == null) {
+        if (prefs == null && ::appContext.isInitialized) {
             prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         }
-        return prefs!!
+        return prefs ?: throw IllegalStateException("WatchHistoryManager not initialized — call init(context) first")
     }
 }
