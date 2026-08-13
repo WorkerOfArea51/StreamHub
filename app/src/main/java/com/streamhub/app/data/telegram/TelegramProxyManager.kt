@@ -194,7 +194,7 @@ object TelegramProxyManager {
     private fun obfuscateFallback(value: String): String {
         if (value.isBlank()) return ""
         val bytes = value.toByteArray(Charsets.UTF_8)
-        val key = "StreamHub2024ProxyKey".toByteArray(Charsets.UTF_8)
+        val key = "StreamHubProxySecretKey".toByteArray(Charsets.UTF_8)
         val result = ByteArray(bytes.size)
         for (i in bytes.indices) {
             result[i] = (bytes[i].toInt() xor key[i % key.size].toInt()).toByte()
@@ -206,7 +206,7 @@ object TelegramProxyManager {
         if (value.isBlank()) return ""
         return try {
             val bytes = android.util.Base64.decode(value, android.util.Base64.NO_WRAP)
-            val key = "StreamHub2024ProxyKey".toByteArray(Charsets.UTF_8)
+            val key = "StreamHubProxySecretKey".toByteArray(Charsets.UTF_8)
             val result = ByteArray(bytes.size)
             for (i in bytes.indices) {
                 result[i] = (bytes[i].toInt() xor key[i % key.size].toInt()).toByte()

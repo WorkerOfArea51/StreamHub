@@ -22,8 +22,8 @@ object Secrets {
     val MAL_CLIENT_SECRET: String get() = BuildConfig.MAL_CLIENT_SECRET
 
     /** Telegram App API credentials for TDLib client authentication. */
-    val TELEGRAM_API_ID: String get() = BuildConfig.TELEGRAM_API_ID.ifBlank { "23143864" }
-    val TELEGRAM_API_HASH: String get() = BuildConfig.TELEGRAM_API_HASH.ifBlank { "726e02cd51d31364d6aca817dac5ed81" }
+    val TELEGRAM_API_ID: String get() = BuildConfig.TELEGRAM_API_ID
+    val TELEGRAM_API_HASH: String get() = BuildConfig.TELEGRAM_API_HASH
 
     /** Telegram Private Channels (Auto-joined upon TDLib user login). */
     val TELEGRAM_ANIME_CHANNEL: String get() = BuildConfig.TELEGRAM_ANIME_CHANNEL

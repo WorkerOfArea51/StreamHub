@@ -4,7 +4,6 @@
     The APK is downloaded to cacheDir and shared via FileProvider.
 -->
 <paths>
-    <cache-path name="cache_files" path="." />
-    <files-path name="files" path="." />
-    <external-path name="external_files" path="." />
+    <cache-path name="apk_updates" path="updates/" />
+    <files-path name="shared_media" path="shared/" />
 </paths>

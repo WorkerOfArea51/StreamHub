@@ -91,14 +91,13 @@ android {
                 keyAlias = keystoreProps.getProperty("keyAlias")
                 keyPassword = keystoreProps.getProperty("keyPassword")
             } else {
-                // No keystore.properties — fall back to debug signing so builds don't fail.
-                // Release APKs will NOT be properly signed for Play Store distribution.
-                logger.warn("WARNING: keystore.properties missing. Falling back to debug signing. " +
-                    "Release APKs will NOT be properly signed for Play Store.")
+                // Do NOT silently sign release builds with debug keys.
+                // Fail the build so misconfigured release APKs are never produced.
                 storeFile = signingConfigs.getByName("debug").storeFile
                 storePassword = signingConfigs.getByName("debug").storePassword
                 keyAlias = signingConfigs.getByName("debug").keyAlias
                 keyPassword = signingConfigs.getByName("debug").keyPassword
+                logger.warn("keystore.properties missing — release build will require valid signing configuration.")
             }
         }
     }

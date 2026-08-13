@@ -50,8 +50,13 @@
 # --- Media3 (has consumer rules, but be explicit) ---
 -dontwarn androidx.media3.**
 
-# --- BuildConfig (do not strip) ---
--keep class com.streamhub.app.BuildConfig { *; }
+# --- BuildConfig (keep only non-secret build metadata) ---
+-keepclassmembers class com.streamhub.app.BuildConfig {
+    static final boolean DEBUG;
+    static final boolean DEBUG_LOGGING;
+    static final int VERSION_CODE;
+    static final java.lang.String VERSION_NAME;
+}
 
 # --- Compose runtime (rarely needed but safe) ---
 -keep class androidx.compose.runtime.** { *; }

@@ -301,6 +301,10 @@ object AppUpdateManager {
         downloadJob = scope.launch {
             try {
                 val info = state.info
+                if (!info.downloadUrl.startsWith("https://")) {
+                    _updateState.value = UpdateState.Error("Insecure update URL rejected (HTTPS required)")
+                    return@launch
+                }
                 val totalBytes = if (info.apkSizeBytes > 0) info.apkSizeBytes else 0L
 
                 val request = Request.Builder()

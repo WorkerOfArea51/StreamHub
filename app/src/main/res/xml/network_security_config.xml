@@ -45,4 +45,10 @@
         <domain includeSubdomains="true">github.com</domain>
         <domain includeSubdomains="true">api.github.com</domain>
     </domain-config>
+
+    <!-- MyAnimeList API -->
+    <domain-config>
+        <domain includeSubdomains="true">api.myanimelist.net</domain>
+        <domain includeSubdomains="true">cdn.myanimelist.net</domain>
+    </domain-config>
 </network-security-config>
