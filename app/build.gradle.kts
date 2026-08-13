@@ -23,12 +23,12 @@ fun secret(key: String, default: String = ""): String {
 
 android {
     namespace = "com.streamhub.app"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.streamhub.app"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 35
         val envVersionName = System.getenv("VERSION_NAME")?.removePrefix("v")?.removePrefix("V")
         versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 78
         versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.78"

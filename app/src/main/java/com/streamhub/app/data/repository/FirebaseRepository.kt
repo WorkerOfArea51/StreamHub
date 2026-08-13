@@ -11,6 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
@@ -233,20 +234,24 @@ class FirebaseRepository private constructor() {
      * Delete a media item from catalog.
      */
     fun deleteMediaItem(itemId: String) {
-        val current = _mediaCatalog.value.toMutableList()
-        current.removeAll { it.id == itemId }
-        _mediaCatalog.value = current
-        _adminOperationState.value = AdminOperationState.Success()
-
-        val db = firestore ?: return
+        _adminOperationState.value = AdminOperationState.Loading
+        val db = firestore
+        if (db == null) {
+            _mediaCatalog.update { current -> current.filterNot { it.id == itemId } }
+            _adminOperationState.value = AdminOperationState.Success()
+            return
+        }
         db.collection(COLLECTION_NAME)
             .document(itemId)
             .delete()
             .addOnSuccessListener {
                 Log.d(TAG, "Successfully deleted media item from Firestore: $itemId")
+                _mediaCatalog.update { current -> current.filterNot { it.id == itemId } }
+                _adminOperationState.value = AdminOperationState.Success()
             }
             .addOnFailureListener { e ->
                 Log.e(TAG, "Failed to delete media item from Firestore: $itemId", e)
+                _adminOperationState.value = AdminOperationState.Error(e.message ?: "Delete failed")
             }
     }
 

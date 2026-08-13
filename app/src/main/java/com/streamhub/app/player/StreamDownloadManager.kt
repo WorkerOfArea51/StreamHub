@@ -6,7 +6,7 @@ import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.datasource.cache.NoOpCacheEvictor
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.offline.DownloadManager
 import java.io.File
@@ -74,7 +74,7 @@ object StreamDownloadManager {
     fun getDownloadCache(context: Context): SimpleCache {
         if (downloadCache == null) {
             val cacheDir = File(context.applicationContext.cacheDir, "exoplayer_downloads")
-            val evictor = NoOpCacheEvictor()
+            val evictor = LeastRecentlyUsedCacheEvictor(2L * 1024 * 1024 * 1024) // 2 GB download cache limit
             downloadCache = SimpleCache(cacheDir, evictor, getDatabaseProvider(context))
         }
         return downloadCache!!

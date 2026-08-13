@@ -54,9 +54,14 @@ data class PlayerUiState(
 class StreamPlayerViewModel : ViewModel() {
 
     companion object {
-        @Volatile
-        var currentPlayer: ExoPlayer? = null
-            private set
+        private val _currentPlayerFlow = MutableStateFlow<ExoPlayer?>(null)
+        val currentPlayerFlow: StateFlow<ExoPlayer?> = _currentPlayerFlow.asStateFlow()
+
+        var currentPlayer: ExoPlayer?
+            get() = _currentPlayerFlow.value
+            internal set(value) {
+                _currentPlayerFlow.value = value
+            }
     }
 
     private var exoPlayer: ExoPlayer? = null
@@ -144,7 +149,10 @@ class StreamPlayerViewModel : ViewModel() {
                         )
                     }
                     if (playbackState == Player.STATE_ENDED) {
-                        playNextEpisode()
+                        val settings = com.streamhub.app.data.PlayerSettingsManager.settingsFlow.value
+                        if (settings.autoPlayNextEpisode) {
+                            playNextEpisode()
+                        }
                     }
                 }
 

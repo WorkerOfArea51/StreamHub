@@ -564,7 +564,7 @@ fun ContinueWatchingRowItem(
 
                 // Progress Bar at bottom of card
                 LinearProgressIndicator(
-                    progress = progressFraction,
+                    progress = { progressFraction },
                     color = PrimaryRed,
                     trackColor = Color(0x66000000),
                     modifier = Modifier

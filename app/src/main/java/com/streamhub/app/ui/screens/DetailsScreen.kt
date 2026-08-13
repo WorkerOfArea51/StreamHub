@@ -539,8 +539,8 @@ fun DetailsScreen(
                         InfoDetailRow("Source", mediaItem.source)
                         InfoDetailRow("Duration", mediaItem.duration)
                         InfoDetailRow("Budget / Box Office", mediaItem.budgetBoxOffice)
-                        InfoDetailRow("MAL ID", mediaItem.malId.ifEmpty { "52299" })
-                        InfoDetailRow("YouTube Trailer ID", mediaItem.trailerId.ifEmpty { "1kCwjK4rgYg" })
+                        InfoDetailRow("MAL ID", mediaItem.malId.ifEmpty { "N/A" })
+                        InfoDetailRow("YouTube Trailer ID", mediaItem.trailerId.ifEmpty { "N/A" })
                         InfoDetailRow("TMDB ID", mediaItem.tmdbId.ifEmpty { "N/A" })
                     }
                 }
@@ -614,6 +614,8 @@ fun DetailsScreen(
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             settings.mediaPlaybackRequiresUserGesture = false
+                            settings.allowFileAccess = false
+                            settings.allowContentAccess = false
                             settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
                             webChromeClient = WebChromeClient()
                             webViewClient = WebViewClient()
@@ -636,11 +638,6 @@ fun DetailsScreen(
                             loadDataWithBaseURL("https://www.youtube.com", embedHtml, "text/html", "utf-8", null)
                             webView = this
                         }
-                    },
-                    onRelease = { wv ->
-                        wv.loadUrl("about:blank")
-                        wv.destroy()
-                        webView = null
                     },
                     modifier = Modifier
                         .fillMaxWidth()

@@ -3,6 +3,7 @@ package com.streamhub.app.ui.screens
 import android.app.Activity
 import android.content.Context
 import android.content.pm.ActivityInfo
+import android.util.Log
 import android.media.AudioManager
 import android.view.WindowManager
 import androidx.annotation.OptIn
@@ -299,6 +300,16 @@ fun PlayerScreen(
         VolumeIndicator(visible = showVolumeIndicator, volumePercent = currentVolumePercent, volumeOnRight = playerSettings.volumeOnRight)
         BrightnessIndicator(visible = showBrightnessIndicator, brightnessPercent = currentBrightnessPercent, volumeOnRight = playerSettings.volumeOnRight)
 
+        // Auto-hide controls overlay after 5 seconds
+        LaunchedEffect(uiState.isControlsVisible) {
+            if (uiState.isControlsVisible && !uiState.isLocked) {
+                delay(5000L)
+                if (uiState.isControlsVisible) {
+                    viewModel.toggleControlsVisibility()
+                }
+            }
+        }
+
         // Controls Overlay
         if (uiState.isControlsVisible) {
             Box(modifier = Modifier.fillMaxSize().background(Color(0x77000000))) {
@@ -319,7 +330,7 @@ fun PlayerScreen(
                                 try {
                                     val params = android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(16, 9)).build()
                                     activity?.enterPictureInPictureMode(params)
-                                } catch (e: IllegalStateException) { }
+                                } catch (e: Exception) { Log.w("PlayerScreen", "PiP entry failed: ${e.message}") }
                             }
                         }) { Icon(Icons.Default.PictureInPicture, contentDescription = "PiP", tint = Color.White) }
                         IconButton(onClick = { viewModel.toggleAudioDialog() }) { Icon(Icons.Default.GraphicEq, contentDescription = "Audio", tint = AccentOrange) }

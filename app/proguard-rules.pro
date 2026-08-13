@@ -68,6 +68,7 @@
     public static *** v(...);
     public static *** d(...);
     public static *** i(...);
+    public static *** w(...);
 }
 
 # --- ZXing ---

@@ -16,9 +16,24 @@ object AdminManager {
     private val _isAdminMode = MutableStateFlow(false)
     val isAdminMode: StateFlow<Boolean> = _isAdminMode.asStateFlow()
 
-    private var ownerVerified = false
+    private var prefs: android.content.SharedPreferences? = null
 
-    fun markOwnerVerified() {
+    private var ownerVerified: Boolean = false
+        get() = prefs?.getBoolean("owner_verified", false) ?: field
+        set(value) {
+            field = value
+            prefs?.edit()?.putBoolean("owner_verified", value)?.apply()
+        }
+
+    fun init(context: android.content.Context) {
+        if (prefs != null) return
+        prefs = context.applicationContext.getSharedPreferences("streamhub_admin_prefs", android.content.Context.MODE_PRIVATE)
+        if (ownerVerified) {
+            _isAdminMode.value = true
+        }
+    }
+
+    internal fun markOwnerVerified() {
         ownerVerified = true
     }
 

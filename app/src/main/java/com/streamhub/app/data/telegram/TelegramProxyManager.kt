@@ -145,8 +145,8 @@ object TelegramProxyManager {
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to create EncryptedSharedPreferences", e)
-            prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            Log.e(TAG, "EncryptedSharedPreferences unavailable — proxy credentials NOT stored to disk", e)
+            prefs = null
         }
         loadFromDisk()
     }
@@ -542,6 +542,9 @@ object TelegramProxyManager {
                                 // User/Password Subnegotiation: [0x01, ulen, ...user, plen, ...pass]
                                 val uBytes = username.toByteArray()
                                 val pBytes = password.toByteArray()
+                                if (uBytes.size > 255 || pBytes.size > 255) {
+                                    return@withContext Result.failure(IllegalArgumentException("SOCKS5 credentials exceed 255 byte limit"))
+                                }
                                 val authPacket = byteArrayOf(0x01, uBytes.size.toByte()) + uBytes + byteArrayOf(pBytes.size.toByte()) + pBytes
                                 output.write(authPacket)
                                 output.flush()
@@ -570,7 +573,7 @@ object TelegramProxyManager {
 
                             val reply = ByteArray(8)
                             val bytesRead = input.read(reply)
-                            if (bytesRead >= 2 && reply[1].toInt() != 0x5A && reply[1].toInt() != 90) {
+                            if (bytesRead >= 2 && reply[1].toInt() != 0x5A) {
                                 return@withContext Result.failure(IllegalStateException("SOCKS4 request rejected (code: 0x${Integer.toHexString(reply[1].toInt())})"))
                             }
                         }

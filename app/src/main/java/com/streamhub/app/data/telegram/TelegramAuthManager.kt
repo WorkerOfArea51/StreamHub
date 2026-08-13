@@ -101,8 +101,21 @@ object TelegramAuthManager {
      * then observes TdLibManager's auth state for real-time updates.
      */
     fun init(context: Context) {
-        if (::prefs.isInitialized) return
-        prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        try {
+            val masterKey = androidx.security.crypto.MasterKey.Builder(context.applicationContext)
+                .setKeyScheme(androidx.security.crypto.MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            prefs = androidx.security.crypto.EncryptedSharedPreferences.create(
+                context.applicationContext,
+                "streamhub_telegram_session_sec",
+                masterKey,
+                androidx.security.crypto.EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "EncryptedSharedPreferences unavailable for session", e)
+            prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        }
 
         // Read cached user from SharedPreferences (for fast cold-start)
         val isLoggedIn = prefs.getBoolean(KEY_IS_LOGGED_IN, false)
@@ -274,8 +287,8 @@ object TelegramAuthManager {
                 username = username,
                 phoneNumber = tdUser.phoneNumber,
                 photoUrl = photoPath,
-                isVerified = false,
-                isPremium = false
+                isVerified = tdUser.verificationStatus != null,
+                isPremium = tdUser.isPremium
             )
 
             val isOwner = checkIsOwner(user)
@@ -314,7 +327,7 @@ object TelegramAuthManager {
      */
     fun startPhoneAuth(phoneNumber: String) {
         val cleanPhone = phoneNumber.trim()
-        Log.d(TAG, "startPhoneAuth called with phone: '$cleanPhone'")
+        Log.d(TAG, "startPhoneAuth called with phone: '${cleanPhone.take(4)}****'")
         if (cleanPhone.isBlank()) {
             _authState.value = TelegramAuthState.Error("Please enter a valid phone number.")
             return

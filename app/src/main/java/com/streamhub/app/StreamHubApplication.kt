@@ -90,6 +90,9 @@ class StreamHubApplication : Application() {
         runCatching { PlayerSettingsManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "PlayerSettingsManager.init failed", it) }
 
+        runCatching { com.streamhub.app.data.AdminManager.init(applicationContext) }
+            .onFailure { Log.e(TAG, "AdminManager.init failed", it) }
+
         runCatching { ThemeManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "ThemeManager.init failed", it) }
 
@@ -105,10 +108,8 @@ class StreamHubApplication : Application() {
         runCatching { HomeScreenLayoutManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "HomeScreenLayoutManager.init failed", it) }
 
-        initScope.launch {
-            runCatching { com.streamhub.app.data.DownloadManager.init(applicationContext) }
-                .onFailure { Log.e(TAG, "DownloadManager.init failed", it) }
-        }
+        runCatching { com.streamhub.app.data.DownloadManager.init(applicationContext) }
+            .onFailure { Log.e(TAG, "DownloadManager.init failed", it) }
 
         // Layer 2 — Data managers
         runCatching { UserStatsManager.init(applicationContext) }
@@ -122,16 +123,16 @@ class StreamHubApplication : Application() {
             // Initialize TDLib on background thread (JNI work)
             val tdLibOk = runCatching { TdLibManager.initialize(applicationContext) }
                 .getOrDefault(false)
-            if (!tdLibOk) {
+            if (tdLibOk) {
+                // TelegramAuthManager observes TdLibManager, so init after TDLib succeeds
+                runCatching { TelegramAuthManager.init(applicationContext) }
+                    .onFailure { Log.e(TAG, "TelegramAuthManager.init failed", it) }
+
+                runCatching { TelegramProxyManager.init(applicationContext) }
+                    .onFailure { Log.e(TAG, "TelegramProxyManager.init failed", it) }
+            } else {
                 Log.w(TAG, "TDLib initialization failed — Telegram features will be unavailable")
             }
-
-            // TelegramAuthManager observes TdLibManager, so init after TDLib
-            runCatching { TelegramAuthManager.init(applicationContext) }
-                .onFailure { Log.e(TAG, "TelegramAuthManager.init failed", it) }
-
-            runCatching { TelegramProxyManager.init(applicationContext) }
-                .onFailure { Log.e(TAG, "TelegramProxyManager.init failed", it) }
         }
     }
 

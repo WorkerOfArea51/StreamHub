@@ -63,8 +63,14 @@ object TdLibMediaProvider {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /** Cache of resolved file paths: messageId → local file path. */
-    private val resolvedFiles = ConcurrentHashMap<Long, String>()
+    /** Cache of resolved file paths: messageId → local file path (LRU capped at 200 entries). */
+    private val resolvedFiles = android.util.LruCache<Long, String>(200)
+
+    fun clearCache() {
+        synchronized(resolvedFiles) {
+            resolvedFiles.evictAll()
+        }
+    }
 
     /** Active file downloads being tracked: fileId → progress info. */
     private val _downloadProgress = MutableStateFlow<Map<Int, Float>>(emptyMap())
@@ -145,7 +151,7 @@ object TdLibMediaProvider {
             val localPath = file.local.path
             if (localPath.isNotBlank()) {
                 Log.i(TAG, "File already cached: $localPath (${file.size} bytes)")
-                resolvedFiles[messageId] = localPath
+                synchronized(resolvedFiles) { resolvedFiles.put(messageId, localPath) }
                 return TelegramStreamResult.LocalFile(localPath, file.size)
             }
         }
@@ -196,7 +202,7 @@ object TdLibMediaProvider {
 
         return if (waitResult != null) {
             Log.i(TAG, "File ready for streaming: $waitResult")
-            resolvedFiles[messageId] = waitResult
+            synchronized(resolvedFiles) { resolvedFiles.put(messageId, waitResult) }
             TelegramStreamResult.LocalFile(waitResult, file.size)
         } else {
             try { TdLibManager.sendOk(TdApi.CancelDownloadFile(fileId, false)) } catch (_: Exception) {}
@@ -437,6 +443,9 @@ object TdLibMediaProvider {
     // Link Parsing
     // ──────────────────────────────────────────────────────────────
 
+    private val PRIVATE_LINK_REGEX = Regex("""https?://t\.me/c/(\d+)/(\d+)""")
+    private val PUBLIC_LINK_REGEX = Regex("""https?://t\.me/([a-zA-Z][\w]{4,31})/(\d+)""")
+
     /**
      * Parse a Telegram t.me link into (chatId, messageId).
      *
@@ -451,8 +460,7 @@ object TdLibMediaProvider {
         val cleanUrl = url.trim()
 
         // Private channel: t.me/c/<bareChannelId>/<messageId>
-        val privateRegex = Regex("""https?://t\.me/c/(\d+)/(\d+)""")
-        val privateMatch = privateRegex.find(cleanUrl)
+        val privateMatch = PRIVATE_LINK_REGEX.find(cleanUrl)
         if (privateMatch != null) {
             val bareChannelId = privateMatch.groupValues[1]
             val messageId = privateMatch.groupValues[2].toLongOrNull() ?: return null
@@ -460,8 +468,7 @@ object TdLibMediaProvider {
         }
 
         // Public channel: t.me/<username>/<messageId>
-        val publicRegex = Regex("""https?://t\.me/([a-zA-Z][\w]{4,31})/(\d+)""")
-        val publicMatch = publicRegex.find(cleanUrl)
+        val publicMatch = PUBLIC_LINK_REGEX.find(cleanUrl)
         if (publicMatch != null) {
             val username = publicMatch.groupValues[1]
             val messageId = publicMatch.groupValues[2].toLongOrNull() ?: return null
@@ -537,14 +544,7 @@ object TdLibMediaProvider {
     /**
      * Get the cached local file path for a message, if already downloaded.
      */
-    fun getCachedFilePath(messageId: Long): String? = resolvedFiles[messageId]
-
-    /**
-     * Clear the resolved files cache.
-     */
-    fun clearCache() {
-        resolvedFiles.clear()
-    }
+    fun getCachedFilePath(messageId: Long): String? = synchronized(resolvedFiles) { resolvedFiles.get(messageId) }
 
     /**
      * Checks whether the user is an Administrator or Creator of any of the configured channels,

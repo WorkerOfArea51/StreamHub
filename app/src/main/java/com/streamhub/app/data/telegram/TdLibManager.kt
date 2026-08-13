@@ -135,17 +135,23 @@ object TdLibManager {
         initMutex.withLock {
             if (isInitialized) return true
 
-            // Use configured credentials if provided in local.properties, else fallback to official Telegram Android client credentials
-            val defaultApiId = "6"
-            val defaultApiHash = "eb066357e78406bc434f864152504845"
-
             val rawApiId = Secrets.TELEGRAM_API_ID.trim()
             val rawApiHash = Secrets.TELEGRAM_API_HASH.trim()
 
-            val apiId = if (rawApiId.isNotBlank() && rawApiId != "0") rawApiId else defaultApiId
-            val apiHash = if (rawApiHash.isNotBlank()) rawApiHash else defaultApiHash
+            if (rawApiId.isBlank() || rawApiId == "0" || rawApiHash.isBlank()) {
+                Log.e(TAG, "Telegram API credentials not configured in Secrets")
+                _authState.value = TdLibAuthState.Error("Telegram API credentials not configured")
+                return false
+            }
 
-            val apiIdInt = apiId.toIntOrNull() ?: defaultApiId.toInt()
+            val apiIdInt = rawApiId.toIntOrNull()
+                ?: run {
+                    Log.e(TAG, "Invalid TELEGRAM_API_ID: not an integer")
+                    _authState.value = TdLibAuthState.Error("Invalid TELEGRAM_API_ID")
+                    return false
+                }
+
+            val apiHash = rawApiHash
 
             appContext = context.applicationContext
             // TDLib session database stored in app's internal storage
@@ -373,21 +379,8 @@ object TdLibManager {
                 randomKey
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Keystore unavailable, falling back to secure prefs", e)
-            val prefs = ctx.getSharedPreferences("streamhub_tdlib_sec", Context.MODE_PRIVATE)
-            var keyHex = prefs.getString("tdlib_db_key_hex", null)
-            if (keyHex == null || keyHex.length != 64) {
-                val keyBytes = ByteArray(32)
-                java.security.SecureRandom().nextBytes(keyBytes)
-                keyHex = keyBytes.joinToString("") { "%02x".format(it) }
-                prefs.edit().putString("tdlib_db_key_hex", keyHex).apply()
-            }
-            val resultBytes = ByteArray(32)
-            for (i in 0 until 32) {
-                val hexStr = keyHex.substring(i * 2, i * 2 + 2)
-                resultBytes[i] = hexStr.toInt(16).toByte()
-            }
-            resultBytes
+            Log.e(TAG, "Android Keystore unavailable — cannot securely store TDLib database encryption key", e)
+            ByteArray(0)
         }
     }
 

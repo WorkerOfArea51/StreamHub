@@ -107,8 +107,9 @@ fun SurpriseMeDialog(
     var selectedIndex by remember { mutableIntStateOf(0) }
     var isSpinning by remember { mutableStateOf(true) }
     var spinCount by remember { mutableIntStateOf(0) }
+    var spinTrigger by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(spinTrigger) {
         isSpinning = true
         repeat(16) { i ->
             selectedIndex = (0 until catalog.size).random()
@@ -207,7 +208,7 @@ fun SurpriseMeDialog(
                     Button(
                         onClick = {
                             selectedIndex = (0 until catalog.size).random()
-                            isSpinning = true
+                            spinTrigger++
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E1E2D)),
                         shape = RoundedCornerShape(10.dp),

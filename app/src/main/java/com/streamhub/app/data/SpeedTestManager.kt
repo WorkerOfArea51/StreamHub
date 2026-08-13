@@ -67,16 +67,19 @@ object SpeedTestManager {
         testJob?.cancel()
         testJob = scope.launch {
             try {
-                // Phase 1: Measure ping latency (3 GET requests to Cloudflare trace endpoint)
-                var totalPing = 0L
+                var validPingSum = 0L
+                var validPingCount = 0
                 val pingCount = 3
                 for (i in 1..pingCount) {
                     val pingTime = withContext(Dispatchers.IO) {
                         measurePingMillis()
                     }
-                    totalPing += pingTime
+                    if (pingTime > 0) {
+                        validPingSum += pingTime
+                        validPingCount++
+                    }
                 }
-                val avgPing = (totalPing / pingCount).coerceAtLeast(1L)
+                val avgPing = if (validPingCount > 0) (validPingSum / validPingCount).coerceAtLeast(1L) else -1L
 
                 // Phase 2: Measure download bandwidth
                 val (bytesRead, durationMs) = withContext(Dispatchers.IO) {
@@ -128,9 +131,11 @@ object SpeedTestManager {
         val start = System.currentTimeMillis()
         try {
             httpClient.newCall(request).execute().use { response ->
-                response.code
+                if (!response.isSuccessful) return -1L
             }
-        } catch (_: Exception) { }
+        } catch (_: Exception) {
+            return -1L
+        }
         return System.currentTimeMillis() - start
     }
 

@@ -24,7 +24,7 @@ class StreamMediaService : MediaSessionService() {
         private const val TAG = "StreamMediaService"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "streamhub_media_playback"
-        private const val WAKELOCK_TIMEOUT_MS = 12 * 60 * 60 * 1000L // 12 hours
+        private const val WAKELOCK_TIMEOUT_MS = 30 * 60 * 1000L // 30 minutes
     }
 
     private var mediaSession: MediaSession? = null
