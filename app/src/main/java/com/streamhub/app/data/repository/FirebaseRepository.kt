@@ -131,7 +131,7 @@ class FirebaseRepository private constructor() {
                         }
 
                         if (remoteItems.isNotEmpty()) {
-                            _mediaCatalog.update { current -> (current + remoteItems).distinctBy { it.id } }
+                            _mediaCatalog.update { current -> (remoteItems + current).distinctBy { it.id } }
                         }
                         _catalogState.value = CatalogState.Ready
                     }

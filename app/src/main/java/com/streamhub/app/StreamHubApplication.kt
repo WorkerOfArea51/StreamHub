@@ -14,6 +14,9 @@ import com.streamhub.app.data.telegram.TelegramAuthManager
 import com.streamhub.app.data.telegram.TdLibManager
 import com.streamhub.app.data.telegram.TelegramProxyManager
 import com.streamhub.app.ui.theme.ThemeManager
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -72,9 +75,16 @@ class StreamHubApplication : Application() {
                     .build()
             )
         }
-        Log.d(TAG, "Application onCreate — initializing managers")
         initializeManagers()
         startBackgroundServices()
+
+        androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
+            override fun onStop(owner: androidx.lifecycle.LifecycleOwner) {
+                Log.d(TAG, "App moved to background — executing cleanup")
+                runCatching { com.streamhub.app.player.StreamDownloadManager.release() }
+                runCatching { com.streamhub.app.data.DownloadManager.cleanup() }
+            }
+        })
     }
 
     /**

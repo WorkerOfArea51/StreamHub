@@ -479,7 +479,6 @@ private fun EpisodeDrawerOverlay(
             modifier = Modifier
                 .fillMaxHeight()
                 .width(280.dp)
-                .clickable(enabled = false) {}
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Episodes", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)

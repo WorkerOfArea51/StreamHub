@@ -56,7 +56,6 @@ fun AudioTrackDialog(
                 modifier = Modifier
                     .width(320.dp)
                     .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
-                    .clickable(enabled = false) {}
                     .padding(16.dp)
             ) {
                 Column {
@@ -113,7 +112,6 @@ fun SubtitleTrackDialog(
                 modifier = Modifier
                     .width(320.dp)
                     .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
-                    .clickable(enabled = false) {}
                     .padding(16.dp)
             ) {
                 Column {

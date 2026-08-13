@@ -95,7 +95,7 @@ fun HomeScreen(
     var isTelegramBannerDismissed by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(10_000L)
+        kotlinx.coroutines.delay(30_000L)
         isTelegramBannerDismissed = true
     }
 

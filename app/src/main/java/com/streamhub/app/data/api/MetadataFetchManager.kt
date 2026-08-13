@@ -109,7 +109,7 @@ object MetadataFetchManager {
 
         val isMovie = category.equals("Movies", ignoreCase = true)
         val endpoint = if (isMovie) "search/movie" else "search/tv"
-        val encodedQuery = URLEncoder.encode(query.trim(), "UTF-8")
+        val encodedQuery = URLEncoder.encode(query.trim(), Charsets.UTF_8.name())
         val searchUrl = "$TMDB_BASE/$endpoint?query=$encodedQuery&include_adult=false"
 
         val request = Request.Builder()
@@ -277,7 +277,7 @@ object MetadataFetchManager {
             return Result.failure(Exception("MAL Client ID is missing. Add STREAMHUB_MAL_CLIENT_ID secret."))
         }
 
-        val encodedQuery = URLEncoder.encode(query.trim(), "UTF-8")
+        val encodedQuery = URLEncoder.encode(query.trim(), Charsets.UTF_8.name())
         val url = "${Secrets.MAL_BASE_URL}anime?q=$encodedQuery&limit=1&fields=id,title,main_picture,synopsis,mean,start_date,end_date,genres,alternative_titles,num_episodes,status,media_type,source,average_episode_duration,studios,producers,rating"
 
         val request = Request.Builder()

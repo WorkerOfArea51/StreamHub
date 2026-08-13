@@ -68,7 +68,12 @@ fun DownloadsScreen(
     // Real Device Storage Calculation
     val storageInfo = remember(downloadsList) {
         try {
-            val stat = android.os.StatFs(android.os.Environment.getDataDirectory().absolutePath)
+            val stat = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                android.os.StatFs(android.os.Environment.getDataDirectory().path)
+            } else {
+                @Suppress("DEPRECATION")
+                android.os.StatFs(android.os.Environment.getDataDirectory().absolutePath)
+            }
             val freeBytes = stat.availableBlocksLong * stat.blockSizeLong
             val totalBytes = stat.blockCountLong * stat.blockSizeLong
             val freeGb = freeBytes / (1024.0 * 1024.0 * 1024.0)

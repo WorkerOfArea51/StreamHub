@@ -314,7 +314,7 @@ object DownloadManager {
         }
 
         val downloadsDir = getEffectiveDownloadDir(context)
-        val fileName = "${mediaItem.title.replace(Regex("[^a-zA-Z0-9]"), "_")}_Ep${episodeIndex + 1}.mp4"
+        val fileName = "${mediaItem.title.replace(FILENAME_SANITIZE_REGEX, "_")}_Ep${episodeIndex + 1}.mp4"
         val targetFile = File(downloadsDir, fileName)
 
         var sysDownloadId = -1L

@@ -365,8 +365,8 @@ object TelegramProxyManager {
         val pType = when (config.type) {
             ProxyType.SOCKS5 -> Proxy.Type.SOCKS
             ProxyType.SOCKS4 -> {
-                Log.w(TAG, "SOCKS4 proxy type specified for OkHttpClient — SOCKS socket protocol will be used")
-                Proxy.Type.SOCKS
+                Log.e(TAG, "SOCKS4 proxies are not supported by OkHttpClient. Please use SOCKS5 or MTProto.")
+                throw IllegalArgumentException("SOCKS4 proxies are not supported by OkHttpClient. Please use SOCKS5 or MTProto.")
             }
             ProxyType.HTTP -> Proxy.Type.HTTP
             ProxyType.MTPROTO -> Proxy.Type.SOCKS

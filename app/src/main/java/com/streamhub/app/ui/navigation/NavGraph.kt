@@ -20,10 +20,10 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     object Admin : Screen("admin", "Admin Panel")
     
     object Details : Screen("details/{mediaId}", "Details") {
-        fun createRoute(mediaId: String) = "details/${java.net.URLEncoder.encode(mediaId, "UTF-8")}"
+        fun createRoute(mediaId: String) = "details/${android.net.Uri.encode(mediaId)}"
     }
     
     object Player : Screen("player/{mediaId}/{episodeIndex}", "Player") {
-        fun createRoute(mediaId: String, episodeIndex: Int = 0) = "player/${java.net.URLEncoder.encode(mediaId, "UTF-8")}/$episodeIndex"
+        fun createRoute(mediaId: String, episodeIndex: Int = 0) = "player/${android.net.Uri.encode(mediaId)}/$episodeIndex"
     }
 }
