@@ -347,7 +347,6 @@ fun ProxySettingsDialog(
                         ) {
                             listOf(
                                 ProxyType.SOCKS5 to "SOCKS v5",
-                                ProxyType.SOCKS4 to "SOCKS v4",
                                 ProxyType.HTTP to "HTTPS",
                                 ProxyType.MTPROTO to "MTProto"
                             ).forEach { (pType, label) ->
@@ -363,8 +362,9 @@ fun ProxySettingsDialog(
                                             if (portText.isBlank() || portText == "443" || portText == "1080" || portText == "8080") {
                                                 portText = when (pType) {
                                                     ProxyType.MTPROTO -> "443"
-                                                    ProxyType.SOCKS5, ProxyType.SOCKS4 -> "1080"
+                                                    ProxyType.SOCKS5 -> "1080"
                                                     ProxyType.HTTP -> "8080"
+                                                    else -> "1080"
                                                 }
                                             }
                                         }

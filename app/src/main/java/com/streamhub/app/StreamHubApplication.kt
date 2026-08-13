@@ -82,6 +82,7 @@ class StreamHubApplication : Application() {
             override fun onStop(owner: androidx.lifecycle.LifecycleOwner) {
                 Log.d(TAG, "App moved to background — executing cleanup")
                 runCatching { com.streamhub.app.player.StreamDownloadManager.release() }
+                runCatching { com.streamhub.app.player.StreamCacheManager.release() }
                 runCatching { com.streamhub.app.data.DownloadManager.cleanup() }
             }
         })
@@ -159,11 +160,5 @@ class StreamHubApplication : Application() {
                 currentVersionName = BuildConfig.VERSION_NAME
             )
         }.onFailure { Log.e(TAG, "AppUpdateManager.checkForUpdate failed", it) }
-    }
-
-    override fun onTerminate() {
-        runCatching { com.streamhub.app.player.StreamDownloadManager.release() }
-        runCatching { com.streamhub.app.data.DownloadManager.cleanup() }
-        super.onTerminate()
     }
 }

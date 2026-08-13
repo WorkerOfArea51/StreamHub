@@ -32,7 +32,24 @@ object QrCodeGenerator {
         }
     }
 
-    fun generateQrBitmap(content: String, sizePx: Int = 512): ImageBitmap? {
-        return generateQrBitmapResult(content, sizePx).getOrNull()
+    fun generateQrBitmap(content: String, sizePx: Int = 512): ImageBitmap {
+        return generateQrBitmapResult(content, sizePx).getOrElse {
+            createErrorPlaceholder(sizePx)
+        }
+    }
+
+    private fun createErrorPlaceholder(sizePx: Int): ImageBitmap {
+        val sz = if (sizePx <= 0) 512 else sizePx
+        val bitmap = Bitmap.createBitmap(sz, sz, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        canvas.drawColor(android.graphics.Color.DKGRAY)
+        val paint = android.graphics.Paint().apply {
+            color = android.graphics.Color.RED
+            textSize = sz / 8f
+            textAlign = android.graphics.Paint.Align.CENTER
+            isAntiAlias = true
+        }
+        canvas.drawText("QR Error", sz / 2f, sz / 2f, paint)
+        return bitmap.asImageBitmap()
     }
 }

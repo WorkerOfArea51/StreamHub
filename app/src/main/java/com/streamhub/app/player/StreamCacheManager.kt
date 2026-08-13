@@ -59,4 +59,17 @@ object StreamCacheManager {
             true
         }
     }
+
+    fun release() {
+        cacheLock.write {
+            val cache = simpleCache
+            simpleCache = null
+            databaseProvider = null
+            try {
+                cache?.release()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to release simpleCache", e)
+            }
+        }
+    }
 }

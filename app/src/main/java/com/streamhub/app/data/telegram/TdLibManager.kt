@@ -70,7 +70,7 @@ object TdLibManager {
     private const val REQUEST_TIMEOUT_MS = 30_000L
 
     /** Coroutine scope for internal async work. SupervisorJob so one failure doesn't cancel all. */
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /** Main-thread handler for posting StateFlow updates. */
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -695,6 +695,7 @@ object TdLibManager {
     suspend fun destroy() {
         val c = client ?: return
         scope.cancel()
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         try {
             sendOk(TdApi.Close())
         } catch (e: Exception) {
