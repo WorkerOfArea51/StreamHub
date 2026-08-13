@@ -158,8 +158,11 @@ class MainActivity : ComponentActivity() {
      * which reads `resources.configuration.uiMode` to detect PiP. This override
      * is the system-level hook for any activity-wide side effects.
      */
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
-        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        }
         Log.d(TAG, "PiP mode changed: isInPip=$isInPictureInPictureMode")
         if (isInPictureInPictureMode) {
             // Disable auto-PiP re-entry while already in PiP

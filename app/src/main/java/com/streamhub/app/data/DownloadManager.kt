@@ -111,11 +111,12 @@ object DownloadManager {
                 }
             }
         }
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            ctx.registerReceiver(receiver, IntentFilter(SystemDownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            ctx.registerReceiver(receiver, IntentFilter(SystemDownloadManager.ACTION_DOWNLOAD_COMPLETE))
-        }
+        androidx.core.content.ContextCompat.registerReceiver(
+            ctx,
+            receiver,
+            IntentFilter(SystemDownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            androidx.core.content.ContextCompat.RECEIVER_EXPORTED
+        )
         completionReceiver = receiver
     }
 

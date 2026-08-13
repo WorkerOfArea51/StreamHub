@@ -2,11 +2,14 @@ package com.streamhub.app.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.CaptionStyleCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+@OptIn(UnstableApi::class)
 data class SubtitleConfig(
     val fontSizeSp: Float = 18f,
     val textColorArgb: Long = 0xFFFFE066L, // Vibrant Yellow
@@ -21,6 +24,7 @@ data class SubtitleConfig(
  * - Configures background box contrast
  * - Persists preferences in SharedPreferences (streamhub_subtitle_prefs)
  */
+@OptIn(UnstableApi::class)
 object SubtitleSettingsManager {
 
     private const val PREFS_NAME = "streamhub_subtitle_prefs"
