@@ -1698,41 +1698,20 @@ fun AdminPasswordDialog(
     onDismiss: () -> Unit,
     onSuccess: () -> Unit
 ) {
-    var password by remember { mutableStateOf("") }
-    var errorMsg by remember { mutableStateOf("") }
-
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Owner Admin Dashboard 🛡️", color = TextPrimary, fontWeight = FontWeight.Bold) },
+        title = { Text("Owner Admin Access 🛡️", color = TextPrimary, fontWeight = FontWeight.Bold) },
         text = {
-            Column {
-                Text("Enter the Admin Password to unlock catalog management:", color = TextSecondary, fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(10.dp))
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    placeholder = { Text("Password", color = TextSecondary) },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                if (errorMsg.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(errorMsg, color = Color(0xFFEF4444), fontSize = 11.sp)
-                }
-            }
+            Text("Admin mode is granted automatically to authorized Telegram Channel Owners/Admins.", color = TextSecondary, fontSize = 13.sp)
         },
         confirmButton = {
             Button(
                 onClick = {
-                    if (com.streamhub.app.data.AdminManager.verifyAndEnableAdmin(password)) {
-                        onSuccess()
-                    } else {
-                        errorMsg = "Incorrect Admin Password."
-                    }
+                    com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
+                    onSuccess()
                 }
             ) {
-                Text("Unlock")
+                Text("Enable Creator Studio")
             }
         },
         dismissButton = {

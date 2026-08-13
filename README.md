@@ -15,7 +15,7 @@
 * ⚡ **High-Speed Telegram Video Engine**: Direct HTTP 206 Byte-Range streaming from Telegram MTProto storage with `SimpleCache` chunk caching to eliminate `FLOOD_WAIT` rate limits.
 * 🎌 **Netflix & Crunchyroll Slate UI**: Jetpack Compose declarative UI with Hero Banner carousels, category filter pills (`Anime`, `Movies`, `Web Series`), and horizontal media rows.
 * 🏷️ **Technical MediaInfo Badges**: Real-time spec badges (`1080p FHD`, `x264/AVC`, `HEVC/x265`, `Dual Audio Hindi+Tamil`, `ESub`, `File Size 2.3 GB`).
-* 🔑 **In-App Admin Control Panel**: PIN-locked admin mode (`1234`) allowing in-app content publishing, batch Telegram link auto-grouping, and live Firebase sync without touching Firebase Console.
+* 🔑 **In-App Admin Control Panel**: Authenticated admin mode (unlocked automatically for Telegram Channel Owners/Admins) allowing in-app content publishing, batch Telegram link auto-grouping, and live Firebase sync without touching Firebase Console.
 * 🎬 **Automated TMDB & Official MAL v2 Metadata Sync**: Integrated with TMDB API and Official MyAnimeList v2 REST API for 1-tap poster, backdrop, and synopsis auto-fetching.
 * 📥 **True Offline Downloads**: ExoPlayer `DownloadManager` integration allowing video downloads for offline playback in Airplane Mode with zero internet connection.
 * 📺 **Advanced ExoPlayer HUD (Aniyomi & TelStream Inspired)**: Landscape mode, Play/Pause, 10s Skip, Scrubber Bar, Speed selection (`0.5x` - `2.0x`), Aspect Ratio switcher (`Fit`, `Crop`, `Stretch`, `Fill`), and Lock Screen toggle.

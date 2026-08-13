@@ -21,13 +21,6 @@ object Secrets {
     /** MyAnimeList v2 client secret. Empty for public clients (PKCE flow). */
     val MAL_CLIENT_SECRET: String get() = BuildConfig.MAL_CLIENT_SECRET
 
-    /**
-     * Bcrypt hash of the admin PIN. Verified by AdminManager.verifyAndEnableAdmin (M3).
-     * Default "0000" never matches any real PIN, so admin login is disabled until
-     * a real hash is set in local.properties.
-     */
-    val ADMIN_PIN_HASH: String get() = BuildConfig.ADMIN_PIN_HASH
-
     /** Telegram App API credentials for TDLib client authentication. */
     val TELEGRAM_API_ID: String get() = BuildConfig.TELEGRAM_API_ID.ifBlank { "23143864" }
     val TELEGRAM_API_HASH: String get() = BuildConfig.TELEGRAM_API_HASH.ifBlank { "726e02cd51d31364d6aca817dac5ed81" }
