@@ -123,8 +123,7 @@ class FirebaseRepository private constructor() {
                         }
 
                         if (remoteItems.isNotEmpty()) {
-                            val merged = (remoteItems + _mediaCatalog.value).distinctBy { it.id }
-                            _mediaCatalog.value = merged
+                            _mediaCatalog.update { current -> (remoteItems + current).distinctBy { it.id } }
                         }
                         _catalogState.value = CatalogState.Ready
                     }
@@ -141,16 +140,18 @@ class FirebaseRepository private constructor() {
     }
 
     /**
-     * Save/Publish a media item into catalog from App UI.
+     * Save or update a media item in catalog.
      */
     fun saveMediaItem(item: MediaItem) {
         _adminOperationState.value = AdminOperationState.Loading
         val db = firestore
         if (db == null) {
-            val current = _mediaCatalog.value.toMutableList()
-            val index = current.indexOfFirst { it.id == item.id }
-            if (index >= 0) current[index] = item else current.add(0, item)
-            _mediaCatalog.value = current
+            _mediaCatalog.update { current ->
+                val list = current.toMutableList()
+                val index = list.indexOfFirst { it.id == item.id }
+                if (index >= 0) list[index] = item else list.add(0, item)
+                list
+            }
             _catalogState.value = CatalogState.Ready
             _adminOperationState.value = AdminOperationState.Success()
             return
@@ -161,10 +162,12 @@ class FirebaseRepository private constructor() {
             .document(item.id)
             .set(docMap)
             .addOnSuccessListener {
-                val current = _mediaCatalog.value.toMutableList()
-                val index = current.indexOfFirst { it.id == item.id }
-                if (index >= 0) current[index] = item else current.add(0, item)
-                _mediaCatalog.value = current
+                _mediaCatalog.update { current ->
+                    val list = current.toMutableList()
+                    val index = list.indexOfFirst { it.id == item.id }
+                    if (index >= 0) list[index] = item else list.add(0, item)
+                    list
+                }
                 _catalogState.value = CatalogState.Ready
                 _adminOperationState.value = AdminOperationState.Success()
                 Log.d(TAG, "Successfully synced media item to Firestore: ${item.id}")
@@ -173,6 +176,36 @@ class FirebaseRepository private constructor() {
                 Log.e(TAG, "Failed to sync media item to Firestore: ${item.id}", e)
                 _adminOperationState.value = AdminOperationState.Error(e.message ?: "Failed to save to Firestore")
             }
+    }
+
+    /**
+     * Delete a media item from catalog.
+     */
+    fun deleteMediaItem(itemId: String) {
+        _adminOperationState.value = AdminOperationState.Loading
+        val db = firestore
+        if (db == null) {
+            _mediaCatalog.update { current -> current.filterNot { it.id == itemId } }
+            _adminOperationState.value = AdminOperationState.Success()
+            return
+        }
+        db.collection(COLLECTION_NAME)
+            .document(itemId)
+            .delete()
+            .addOnSuccessListener {
+                Log.d(TAG, "Successfully deleted media item from Firestore: $itemId")
+                _mediaCatalog.update { current -> current.filterNot { it.id == itemId } }
+                _adminOperationState.value = AdminOperationState.Success()
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Failed to delete media item from Firestore: $itemId", e)
+                _adminOperationState.value = AdminOperationState.Error(e.message ?: "Delete failed")
+            }
+    }
+
+    private fun loadInitialCatalog() {
+        _mediaCatalog.value = emptyList()
+        _catalogState.value = CatalogState.Loading
     }
 
     private fun mediaItemToMap(item: MediaItem): Map<String, Any?> {
@@ -228,35 +261,5 @@ class FirebaseRepository private constructor() {
                 )
             }
         )
-    }
-
-    /**
-     * Delete a media item from catalog.
-     */
-    fun deleteMediaItem(itemId: String) {
-        _adminOperationState.value = AdminOperationState.Loading
-        val db = firestore
-        if (db == null) {
-            _mediaCatalog.update { current -> current.filterNot { it.id == itemId } }
-            _adminOperationState.value = AdminOperationState.Success()
-            return
-        }
-        db.collection(COLLECTION_NAME)
-            .document(itemId)
-            .delete()
-            .addOnSuccessListener {
-                Log.d(TAG, "Successfully deleted media item from Firestore: $itemId")
-                _mediaCatalog.update { current -> current.filterNot { it.id == itemId } }
-                _adminOperationState.value = AdminOperationState.Success()
-            }
-            .addOnFailureListener { e ->
-                Log.e(TAG, "Failed to delete media item from Firestore: $itemId", e)
-                _adminOperationState.value = AdminOperationState.Error(e.message ?: "Delete failed")
-            }
-    }
-
-    private fun loadInitialCatalog() {
-        _mediaCatalog.value = emptyList()
-        _catalogState.value = CatalogState.Ready
     }
 }

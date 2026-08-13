@@ -358,7 +358,7 @@ object TelegramProxyManager {
             return cachedProxyClient!!
         }
 
-        val builder = OkHttpClient.Builder()
+        val builder = com.streamhub.app.data.api.SharedHttpClient.baseClient.newBuilder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(10, TimeUnit.SECONDS)
 

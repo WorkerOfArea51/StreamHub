@@ -16,4 +16,7 @@
     <include domain="sharedpref" path="streamhub_watch_history.xml"/>
     <include domain="sharedpref" path="streamhub_my_list.xml"/>
     <include domain="sharedpref" path="streamhub_theme_prefs.xml"/>
+    <include domain="sharedpref" path="streamhub_player_settings.xml"/>
+    <include domain="sharedpref" path="streamhub_subtitle_settings.xml"/>
+    <include domain="sharedpref" path="streamhub_home_layout.xml"/>
 </full-backup-content>

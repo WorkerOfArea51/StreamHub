@@ -77,6 +77,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (savedInstanceState != null) {
+            savedInstanceState.getString("deep_link_media_id")?.let { deepLinkMediaId.value = it }
+        }
         handleDeepLink(intent)
 
         // All managers are initialized in StreamHubApplication.onCreate().
@@ -87,6 +90,11 @@ class MainActivity : ComponentActivity() {
                 StreamHubApp(deepLinkMediaId = deepLinkMediaId)
             }
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString("deep_link_media_id", deepLinkMediaId.value)
     }
 
     override fun onNewIntent(intent: Intent) {

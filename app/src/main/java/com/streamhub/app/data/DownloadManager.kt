@@ -115,7 +115,7 @@ object DownloadManager {
             ctx,
             receiver,
             IntentFilter(SystemDownloadManager.ACTION_DOWNLOAD_COMPLETE),
-            androidx.core.content.ContextCompat.RECEIVER_EXPORTED
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
         )
         completionReceiver = receiver
     }
@@ -411,8 +411,7 @@ object DownloadManager {
                     if (index != -1) {
                         mutableList[index] = item.copy(
                             downloadId = newDownloadId,
-                            isPaused = false,
-                            progressPercent = 0
+                            isPaused = false
                         )
                     }
                     mutableList

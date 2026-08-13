@@ -190,14 +190,16 @@ fun DetailsScreen(
             // Header Backdrop Container (In-App YouTube Trailer Launcher)
             item {
                 val playTrailer = {
-                    val rawId = mediaItem.trailerId.ifEmpty { "HkIKAnwLZCw" }
-                    val cleanId = when {
-                        rawId.contains("v=") -> rawId.substringAfter("v=").substringBefore("&")
-                        rawId.contains("youtu.be/") -> rawId.substringAfter("youtu.be/").substringBefore("?")
-                        else -> rawId
+                    val rawId = mediaItem.trailerId.trim()
+                    if (rawId.isNotBlank()) {
+                        val cleanId = when {
+                            rawId.contains("v=") -> rawId.substringAfter("v=").substringBefore("&")
+                            rawId.contains("youtu.be/") -> rawId.substringAfter("youtu.be/").substringBefore("?")
+                            else -> rawId
+                        }
+                        activeTrailerId = cleanId
+                        showTrailerDialog = true
                     }
-                    activeTrailerId = cleanId
-                    showTrailerDialog = true
                 }
 
                 Box(

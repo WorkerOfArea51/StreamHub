@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DownloadDone
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SdCard
@@ -129,7 +130,7 @@ fun DownloadsScreen(
                                 .padding(8.dp)
                         ) {
                             Icon(
-                                imageVector = if (storageLocation == "SD Card") Icons.Default.SdCard else Icons.Default.SdCard,
+                                imageVector = if (storageLocation == "SD Card") Icons.Default.SdCard else Icons.Default.Folder,
                                 contentDescription = "Storage",
                                 tint = primaryColor
                             )

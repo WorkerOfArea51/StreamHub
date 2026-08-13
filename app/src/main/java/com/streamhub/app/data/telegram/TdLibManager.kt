@@ -618,7 +618,10 @@ object TdLibManager {
             val proxyType = when (type) {
                 ProxyType.MTPROTO -> TdApi.ProxyTypeMtproto(secret)
                 ProxyType.SOCKS5 -> TdApi.ProxyTypeSocks5(username, password)
-                ProxyType.SOCKS4 -> TdApi.ProxyTypeSocks5(username, "")
+                ProxyType.SOCKS4 -> {
+                    Log.w(TAG, "SOCKS4 proxies are not supported by TDLib. Please use SOCKS5 or MTProto.")
+                    return Result.failure(IllegalArgumentException("TDLib does not support SOCKS4 proxies"))
+                }
                 ProxyType.HTTP -> {
                     // TDLib doesn't support HTTP proxies natively.
                     // HTTP proxies are handled by OkHttpClient, not TDLib.

@@ -87,7 +87,7 @@ object TelegramAuthManager {
     private val _authState = MutableStateFlow<TelegramAuthState>(TelegramAuthState.Unauthenticated)
     val authState: StateFlow<TelegramAuthState> = _authState.asStateFlow()
 
-    private lateinit var prefs: SharedPreferences
+    private var prefs: SharedPreferences? = null
 
     private val isTdLibAvailable: Boolean
         get() = TdLibManager.isInitialized() &&
@@ -97,10 +97,11 @@ object TelegramAuthManager {
     /**
      * Initialize the auth manager. Called from StreamHubApplication.onCreate().
      *
-     * Reads cached user info from SharedPreferences for fast UI rendering,
+     * Reads cached user info from EncryptedSharedPreferences for fast UI rendering,
      * then observes TdLibManager's auth state for real-time updates.
      */
     fun init(context: Context) {
+        if (prefs != null) return
         try {
             val masterKey = androidx.security.crypto.MasterKey.Builder(context.applicationContext)
                 .setKeyScheme(androidx.security.crypto.MasterKey.KeyScheme.AES256_GCM)
@@ -113,25 +114,27 @@ object TelegramAuthManager {
                 androidx.security.crypto.EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
         } catch (e: Exception) {
-            Log.e(TAG, "EncryptedSharedPreferences unavailable for session", e)
-            prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            Log.e(TAG, "EncryptedSharedPreferences unavailable for session — session NOT stored to disk", e)
+            prefs = null
         }
 
-        // Read cached user from SharedPreferences (for fast cold-start)
-        val isLoggedIn = prefs.getBoolean(KEY_IS_LOGGED_IN, false)
-        if (isLoggedIn) {
-            val user = TelegramUser(
-                id = prefs.getLong(KEY_USER_ID, 0L),
-                firstName = prefs.getString(KEY_FIRST_NAME, "User") ?: "User",
-                lastName = prefs.getString(KEY_LAST_NAME, "") ?: "",
-                username = prefs.getString(KEY_USERNAME, "") ?: "",
-                phoneNumber = prefs.getString(KEY_PHONE, "") ?: "",
-                photoUrl = prefs.getString(KEY_PHOTO_URL, "") ?: "",
-                isVerified = prefs.getBoolean(KEY_IS_VERIFIED, false),
-                isPremium = prefs.getBoolean(KEY_IS_PREMIUM, false)
-            )
-            val isOwner = prefs.getBoolean(KEY_IS_OWNER, false)
-            _authState.value = TelegramAuthState.Authenticated(user, isOwner)
+        // Read cached user from EncryptedSharedPreferences (for fast cold-start)
+        prefs?.let { p ->
+            val isLoggedIn = p.getBoolean(KEY_IS_LOGGED_IN, false)
+            if (isLoggedIn) {
+                val user = TelegramUser(
+                    id = p.getLong(KEY_USER_ID, 0L),
+                    firstName = p.getString(KEY_FIRST_NAME, "User") ?: "User",
+                    lastName = p.getString(KEY_LAST_NAME, "") ?: "",
+                    username = p.getString(KEY_USERNAME, "") ?: "",
+                    phoneNumber = p.getString(KEY_PHONE, "") ?: "",
+                    photoUrl = p.getString(KEY_PHOTO_URL, "") ?: "",
+                    isVerified = p.getBoolean(KEY_IS_VERIFIED, false),
+                    isPremium = p.getBoolean(KEY_IS_PREMIUM, false)
+                )
+                val isOwner = p.getBoolean(KEY_IS_OWNER, false)
+                _authState.value = TelegramAuthState.Authenticated(user, isOwner)
+            }
         }
 
         // Register TDLib file and user update listener for dynamic profile updates
@@ -145,7 +148,7 @@ object TelegramAuthManager {
                             val targetId = pendingPhotoFileId.get()
                             if ((targetId != 0 && file.id == targetId) || currentAuth.user.photoUrl.isBlank()) {
                                 val updatedUser = currentAuth.user.copy(photoUrl = file.local.path)
-                                prefs.edit().putString(KEY_PHOTO_URL, file.local.path).apply()
+                                prefs?.edit()?.putString(KEY_PHOTO_URL, file.local.path)?.apply()
                                 _authState.value = currentAuth.copy(user = updatedUser)
                                 Log.i(TAG, "Profile photo updated from TDLib file update: ${file.local.path}")
                             }
@@ -365,8 +368,8 @@ object TelegramAuthManager {
         }
 
         val cleanCode = code.trim()
-        if (cleanCode.length < 5) {
-            _authState.value = TelegramAuthState.Error("Invalid verification code. Must be 5+ digits.")
+        if (cleanCode.length < 4) {
+            _authState.value = TelegramAuthState.Error("Invalid verification code. Must be at least 4 digits.")
             return
         }
 
@@ -432,19 +435,19 @@ object TelegramAuthManager {
     }
 
     private suspend fun completeLogin(user: TelegramUser, isOwner: Boolean = checkIsOwner(user)) {
-        // Cache user info in SharedPreferences for fast cold-start reads
-        prefs.edit()
-            .putBoolean(KEY_IS_LOGGED_IN, true)
-            .putLong(KEY_USER_ID, user.id)
-            .putString(KEY_FIRST_NAME, user.firstName)
-            .putString(KEY_LAST_NAME, user.lastName)
-            .putString(KEY_USERNAME, user.username)
-            .putString(KEY_PHONE, user.phoneNumber)
-            .putString(KEY_PHOTO_URL, user.photoUrl)
-            .putBoolean(KEY_IS_OWNER, isOwner)
-            .putBoolean(KEY_IS_VERIFIED, user.isVerified)
-            .putBoolean(KEY_IS_PREMIUM, user.isPremium)
-            .commit()
+        // Cache user info in EncryptedSharedPreferences for fast cold-start reads
+        prefs?.edit()
+            ?.putBoolean(KEY_IS_LOGGED_IN, true)
+            ?.putLong(KEY_USER_ID, user.id)
+            ?.putString(KEY_FIRST_NAME, user.firstName)
+            ?.putString(KEY_LAST_NAME, user.lastName)
+            ?.putString(KEY_USERNAME, user.username)
+            ?.putString(KEY_PHONE, user.phoneNumber)
+            ?.putString(KEY_PHOTO_URL, user.photoUrl)
+            ?.putBoolean(KEY_IS_OWNER, isOwner)
+            ?.putBoolean(KEY_IS_VERIFIED, user.isVerified)
+            ?.putBoolean(KEY_IS_PREMIUM, user.isPremium)
+            ?.commit()
 
         autoJoinPrivateChannels()
         _authState.value = TelegramAuthState.Authenticated(user, isOwner)
@@ -474,7 +477,7 @@ object TelegramAuthManager {
             }
 
             // Clear SharedPreferences cache
-            prefs.edit().clear().apply()
+            prefs?.edit()?.clear()?.apply()
 
             _authState.value = TelegramAuthState.Unauthenticated
         }
@@ -492,7 +495,7 @@ object TelegramAuthManager {
         if (apiId.isBlank() || apiHash.isBlank() || user.id == 0L) return false
 
         // Check if already verified as owner in prefs or AdminManager
-        if (prefs.getBoolean(KEY_IS_OWNER, false) || com.streamhub.app.data.AdminManager.isAdminMode.value) {
+        if (prefs?.getBoolean(KEY_IS_OWNER, false) == true || com.streamhub.app.data.AdminManager.isAdminMode.value) {
             com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
             return true
         }
@@ -507,7 +510,7 @@ object TelegramAuthManager {
 
         // Match by username or permanent numeric Telegram User ID
         if ((cleanUsername.isNotBlank() && cleanUsername in ownerIdentifiers) || userIdStr in ownerIdentifiers) {
-            prefs.edit().putBoolean(KEY_IS_OWNER, true).apply()
+            prefs?.edit()?.putBoolean(KEY_IS_OWNER, true)?.apply()
             com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
             return true
         }
@@ -524,7 +527,7 @@ object TelegramAuthManager {
                 val isChannelAdmin = TdLibMediaProvider.checkIfUserIsChannelAdmin(userId)
                 if (isChannelAdmin) {
                     com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
-                    prefs.edit().putBoolean(KEY_IS_OWNER, true).apply()
+                    prefs?.edit()?.putBoolean(KEY_IS_OWNER, true)?.apply()
                     val currentAuth = _authState.value
                     if (currentAuth is TelegramAuthState.Authenticated && !currentAuth.isOwner) {
                         _authState.value = currentAuth.copy(isOwner = true)

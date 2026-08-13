@@ -2,6 +2,7 @@ package com.streamhub.app.data.api
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -71,31 +72,36 @@ object MetadataFetchManager {
         }
     }
 
-    private fun ensureGenreCache(apiKey: String, isMovie: Boolean) {
+    private val genreCacheMutex = kotlinx.coroutines.sync.Mutex()
+
+    private suspend fun ensureGenreCache(apiKey: String, isMovie: Boolean) {
         val genreMap = if (isMovie) movieGenreMap else tvGenreMap
         if (genreMap.isNotEmpty()) return
 
-        try {
-            val endpoint = if (isMovie) "genre/movie/list" else "genre/tv/list"
-            val url = "$TMDB_BASE/$endpoint?api_key=$apiKey"
-            val request = Request.Builder().url(url).header("Accept", "application/json").build()
+        genreCacheMutex.withLock {
+            if (genreMap.isNotEmpty()) return
+            try {
+                val endpoint = if (isMovie) "genre/movie/list" else "genre/tv/list"
+                val url = "$TMDB_BASE/$endpoint"
+                val request = Request.Builder().url(url).header("Accept", "application/json").build()
 
-            httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return
-                val body = response.body?.string() ?: return
-                val json = JSONObject(body)
-                val genres = json.optJSONArray("genres") ?: return
-                for (i in 0 until genres.length()) {
-                    val g = genres.getJSONObject(i)
-                    genreMap[g.getInt("id")] = g.getString("name")
+                httpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return
+                    val body = response.body?.string() ?: return
+                    val json = JSONObject(body)
+                    val genres = json.optJSONArray("genres") ?: return
+                    for (i in 0 until genres.length()) {
+                        val g = genres.getJSONObject(i)
+                        genreMap[g.getInt("id")] = g.getString("name")
+                    }
                 }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to fetch TMDB genre list: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to fetch TMDB genre list: ${e.message}")
         }
     }
 
-    private fun fetchFromTMDB(query: String, category: String): Result<FetchedMetadata> {
+    private suspend fun fetchFromTMDB(query: String, category: String): Result<FetchedMetadata> {
         val apiKey = Secrets.TMDB_API_KEY
         if (apiKey.isBlank()) {
             return Result.failure(Exception("TMDB API Key is missing. Add STREAMHUB_TMDB_API_KEY secret."))
@@ -265,7 +271,7 @@ object MetadataFetchManager {
      * MyAnimeList Search for Anime — prefers English title over Romaji/Japanese title
      * and fetches full specs (studio, source, duration, status, episodes, MAL ID, synonyms).
      */
-    private fun fetchFromMAL(query: String): Result<FetchedMetadata> {
+    private suspend fun fetchFromMAL(query: String): Result<FetchedMetadata> {
         val clientId = Secrets.MAL_CLIENT_ID
         if (clientId.isBlank()) {
             return Result.failure(Exception("MAL Client ID is missing. Add STREAMHUB_MAL_CLIENT_ID secret."))

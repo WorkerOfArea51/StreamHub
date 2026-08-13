@@ -44,11 +44,11 @@ object StreamCacheManager {
         }
     }
 
-    fun clearCache(context: Context) {
-        cacheLock.write {
+    fun clearCache(context: Context): Boolean {
+        return cacheLock.write {
             if (activeReaderCount > 0) {
                 Log.w(TAG, "Cannot clear cache while player is actively reading ($activeReaderCount active readers)")
-                return
+                return@write false
             }
             val cache = simpleCache
             simpleCache = null
@@ -56,6 +56,7 @@ object StreamCacheManager {
             try { cache?.release() } catch (e: Exception) { Log.e(TAG, "Failed to release cache", e) }
             try { (cacheDir ?: File(context.cacheDir, "media_stream_cache")).deleteRecursively() } catch (e: Exception) { Log.e(TAG, "Failed to delete cache dir", e) }
             cacheDir = null
+            true
         }
     }
 }

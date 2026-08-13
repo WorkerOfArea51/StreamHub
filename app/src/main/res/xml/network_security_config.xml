@@ -31,6 +31,12 @@
     <domain-config>
         <domain includeSubdomains="true">api.themoviedb.org</domain>
         <domain includeSubdomains="true">image.tmdb.org</domain>
+        <!--
+        <pin-set expiration="2027-01-01">
+            <pin digest="SHA-256">REPLACE_WITH_TMDB_SHA256_PIN_1</pin>
+            <pin digest="SHA-256">REPLACE_WITH_TMDB_SHA256_PIN_2</pin>
+        </pin-set>
+        -->
     </domain-config>
 
     <!-- Firebase / Google Services -->
@@ -50,5 +56,11 @@
     <domain-config>
         <domain includeSubdomains="true">api.myanimelist.net</domain>
         <domain includeSubdomains="true">cdn.myanimelist.net</domain>
+        <!--
+        <pin-set expiration="2027-01-01">
+            <pin digest="SHA-256">REPLACE_WITH_MAL_SHA256_PIN_1</pin>
+            <pin digest="SHA-256">REPLACE_WITH_MAL_SHA256_PIN_2</pin>
+        </pin-set>
+        -->
     </domain-config>
 </network-security-config>

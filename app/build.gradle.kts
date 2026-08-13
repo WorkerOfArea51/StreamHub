@@ -43,9 +43,9 @@ android {
         buildConfigField("String", "MAL_CLIENT_SECRET", "\"${secret("streamhub.mal_client_secret")}\"")
         buildConfigField("String", "TELEGRAM_API_ID", "\"${secret("streamhub.telegram_api_id")}\"")
         buildConfigField("String", "TELEGRAM_API_HASH", "\"${secret("streamhub.telegram_api_hash")}\"")
-        buildConfigField("String", "TELEGRAM_ANIME_CHANNEL", "\"${secret("streamhub.telegram_anime_channel", "2633457020")}\"")
-        buildConfigField("String", "TELEGRAM_MOVIES_CHANNEL", "\"${secret("streamhub.telegram_movies_channel", "2633457020")}\"")
-        buildConfigField("String", "TELEGRAM_SERIES_CHANNEL", "\"${secret("streamhub.telegram_series_channel", "2633457020")}\"")
+        buildConfigField("String", "TELEGRAM_ANIME_CHANNEL", "\"${secret("streamhub.telegram_anime_channel", "")}\"")
+        buildConfigField("String", "TELEGRAM_MOVIES_CHANNEL", "\"${secret("streamhub.telegram_movies_channel", "")}\"")
+        buildConfigField("String", "TELEGRAM_SERIES_CHANNEL", "\"${secret("streamhub.telegram_series_channel", "")}\"")
         buildConfigField("boolean", "DEBUG_LOGGING", "false")
         buildConfigField("String", "OWNER_USERNAMES", "\"${secret("streamhub.owner_usernames", "")}\"")
     }
@@ -55,7 +55,7 @@ android {
             isEnable = true
             reset()
             include("armeabi-v7a", "arm64-v8a", "x86_64")
-            isUniversalApk = false
+            isUniversalApk = true
         }
     }
 
@@ -70,7 +70,9 @@ android {
             val archName = when (abi) {
                 "armeabi-v7a" -> "arm32"
                 "arm64-v8a" -> "arm64"
-                else -> "universal"
+                "x86_64" -> "x86_64"
+                null -> "universal"
+                else -> abi
             }
             output.outputFileName = "StreamHub-${archName}-${variant.buildType.name}.apk"
         }

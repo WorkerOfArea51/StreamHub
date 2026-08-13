@@ -100,7 +100,9 @@ fun HomeScreen(
     val appContext = context.applicationContext
     LaunchedEffect(catalog, myListIds) {
         if (catalog.isNotEmpty()) {
-            com.streamhub.app.data.NotificationAlertManager.checkAndNotifyNewEpisodes(appContext, catalog, myListIds)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.streamhub.app.data.NotificationAlertManager.checkAndNotifyNewEpisodes(appContext, catalog, myListIds)
+            }
         }
     }
 

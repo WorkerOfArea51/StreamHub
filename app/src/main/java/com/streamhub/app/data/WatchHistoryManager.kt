@@ -171,7 +171,12 @@ object WatchHistoryManager {
         getPrefs().edit().clear().apply()
     }
 
+    private var prefs: SharedPreferences? = null
+
     private fun getPrefs(): SharedPreferences {
-        return appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (prefs == null) {
+            prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        }
+        return prefs!!
     }
 }

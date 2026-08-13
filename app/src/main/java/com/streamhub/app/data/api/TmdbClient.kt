@@ -11,20 +11,24 @@ object TmdbClient {
 
     /** Shared OkHttpClient with sensible timeouts and gated logging. */
     val okHttpClient: OkHttpClient by lazy {
-        val builder = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(20, TimeUnit.SECONDS)
-            .writeTimeout(20, TimeUnit.SECONDS)
-
-        if (Secrets.DEBUG_LOGGING) {
-            builder.addInterceptor(
-                HttpLoggingInterceptor().apply {
-                    level = HttpLoggingInterceptor.Level.BASIC
+        SharedHttpClient.baseClient.newBuilder().apply {
+            val apiKey = Secrets.TMDB_API_KEY.trim()
+            if (apiKey.isNotBlank()) {
+                addInterceptor { chain ->
+                    val original = chain.request()
+                    val url = original.url.newBuilder().addQueryParameter("api_key", apiKey).build()
+                    chain.proceed(original.newBuilder().url(url).build())
                 }
-            )
-        }
+            }
 
-        builder.build()
+            if (Secrets.DEBUG_LOGGING) {
+                addInterceptor(
+                    HttpLoggingInterceptor().apply {
+                        level = HttpLoggingInterceptor.Level.BASIC
+                    }
+                )
+            }
+        }.build()
     }
 
     val instance: TmdbApiService by lazy {

@@ -47,7 +47,11 @@ object StreamDownloadManager {
                 .setConnectTimeoutMs(15_000)
                 .setReadTimeoutMs(15_000)
 
-            val exec = Executors.newFixedThreadPool(4).also { executor = it }
+            val exec = java.util.concurrent.ThreadPoolExecutor(
+                4, 4, 60L, TimeUnit.SECONDS,
+                java.util.concurrent.ArrayBlockingQueue(32),
+                java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy()
+            ).also { executor = it }
 
             downloadManager = DownloadManager(
                 context.applicationContext,
