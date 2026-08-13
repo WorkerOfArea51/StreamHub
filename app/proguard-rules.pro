@@ -7,6 +7,8 @@
 -keepattributes *Annotation*, InnerClasses, Signature, Exceptions, EnclosingMethod
 -keepattributes RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations
 -keepattributes RuntimeInvisibleAnnotations, RuntimeInvisibleParameterAnnotations
+-keepattributes SourceFile, LineNumberTable
+-renamesourcefileattribute SourceFile
 
 # --- Kotlin metadata (coroutines, reflection) ---
 -keep class kotlin.Metadata { *; }

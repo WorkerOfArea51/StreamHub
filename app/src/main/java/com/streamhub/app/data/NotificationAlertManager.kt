@@ -100,7 +100,7 @@ object NotificationAlertManager {
         editor.apply()
     }
 
-    private val lastNotificationTime = mutableMapOf<String, Long>()
+    private val lastNotificationTime = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private const val NOTIFICATION_COOLDOWN_MS = 60 * 60 * 1000L
 
     private fun sendEpisodeNotification(

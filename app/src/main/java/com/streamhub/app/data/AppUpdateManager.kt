@@ -347,7 +347,9 @@ object AppUpdateManager {
         val responseBody = response.body
             ?: throw Exception("Empty response body")
 
-        val apkFile = File(context.cacheDir, "streamhub_update.apk")
+        val updateDir = File(context.filesDir, "updates")
+        if (!updateDir.exists()) updateDir.mkdirs()
+        val apkFile = File(updateDir, "streamhub_update.apk")
         if (apkFile.exists()) apkFile.delete()
 
         val actualTotal = if (totalBytes > 0) totalBytes

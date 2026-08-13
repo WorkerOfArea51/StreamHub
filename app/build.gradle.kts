@@ -90,14 +90,16 @@ android {
                 storePassword = keystoreProps.getProperty("storePassword")
                 keyAlias = keystoreProps.getProperty("keyAlias")
                 keyPassword = keystoreProps.getProperty("keyPassword")
+            } else if (gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }) {
+                throw GradleException(
+                    "keystore.properties is REQUIRED for release builds. " +
+                    "Create it from keystore.properties.example with your signing key."
+                )
             } else {
-                // Do NOT silently sign release builds with debug keys.
-                // Fail the build so misconfigured release APKs are never produced.
                 storeFile = signingConfigs.getByName("debug").storeFile
                 storePassword = signingConfigs.getByName("debug").storePassword
                 keyAlias = signingConfigs.getByName("debug").keyAlias
                 keyPassword = signingConfigs.getByName("debug").keyPassword
-                logger.warn("keystore.properties missing — release build will require valid signing configuration.")
             }
         }
     }
@@ -174,6 +176,7 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.datastore.preferences)
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     implementation(libs.bcrypt)
     implementation("com.google.zxing:core:3.5.3")

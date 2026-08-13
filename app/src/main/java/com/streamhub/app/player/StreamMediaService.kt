@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -21,8 +22,9 @@ class StreamMediaService : MediaSessionService() {
 
     companion object {
         private const val TAG = "StreamMediaService"
-        private const val CHANNEL_ID = "streamhub_playback"
         private const val NOTIFICATION_ID = 1001
+        private const val CHANNEL_ID = "streamhub_media_playback"
+        private const val WAKELOCK_TIMEOUT_MS = 12 * 60 * 60 * 1000L // 12 hours
     }
 
     private var mediaSession: MediaSession? = null
@@ -30,33 +32,30 @@ class StreamMediaService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+
         createNotificationChannel()
+        startForegroundNotification()
 
         val sharedPlayer = StreamPlayerViewModel.currentPlayer
-        if (sharedPlayer != null) {
-            Log.d(TAG, "Using shared ExoPlayer from ViewModel")
-            mediaSession = MediaSession.Builder(this, sharedPlayer)
-                .setCallback(StreamSessionCallback())
-                .build()
-        } else {
-            Log.w(TAG, "ViewModel player not available, creating standalone player")
-            val player = ExoPlayer.Builder(this)
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                        .setUsage(C.USAGE_MEDIA)
-                        .build(),
-                    true
-                )
-                .setHandleAudioBecomingNoisy(true)
-                .build()
-            mediaSession = MediaSession.Builder(this, player)
-                .setCallback(StreamSessionCallback())
-                .build()
-        }
+        val player = sharedPlayer ?: createFallbackPlayer()
 
-        startForegroundNotification()
+        mediaSession = MediaSession.Builder(this, player)
+            .setCallback(StreamSessionCallback())
+            .build()
+
         acquireWakeLock()
+    }
+
+    private fun createFallbackPlayer(): ExoPlayer {
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+            .build()
+
+        return ExoPlayer.Builder(this)
+            .setAudioAttributes(audioAttributes, true)
+            .setHandleAudioBecomingNoisy(true)
+            .build()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
@@ -64,8 +63,11 @@ class StreamMediaService : MediaSessionService() {
     }
 
     private fun startForegroundNotification() {
-        val notification = buildPlaybackNotification("StreamHub", "Playing media")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val title = mediaSession?.player?.currentMediaItem?.mediaMetadata?.title?.toString() ?: "StreamHub"
+        val notification = buildPlaybackNotification(title, "Playing media")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForeground(NOTIFICATION_ID, notification)
         } else {
             @Suppress("DEPRECATION")
@@ -116,7 +118,9 @@ class StreamMediaService : MediaSessionService() {
                 "StreamHub::PlaybackWakeLock"
             )
         }
-        wakeLock?.acquire(3 * 60 * 60 * 1000L)
+        if (wakeLock?.isHeld == false) {
+            wakeLock?.acquire(WAKELOCK_TIMEOUT_MS)
+        }
     }
 
     private fun releaseWakeLock() {
@@ -132,6 +136,8 @@ class StreamMediaService : MediaSessionService() {
             player.stop()
             player.clearMediaItems()
         }
+        releaseWakeLock()
+        stopSelf()
         super.onTaskRemoved(rootIntent)
     }
 

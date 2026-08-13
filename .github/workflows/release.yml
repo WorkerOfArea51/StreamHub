@@ -7,8 +7,6 @@ name: Build & Publish Signed Release APK
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
   workflow_dispatch:
@@ -83,6 +81,12 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Run Lint
+        run: ./gradlew lintDebug
+
       - name: Build signed release APK
         env:
           VERSION_NAME: ${{ inputs.tag_name || (startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v4.8.{0}', github.run_number)) }}
@@ -90,7 +94,6 @@ jobs:
           STREAMHUB_TMDB_API_KEY: ${{ secrets.STREAMHUB_TMDB_API_KEY }}
           STREAMHUB_MAL_CLIENT_ID: ${{ secrets.STREAMHUB_MAL_CLIENT_ID }}
           STREAMHUB_MAL_CLIENT_SECRET: ${{ secrets.STREAMHUB_MAL_CLIENT_SECRET }}
-          STREAMHUB_ADMIN_PIN_HASH: ${{ secrets.STREAMHUB_ADMIN_PIN_HASH }}
           STREAMHUB_TELEGRAM_API_ID: ${{ secrets.STREAMHUB_TELEGRAM_API_ID }}
           STREAMHUB_TELEGRAM_API_HASH: ${{ secrets.STREAMHUB_TELEGRAM_API_HASH }}
           STREAMHUB_TELEGRAM_ANIME_CHANNEL: ${{ secrets.STREAMHUB_TELEGRAM_ANIME_CHANNEL }}
@@ -107,8 +110,10 @@ jobs:
               exit 1
             fi
             echo "Verifying: $APK_PATH"
-            $ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs "$APK_PATH" || \
-              echo "::warning::APK signature verification failed for $APK_PATH"
+            $ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs "$APK_PATH" || {
+              echo "::error::APK signature verification FAILED for $APK_PATH"
+              exit 1
+            }
           done
 
       - name: Generate SHA-256 checksums

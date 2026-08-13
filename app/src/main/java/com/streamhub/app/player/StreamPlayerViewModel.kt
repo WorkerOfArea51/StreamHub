@@ -15,6 +15,7 @@ import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.TelegramLinkResolver
 import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.models.MediaItem
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -289,8 +290,9 @@ class StreamPlayerViewModel : ViewModel() {
     }
 
     fun retryCurrentEpisode() {
+        val snapshot = _uiState.value
         _uiState.update { it.copy(playerError = null, isBuffering = true) }
-        playEpisode(_uiState.value.currentEpisodeIndex, _uiState.value.currentPositionMs)
+        playEpisode(snapshot.currentEpisodeIndex, snapshot.currentPositionMs)
     }
 
     fun skipIntro(seconds: Int = 90) {
@@ -433,8 +435,12 @@ class StreamPlayerViewModel : ViewModel() {
 
     fun seekForward() {
         exoPlayer?.let {
-            val target = (it.currentPosition + 10000L).coerceAtMost(it.duration)
+            val duration = it.duration.coerceAtLeast(0L)
+            val target = (it.currentPosition + 10000L).let { pos ->
+                if (duration > 0L) pos.coerceAtMost(duration) else pos
+            }
             it.seekTo(target)
+            _uiState.update { state -> state.copy(currentPositionMs = target) }
         }
     }
 
@@ -442,12 +448,14 @@ class StreamPlayerViewModel : ViewModel() {
         exoPlayer?.let {
             val target = (it.currentPosition - 10000L).coerceAtLeast(0L)
             it.seekTo(target)
+            _uiState.update { state -> state.copy(currentPositionMs = target) }
         }
     }
 
     fun setPlaybackSpeed(speed: Float) {
-        exoPlayer?.setPlaybackSpeed(speed)
-        _uiState.update { it.copy(playbackSpeed = speed) }
+        val clamped = speed.coerceIn(0.25f, 4.0f)
+        exoPlayer?.setPlaybackSpeed(clamped)
+        _uiState.update { it.copy(playbackSpeed = clamped) }
     }
 
     fun cycleAspectRatio() {
@@ -501,12 +509,15 @@ class StreamPlayerViewModel : ViewModel() {
                         val now = System.currentTimeMillis()
                         if (now - lastProgressSaveMs >= 10_000L) {
                             currentMediaItem?.let { media ->
-                                WatchHistoryManager.saveProgress(
-                                    mediaId = media.id,
-                                    episodeNumber = _uiState.value.currentEpisodeIndex,
-                                    positionMs = currentPos,
-                                    durationMs = totalDuration
-                                )
+                                val epIdx = _uiState.value.currentEpisodeIndex
+                                viewModelScope.launch(Dispatchers.IO) {
+                                    WatchHistoryManager.saveProgress(
+                                        mediaId = media.id,
+                                        episodeNumber = epIdx,
+                                        positionMs = currentPos,
+                                        durationMs = totalDuration
+                                    )
+                                }
                             }
                             lastProgressSaveMs = now
                         }

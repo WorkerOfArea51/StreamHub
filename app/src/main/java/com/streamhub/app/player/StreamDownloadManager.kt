@@ -12,28 +12,58 @@ import androidx.media3.exoplayer.offline.DownloadManager
 import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * ExoPlayer Download Manager — INTERNAL player component for stream caching.
  *
  * This is NOT the same as com.streamhub.app.data.DownloadManager (which handles
  * user-initiated episode downloads via the system DownloadManager). This class
- * manages ExoPlayer's built-in download/caching service for progressive downloads
- * and stream buffering. It is used internally by the player and should not be
- * called directly from UI code.
+ * manages ExoPlayer's offline DownloadManager instance for pre-caching and
+ * offline playback support.
  */
 @OptIn(UnstableApi::class)
 object StreamDownloadManager {
     private const val TAG = "StreamDownloadManager"
+
+    @Volatile
     private var downloadManager: DownloadManager? = null
+
+    @Volatile
     private var downloadCache: SimpleCache? = null
-    // FIX #28: Single StandaloneDatabaseProvider singleton
+
+    @Volatile
     private var databaseProvider: StandaloneDatabaseProvider? = null
-    // FIX #29: Store ExecutorService reference for clean shutdown
+
     private var executor: ExecutorService? = null
 
     @Synchronized
-    private fun getDatabaseProvider(context: Context): StandaloneDatabaseProvider {
+    fun getDownloadManager(context: Context): DownloadManager {
+        if (downloadManager == null) {
+            val cache = getDownloadCache(context)
+            val dbProvider = getDatabaseProvider(context)
+            val dataSourceFactory = DefaultHttpDataSource.Factory()
+                .setUserAgent("StreamHub/${com.streamhub.app.BuildConfig.VERSION_NAME}")
+                .setConnectTimeoutMs(15_000)
+                .setReadTimeoutMs(15_000)
+
+            val exec = Executors.newFixedThreadPool(4).also { executor = it }
+
+            downloadManager = DownloadManager(
+                context.applicationContext,
+                dbProvider,
+                cache,
+                dataSourceFactory,
+                exec
+            ).apply {
+                maxParallelDownloads = 3
+            }
+        }
+        return downloadManager!!
+    }
+
+    @Synchronized
+    fun getDatabaseProvider(context: Context): StandaloneDatabaseProvider {
         if (databaseProvider == null) {
             databaseProvider = StandaloneDatabaseProvider(context.applicationContext)
         }
@@ -41,42 +71,11 @@ object StreamDownloadManager {
     }
 
     @Synchronized
-    fun getDownloadManager(context: Context): DownloadManager {
-        if (downloadManager == null) {
-            val dbProvider = getDatabaseProvider(context)
-            val cache = getDownloadCache(context)
-            val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            if (executor == null) {
-                executor = Executors.newFixedThreadPool(4)
-            }
-
-            downloadManager = DownloadManager(
-                context.applicationContext,
-                dbProvider,
-                cache,
-                httpDataSourceFactory,
-                executor!!
-            )
-        }
-        return downloadManager!!
-    }
-
-    @Synchronized
     fun getDownloadCache(context: Context): SimpleCache {
         if (downloadCache == null) {
-            // FIX #3: Null check external storage directory with internal storage fallback
-            val externalDir = context.getExternalFilesDir(null)
-            val downloadContentDirectory = if (externalDir != null) {
-                File(externalDir, "offline_downloads")
-            } else {
-                File(context.filesDir, "offline_downloads")
-            }
-
-            val dbProvider = getDatabaseProvider(context)
-            val evictor = androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor(
-                2L * 1024L * 1024L * 1024L
-            )
-            downloadCache = SimpleCache(downloadContentDirectory, evictor, dbProvider)
+            val cacheDir = File(context.applicationContext.cacheDir, "exoplayer_downloads")
+            val evictor = NoOpCacheEvictor()
+            downloadCache = SimpleCache(cacheDir, evictor, getDatabaseProvider(context))
         }
         return downloadCache!!
     }
@@ -87,11 +86,15 @@ object StreamDownloadManager {
     @Synchronized
     fun release() {
         try {
+            downloadManager?.release()
+            downloadManager = null
             executor?.shutdown()
+            if (executor?.awaitTermination(5, TimeUnit.SECONDS) == false) {
+                executor?.shutdownNow()
+            }
             executor = null
             downloadCache?.release()
             downloadCache = null
-            downloadManager = null
             databaseProvider = null
         } catch (e: Exception) {
             Log.e(TAG, "Error releasing StreamDownloadManager resources", e)

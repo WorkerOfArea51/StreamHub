@@ -100,12 +100,13 @@ object WatchHistoryManager {
         val updatedMap = _historyFlow.value.toMutableMap()
         updatedMap[mediaId] = progress
 
-        // M9 FIX: Evict oldest entries if history exceeds MAX_HISTORY_ENTRIES (100)
+        val evictedKeys = mutableListOf<String>()
         if (updatedMap.size > 100) {
             val sortedByAge = updatedMap.entries.sortedBy { it.value.lastUpdated }
             val toRemove = sortedByAge.take(updatedMap.size - 100)
             for ((oldKey, _) in toRemove) {
                 updatedMap.remove(oldKey)
+                evictedKeys.add(oldKey)
             }
         }
 
@@ -122,11 +123,15 @@ object WatchHistoryManager {
             val prefs = getPrefs()
             val currentIds = (prefs.getStringSet(KEY_ALL_HISTORY_IDS, emptySet()) ?: emptySet()).toMutableSet()
             currentIds.add(mediaId)
+            currentIds.removeAll(evictedKeys)
 
-            prefs.edit()
+            val editor = prefs.edit()
                 .putString(mediaId, json.toString())
                 .putStringSet(KEY_ALL_HISTORY_IDS, currentIds)
-                .apply()
+            for (evictedKey in evictedKeys) {
+                editor.remove(evictedKey)
+            }
+            editor.apply()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to persist progress for $mediaId", e)
         }

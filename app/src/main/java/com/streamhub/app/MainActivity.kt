@@ -99,9 +99,11 @@ class MainActivity : ComponentActivity() {
             val uri: Uri? = intent.data
             if (uri != null && uri.scheme == "streamhub" && uri.host == "media") {
                 val mediaId = uri.lastPathSegment
-                if (!mediaId.isNullOrBlank()) {
+                if (!mediaId.isNullOrBlank() && mediaId.matches(Regex("^[a-zA-Z0-9_-]{1,64}$"))) {
                     Log.d(TAG, "Deep link: streamhub://media/$mediaId")
                     deepLinkMediaId.value = mediaId
+                } else {
+                    Log.w(TAG, "Invalid deep link mediaId rejected: $mediaId")
                 }
             }
         }
@@ -127,11 +129,18 @@ class MainActivity : ComponentActivity() {
         super.onUserLeaveHint()
         if (shouldAutoEnterPip && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
+                val player = com.streamhub.app.player.StreamPlayerViewModel.currentPlayer
+                val videoSize = player?.videoSize
+                val ratio = if (videoSize != null && videoSize.width > 0 && videoSize.height > 0) {
+                    Rational(videoSize.width.coerceIn(1, 239), videoSize.height.coerceIn(1, 239))
+                } else {
+                    Rational(16, 9)
+                }
                 val params = PictureInPictureParams.Builder()
-                    .setAspectRatio(Rational(16, 9))
+                    .setAspectRatio(ratio)
                     .build()
                 enterPictureInPictureMode(params)
-            } catch (e: IllegalStateException) {
+            } catch (e: Exception) {
                 Log.w(TAG, "PiP entry failed: ${e.message}")
             }
         }
@@ -335,7 +344,7 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                 arguments = listOf(navArgument("mediaId") { type = NavType.StringType })
             ) { backStackEntry ->
                 val rawMediaId = backStackEntry.arguments?.getString("mediaId") ?: ""
-                val mediaId = java.net.URLDecoder.decode(rawMediaId, "UTF-8")
+                val mediaId = runCatching { java.net.URLDecoder.decode(rawMediaId, "UTF-8") }.getOrDefault(rawMediaId)
                 DetailsScreen(
                     mediaId = mediaId,
                     repository = repository,
@@ -355,7 +364,7 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
             ) { backStackEntry ->
                 val playerViewModel: StreamPlayerViewModel = viewModel()
                 val rawMediaId = backStackEntry.arguments?.getString("mediaId") ?: ""
-                val mediaId = java.net.URLDecoder.decode(rawMediaId, "UTF-8")
+                val mediaId = runCatching { java.net.URLDecoder.decode(rawMediaId, "UTF-8") }.getOrDefault(rawMediaId)
                 val episodeIndex = backStackEntry.arguments?.getInt("episodeIndex") ?: 0
                 val catalogState by repository.catalogState.collectAsState()
                 val catalog by repository.mediaCatalog.collectAsState()

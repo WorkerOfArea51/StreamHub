@@ -63,8 +63,9 @@ object PlayerSettingsManager {
             Log.w(TAG, "updateSkipIntro called before init — no-op")
             return
         }
-        _settingsFlow.update { it.copy(skipIntroSeconds = seconds) }
-        getPrefs().edit().putInt(KEY_SKIP_INTRO, seconds).apply()
+        val clamped = seconds.coerceIn(0, 300)
+        _settingsFlow.update { it.copy(skipIntroSeconds = clamped) }
+        getPrefs().edit().putInt(KEY_SKIP_INTRO, clamped).apply()
     }
 
     @Synchronized
@@ -73,8 +74,9 @@ object PlayerSettingsManager {
             Log.w(TAG, "updateNextEpisodeThreshold called before init — no-op")
             return
         }
-        _settingsFlow.update { it.copy(nextEpisodeThresholdSeconds = seconds) }
-        getPrefs().edit().putInt(KEY_NEXT_EPISODE_THRESHOLD, seconds).apply()
+        val clamped = seconds.coerceIn(5, 90)
+        _settingsFlow.update { it.copy(nextEpisodeThresholdSeconds = clamped) }
+        getPrefs().edit().putInt(KEY_NEXT_EPISODE_THRESHOLD, clamped).apply()
     }
 
     @Synchronized

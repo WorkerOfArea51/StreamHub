@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -34,7 +35,7 @@ fun StreamHubTheme(
         background = BackgroundDark,
         surface = SurfaceDark,
         surfaceVariant = SurfaceVariantDark,
-        onPrimary = TextPrimary,
+        onPrimary = if (accent.color.luminance() > 0.5f) Color(0xFF0A0A0F) else TextPrimary,
         onSecondary = TextPrimary,
         onBackground = TextPrimary,
         onSurface = TextPrimary
@@ -44,8 +45,6 @@ fun StreamHubTheme(
         SideEffect {
             val activity = view.context as? Activity ?: return@SideEffect
             val window = activity.window
-            window.statusBarColor = BackgroundDark.toArgb()
-            window.navigationBarColor = BackgroundDark.toArgb()
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
         }
     }
@@ -56,3 +55,5 @@ fun StreamHubTheme(
         content = content
     )
 }
+
+private fun Color.luminance(): Float = 0.299f * red + 0.587f * green + 0.114f * blue

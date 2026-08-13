@@ -19,6 +19,8 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -72,14 +74,18 @@ fun HeroCarousel(
 
     var lastInteractionTime by remember { mutableLongStateOf(0L) }
 
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+
     // Auto-advance hero carousel every 5 seconds (pauses 10s on tap/drag)
     LaunchedEffect(pagerState, featuredItems, lastInteractionTime) {
-        while (true) {
-            delay(5000)
-            val isInteractionPaused = System.currentTimeMillis() - lastInteractionTime < 10_000L
-            if (featuredItems.isNotEmpty() && !pagerState.isScrollInProgress && !isInteractionPaused) {
-                val nextPage = (pagerState.currentPage + 1) % featuredItems.size
-                pagerState.animateScrollToPage(nextPage)
+        lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            while (true) {
+                delay(5000)
+                val isInteractionPaused = System.currentTimeMillis() - lastInteractionTime < 10_000L
+                if (featuredItems.isNotEmpty() && !pagerState.isScrollInProgress && !isInteractionPaused) {
+                    val nextPage = (pagerState.currentPage + 1) % featuredItems.size
+                    pagerState.animateScrollToPage(nextPage)
+                }
             }
         }
     }

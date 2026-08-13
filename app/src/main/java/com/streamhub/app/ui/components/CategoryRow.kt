@@ -1,5 +1,6 @@
 package com.streamhub.app.ui.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -26,7 +27,8 @@ fun CategoryRow(
     title: String,
     items: List<MediaItem>,
     onMediaClick: (MediaItem) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSeeAllClick: (() -> Unit)? = null
 ) {
     if (items.isEmpty()) return
 
@@ -48,7 +50,10 @@ fun CategoryRow(
                 text = "See All",
                 color = AccentOrange,
                 fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clickable(enabled = onSeeAllClick != null) { onSeeAllClick?.invoke() }
+                    .padding(vertical = 4.dp, horizontal = 8.dp)
             )
         }
 

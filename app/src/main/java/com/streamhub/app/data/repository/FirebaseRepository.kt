@@ -93,7 +93,7 @@ class FirebaseRepository private constructor() {
         val db = firestore
         if (db == null) {
             Log.e(TAG, "Firestore instance not available")
-            _catalogState.value = CatalogState.Ready
+            _catalogState.value = CatalogState.Error("Firebase not initialized")
             return
         }
         try {
@@ -102,7 +102,7 @@ class FirebaseRepository private constructor() {
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
                         Log.e(TAG, "Firestore listener error", error)
-                        _catalogState.value = CatalogState.Ready
+                        _catalogState.value = CatalogState.Error(error.message ?: "Firestore listener error")
                         return@addSnapshotListener
                     }
 
@@ -122,7 +122,7 @@ class FirebaseRepository private constructor() {
                         }
 
                         if (remoteItems.isNotEmpty()) {
-                            val merged = (_mediaCatalog.value + remoteItems).distinctBy { it.id }
+                            val merged = (remoteItems + _mediaCatalog.value).distinctBy { it.id }
                             _mediaCatalog.value = merged
                         }
                         _catalogState.value = CatalogState.Ready
@@ -130,7 +130,7 @@ class FirebaseRepository private constructor() {
                 }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to attach Firestore listener", e)
-            _catalogState.value = CatalogState.Ready
+            _catalogState.value = CatalogState.Error("Failed to attach Firestore listener: ${e.message}")
         }
     }
 
@@ -143,27 +143,34 @@ class FirebaseRepository private constructor() {
      * Save/Publish a media item into catalog from App UI.
      */
     fun saveMediaItem(item: MediaItem) {
-        val current = _mediaCatalog.value.toMutableList()
-        val index = current.indexOfFirst { it.id == item.id }
-        if (index >= 0) {
-            current[index] = item
-        } else {
-            current.add(0, item)
+        _adminOperationState.value = AdminOperationState.Loading
+        val db = firestore
+        if (db == null) {
+            val current = _mediaCatalog.value.toMutableList()
+            val index = current.indexOfFirst { it.id == item.id }
+            if (index >= 0) current[index] = item else current.add(0, item)
+            _mediaCatalog.value = current
+            _catalogState.value = CatalogState.Ready
+            _adminOperationState.value = AdminOperationState.Success()
+            return
         }
-        _mediaCatalog.value = current
-        _catalogState.value = CatalogState.Ready
-        _adminOperationState.value = AdminOperationState.Success()
 
-        val db = firestore ?: return
         val docMap = mediaItemToMap(item)
         db.collection(COLLECTION_NAME)
             .document(item.id)
             .set(docMap)
             .addOnSuccessListener {
+                val current = _mediaCatalog.value.toMutableList()
+                val index = current.indexOfFirst { it.id == item.id }
+                if (index >= 0) current[index] = item else current.add(0, item)
+                _mediaCatalog.value = current
+                _catalogState.value = CatalogState.Ready
+                _adminOperationState.value = AdminOperationState.Success()
                 Log.d(TAG, "Successfully synced media item to Firestore: ${item.id}")
             }
             .addOnFailureListener { e ->
                 Log.e(TAG, "Failed to sync media item to Firestore: ${item.id}", e)
+                _adminOperationState.value = AdminOperationState.Error(e.message ?: "Failed to save to Firestore")
             }
     }
 

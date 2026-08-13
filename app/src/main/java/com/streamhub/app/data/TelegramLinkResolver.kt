@@ -1,5 +1,6 @@
 package com.streamhub.app.data
 
+import android.os.Looper
 import android.util.Log
 import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.telegram.TdLibMediaProvider
@@ -165,6 +166,9 @@ object TelegramLinkResolver {
      * For UI/playback, always use [resolveAsync].
      */
     fun resolveSync(url: String): String {
+        check(Looper.myLooper() != Looper.getMainLooper()) {
+            "resolveSync must NOT be called on the main thread - use resolveAsync instead"
+        }
         if (!isTelegramLink(url)) return url
 
         return try {
@@ -211,7 +215,7 @@ object TelegramLinkResolver {
     // ──────────────────────────────────────────────────────────────
 
     private fun extractEpisodeNumber(text: String): Int? {
-        val epRegex = Regex("""(?i)(?:ep|episode|s\d+e|e)\s*(\d+)""")
+        val epRegex = Regex("""(?i)(?:ep|episode|s\d+e|\be)\s*(\d+)""")
         val match = epRegex.find(text)
         return match?.groupValues?.get(1)?.toIntOrNull()
     }

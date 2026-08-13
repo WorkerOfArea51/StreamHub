@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Warning
 import com.streamhub.app.ui.components.EmptyStateCard
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -103,11 +104,13 @@ fun HomeScreen(
         }
     }
 
-    val filteredCatalog = when (selectedCategoryFilter) {
-        "ANIME" -> catalog.filter { it.category == "ANIME" }
-        "MOVIES" -> catalog.filter { it.category == "MOVIE" }
-        "SERIES" -> catalog.filter { it.category == "WEB_SERIES" }
-        else -> catalog
+    val filteredCatalog = remember(catalog, selectedCategoryFilter) {
+        when (selectedCategoryFilter) {
+            "ANIME" -> catalog.filter { it.category == "ANIME" }
+            "MOVIES" -> catalog.filter { it.category == "MOVIE" }
+            "SERIES" -> catalog.filter { it.category == "WEB_SERIES" }
+            else -> catalog
+        }
     }
 
     val featuredItems = remember(filteredCatalog) {
@@ -272,7 +275,7 @@ fun HomeScreen(
 
             // Loading state — Firestore hasn't responded yet
             if (catalog.isEmpty() && catalogState is com.streamhub.app.data.repository.CatalogState.Loading) {
-                item {
+                item(key = "catalog_loading") {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -282,6 +285,36 @@ fun HomeScreen(
                         CircularProgressIndicator(
                             color = androidx.compose.material3.MaterialTheme.colorScheme.primary
                         )
+                    }
+                }
+            }
+
+            // Error state
+            if (catalogState is com.streamhub.app.data.repository.CatalogState.Error) {
+                item(key = "catalog_error") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = "Error",
+                                tint = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = (catalogState as com.streamhub.app.data.repository.CatalogState.Error).message,
+                                color = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            androidx.compose.material3.Button(onClick = { repository.retry() }) {
+                                Text("Retry")
+                            }
+                        }
                     }
                 }
             }

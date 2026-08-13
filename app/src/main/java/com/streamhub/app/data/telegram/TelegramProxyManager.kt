@@ -29,6 +29,8 @@ import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.Socket
 import java.util.concurrent.TimeUnit
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 
 enum class ProxyType {
     MTPROTO,
@@ -130,91 +132,23 @@ object TelegramProxyManager {
 
     fun init(context: Context) {
         if (prefs != null) return
-        prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val appContext = context.applicationContext
+        try {
+            val masterKey = MasterKey.Builder(appContext)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            prefs = EncryptedSharedPreferences.create(
+                appContext,
+                "streamhub_proxy_sec",
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create EncryptedSharedPreferences", e)
+            prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        }
         loadFromDisk()
-    }
-
-    private const val PROXY_KEY_ALIAS = "streamhub_proxy_cred_key"
-
-    private fun obfuscate(value: String): String {
-        if (value.isBlank()) return ""
-        return try {
-            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-
-            if (!keyStore.containsAlias(PROXY_KEY_ALIAS)) {
-                val keyGenerator = KeyGenerator.getInstance("AES", "AndroidKeyStore")
-                keyGenerator.init(
-                    KeyGenParameterSpec.Builder(
-                        PROXY_KEY_ALIAS,
-                        KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-                    )
-                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                    .setKeySize(256)
-                    .build()
-                )
-                keyGenerator.generateKey()
-            }
-
-            val secretKey = keyStore.getKey(PROXY_KEY_ALIAS, null) as SecretKey
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey)
-            val iv = cipher.iv
-            val encrypted = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
-            val combined = iv + encrypted
-            android.util.Base64.encodeToString(combined, android.util.Base64.NO_WRAP)
-        } catch (e: Exception) {
-            Log.w(TAG, "Android Keystore unavailable, falling back to XOR obfuscation", e)
-            obfuscateFallback(value)
-        }
-    }
-
-    private fun deobfuscate(value: String): String {
-        if (value.isBlank()) return ""
-        return try {
-            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-
-            if (!keyStore.containsAlias(PROXY_KEY_ALIAS)) {
-                return deobfuscateFallback(value)
-            }
-
-            val secretKey = keyStore.getKey(PROXY_KEY_ALIAS, null) as SecretKey
-            val combined = android.util.Base64.decode(value, android.util.Base64.NO_WRAP)
-            if (combined.size < 12) return deobfuscateFallback(value)
-            val iv = combined.copyOfRange(0, 12)
-            val ciphertext = combined.copyOfRange(12, combined.size)
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(128, iv))
-            String(cipher.doFinal(ciphertext), Charsets.UTF_8)
-        } catch (e: Exception) {
-            deobfuscateFallback(value)
-        }
-    }
-
-    private fun obfuscateFallback(value: String): String {
-        if (value.isBlank()) return ""
-        val bytes = value.toByteArray(Charsets.UTF_8)
-        val key = "StreamHubProxySecretKey".toByteArray(Charsets.UTF_8)
-        val result = ByteArray(bytes.size)
-        for (i in bytes.indices) {
-            result[i] = (bytes[i].toInt() xor key[i % key.size].toInt()).toByte()
-        }
-        return android.util.Base64.encodeToString(result, android.util.Base64.NO_WRAP)
-    }
-
-    private fun deobfuscateFallback(value: String): String {
-        if (value.isBlank()) return ""
-        return try {
-            val bytes = android.util.Base64.decode(value, android.util.Base64.NO_WRAP)
-            val key = "StreamHubProxySecretKey".toByteArray(Charsets.UTF_8)
-            val result = ByteArray(bytes.size)
-            for (i in bytes.indices) {
-                result[i] = (bytes[i].toInt() xor key[i % key.size].toInt()).toByte()
-            }
-            String(result, Charsets.UTF_8)
-        } catch (e: Exception) {
-            ""
-        }
     }
 
     private fun loadFromDisk() {
@@ -222,10 +156,8 @@ object TelegramProxyManager {
         val server = p.getString(KEY_SERVER, "") ?: ""
         val port = p.getInt(KEY_PORT, 443)
         val secret = p.getString(KEY_SECRET, "") ?: ""
-        val rawUser = p.getString(KEY_USERNAME, "") ?: ""
-        val rawPass = p.getString(KEY_PASSWORD, "") ?: ""
-        val username = deobfuscate(rawUser).ifBlank { rawUser }
-        val password = deobfuscate(rawPass).ifBlank { rawPass }
+        val username = p.getString(KEY_USERNAME, "") ?: ""
+        val password = p.getString(KEY_PASSWORD, "") ?: ""
         val typeStr = p.getString(KEY_TYPE, ProxyType.MTPROTO.name) ?: ProxyType.MTPROTO.name
         val isEnabled = p.getBoolean(KEY_ENABLED, false)
 
@@ -288,12 +220,23 @@ object TelegramProxyManager {
         val cleanPass = password.trim()
         val cleanLabel = customLabel.trim()
 
+        if (isEnabled) {
+            if (cleanServer.isBlank()) {
+                Log.w(TAG, "Cannot enable proxy with blank server address")
+                return
+            }
+            if (port !in 1..65535) {
+                Log.w(TAG, "Cannot enable proxy with invalid port: $port")
+                return
+            }
+        }
+
         prefs?.edit()
             ?.putString(KEY_SERVER, cleanServer)
             ?.putInt(KEY_PORT, port)
             ?.putString(KEY_SECRET, cleanSecret)
-            ?.putString(KEY_USERNAME, obfuscate(cleanUser))
-            ?.putString(KEY_PASSWORD, obfuscate(cleanPass))
+            ?.putString(KEY_USERNAME, cleanUser)
+            ?.putString(KEY_PASSWORD, cleanPass)
             ?.putString(KEY_TYPE, type.name)
             ?.putBoolean(KEY_ENABLED, isEnabled)
             ?.putString("proxy_custom_label", cleanLabel)
@@ -451,37 +394,37 @@ object TelegramProxyManager {
     suspend fun autoFetchPublicProxies(): List<PublicProxyItem> {
         return withContext(Dispatchers.IO) {
             _isFetchingProxies.value = true
-            val fetchedList = mutableListOf<PublicProxyItem>()
+            try {
+                val fetchedList = mutableListOf<PublicProxyItem>()
+                val client = getProxyOkHttpClient()
 
-            val client = getProxyOkHttpClient()
-
-            for (sourceUrl in telStreamProxySources) {
-                try {
-                    val request = Request.Builder().url(sourceUrl).build()
-                    client.newCall(request).execute().use { response ->
-                        if (response.isSuccessful) {
-                            val body = response.body?.string() ?: ""
-                            if (body.isNotBlank()) {
-                                parseProxySourceContent(sourceUrl, body, fetchedList)
+                for (sourceUrl in telStreamProxySources) {
+                    try {
+                        val request = Request.Builder().url(sourceUrl).build()
+                        client.newCall(request).execute().use { response ->
+                            if (response.isSuccessful) {
+                                val body = response.body?.string() ?: ""
+                                if (body.isNotBlank()) {
+                                    parseProxySourceContent(sourceUrl, body, fetchedList)
+                                }
                             }
                         }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "TelStream source $sourceUrl failed: ${e.message}")
                     }
-                } catch (e: Exception) {
-                    Log.w(TAG, "TelStream source $sourceUrl failed: ${e.message}")
                 }
+
+                if (fetchedList.isEmpty()) {
+                    fetchedList.addAll(builtInFallbackProxies)
+                }
+
+                val distinctProxies = fetchedList.distinctBy { it.server }.take(40)
+                val testedList = pingAllProxiesParallel(distinctProxies)
+                _publicProxies.value = testedList
+                testedList
+            } finally {
+                _isFetchingProxies.value = false
             }
-
-            if (fetchedList.isEmpty()) {
-                fetchedList.addAll(builtInFallbackProxies)
-            }
-
-            val distinctProxies = fetchedList.distinctBy { it.server }.take(40)
-
-            // FIX #4: Bounded concurrency for parallel ping testing
-            val testedList = pingAllProxiesParallel(distinctProxies)
-            _publicProxies.value = testedList
-            _isFetchingProxies.value = false
-            testedList
         }
     }
 

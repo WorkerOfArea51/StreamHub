@@ -103,10 +103,12 @@ fun DetailsScreen(
     repository: FirebaseRepository,
     onBackClick: () -> Unit,
     onPlayEpisode: (MediaItem, Int) -> Unit,
+    onMediaClick: (MediaItem) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val catalog by repository.mediaCatalog.collectAsState()
+    val downloads by DownloadManager.downloads.collectAsState()
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
     var showAdminEditDialog by remember { mutableStateOf(false) }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
@@ -163,23 +165,7 @@ fun DetailsScreen(
         if (filtered.isEmpty() && selectedSeasonNumber == 1) mediaItem.episodes else filtered
     }
 
-    // Populate Recommendations under MORE LIKE THIS tab (Prefers real MAL recommendations)
-    val fallbackRecommendations = remember(catalog, mediaId) {
-        listOf(
-            MediaItem(id = "rec_1", title = "Sword Art Online", category = "ANIME", rating = "7.20", releaseYear = "2012", posterUrl = "https://cdn.myanimelist.net/images/anime/11/39717l.jpg", description = "VRMMO fantasy game survival."),
-            MediaItem(id = "rec_2", title = "Shangri-La Frontier", category = "ANIME", rating = "8.05", releaseYear = "2023", posterUrl = "https://cdn.myanimelist.net/images/anime/1622/137688l.jpg", description = "God-tier VR gaming adventure."),
-            MediaItem(id = "rec_3", title = "DanMachi (Dungeon)", category = "ANIME", rating = "7.55", releaseYear = "2015", posterUrl = "https://cdn.myanimelist.net/images/anime/8/72117l.jpg", description = "Bell Cranel levels up in Orario dungeon."),
-            MediaItem(id = "rec_4", title = "Jujutsu Kaisen", category = "ANIME", rating = "8.65", releaseYear = "2020", posterUrl = "https://cdn.myanimelist.net/images/anime/1171/109222l.jpg", description = "Cursed sorcery and high-octane battles."),
-            MediaItem(id = "rec_5", title = "Demon Slayer", category = "ANIME", rating = "8.82", releaseYear = "2022", posterUrl = "https://cdn.myanimelist.net/images/anime/1286/99889l.jpg", description = "Tanjiro fights Upper Moon demons."),
-            MediaItem(id = "rec_6", title = "Attack on Titan", category = "ANIME", rating = "9.05", releaseYear = "2013", posterUrl = "https://cdn.myanimelist.net/images/anime/10/47347l.jpg", description = "Humanity fights massive Titans."),
-            MediaItem(id = "rec_7", title = "Chainsaw Man", category = "ANIME", rating = "8.50", releaseYear = "2022", posterUrl = "https://cdn.myanimelist.net/images/anime/1806/126216l.jpg", description = "Denji fuses with Pochita."),
-            MediaItem(id = "rec_8", title = "Bleach: TYBW", category = "ANIME", rating = "9.00", releaseYear = "2022", posterUrl = "https://cdn.myanimelist.net/images/anime/1764/126627l.jpg", description = "Soul Reapers vs Quincies."),
-            MediaItem(id = "rec_9", title = "FMA: Brotherhood", category = "ANIME", rating = "9.10", releaseYear = "2009", posterUrl = "https://cdn.myanimelist.net/images/anime/1221/91661l.jpg", description = "Elric brothers search for Philosopher Stone."),
-            MediaItem(id = "rec_10", title = "Hunter x Hunter", category = "ANIME", rating = "9.04", releaseYear = "2011", posterUrl = "https://cdn.myanimelist.net/images/anime/1337/99013l.jpg", description = "Gon Freecss seeks to become a Hunter.")
-        )
-    }
-
-    val recommendations = if (malRecs.isNotEmpty()) malRecs else fallbackRecommendations
+    val recommendations = malRecs
 
     Scaffold(
         floatingActionButton = {
@@ -521,7 +507,7 @@ fun DetailsScreen(
                 } else {
                     itemsIndexed(seasonFilteredEpisodes, key = { _, episode -> "${episode.seasonNumber}_${episode.episodeNumber}_${episode.title}" }) { index, episode ->
                         val originalIndex = remember(episode, mediaItem.episodes) { mediaItem.episodes.indexOf(episode).coerceAtLeast(0) }
-                        val isDownloaded = DownloadManager.isDownloaded(mediaItem.id, originalIndex)
+                        val isDownloaded = downloads.any { it.mediaId == mediaItem.id && it.episodeIndex == originalIndex && it.isCompleted }
                         EpisodeRowItem(
                             episode = episode,
                             index = index,
@@ -575,7 +561,7 @@ fun DetailsScreen(
                             items(recommendations) { recItem ->
                                 MediaCard(
                                     item = recItem,
-                                    onClick = { /* Navigate to rec */ }
+                                    onClick = { onMediaClick(recItem) }
                                 )
                             }
                         }
@@ -611,6 +597,16 @@ fun DetailsScreen(
                     .fillMaxSize()
                     .background(Color.Black)
             ) {
+                var webView by remember { mutableStateOf<WebView?>(null) }
+
+                DisposableEffect(activeTrailerId) {
+                    onDispose {
+                        webView?.loadUrl("about:blank")
+                        webView?.destroy()
+                        webView = null
+                    }
+                }
+
                 AndroidView(
                     factory = { ctx ->
                         WebView(ctx).apply {
@@ -638,7 +634,13 @@ fun DetailsScreen(
                                 </html>
                             """.trimIndent()
                             loadDataWithBaseURL("https://www.youtube.com", embedHtml, "text/html", "utf-8", null)
+                            webView = this
                         }
+                    },
+                    onRelease = { wv ->
+                        wv.loadUrl("about:blank")
+                        wv.destroy()
+                        webView = null
                     },
                     modifier = Modifier
                         .fillMaxWidth()

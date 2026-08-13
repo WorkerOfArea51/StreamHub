@@ -90,7 +90,9 @@ object TelegramAuthManager {
     private lateinit var prefs: SharedPreferences
 
     private val isTdLibAvailable: Boolean
-        get() = true
+        get() = TdLibManager.isInitialized() &&
+                Secrets.TELEGRAM_API_ID.isNotBlank() &&
+                Secrets.TELEGRAM_API_HASH.isNotBlank()
 
     /**
      * Initialize the auth manager. Called from StreamHubApplication.onCreate().
@@ -257,6 +259,7 @@ object TelegramAuthManager {
                     } catch (e: Exception) {
                         Log.w(TAG, "DownloadFile failed for profile photo ${fileToDownload.id}", e)
                     }
+                    pendingPhotoFileId.set(0)
                 }
             }
 
@@ -415,7 +418,7 @@ object TelegramAuthManager {
         }
     }
 
-    private fun completeLogin(user: TelegramUser, isOwner: Boolean = checkIsOwner(user)) {
+    private suspend fun completeLogin(user: TelegramUser, isOwner: Boolean = checkIsOwner(user)) {
         // Cache user info in SharedPreferences for fast cold-start reads
         prefs.edit()
             .putBoolean(KEY_IS_LOGGED_IN, true)
@@ -428,15 +431,10 @@ object TelegramAuthManager {
             .putBoolean(KEY_IS_OWNER, isOwner)
             .putBoolean(KEY_IS_VERIFIED, user.isVerified)
             .putBoolean(KEY_IS_PREMIUM, user.isPremium)
-            .apply()
+            .commit()
 
-        // C12 FIX: Auto-join channels BEFORE emitting Authenticated state.
-        // This guarantees the user can't navigate to content until channel
-        // membership is established, preventing "Cannot access chat" errors.
-        scope.launch {
-            autoJoinPrivateChannels()
-            _authState.value = TelegramAuthState.Authenticated(user, isOwner)
-        }
+        autoJoinPrivateChannels()
+        _authState.value = TelegramAuthState.Authenticated(user, isOwner)
     }
 
     /**

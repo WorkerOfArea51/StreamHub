@@ -106,15 +106,18 @@ object UserStatsManager {
 
     @Synchronized
     fun addWatchTime(seconds: Long, category: String = "ANIME") {
+        if (seconds <= 0L) return
+        val safeSeconds = seconds.coerceAtMost(86400L)
+
         val p = prefs ?: return
         val todayStr = getTodayDateString()
         val lastDate = p.getString(KEY_LAST_WATCH_DATE, "") ?: ""
         var streak = p.getInt(KEY_STREAK_COUNT, 0)
 
         // FIX #1: Read with honest defaults (0L, 0)
-        val totalSec = p.getLong(KEY_TOTAL_WATCH_SECONDS, 0L) + seconds
+        val totalSec = p.getLong(KEY_TOTAL_WATCH_SECONDS, 0L) + safeSeconds
         val prevDailySec = if (lastDate == todayStr) p.getLong(KEY_DAILY_WATCH_SECONDS, 0L) else 0L
-        val newDailySec = prevDailySec + seconds
+        val newDailySec = prevDailySec + safeSeconds
 
         var animeSec = p.getLong(KEY_ANIME_SECONDS, 0L)
         var movieSec = p.getLong(KEY_MOVIE_SECONDS, 0L)

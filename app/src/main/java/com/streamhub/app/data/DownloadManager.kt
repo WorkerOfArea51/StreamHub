@@ -456,6 +456,7 @@ object DownloadManager {
                 return
             }
         }
+        _customDownloadPath.value = path
         prefs?.edit()?.putString(KEY_CUSTOM_DOWNLOAD_PATH, path)?.apply()
     }
 

@@ -16,10 +16,20 @@ object AdminManager {
     private val _isAdminMode = MutableStateFlow(false)
     val isAdminMode: StateFlow<Boolean> = _isAdminMode.asStateFlow()
 
+    private var ownerVerified = false
+
+    fun markOwnerVerified() {
+        ownerVerified = true
+    }
+
     /**
      * Dynamically enable admin mode when user is recognized as Telegram Channel Owner/Admin.
      */
     fun enableAdminModeFromOwner() {
+        if (!ownerVerified) {
+            Log.w(TAG, "Owner not verified — admin access denied")
+            return
+        }
         _isAdminMode.value = true
         Log.d(TAG, "Admin mode enabled dynamically for Telegram Channel Owner/Admin")
     }

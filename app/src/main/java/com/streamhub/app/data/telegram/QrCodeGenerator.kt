@@ -22,7 +22,7 @@ object QrCodeGenerator {
             for (y in 0 until height) {
                 val offset = y * width
                 for (x in 0 until width) {
-                    pixels[offset + x] = if (bitMatrix.get(x, y)) 0xFFFFFFFF.toInt() else 0xFF0A0A0F.toInt()
+                    pixels[offset + x] = if (bitMatrix.get(x, y)) 0xFF0A0A0F.toInt() else 0xFFFFFFFF.toInt()
                 }
             }
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
