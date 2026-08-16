@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -304,6 +305,47 @@ fun VideoSettingsEntryCard(currentAccent: AppThemeAccent, onNavigateToVideoSetti
                 Column {
                     Text("Video & Subtitle Player Settings 🎬", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text("Gestures, subtitles, skip intro, auto-play next episode", color = TextSecondary, fontSize = 11.sp)
+                }
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open", tint = TextSecondary)
+        }
+    }
+}
+
+@Composable
+fun StorageSettingsEntryCard(currentAccent: AppThemeAccent, onNavigateToStorage: () -> Unit) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
+            .clickable { onNavigateToStorage() }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(currentAccent.color.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Storage, contentDescription = "Storage", tint = currentAccent.color, modifier = Modifier.size(20.dp))
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text("Storage & Cache Management 💾", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Storage gauge, video cache cleaner, auto-delete TTL", color = TextSecondary, fontSize = 11.sp)
                 }
             }
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open", tint = TextSecondary)

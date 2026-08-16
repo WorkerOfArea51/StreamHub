@@ -126,9 +126,9 @@ fun SearchScreen(
 
             val matchesCategory = when (selectedCategoryFilter) {
                 "ALL" -> true
-                "ANIME" -> item.category == "ANIME"
-                "MOVIE" -> item.category == "MOVIE"
-                "SERIES" -> item.category == "WEB_SERIES"
+                "ANIME" -> item.category.equals("ANIME", ignoreCase = true)
+                "MOVIE" -> item.category.equals("MOVIE", ignoreCase = true) || item.category.equals("MOVIES", ignoreCase = true)
+                "SERIES" -> item.category.equals("WEB_SERIES", ignoreCase = true) || item.category.equals("SERIES", ignoreCase = true)
                 else -> item.genres.any { it.equals(selectedCategoryFilter, ignoreCase = true) }
             }
 

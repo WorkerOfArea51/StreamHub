@@ -32,6 +32,7 @@ enum class AspectRatioMode {
 data class PlayerUiState(
     val isPlaying: Boolean = false,
     val currentPositionMs: Long = 0L,
+    val bufferedPositionMs: Long = 0L,
     val durationMs: Long = 0L,
     val isBuffering: Boolean = true,
     val playbackSpeed: Float = 1.0f,
@@ -44,10 +45,14 @@ data class PlayerUiState(
     val selectedSubtitleTrack: String = "",
     val showAudioDialog: Boolean = false,
     val showSubtitleDialog: Boolean = false,
-    // FIX #3: Actual track lists from ExoPlayer, not hardcoded
     val availableAudioTracks: List<String> = emptyList(),
     val availableSubtitleTracks: List<String> = listOf("Off"),
-    val playerError: String? = null
+    val isRepeatMode: Boolean = false,
+    val sleepTimerMinutesRemaining: Int? = null,
+    val volumeBoostPercent: Int = 0,
+    val playerError: String? = null,
+    val resolvedStreamUrl: String = "",
+    val posterUrl: String = ""
 )
 
 @OptIn(UnstableApi::class)
@@ -66,6 +71,7 @@ class StreamPlayerViewModel : ViewModel() {
 
     private var exoPlayer: ExoPlayer? = null
     private var trackSelector: DefaultTrackSelector? = null
+    private val volumeBoostManager = VolumeBoostManager()
 
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
@@ -77,6 +83,8 @@ class StreamPlayerViewModel : ViewModel() {
     private var positionTrackerJob: Job? = null
     private var resolutionJob: Job? = null
     private var playerListener: Player.Listener? = null
+    private var nextEpisodePreloadJob: Job? = null
+    private var pendingSeekTargetMs: Long? = null
 
     fun getPlayer(): ExoPlayer? = exoPlayer
 
@@ -103,17 +111,23 @@ class StreamPlayerViewModel : ViewModel() {
                     .build()
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        10_000,
-                        50_000,
-                        5_000,
-                        5_000
+                        60_000,     // minBufferMs (60s continuous aggressive buffer)
+                        300_000,    // maxBufferMs (5 minutes aggressive buffer)
+                        500,        // bufferForPlaybackMs (0.5s ultra-fast start)
+                        1_000       // bufferForPlaybackAfterRebufferMs (1s rebuffer)
                     )
+                    .setBackBuffer(
+                        120_000,    // backBufferDurationMs (2 minutes for instant rewind)
+                        true        // retainBackBufferFromKeyframe
+                    )
+                    .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
                 ExoPlayer.Builder(context)
                     .setTrackSelector(trackSelector!!)
                     .setAudioAttributes(audioAttributes, true)
                     .setHandleAudioBecomingNoisy(true)
                     .setLoadControl(loadControl)
+                    .setSeekParameters(androidx.media3.exoplayer.SeekParameters.DEFAULT)
                     .setMediaSourceFactory(
                         androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
                     )
@@ -142,25 +156,30 @@ class StreamPlayerViewModel : ViewModel() {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     val isBuffering = playbackState == Player.STATE_BUFFERING
                     val duration = exoPlayer?.duration?.coerceAtLeast(0L) ?: 0L
+                    val buffered = exoPlayer?.bufferedPosition?.coerceAtLeast(0L) ?: 0L
                     _uiState.update {
                         it.copy(
                             isBuffering = isBuffering,
-                            durationMs = duration
+                            durationMs = if (duration > 0) duration else it.durationMs,
+                            bufferedPositionMs = buffered
                         )
                     }
+
+                    if (playbackState == Player.STATE_READY) {
+                        exoPlayer?.let { updateAvailableTracks(it.currentTracks) }
+                    }
+
                     if (playbackState == Player.STATE_ENDED) {
-                        val settings = com.streamhub.app.data.PlayerSettingsManager.settingsFlow.value
-                        if (settings.autoPlayNextEpisode) {
-                            playNextEpisode()
-                        }
+                        playNextEpisode()
                     }
                 }
 
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                    Log.e("StreamPlayerViewModel", "ExoPlayer error", error)
                     _uiState.update {
                         it.copy(
                             isBuffering = false,
-                            playerError = error.message ?: "Playback error"
+                            playerError = "Playback error: ${error.localizedMessage ?: "Unknown"}"
                         )
                     }
                 }
@@ -168,9 +187,16 @@ class StreamPlayerViewModel : ViewModel() {
                 override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
                     updateAvailableTracks(tracks)
                 }
+
+                override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                    volumeBoostManager.attachToAudioSession(audioSessionId)
+                }
             }
             playerListener = listener
             exoPlayer?.addListener(listener)
+            exoPlayer?.audioSessionId?.let { sessionId ->
+                volumeBoostManager.attachToAudioSession(sessionId)
+            }
         }
 
         val savedProgress = WatchHistoryManager.getProgress(mediaItem.id)
@@ -184,10 +210,30 @@ class StreamPlayerViewModel : ViewModel() {
         startPositionTracker()
     }
 
-    /**
-     * FIX #3: Reads actual audio and subtitle track info from ExoPlayer.
-     * Replaces the hardcoded lists that had no connection to reality.
-     */
+    private fun cleanTrackName(label: String?, language: String?, isSubtitle: Boolean = false): String {
+        val langDisplay = if (!language.isNullOrBlank() && language != "und") {
+            try {
+                java.util.Locale(language).displayLanguage.replaceFirstChar { it.uppercase() }
+            } catch (_: Exception) { "" }
+        } else ""
+
+        var cleanedLabel = label ?: ""
+        if (cleanedLabel.contains(Regex("""(?i)(?:https?://|www\.|hdhub4u|vegamovies|bollyflix|moviesmod|dotmovies|\.ag|\.in|\.org|\.com|\.net|\.top|\.lat|\.cc|\.vip|\.download)"""))) {
+            cleanedLabel = cleanedLabel.replace(Regex("""(?i)(?:https?://)?(?:www\.)?[a-z0-9\-_]+(?:\.[a-z]{2,6})+\S*"""), "").trim()
+        }
+        cleanedLabel = cleanedLabel.replace(Regex("""(?i)\[?(?:sdh|forced)\]?"""), "").trim()
+        cleanedLabel = cleanedLabel.replace(Regex("""^[_\-\.\s\(\)]+|[_\-\.\s\(\)]+$"""), "").trim()
+
+        return when {
+            langDisplay.isNotBlank() && cleanedLabel.isNotBlank() && !cleanedLabel.equals(langDisplay, ignoreCase = true) -> {
+                "$langDisplay ($cleanedLabel)"
+            }
+            langDisplay.isNotBlank() -> langDisplay
+            cleanedLabel.isNotBlank() -> cleanedLabel
+            else -> if (isSubtitle) "Subtitle" else "Audio"
+        }
+    }
+
     @OptIn(UnstableApi::class)
     private fun updateAvailableTracks(tracks: androidx.media3.common.Tracks) {
         val audioTrackNames = mutableListOf<String>()
@@ -198,41 +244,53 @@ class StreamPlayerViewModel : ViewModel() {
             if (trackType == androidx.media3.common.C.TRACK_TYPE_AUDIO) {
                 for (i in 0 until trackGroup.length) {
                     val format = trackGroup.getTrackFormat(i)
-                    val label = buildString {
-                        val lang = format.label ?: format.language
-                        if (!lang.isNullOrBlank()) append(lang)
-                        else append("Audio ${audioTrackNames.size + 1}")
-                        val mime = format.sampleMimeType
-                        if (!mime.isNullOrBlank()) {
-                            val short = when {
-                                mime.contains("ac-3", ignoreCase = true) -> "AC3"
-                                mime.contains("eac3", ignoreCase = true) -> "E-AC3"
-                                mime.contains("aac", ignoreCase = true) -> "AAC"
-                                mime.contains("opus", ignoreCase = true) -> "Opus"
-                                mime.contains("vorbis", ignoreCase = true) -> "Vorbis"
-                                else -> null
-                            }
-                            if (short != null) append(" ($short)")
-                        }
-                        val chCount = format.channelCount
-                        if (chCount > 0) {
-                            val chLabel = when (chCount) {
-                                1 -> "Mono"
-                                2 -> "2.0"
-                                6 -> "5.1"
-                                8 -> "7.1"
-                                else -> "${chCount}ch"
-                            }
-                            append(" $chLabel")
-                        }
+                    val lang = cleanTrackName(format.label, format.language, isSubtitle = false)
+                    val mime = format.sampleMimeType
+                    val codec = when {
+                        mime?.contains("ac-3", ignoreCase = true) == true -> "AC3"
+                        mime?.contains("eac3", ignoreCase = true) == true -> "E-AC3"
+                        mime?.contains("aac", ignoreCase = true) == true -> "AAC"
+                        mime?.contains("opus", ignoreCase = true) == true -> "Opus"
+                        mime?.contains("vorbis", ignoreCase = true) == true -> "Vorbis"
+                        mime?.contains("dts", ignoreCase = true) == true -> "DTS"
+                        mime?.contains("truehd", ignoreCase = true) == true -> "Dolby TrueHD"
+                        else -> null
                     }
+                    val chCount = format.channelCount
+                    val chLabel = when (chCount) {
+                        1 -> "Mono"
+                        2 -> "Stereo 2.0"
+                        6 -> "5.1 Surround"
+                        8 -> "7.1 Atmos"
+                        else -> if (chCount > 0) "${chCount}ch" else null
+                    }
+                    val label = listOfNotNull(
+                        lang.ifEmpty { "Audio ${audioTrackNames.size + 1}" },
+                        chLabel,
+                        codec
+                    ).joinToString(" • ")
+
                     audioTrackNames.add(label)
                 }
             } else if (trackType == androidx.media3.common.C.TRACK_TYPE_TEXT) {
                 for (i in 0 until trackGroup.length) {
                     val format = trackGroup.getTrackFormat(i)
-                    val lang = format.label ?: format.language ?: "Subtitle ${subtitleTrackNames.size}"
-                    subtitleTrackNames.add(lang)
+                    val lang = cleanTrackName(format.label, format.language, isSubtitle = true)
+                    val isSdh = (format.label?.contains("sdh", ignoreCase = true) == true) ||
+                                (format.roleFlags and androidx.media3.common.C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND != 0)
+                    val isForced = (format.selectionFlags and androidx.media3.common.C.SELECTION_FLAG_FORCED != 0) ||
+                                  (format.label?.contains("forced", ignoreCase = true) == true)
+                    val badge = when {
+                        isSdh -> "[SDH]"
+                        isForced -> "[Forced]"
+                        else -> null
+                    }
+                    val label = listOfNotNull(
+                        lang.ifEmpty { "Subtitle ${subtitleTrackNames.size}" },
+                        badge
+                    ).joinToString(" ")
+
+                    subtitleTrackNames.add(label)
                 }
             }
         }
@@ -261,6 +319,12 @@ class StreamPlayerViewModel : ViewModel() {
             if (resolvedUrl.isBlank()) {
                 _uiState.update { it.copy(playerError = "Failed to resolve stream link") }
                 return@launch
+            }
+            _uiState.update {
+                it.copy(
+                    resolvedStreamUrl = resolvedUrl,
+                    posterUrl = currentMediaItem?.posterUrl ?: ""
+                )
             }
             val mediaItem = ExoMediaItem.fromUri(resolvedUrl)
 
@@ -315,16 +379,13 @@ class StreamPlayerViewModel : ViewModel() {
         }
     }
 
-    /**
-     * FIX #2: Actually selects the audio track in ExoPlayer via TrackSelector.
-     * Previous implementation only updated UI state — the audio track never changed.
-     */
     @OptIn(UnstableApi::class)
     fun selectAudioTrack(trackName: String) {
         val player = exoPlayer ?: return
         val selector = trackSelector ?: return
         val tracks = player.currentTracks
 
+        var audioCount = 0
         var groupIndex = -1
         var trackIndex = -1
 
@@ -332,12 +393,38 @@ class StreamPlayerViewModel : ViewModel() {
             if (trackGroup.type != androidx.media3.common.C.TRACK_TYPE_AUDIO) continue
             for (ti in 0 until trackGroup.length) {
                 val format = trackGroup.getTrackFormat(ti)
-                val label = format.label ?: format.language ?: "Audio ${ti + 1}"
-                if (label == trackName) {
+                val lang = cleanTrackName(format.label, format.language, isSubtitle = false)
+                val mime = format.sampleMimeType
+                val codec = when {
+                    mime?.contains("ac-3", ignoreCase = true) == true -> "AC3"
+                    mime?.contains("eac3", ignoreCase = true) == true -> "E-AC3"
+                    mime?.contains("aac", ignoreCase = true) == true -> "AAC"
+                    mime?.contains("opus", ignoreCase = true) == true -> "Opus"
+                    mime?.contains("vorbis", ignoreCase = true) == true -> "Vorbis"
+                    mime?.contains("dts", ignoreCase = true) == true -> "DTS"
+                    mime?.contains("truehd", ignoreCase = true) == true -> "Dolby TrueHD"
+                    else -> null
+                }
+                val chCount = format.channelCount
+                val chLabel = when (chCount) {
+                    1 -> "Mono"
+                    2 -> "Stereo 2.0"
+                    6 -> "5.1 Surround"
+                    8 -> "7.1 Atmos"
+                    else -> if (chCount > 0) "${chCount}ch" else null
+                }
+                val formatted = listOfNotNull(
+                    lang.ifEmpty { "Audio ${audioCount + 1}" },
+                    chLabel,
+                    codec
+                ).joinToString(" • ")
+
+                if (formatted == trackName || format.label == trackName || format.language == trackName) {
                     groupIndex = gi
                     trackIndex = ti
                     break@outer
                 }
+                audioCount++
             }
         }
 
@@ -360,10 +447,6 @@ class StreamPlayerViewModel : ViewModel() {
         }
     }
 
-    /**
-     * FIX #2: Actually selects the subtitle track in ExoPlayer via TrackSelector.
-     * "Off" disables all subtitles. Previous implementation was cosmetic-only.
-     */
     @OptIn(UnstableApi::class)
     fun selectSubtitleTrack(trackName: String) {
         val player = exoPlayer ?: return
@@ -375,6 +458,7 @@ class StreamPlayerViewModel : ViewModel() {
             selector.parameters = parameters.build()
         } else {
             val tracks = player.currentTracks
+            var subCount = 0
             var groupIndex = -1
             var trackIndex = -1
 
@@ -382,12 +466,27 @@ class StreamPlayerViewModel : ViewModel() {
                 if (trackGroup.type != androidx.media3.common.C.TRACK_TYPE_TEXT) continue
                 for (ti in 0 until trackGroup.length) {
                     val format = trackGroup.getTrackFormat(ti)
-                    val label = format.label ?: format.language ?: "Subtitle ${ti + 1}"
-                    if (label == trackName) {
+                    val lang = cleanTrackName(format.label, format.language, isSubtitle = true)
+                    val isSdh = (format.label?.contains("sdh", ignoreCase = true) == true) ||
+                                (format.roleFlags and androidx.media3.common.C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND != 0)
+                    val isForced = (format.selectionFlags and androidx.media3.common.C.SELECTION_FLAG_FORCED != 0) ||
+                                  (format.label?.contains("forced", ignoreCase = true) == true)
+                    val badge = when {
+                        isSdh -> "[SDH]"
+                        isForced -> "[Forced]"
+                        else -> null
+                    }
+                    val formatted = listOfNotNull(
+                        lang.ifEmpty { "Subtitle ${subCount + 1}" },
+                        badge
+                    ).joinToString(" ")
+
+                    if (formatted == trackName || format.label == trackName || format.language == trackName) {
                         groupIndex = gi
                         trackIndex = ti
                         break@outer
                     }
+                    subCount++
                 }
             }
 
@@ -413,21 +512,11 @@ class StreamPlayerViewModel : ViewModel() {
     }
 
     fun toggleAudioDialog() {
-        _uiState.update {
-            it.copy(
-                showAudioDialog = !it.showAudioDialog,
-                showSubtitleDialog = false
-            )
-        }
+        _uiState.update { it.copy(showAudioDialog = !it.showAudioDialog, showSubtitleDialog = false) }
     }
 
     fun toggleSubtitleDialog() {
-        _uiState.update {
-            it.copy(
-                showSubtitleDialog = !it.showSubtitleDialog,
-                showAudioDialog = false
-            )
-        }
+        _uiState.update { it.copy(showSubtitleDialog = !it.showSubtitleDialog, showAudioDialog = false) }
     }
 
     fun togglePlayPause() {
@@ -437,27 +526,33 @@ class StreamPlayerViewModel : ViewModel() {
     }
 
     fun seekTo(positionMs: Long) {
-        exoPlayer?.seekTo(positionMs)
-        _uiState.update { it.copy(currentPositionMs = positionMs) }
-    }
-
-    fun seekForward() {
-        exoPlayer?.let {
-            val duration = it.duration.coerceAtLeast(0L)
-            val target = (it.currentPosition + 10000L).let { pos ->
-                if (duration > 0L) pos.coerceAtMost(duration) else pos
-            }
-            it.seekTo(target)
-            _uiState.update { state -> state.copy(currentPositionMs = target) }
+        val player = exoPlayer ?: return
+        val duration = player.duration.coerceAtLeast(0L)
+        val target = if (duration > 0L) positionMs.coerceIn(0L, duration) else positionMs.coerceAtLeast(0L)
+        Log.i("StreamPlayerViewModel", "seekTo: requested $positionMs ms -> target $target ms (duration: $duration ms)")
+        pendingSeekTargetMs = target
+        player.seekTo(target)
+        _uiState.update {
+            it.copy(
+                currentPositionMs = target,
+                bufferedPositionMs = player.bufferedPosition.coerceAtLeast(target)
+            )
         }
     }
 
-    fun seekBackward() {
-        exoPlayer?.let {
-            val target = (it.currentPosition - 10000L).coerceAtLeast(0L)
-            it.seekTo(target)
-            _uiState.update { state -> state.copy(currentPositionMs = target) }
-        }
+    fun seekForward(offsetMs: Long = 10000L) {
+        val player = exoPlayer ?: return
+        val duration = player.duration.coerceAtLeast(0L)
+        val current = pendingSeekTargetMs ?: player.currentPosition.coerceAtLeast(0L)
+        val target = if (duration > 0L) (current + offsetMs).coerceAtMost(duration) else current + offsetMs
+        seekTo(target)
+    }
+
+    fun seekBackward(offsetMs: Long = 10000L) {
+        val player = exoPlayer ?: return
+        val current = pendingSeekTargetMs ?: player.currentPosition.coerceAtLeast(0L)
+        val target = (current - offsetMs).coerceAtLeast(0L)
+        seekTo(target)
     }
 
     fun setPlaybackSpeed(speed: Float) {
@@ -480,6 +575,39 @@ class StreamPlayerViewModel : ViewModel() {
         _uiState.update { it.copy(isLocked = !it.isLocked) }
     }
 
+    fun toggleRepeatMode() {
+        val newMode = !_uiState.value.isRepeatMode
+        exoPlayer?.repeatMode = if (newMode) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+        _uiState.update { it.copy(isRepeatMode = newMode) }
+    }
+
+    private var sleepTimerJob: Job? = null
+
+    fun setSleepTimer(minutes: Int) {
+        sleepTimerJob?.cancel()
+        if (minutes <= 0) {
+            _uiState.update { it.copy(sleepTimerMinutesRemaining = null) }
+            return
+        }
+        _uiState.update { it.copy(sleepTimerMinutesRemaining = minutes) }
+        sleepTimerJob = viewModelScope.launch {
+            var remaining = minutes
+            while (remaining > 0 && isActive) {
+                delay(60_000L)
+                remaining--
+                _uiState.update { it.copy(sleepTimerMinutesRemaining = if (remaining > 0) remaining else null) }
+            }
+            exoPlayer?.pause()
+            _uiState.update { it.copy(sleepTimerMinutesRemaining = null) }
+        }
+    }
+
+    fun setVolumeBoost(percent: Int) {
+        val clamped = percent.coerceIn(0, 100)
+        volumeBoostManager.setBoostPercent(clamped)
+        _uiState.update { it.copy(volumeBoostPercent = clamped) }
+    }
+
     fun toggleEpisodeDrawer() {
         _uiState.update { it.copy(showEpisodeDrawer = !it.showEpisodeDrawer) }
     }
@@ -490,40 +618,84 @@ class StreamPlayerViewModel : ViewModel() {
         }
     }
 
-    /**
-     * FIX #1: Position tracker now uses a cancellable Job reference.
-     * The loop checks `isActive` so it stops when the Job is cancelled on release.
-     * Previous `while(true)` ran forever even after releasePlayer().
-     */
     private fun startPositionTracker() {
         var lastProgressSaveMs = 0L
         positionTrackerJob?.cancel()
         positionTrackerJob = viewModelScope.launch {
             while (isActive) {
                 exoPlayer?.let { player ->
+                    val playerPos = player.currentPosition.coerceAtLeast(0L)
+                    val totalDuration = player.duration.coerceAtLeast(0L)
+                    val buffered = player.bufferedPosition.coerceAtLeast(0L)
+                    val isBuffering = player.playbackState == Player.STATE_BUFFERING
+
+                    val pendingSeek = pendingSeekTargetMs
+                    val currentPos = if (pendingSeek != null) {
+                        if (Math.abs(playerPos - pendingSeek) < 5000L || (!player.isPlaying && player.playbackState == Player.STATE_ENDED)) {
+                            pendingSeekTargetMs = null
+                            playerPos
+                        } else {
+                            pendingSeek
+                        }
+                    } else {
+                        playerPos
+                    }
+
+                    _uiState.update {
+                        it.copy(
+                            currentPositionMs = currentPos,
+                            durationMs = if (totalDuration > 0) totalDuration else it.durationMs,
+                            bufferedPositionMs = buffered,
+                            isBuffering = isBuffering
+                        )
+                    }
+
                     if (player.isPlaying) {
-                        val currentPos = player.currentPosition
-                        val totalDuration = player.duration.coerceAtLeast(0L)
-                        _uiState.update {
-                            it.copy(
-                                currentPositionMs = currentPos,
-                                durationMs = totalDuration
-                            )
+                        // Preload next episode when near end (remaining <= 120s) for instant zero-delay playback
+                        val remainingMs = totalDuration - currentPos
+                        if (totalDuration > 30_000L && remainingMs in 1..120_000L && nextEpisodePreloadJob == null) {
+                            val nextIdx = _uiState.value.currentEpisodeIndex + 1
+                            if (nextIdx in episodesList.indices) {
+                                val nextEp = episodesList[nextIdx]
+                                val nextUrl = nextEp.streamUrl.ifEmpty { nextEp.mirrorStreamUrl }
+                                if (nextUrl.isNotBlank()) {
+                                    nextEpisodePreloadJob = viewModelScope.launch(Dispatchers.IO) {
+                                        try {
+                                            Log.i("StreamPlayerViewModel", "Auto-prebuffering next episode: ${nextEp.title}")
+                                            TelegramLinkResolver.resolveAsync(nextUrl)
+                                        } catch (e: Exception) {
+                                            Log.w("StreamPlayerViewModel", "Next episode preload failed: ${e.message}")
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         // Real-time user stats accumulation (watch hours, today, active streak & categories)
                         com.streamhub.app.data.UserStatsManager.addWatchTime(1L, currentMediaItem?.category ?: "ANIME")
 
                         val now = System.currentTimeMillis()
-                        if (now - lastProgressSaveMs >= 10_000L) {
+                        if (now - lastProgressSaveMs >= 2_000L) {
                             currentMediaItem?.let { media ->
+                                val isMovie = media.type.equals("MOVIE", ignoreCase = true) ||
+                                              media.category.equals("Movie", ignoreCase = true) ||
+                                              media.category.equals("Movies", ignoreCase = true) ||
+                                              media.relationType.equals("Movie", ignoreCase = true) ||
+                                              episodesList.size <= 1
                                 val epIdx = _uiState.value.currentEpisodeIndex
+                                val ep = episodesList.getOrNull(epIdx)
                                 viewModelScope.launch(Dispatchers.IO) {
                                     WatchHistoryManager.saveProgress(
                                         mediaId = media.id,
-                                        episodeNumber = epIdx,
+                                        episodeNumber = if (isMovie) 0 else epIdx,
                                         positionMs = currentPos,
-                                        durationMs = totalDuration
+                                        durationMs = totalDuration,
+                                        title = media.title,
+                                        posterUrl = media.posterUrl,
+                                        backdropUrl = media.bannerUrl,
+                                        mediaType = if (isMovie) "Movie" else media.category,
+                                        episodeTitle = if (isMovie) "" else (ep?.title ?: ""),
+                                        seasonNumber = if (isMovie) 0 else (ep?.seasonNumber ?: 1)
                                     )
                                 }
                             }
@@ -531,7 +703,7 @@ class StreamPlayerViewModel : ViewModel() {
                         }
                     }
                 }
-                delay(1000L)
+                delay(200L)
             }
         }
     }
@@ -545,14 +717,29 @@ class StreamPlayerViewModel : ViewModel() {
         exoPlayer?.let { player ->
             playerListener?.let { player.removeListener(it) }
             currentMediaItem?.let { media ->
+                val isMovie = media.type.equals("MOVIE", ignoreCase = true) ||
+                              media.category.equals("Movie", ignoreCase = true) ||
+                              media.category.equals("Movies", ignoreCase = true) ||
+                              media.relationType.equals("Movie", ignoreCase = true) ||
+                              episodesList.size <= 1
+                val epIdx = _uiState.value.currentEpisodeIndex
+                val ep = episodesList.getOrNull(epIdx)
                 WatchHistoryManager.saveProgress(
                     mediaId = media.id,
-                    episodeNumber = _uiState.value.currentEpisodeIndex,
+                    episodeNumber = if (isMovie) 0 else epIdx,
                     positionMs = player.currentPosition,
-                    durationMs = player.duration.coerceAtLeast(0L)
+                    durationMs = player.duration.coerceAtLeast(0L),
+                    title = media.title,
+                    posterUrl = media.posterUrl,
+                    backdropUrl = media.bannerUrl,
+                    mediaType = if (isMovie) "Movie" else media.category,
+                    episodeTitle = if (isMovie) "" else (ep?.title ?: ""),
+                    seasonNumber = if (isMovie) 0 else (ep?.seasonNumber ?: 1)
                 )
             }
             StreamCacheManager.releaseReader()
+            volumeBoostManager.release()
+            VideoThumbnailHelper.release()
             player.release()
         }
         playerListener = null

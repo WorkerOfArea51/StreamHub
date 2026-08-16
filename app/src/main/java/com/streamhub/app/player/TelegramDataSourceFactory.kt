@@ -8,41 +8,32 @@ import androidx.media3.common.C
 import androidx.media3.datasource.DataSpec
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
-import androidx.media3.datasource.DataSink
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.cache.CacheDataSource
-import androidx.media3.datasource.cache.CacheDataSink
+import com.streamhub.app.data.telegram.TdLibManager
+import com.streamhub.app.data.telegram.TdLibMediaProvider
+import kotlinx.coroutines.runBlocking
+import org.drinkless.tdlib.TdApi
 import java.io.EOFException
 import java.io.File
-import java.io.FileInputStream
 import java.io.IOException
+import java.io.RandomAccessFile
 
 /**
  * TDLib-Aware ExoPlayer DataSource Factory for Telegram stream links.
  *
  * This factory creates the appropriate DataSource based on the URL type:
  *
- *  1. **Local file path** (from TdLibMediaProvider download):
- *     → [LocalFileDataSource] — reads directly from the TDLib-downloaded file
- *     → Zero network overhead, instant seeking, works offline
+ *  1. **Local file path / TDLib Stream** (from TdLibMediaProvider):
+ *     → [TdLibStreamingDataSource] — reads directly from disk using [RandomAccessFile]
+ *       and seamlessly requests missing byte-range chunks from TDLib when seeking!
  *
  *  2. **HTTP/HTTPS URL** (direct video link):
- *     → [CacheDataSource] wrapping [DefaultHttpDataSource]
- *     → Standard ExoPlayer HTTP streaming with 500MB LRU cache
- *
- *  3. **t.me link** (not yet resolved):
- *     → Falls back to HTTP with cache — link resolution should happen
- *       at the ViewModel layer before reaching ExoPlayer
- *
- * Usage:
- *  - The factory inspects each DataSpec's URI to choose the right DataSource
- *  - For local files, it reads directly from disk (no cache needed)
- *  - For HTTP URLs, it uses ExoPlayer's standard HTTP + cache pipeline
+ *     → [CacheDataSource] wrapping [DefaultHttpDataSource] with Range request support.
  *
  * Thread Safety:
- *  - Each [createDataSource] call returns a new, independent DataSource instance
- *  - The factory itself is stateless and thread-safe
+ *  - Each [createDataSource] call returns a new, independent DataSource instance.
  */
 @OptIn(UnstableApi::class)
 class TelegramDataSourceFactory(
@@ -53,224 +44,198 @@ class TelegramDataSourceFactory(
 
     companion object {
         private const val TAG = "TelegramDataSourceFactory"
-
-        /** Scheme used for local file URIs passed to ExoPlayer. */
         const val LOCAL_FILE_SCHEME = "file"
     }
 
-    override fun createDataSource(): DataSource {
-        return TelegramDataSource(appContext)
+    private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+        .setAllowCrossProtocolRedirects(true)
+        .setKeepPostFor302Redirects(true)
+        .setConnectTimeoutMs(25_000)
+        .setReadTimeoutMs(25_000)
+        .setDefaultRequestProperties(mapOf("Accept-Ranges" to "bytes"))
+        .setUserAgent("Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+
+    private val cacheDataSourceFactory: CacheDataSource.Factory by lazy {
+        val cache = StreamCacheManager.getCache(appContext)
+        CacheDataSource.Factory()
+            .setCache(cache)
+            .setUpstreamDataSourceFactory(httpDataSourceFactory)
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     }
 
-    /**
-     * A DataSource that routes to either local file reads or HTTP + cache
-     * depending on the URI scheme of each DataSpec.
-     */
-    private inner class TelegramDataSource(
-        private val context: Context
-    ) : DataSource {
+    override fun createDataSource(): DataSource {
+        val httpSource = cacheDataSourceFactory.createDataSource()
+        val tdlibSource = TdLibStreamingDataSource()
 
-        private var currentSource: DataSource? = null
-        private var isLocalFile = false
-        private var transferListener: TransferListener? = null
+        return object : DataSource {
+            private var currentSource: DataSource? = null
+            private var transferListener: TransferListener? = null
 
-        override fun addTransferListener(transferListener: TransferListener) {
-            this.transferListener = transferListener
-            currentSource?.addTransferListener(transferListener)
-        }
-
-        override fun open(dataSpec: DataSpec): Long {
-            try { currentSource?.close() } catch (_: Exception) {}
-            currentSource = null
-            val uri = dataSpec.uri
-            val scheme = uri.scheme?.lowercase()
-
-            // Route to the appropriate DataSource based on URI scheme
-            isLocalFile = when {
-                // Local file from TDLib download
-                scheme == LOCAL_FILE_SCHEME || scheme == null -> {
-                    val path = uri.path ?: ""
-                    val file = File(path)
-                    if (path.isNotBlank() && file.exists() && isPathWhitelisted(file)) {
-                        Log.d(TAG, "Opening local file: $path")
-                        currentSource = LocalFileDataSource()
-                        true
-                    } else {
-                        Log.e(TAG, "Local file invalid or not found: $path (URI: $uri)")
-                        throw IOException("Access denied or local media file not found: $path")
-                    }
-                }
-
-                // HTTP/HTTPS — standard network streaming
-                scheme == "http" || scheme == "https" -> {
-                    Log.d(TAG, "Opening HTTP stream: $uri")
-                    currentSource = createCachedHttpDataSource(uri.host)
-                    false
-                }
-
-                else -> {
-                    Log.w(TAG, "Unknown URI scheme '$scheme', trying HTTP: $uri")
-                    currentSource = createCachedHttpDataSource(uri.host)
-                    false
-                }
+            override fun addTransferListener(transferListener: TransferListener) {
+                this.transferListener = transferListener
+                httpSource.addTransferListener(transferListener)
+                tdlibSource.addTransferListener(transferListener)
             }
 
-            transferListener?.let { currentSource?.addTransferListener(it) }
-            return currentSource?.open(dataSpec) ?: throw IOException("No DataSource available for $uri")
-        }
+            override fun open(dataSpec: DataSpec): Long {
+                try { currentSource?.close() } catch (_: Exception) {}
+                val uri = dataSpec.uri
+                val scheme = uri.scheme?.lowercase()
+                val isLocal = scheme == LOCAL_FILE_SCHEME || scheme == null || uri.path?.startsWith("/") == true
 
-        private fun isPathWhitelisted(file: File): Boolean {
-            return try {
-                val canonicalPath = file.canonicalPath
-                val cachePath = appContext.cacheDir.canonicalPath
-                val filesPath = appContext.filesDir.canonicalPath
-                val externalPath = appContext.getExternalFilesDir(null)?.canonicalPath
-
-                canonicalPath.startsWith(cachePath) ||
-                canonicalPath.startsWith(filesPath) ||
-                (externalPath != null && canonicalPath.startsWith(externalPath))
-            } catch (e: Exception) {
-                false
+                currentSource = if (isLocal) {
+                    tdlibSource
+                } else {
+                    httpSource
+                }
+                transferListener?.let { currentSource?.addTransferListener(it) }
+                return currentSource!!.open(dataSpec)
             }
-        }
 
-        /**
-         * Create a standard HTTP DataSource for direct video links.
-         */
-        private fun createHttpDataSource(host: String? = null): DefaultHttpDataSource {
-            val factory = DefaultHttpDataSource.Factory()
-                .setAllowCrossProtocolRedirects(false)
-                .setConnectTimeoutMs(15000)
-                .setReadTimeoutMs(15000)
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                return currentSource?.read(buffer, offset, length) ?: C.RESULT_END_OF_INPUT
+            }
 
-            return factory.createDataSource()
-        }
+            override fun getUri(): Uri? = currentSource?.uri
 
-        /**
-         * Create a cached HTTP DataSource (HTTP + 500MB LRU cache).
-         */
-        private fun createCachedHttpDataSource(host: String? = null): CacheDataSource {
-            val httpSource = createHttpDataSource(host)
-            val cache = StreamCacheManager.getCache(appContext)
+            override fun close() {
+                try { currentSource?.close() } catch (_: Exception) {}
+                currentSource = null
+            }
 
-            return CacheDataSource.Factory()
-                .setCache(cache)
-                .setUpstreamDataSourceFactory { httpSource }
-                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-                .createDataSource()
-        }
-
-        override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
-            return currentSource?.read(buffer, offset, length)
-                ?: throw IOException("DataSource not opened")
-        }
-
-        override fun getUri(): Uri? = currentSource?.uri
-
-        override fun close() {
-            currentSource?.close()
-            currentSource = null
-        }
-
-        override fun getResponseHeaders(): Map<String, List<String>> {
-            return currentSource?.responseHeaders ?: emptyMap()
+            override fun getResponseHeaders(): Map<String, List<String>> {
+                return currentSource?.responseHeaders ?: emptyMap()
+            }
         }
     }
 }
 
 /**
- * DataSource that reads from a local file on disk.
+ * High-performance streaming DataSource that reads from a local or actively downloading TDLib file.
  *
- * Used for files downloaded by TDLib — these are complete video files
- * stored in TDLib's files directory. ExoPlayer reads them directly
- * with zero network overhead, instant seeking, and offline support.
- *
- * Supports byte-range requests via DataSpec.position for seeking.
+ * Supports on-demand byte seeking: if ExoPlayer requests a byte offset beyond the current file
+ * on disk, this DataSource triggers [TdApi.DownloadFile] with the sought offset to download that
+ * chunk immediately, enabling flawless seeking across large Telegram videos!
  */
 @OptIn(UnstableApi::class)
-private class LocalFileDataSource : DataSource {
+class TdLibStreamingDataSource : DataSource {
 
-    private var inputStream: FileInputStream? = null
+    companion object {
+        private const val TAG = "TdLibStreamingDS"
+    }
+
+    private var randomAccessFile: RandomAccessFile? = null
     private var file: File? = null
-    private var bytesRemaining: Long = 0
+    private var fileId: Int? = null
+    private var totalFileSize: Long = 0L
+    private var currentPosition: Long = 0L
+    private var bytesRemaining: Long = 0L
     private var openedUri: Uri? = null
+
+    override fun addTransferListener(transferListener: TransferListener) {}
 
     override fun open(dataSpec: DataSpec): Long {
         val path = dataSpec.uri.path ?: throw IOException("No file path in URI: ${dataSpec.uri}")
-
         val f = File(path)
-        if (!f.exists()) {
-            throw IOException("File not found: $path")
-        }
-        if (!f.canRead()) {
-            throw IOException("File not readable: $path")
-        }
-
         file = f
         openedUri = dataSpec.uri
 
-        val fileSize = f.length()
+        fileId = TdLibMediaProvider.getFileIdForPath(path)
+        totalFileSize = TdLibMediaProvider.getTotalSizeForPath(path) ?: f.length().coerceAtLeast(1L)
         val position = dataSpec.position
+        currentPosition = position
 
-        if (position > fileSize) {
-            throw IOException("Position $position exceeds file size $fileSize: $path")
+        // If seeking beyond currently downloaded bytes on disk, request TDLib download chunk from that offset!
+        val fId = fileId
+        if (fId != null && position >= f.length()) {
+            Log.i(TAG, "Seeking beyond current disk size: pos=$position, diskSize=${f.length()}, requesting TDLib chunk from offset $position...")
+            try {
+                runBlocking {
+                    TdLibManager.send(TdApi.DownloadFile(fId, 32, position, 0, false))
+                    var waitMs = 0
+                    while (waitMs < 10_000 && (!f.exists() || f.length() <= position)) {
+                        kotlinx.coroutines.delay(100)
+                        waitMs += 100
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error requesting TDLib offset chunk: ${e.message}")
+            }
         }
 
-        inputStream = FileInputStream(f)
+        if (!f.exists()) {
+            throw IOException("File does not exist: $path")
+        }
+
+        randomAccessFile = RandomAccessFile(f, "r")
         if (position > 0) {
-            var remaining = position
-            while (remaining > 0) {
-                val skipped = inputStream!!.skip(remaining)
-                if (skipped == 0L) throw IOException("Failed to skip to position $position")
-                remaining -= skipped
+            val actualLen = f.length()
+            if (position <= actualLen) {
+                randomAccessFile!!.seek(position)
+            } else {
+                randomAccessFile!!.seek(actualLen)
             }
         }
 
         val length = dataSpec.length
         bytesRemaining = if (length != C.LENGTH_UNSET.toLong()) {
-            kotlin.math.min(length, fileSize - position)
+            length
         } else {
-            fileSize - position
+            (totalFileSize - position).coerceAtLeast(0L)
         }
 
         return bytesRemaining
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
-        if (bytesRemaining <= 0) {
-            return C.RESULT_END_OF_INPUT
-        }
+        if (bytesRemaining <= 0L) return C.RESULT_END_OF_INPUT
+        val raf = randomAccessFile ?: throw IOException("DataSource not open")
+        val f = file ?: throw IOException("File reference lost")
 
         val toRead = kotlin.math.min(length.toLong(), bytesRemaining).toInt()
-        val read = inputStream?.read(buffer, offset, toRead)
-            ?: throw IOException("InputStream not opened")
 
-        if (read == -1) {
-            if (bytesRemaining > 0) throw EOFException("Unexpected end of file")
-            return C.RESULT_END_OF_INPUT
+        // If reading ahead of downloaded bytes, wait briefly for TDLib download chunks
+        var currentFileLen = f.length()
+        var waitCount = 0
+        while (currentPosition + toRead > currentFileLen && currentPosition < totalFileSize && waitCount < 100) {
+            val fId = fileId
+            if (fId == null) break
+            try {
+                Thread.sleep(50)
+            } catch (_: InterruptedException) {
+                break
+            }
+            waitCount++
+            currentFileLen = f.length()
         }
 
-        bytesRemaining -= read
-        return read
+        val available = (currentFileLen - currentPosition).coerceAtLeast(0L).toInt()
+        if (available <= 0) {
+            return if (currentPosition >= totalFileSize) C.RESULT_END_OF_INPUT else 0
+        }
+
+        val actualReadSize = kotlin.math.min(toRead, available)
+        val bytesRead = raf.read(buffer, offset, actualReadSize)
+        if (bytesRead > 0) {
+            currentPosition += bytesRead
+            bytesRemaining -= bytesRead
+            return bytesRead
+        }
+
+        return if (currentPosition >= totalFileSize) C.RESULT_END_OF_INPUT else 0
     }
 
     override fun getUri(): Uri? = openedUri
 
     override fun close() {
         try {
-            inputStream?.close()
-        } catch (e: IOException) {
-            // Ignore close errors
-        }
-        inputStream = null
+            randomAccessFile?.close()
+        } catch (_: Exception) {}
+        randomAccessFile = null
         file = null
-        bytesRemaining = 0
         openedUri = null
+        bytesRemaining = 0L
     }
 
     override fun getResponseHeaders(): Map<String, List<String>> = emptyMap()
-
-    override fun addTransferListener(transferListener: TransferListener) {
-        // No-op for local files — no network transfer to track
-    }
 }

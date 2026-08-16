@@ -135,6 +135,14 @@ object DownloadManager {
                     isPaused = false,
                     fileSizeMb = realSizeMb
                 )
+                appContext?.let { ctx ->
+                    DownloadNotificationHelper.showCompleted(
+                        context = ctx,
+                        downloadId = completedId,
+                        mediaTitle = item.mediaTitle,
+                        episodeTitle = item.episodeTitle
+                    )
+                }
             }
             mutableList
         }
@@ -190,6 +198,18 @@ object DownloadManager {
                                 )
                             }
                             mutableList
+                        }
+
+                        appContext?.let { ctx ->
+                            DownloadNotificationHelper.showProgress(
+                                context = ctx,
+                                downloadId = item.downloadId,
+                                mediaTitle = item.mediaTitle,
+                                episodeTitle = item.episodeTitle,
+                                progressPercent = progress,
+                                downloadedMb = currentSizeMb,
+                                totalMb = if (bytesTotal > 0) bytesTotal / (1024.0 * 1024.0) else 0.0
+                            )
                         }
                     }
                 }
@@ -318,59 +338,84 @@ object DownloadManager {
 
     fun startDownload(context: Context, mediaItem: MediaItem, episodeIndex: Int) {
         val episode = mediaItem.episodes.getOrNull(episodeIndex) ?: return
-        val streamUrl = episode.streamUrl.ifEmpty { episode.mirrorStreamUrl.ifEmpty { episode.telegramFileId } }
-        if (streamUrl.isBlank()) {
+        val rawUrl = episode.streamUrl.ifEmpty { episode.mirrorStreamUrl.ifEmpty { episode.telegramFileId } }
+        if (rawUrl.isBlank()) {
             Log.w(TAG, "Cannot download: streamUrl is blank")
             return
         }
 
-        if (!streamUrl.startsWith("http://") && !streamUrl.startsWith("https://")) {
-            Log.w(TAG, "Cannot download non-HTTP URL: $streamUrl")
-            return
+        scope.launch(Dispatchers.IO) {
+            val resolvedUrl = try {
+                if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
+                    if (rawUrl.contains("t.me/")) TelegramLinkResolver.resolveAsync(rawUrl) else rawUrl
+                } else {
+                    TelegramLinkResolver.resolveAsync(rawUrl)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to resolve download URL: $rawUrl", e)
+                rawUrl
+            }
+
+            if (resolvedUrl.isBlank() || (!resolvedUrl.startsWith("http://") && !resolvedUrl.startsWith("https://"))) {
+                Log.w(TAG, "Cannot download unresolved non-HTTP URL: $resolvedUrl")
+                return@launch
+            }
+
+            val downloadsDir = getEffectiveDownloadDir(context)
+            val fileName = "${mediaItem.title.replace(FILENAME_SANITIZE_REGEX, "_")}_Ep${episodeIndex + 1}.mp4"
+            val targetFile = File(downloadsDir, fileName)
+
+            var sysDownloadId = -1L
+
+            try {
+                val request = SystemDownloadManager.Request(Uri.parse(resolvedUrl))
+                    .setTitle("${mediaItem.title} - Episode ${episodeIndex + 1}")
+                    .setDescription("Downloading video for offline streaming...")
+                    .setNotificationVisibility(SystemDownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                    .setDestinationUri(Uri.fromFile(targetFile))
+                    .setAllowedNetworkTypes(SystemDownloadManager.Request.NETWORK_WIFI or SystemDownloadManager.Request.NETWORK_MOBILE)
+                    .setAllowedOverMetered(true)
+                    .setAllowedOverRoaming(true)
+
+                sysDownloadId = systemDownloadManager?.enqueue(request) ?: -1L
+            } catch (e: Exception) {
+                Log.e(TAG, "DownloadManager enqueue failed", e)
+            }
+
+            val epTitle = episode.title.ifEmpty { "Episode ${episodeIndex + 1}" }
+            val newItem = DownloadedItem(
+                mediaId = mediaItem.id,
+                mediaTitle = mediaItem.title,
+                posterUrl = mediaItem.posterUrl,
+                episodeIndex = episodeIndex,
+                episodeTitle = epTitle,
+                localFilePath = targetFile.absolutePath,
+                fileSizeMb = 0.0,
+                downloadId = sysDownloadId,
+                progressPercent = 0,
+                isCompleted = false,
+                streamUrl = resolvedUrl
+            )
+
+            _downloads.update { currentList ->
+                val mutableList = currentList.toMutableList()
+                mutableList.removeAll { it.mediaId == mediaItem.id && it.episodeIndex == episodeIndex }
+                mutableList.add(newItem)
+                mutableList
+            }
+            saveToDisk()
+
+            if (sysDownloadId != -1L) {
+                DownloadNotificationHelper.showProgress(
+                    context = context,
+                    downloadId = sysDownloadId,
+                    mediaTitle = mediaItem.title,
+                    episodeTitle = epTitle,
+                    progressPercent = 0
+                )
+                startProgressPolling()
+            }
         }
-
-        val downloadsDir = getEffectiveDownloadDir(context)
-        val fileName = "${mediaItem.title.replace(FILENAME_SANITIZE_REGEX, "_")}_Ep${episodeIndex + 1}.mp4"
-        val targetFile = File(downloadsDir, fileName)
-
-        var sysDownloadId = -1L
-
-        try {
-            val request = SystemDownloadManager.Request(Uri.parse(streamUrl))
-                .setTitle("${mediaItem.title} - Episode ${episodeIndex + 1}")
-                .setDescription("Downloading video for offline streaming...")
-                .setNotificationVisibility(SystemDownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationUri(Uri.fromFile(targetFile))
-                .setAllowedNetworkTypes(SystemDownloadManager.Request.NETWORK_WIFI or SystemDownloadManager.Request.NETWORK_MOBILE)
-                .setAllowedOverMetered(true)
-                .setAllowedOverRoaming(true)
-
-            sysDownloadId = systemDownloadManager?.enqueue(request) ?: -1L
-        } catch (e: Exception) {
-            Log.e(TAG, "DownloadManager enqueue failed", e)
-        }
-
-        val newItem = DownloadedItem(
-            mediaId = mediaItem.id,
-            mediaTitle = mediaItem.title,
-            posterUrl = mediaItem.posterUrl,
-            episodeIndex = episodeIndex,
-            episodeTitle = episode.title,
-            localFilePath = targetFile.absolutePath,
-            fileSizeMb = 0.0,
-            downloadId = sysDownloadId,
-            progressPercent = 0,
-            isCompleted = false,
-            streamUrl = streamUrl
-        )
-
-        _downloads.update { currentList ->
-            val mutableList = currentList.toMutableList()
-            mutableList.removeAll { it.mediaId == mediaItem.id && it.episodeIndex == episodeIndex }
-            mutableList.add(newItem)
-            mutableList
-        }
-        saveToDisk()
     }
 
     /**
@@ -381,6 +426,7 @@ object DownloadManager {
     fun pauseDownload(item: DownloadedItem) {
         if (item.downloadId != -1L) {
             systemDownloadManager?.remove(item.downloadId)
+            appContext?.let { DownloadNotificationHelper.cancel(it, item.downloadId) }
         }
 
         _downloads.update { currentList ->
@@ -485,6 +531,7 @@ object DownloadManager {
         try {
             if (item.downloadId != -1L) {
                 systemDownloadManager?.remove(item.downloadId)
+                appContext?.let { DownloadNotificationHelper.cancel(it, item.downloadId) }
             }
             val file = File(item.localFilePath)
             if (file.exists()) file.delete()

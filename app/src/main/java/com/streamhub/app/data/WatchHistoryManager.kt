@@ -29,6 +29,29 @@ object WatchHistoryManager {
         loadFromDisk()
     }
 
+    private fun parseProgress(jsonStr: String): PlaybackProgress? {
+        return try {
+            val json = JSONObject(jsonStr)
+            PlaybackProgress(
+                mediaId = json.getString("mediaId"),
+                episodeNumber = json.optInt("episodeNumber", 0),
+                positionMs = json.optLong("positionMs", 0L),
+                durationMs = json.optLong("durationMs", 0L),
+                lastUpdated = json.optLong("lastUpdated", System.currentTimeMillis()),
+                title = json.optString("title", ""),
+                posterUrl = json.optString("posterUrl", ""),
+                backdropUrl = json.optString("backdropUrl", ""),
+                mediaType = json.optString("mediaType", ""),
+                episodeTitle = json.optString("episodeTitle", ""),
+                seasonNumber = json.optInt("seasonNumber", 0),
+                isCompleted = json.optBoolean("isCompleted", false)
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to parse progress JSON", e)
+            null
+        }
+    }
+
     private fun loadFromDisk() {
         val prefs = getPrefs()
         val historyMap = mutableMapOf<String, PlaybackProgress>()
@@ -37,19 +60,7 @@ object WatchHistoryManager {
         if (allKeys.isNotEmpty()) {
             for (mediaId in allKeys) {
                 val jsonStr = prefs.getString(mediaId, null) ?: continue
-                try {
-                    val json = JSONObject(jsonStr)
-                    val progress = PlaybackProgress(
-                        mediaId = json.getString("mediaId"),
-                        episodeNumber = json.getInt("episodeNumber"),
-                        positionMs = json.getLong("positionMs"),
-                        durationMs = json.getLong("durationMs"),
-                        lastUpdated = json.getLong("lastUpdated")
-                    )
-                    historyMap[mediaId] = progress
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to parse progress for $mediaId", e)
-                }
+                parseProgress(jsonStr)?.let { historyMap[mediaId] = it }
             }
         } else {
             // Fallback for migration from old prefs.all
@@ -57,19 +68,7 @@ object WatchHistoryManager {
             for ((mediaId, jsonStr) in allEntries) {
                 if (mediaId == KEY_ALL_HISTORY_IDS) continue
                 if (jsonStr is String) {
-                    try {
-                        val json = JSONObject(jsonStr)
-                        val progress = PlaybackProgress(
-                            mediaId = json.getString("mediaId"),
-                            episodeNumber = json.getInt("episodeNumber"),
-                            positionMs = json.getLong("positionMs"),
-                            durationMs = json.getLong("durationMs"),
-                            lastUpdated = json.getLong("lastUpdated")
-                        )
-                        historyMap[mediaId] = progress
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed to parse progress for $mediaId", e)
-                    }
+                    parseProgress(jsonStr)?.let { historyMap[mediaId] = it }
                 }
             }
         }
@@ -81,7 +80,13 @@ object WatchHistoryManager {
         mediaId: String,
         episodeNumber: Int,
         positionMs: Long,
-        durationMs: Long
+        durationMs: Long,
+        title: String = "",
+        posterUrl: String = "",
+        backdropUrl: String = "",
+        mediaType: String = "",
+        episodeTitle: String = "",
+        seasonNumber: Int = 0
     ) {
         if (!::appContext.isInitialized) {
             Log.w(TAG, "saveProgress called before init — no-op")
@@ -89,21 +94,31 @@ object WatchHistoryManager {
         }
         if (mediaId.isEmpty() || durationMs <= 0) return
 
+        val existing = _historyFlow.value[mediaId]
+        val isCompleted = if (durationMs > 0) (positionMs.toFloat() / durationMs.toFloat()) >= 0.92f else false
+
         val progress = PlaybackProgress(
             mediaId = mediaId,
             episodeNumber = episodeNumber,
             positionMs = positionMs,
             durationMs = durationMs,
-            lastUpdated = System.currentTimeMillis()
+            lastUpdated = System.currentTimeMillis(),
+            title = title.ifEmpty { existing?.title ?: "" },
+            posterUrl = posterUrl.ifEmpty { existing?.posterUrl ?: "" },
+            backdropUrl = backdropUrl.ifEmpty { existing?.backdropUrl ?: "" },
+            mediaType = mediaType.ifEmpty { existing?.mediaType ?: "" },
+            episodeTitle = episodeTitle.ifEmpty { existing?.episodeTitle ?: "" },
+            seasonNumber = if (seasonNumber >= 0) seasonNumber else (existing?.seasonNumber ?: 0),
+            isCompleted = isCompleted || (existing?.isCompleted == true && positionMs < 10_000L)
         )
 
         val updatedMap = _historyFlow.value.toMutableMap()
         updatedMap[mediaId] = progress
 
         val evictedKeys = mutableListOf<String>()
-        if (updatedMap.size > 100) {
+        if (updatedMap.size > 200) {
             val sortedByAge = updatedMap.entries.sortedBy { it.value.lastUpdated }
-            val toRemove = sortedByAge.take(updatedMap.size - 100)
+            val toRemove = sortedByAge.take(updatedMap.size - 200)
             for ((oldKey, _) in toRemove) {
                 updatedMap.remove(oldKey)
                 evictedKeys.add(oldKey)
@@ -114,11 +129,18 @@ object WatchHistoryManager {
 
         try {
             val json = JSONObject().apply {
-                put("mediaId", mediaId)
-                put("episodeNumber", episodeNumber)
-                put("positionMs", positionMs)
-                put("durationMs", durationMs)
+                put("mediaId", progress.mediaId)
+                put("episodeNumber", progress.episodeNumber)
+                put("positionMs", progress.positionMs)
+                put("durationMs", progress.durationMs)
                 put("lastUpdated", progress.lastUpdated)
+                put("title", progress.title)
+                put("posterUrl", progress.posterUrl)
+                put("backdropUrl", progress.backdropUrl)
+                put("mediaType", progress.mediaType)
+                put("episodeTitle", progress.episodeTitle)
+                put("seasonNumber", progress.seasonNumber)
+                put("isCompleted", progress.isCompleted)
             }
             val prefs = getPrefs()
             val currentIds = (prefs.getStringSet(KEY_ALL_HISTORY_IDS, emptySet()) ?: emptySet()).toMutableSet()
@@ -139,6 +161,63 @@ object WatchHistoryManager {
 
     fun getProgress(mediaId: String): PlaybackProgress? {
         return _historyFlow.value[mediaId]
+    }
+
+    /**
+     * Returns history list sorted newest to oldest, optionally filtered.
+     */
+    fun getHistoryList(filterType: String = "All", searchQuery: String = ""): List<PlaybackProgress> {
+        return _historyFlow.value.values
+            .sortedByDescending { it.lastUpdated }
+            .filter { item ->
+                val matchesType = when (filterType.lowercase()) {
+                    "all" -> true
+                    "movies" -> item.mediaType.equals("Movie", ignoreCase = true) || item.mediaType.equals("Movies", ignoreCase = true)
+                    "anime" -> item.mediaType.equals("Anime", ignoreCase = true)
+                    "series" -> item.mediaType.equals("Series", ignoreCase = true) || item.mediaType.equals("Web Series", ignoreCase = true)
+                    else -> true
+                }
+                val matchesSearch = searchQuery.isBlank() ||
+                        item.title.contains(searchQuery, ignoreCase = true) ||
+                        item.episodeTitle.contains(searchQuery, ignoreCase = true)
+                matchesType && matchesSearch
+            }
+    }
+
+    /**
+     * Groups watch history chronologically into Today, Yesterday, This Week, and Older.
+     */
+    fun getGroupedHistory(filterType: String = "All", searchQuery: String = ""): Map<String, List<PlaybackProgress>> {
+        val items = getHistoryList(filterType, searchQuery)
+        val now = System.currentTimeMillis()
+        val oneDayMs = 24 * 60 * 60 * 1000L
+        val calendar = java.util.Calendar.getInstance()
+
+        // Today start midnight
+        calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        calendar.set(java.util.Calendar.MINUTE, 0)
+        calendar.set(java.util.Calendar.SECOND, 0)
+        calendar.set(java.util.Calendar.MILLISECOND, 0)
+        val todayMidnight = calendar.timeInMillis
+        val yesterdayMidnight = todayMidnight - oneDayMs
+        val weekMidnight = todayMidnight - (6 * oneDayMs)
+
+        val groups = linkedMapOf<String, MutableList<PlaybackProgress>>()
+        groups["Today"] = mutableListOf()
+        groups["Yesterday"] = mutableListOf()
+        groups["This Week"] = mutableListOf()
+        groups["Older"] = mutableListOf()
+
+        for (item in items) {
+            when {
+                item.lastUpdated >= todayMidnight -> groups["Today"]?.add(item)
+                item.lastUpdated >= yesterdayMidnight -> groups["Yesterday"]?.add(item)
+                item.lastUpdated >= weekMidnight -> groups["This Week"]?.add(item)
+                else -> groups["Older"]?.add(item)
+            }
+        }
+
+        return groups.filterValues { it.isNotEmpty() }
     }
 
     @Synchronized

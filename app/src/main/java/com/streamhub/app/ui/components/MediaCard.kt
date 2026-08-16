@@ -44,6 +44,10 @@ fun MediaCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier.width(135.dp)
 ) {
+    val isMovie = item.category.equals("MOVIE", ignoreCase = true) || 
+                  item.category.equals("Movies", ignoreCase = true) || 
+                  item.type.equals("MOVIE", ignoreCase = true)
+
     Column(
         modifier = modifier
             .clickable { onClick() }
@@ -76,6 +80,25 @@ fun MediaCard(
                         )
                     )
             )
+
+            // Season / Relation Badge Top Left
+            if (!isMovie && item.seasonNumber > 1) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xCC7C4DFF))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "S${item.seasonNumber}",
+                        color = Color.White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
 
             // Quality Badge Top Right
             val primaryColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
@@ -133,8 +156,18 @@ fun MediaCard(
             overflow = TextOverflow.Ellipsis
         )
 
+        val metaSubtitle = buildString {
+            append(item.category)
+            if (!isMovie && item.seasonNumber > 1) {
+                append(" • Season ${item.seasonNumber}")
+            }
+            if (item.releaseYear.isNotBlank()) {
+                append(" • ${item.releaseYear}")
+            }
+        }
+
         Text(
-            text = "${item.category} • ${item.releaseYear}",
+            text = metaSubtitle,
             color = TextSecondary,
             fontSize = 11.sp,
             maxLines = 1

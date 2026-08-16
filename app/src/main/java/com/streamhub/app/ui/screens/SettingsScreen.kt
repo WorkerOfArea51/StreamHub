@@ -53,6 +53,7 @@ import com.streamhub.app.ui.theme.ThemeManager
 fun SettingsScreen(
     onBackClick: () -> Unit,
     onNavigateToVideoSettings: () -> Unit = {},
+    onNavigateToStorage: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val currentAccent by ThemeManager.currentAccent.collectAsState()
@@ -119,6 +120,12 @@ fun SettingsScreen(
             // --- CATEGORY 4: STORAGE & DOWNLOADS ---
             item(key = "cat_storage") {
                 SettingsCategoryHeader(title = "STORAGE & DOWNLOADS", accentColor = currentAccent.color)
+            }
+            item(key = "settings_storage_mgmt") {
+                com.streamhub.app.ui.screens.settings.StorageSettingsEntryCard(
+                    currentAccent = currentAccent,
+                    onNavigateToStorage = onNavigateToStorage
+                )
             }
             item(key = "settings_download_path") { DownloadPathCard(currentAccent = currentAccent) }
             item(key = "settings_screenshot_path") { ScreenshotPathCard(currentAccent = currentAccent) }

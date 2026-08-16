@@ -49,6 +49,7 @@ import com.streamhub.app.player.StreamPlayerViewModel
 import com.streamhub.app.ui.navigation.Screen
 import com.streamhub.app.ui.screens.DetailsScreen
 import com.streamhub.app.ui.screens.DownloadsScreen
+import com.streamhub.app.ui.screens.HistoryScreen
 import com.streamhub.app.ui.screens.HomeScreen
 import com.streamhub.app.ui.screens.MyListScreen
 import com.streamhub.app.ui.screens.PlayerScreen
@@ -56,6 +57,7 @@ import com.streamhub.app.ui.screens.ProfileScreen
 import com.streamhub.app.ui.screens.SearchScreen
 import com.streamhub.app.ui.screens.SettingsScreen
 import com.streamhub.app.ui.screens.SplashScreen
+import com.streamhub.app.ui.screens.StorageManagementScreen
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.StreamHubTheme
@@ -81,6 +83,12 @@ class MainActivity : ComponentActivity() {
             savedInstanceState.getString("deep_link_media_id")?.let { deepLinkMediaId.value = it }
         }
         handleDeepLink(intent)
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+            }
+        }
 
         // All managers are initialized in StreamHubApplication.onCreate().
         // No manager init calls belong here — see StreamHubApplication KDoc.
@@ -284,6 +292,9 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                     },
                     onPlayEpisode = { media, episodeIndex ->
                         navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
+                    },
+                    onNavigateToHistory = {
+                        navController.navigate(Screen.History.route)
                     }
                 )
             }
@@ -319,9 +330,34 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                     onNavigateToSettings = {
                         navController.navigate(Screen.Settings.route)
                     },
+                    onNavigateToHistory = {
+                        navController.navigate(Screen.History.route)
+                    },
+                    onNavigateToStorage = {
+                        navController.navigate(Screen.StorageManagement.route)
+                    },
                     onOpenAdminPanel = {
                         navController.navigate(Screen.Admin.route)
                     }
+                )
+            }
+
+            composable(Screen.History.route) {
+                HistoryScreen(
+                    repository = repository,
+                    onBackClick = { navController.popBackStack() },
+                    onMediaClick = { media ->
+                        navController.navigate(Screen.Details.createRoute(media.id))
+                    },
+                    onPlayEpisode = { media, episodeIndex ->
+                        navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
+                    }
+                )
+            }
+
+            composable(Screen.StorageManagement.route) {
+                StorageManagementScreen(
+                    onBackClick = { navController.popBackStack() }
                 )
             }
 
@@ -340,6 +376,9 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                     onBackClick = { navController.popBackStack() },
                     onNavigateToVideoSettings = {
                         navController.navigate(Screen.VideoSettings.route)
+                    },
+                    onNavigateToStorage = {
+                        navController.navigate(Screen.StorageManagement.route)
                     }
                 )
             }
@@ -362,6 +401,9 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                     onBackClick = { navController.popBackStack() },
                     onPlayEpisode = { media, episodeIndex ->
                         navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
+                    },
+                    onMediaClick = { media ->
+                        navController.navigate(Screen.Details.createRoute(media.id))
                     }
                 )
             }

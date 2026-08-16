@@ -76,17 +76,23 @@ object TelegramLinkResolver {
      *  - mirrorStreamUrl: the original link (backup)
      *  - telegramFileId: the message ID extracted from the link
      */
-    fun parseAndGroupTelegramLinks(rawText: String): List<Episode> {
+    fun parseAndGroupTelegramLinks(
+        rawText: String,
+        seasonNumber: Int = 1,
+        arcName: String = ""
+    ): List<Episode> {
         val lines = rawText.lines().map { it.trim() }.filter { it.isNotEmpty() }
         val episodes = mutableListOf<Episode>()
 
         lines.forEachIndexed { index, line ->
             val epNum = extractEpisodeNumber(line) ?: (index + 1)
-            val epTitle = "Episode $epNum"
+            val epTitle = if (arcName.isNotBlank()) "$arcName - Ep $epNum" else "Episode $epNum"
 
             episodes.add(
                 Episode(
                     episodeNumber = epNum,
+                    seasonNumber = seasonNumber,
+                    arcName = arcName,
                     title = epTitle,
                     streamUrl = line,  // Store the t.me link — resolved at playback time
                     mirrorStreamUrl = line,
@@ -95,6 +101,24 @@ object TelegramLinkResolver {
             )
         }
         return episodes.sortedBy { it.episodeNumber }
+    }
+
+    /**
+     * Fetch and attach rich TDLib metadata (fileName, fileSize, duration, thumbnail) for an Episode.
+     */
+    suspend fun fetchMetadataForEpisode(episode: Episode): Episode {
+        if (!isTelegramLink(episode.streamUrl)) return episode
+        return try {
+            val meta = com.streamhub.app.data.telegram.TdLibMediaProvider.fetchMessageMetadata(episode.streamUrl) ?: return episode
+            episode.copy(
+                fileName = meta.fileName.ifBlank { episode.fileName },
+                fileSize = meta.fileSizeFormatted.ifBlank { episode.fileSize },
+                durationMs = if (meta.durationSeconds > 0) meta.durationSeconds * 1000L else episode.durationMs,
+                thumbnailUrl = meta.thumbnailPath.ifBlank { episode.thumbnailUrl }
+            )
+        } catch (e: Exception) {
+            episode
+        }
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -220,7 +244,7 @@ object TelegramLinkResolver {
         return match?.groupValues?.get(1)?.toIntOrNull()
     }
 
-    private fun extractTelegramMessageOrFileId(url: String): String {
+    fun extractTelegramMessageOrFileId(url: String): String {
         val msgRegex = Regex("""t\.me/(?:c/\d+|[^/]+)/(\d+)""")
         val match = msgRegex.find(url)
         return match?.groupValues?.get(1) ?: url.hashCode().toString()

@@ -39,6 +39,12 @@ data class MediaItem(
     val description: String = "",
     val isFeatured: Boolean = false,
     val isTrending: Boolean = false,
+    val franchiseId: String = "",        // e.g. "solo-leveling", "naruto" — for universe grouping
+    val franchiseTitle: String = "",     // e.g. "Solo Leveling Franchise", "Naruto Universe"
+    val seasonNumber: Int = 1,           // chronological season order (1, 2, 3... or 0 for movie/special)
+    val seasonTitle: String = "",        // e.g. "Season 2: Arise from the Shadow", "Land of Waves Arc"
+    val relationType: String = "",       // e.g. "Main Story", "Sequel", "Prequel", "Movie", "Side Story", "Spin-Off"
+    val relatedMediaIds: List<String> = emptyList(), // linked document IDs in Firestore
     val mediaInfo: MediaInfo = MediaInfo(),
     val episodes: List<Episode> = emptyList()
 )
@@ -63,19 +69,20 @@ data class MediaInfo(
 /**
  * Single episode of a series (or the single "episode" representing a movie).
  *
- * REMOVED in M3: isDownloaded, downloadProgress — these were dead state never
- * updated by any code. Real download tracking will be added in M6 via a
- * separate DownloadedItem model (not bolted onto Episode).
+ * Supports seasonNumber and arcName for long-running anime / sagas (e.g. Naruto, Bleach, One Piece).
  */
 data class Episode(
     val episodeNumber: Int = 1,
     val seasonNumber: Int = 1,
+    val arcName: String = "",            // e.g. "Land of Waves", "Chunin Exams", "Alabasta Saga"
     val title: String = "",
     val thumbnailUrl: String = "",
     val streamUrl: String = "",
     val mirrorStreamUrl: String = "",
     val telegramFileId: String = "",
-    val durationMs: Long = 0L
+    val durationMs: Long = 0L,
+    val fileName: String = "",           // e.g. "Minions & Monsters 2026.mkv"
+    val fileSize: String = ""            // e.g. "1005.8 MB"
 )
 
 /**
@@ -88,5 +95,12 @@ data class PlaybackProgress(
     val episodeNumber: Int,
     val positionMs: Long,
     val durationMs: Long,
-    val lastUpdated: Long = System.currentTimeMillis()
+    val lastUpdated: Long = System.currentTimeMillis(),
+    val title: String = "",
+    val posterUrl: String = "",
+    val backdropUrl: String = "",
+    val mediaType: String = "",       // "Movie", "Anime", "Series"
+    val episodeTitle: String = "",
+    val seasonNumber: Int = 1,
+    val isCompleted: Boolean = false
 )

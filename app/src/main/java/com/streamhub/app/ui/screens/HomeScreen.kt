@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Warning
 import com.streamhub.app.ui.components.EmptyStateCard
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -39,6 +41,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -79,6 +82,7 @@ fun HomeScreen(
     repository: FirebaseRepository,
     onMediaClick: (MediaItem) -> Unit,
     onPlayEpisode: (MediaItem, Int) -> Unit,
+    onNavigateToHistory: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -112,9 +116,9 @@ fun HomeScreen(
 
     val filteredCatalog = remember(catalog, selectedCategoryFilter) {
         when (selectedCategoryFilter) {
-            "ANIME" -> catalog.filter { it.category == "ANIME" }
-            "MOVIES" -> catalog.filter { it.category == "MOVIE" }
-            "SERIES" -> catalog.filter { it.category == "WEB_SERIES" }
+            "ANIME" -> catalog.filter { it.category.equals("ANIME", ignoreCase = true) }
+            "MOVIES" -> catalog.filter { it.category.equals("MOVIE", ignoreCase = true) || it.category.equals("MOVIES", ignoreCase = true) }
+            "SERIES" -> catalog.filter { it.category.equals("WEB_SERIES", ignoreCase = true) || it.category.equals("SERIES", ignoreCase = true) }
             else -> catalog
         }
     }
@@ -135,9 +139,10 @@ fun HomeScreen(
     }
 
     val trendingItems = remember(filteredCatalog) { filteredCatalog.filter { it.isTrending } }
-    val animeItems = remember(filteredCatalog) { filteredCatalog.filter { it.category == "ANIME" } }
-    val movieItems = remember(filteredCatalog) { filteredCatalog.filter { it.category == "MOVIE" } }
-    val webSeriesItems = remember(filteredCatalog) { filteredCatalog.filter { it.category == "WEB_SERIES" } }
+    val animeItems = remember(filteredCatalog) { filteredCatalog.filter { it.category.equals("ANIME", ignoreCase = true) } }
+    val movieItems = remember(filteredCatalog) { filteredCatalog.filter { it.category.equals("MOVIE", ignoreCase = true) || it.category.equals("MOVIES", ignoreCase = true) } }
+    val webSeriesItems = remember(filteredCatalog) { filteredCatalog.filter { it.category.equals("WEB_SERIES", ignoreCase = true) || it.category.equals("SERIES", ignoreCase = true) } }
+    val recentlyAddedItems = remember(filteredCatalog) { filteredCatalog }
 
     val tgState by com.streamhub.app.data.telegram.TelegramAuthManager.authState.collectAsState()
 
@@ -359,15 +364,25 @@ fun HomeScreen(
                                 fontWeight = FontWeight.Bold
                             )
 
-                            Text(
-                                text = "Clear History",
-                                color = AccentOrange,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.clickable {
-                                    WatchHistoryManager.clearAllHistory()
-                                }
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "History ↗",
+                                    color = PrimaryRed,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.clickable { onNavigateToHistory() }
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(
+                                    text = "Clear",
+                                    color = TextSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.clickable {
+                                        WatchHistoryManager.clearAllHistory()
+                                    }
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.height(12.dp))
@@ -429,6 +444,17 @@ fun HomeScreen(
                     MediaSectionRow(
                         title = "📺 Popular Web Series",
                         items = webSeriesItems,
+                        onMediaClick = onMediaClick
+                    )
+                }
+            }
+
+            // Recently Added Row
+            if (recentlyAddedItems.isNotEmpty()) {
+                item {
+                    MediaSectionRow(
+                        title = "✨ Recently Added",
+                        items = recentlyAddedItems,
                         onMediaClick = onMediaClick
                     )
                 }
@@ -506,20 +532,29 @@ fun ContinueWatchingRowItem(
         (progress.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0f, 1f)
     } else 0f
 
+    val remainingMs = (progress.durationMs - progress.positionMs).coerceAtLeast(0L)
+    val remainingMinutes = remainingMs / 60_000L
+
+    val isMovie = media.category.equals("Movie", ignoreCase = true) ||
+            media.category.equals("Movies", ignoreCase = true) ||
+            progress.mediaType.equals("Movie", ignoreCase = true) ||
+            progress.mediaType.equals("Movies", ignoreCase = true)
+
     val currentEp = media.episodes.getOrNull(progress.episodeNumber)
 
     Card(
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
         modifier = Modifier
-            .width(180.dp)
+            .width(185.dp)
+            .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
             .clickable { onPlay() }
     ) {
         Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(105.dp)
+                    .height(108.dp)
             ) {
                 AsyncImage(
                     model = currentEp?.thumbnailUrl?.ifEmpty { media.bannerUrl.ifEmpty { media.posterUrl } } ?: media.posterUrl,
@@ -528,23 +563,47 @@ fun ContinueWatchingRowItem(
                     modifier = Modifier.fillMaxSize()
                 )
 
+                // Dark gradient overlay
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color(0x55000000)),
+                        .background(
+                            androidx.compose.ui.graphics.Brush.verticalGradient(
+                                colors = listOf(Color(0x44000000), Color(0x88000000))
+                            )
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(PrimaryRed)
+                            .clip(CircleShape)
+                            .background(PrimaryRed.copy(alpha = 0.95f))
                             .padding(8.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
                             contentDescription = "Resume Episode",
                             tint = Color.White,
-                            modifier = Modifier.height(20.dp)
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                // Time remaining chip on top-left
+                if (remainingMinutes > 0) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = Color(0xCC000000),
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(6.dp)
+                    ) {
+                        Text(
+                            text = "${remainingMinutes}m left",
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                         )
                     }
                 }
@@ -564,7 +623,7 @@ fun ContinueWatchingRowItem(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Remove from history",
                         tint = Color.White,
-                        modifier = Modifier.size(14.dp)
+                        modifier = Modifier.size(13.dp)
                     )
                 }
 
@@ -575,12 +634,12 @@ fun ContinueWatchingRowItem(
                     trackColor = Color(0x66000000),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(4.dp)
+                        .height(3.5.dp)
                         .align(Alignment.BottomCenter)
                 )
             }
 
-            Column(modifier = Modifier.padding(10.dp)) {
+            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
                 Text(
                     text = media.title,
                     color = TextPrimary,
@@ -591,10 +650,21 @@ fun ContinueWatchingRowItem(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Episode ${progress.episodeNumber + 1}",
+                    text = if (isMovie) {
+                        "Movie"
+                    } else {
+                        val seasonNum = if (progress.seasonNumber > 0) progress.seasonNumber else (currentEp?.seasonNumber ?: 1)
+                        if (currentEp != null && currentEp.title.isNotBlank() && !currentEp.title.equals(media.title, ignoreCase = true)) {
+                            "S$seasonNum:E${progress.episodeNumber + 1} • ${currentEp.title}"
+                        } else {
+                            "S$seasonNum:E${progress.episodeNumber + 1}"
+                        }
+                    },
                     color = AccentOrange,
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }

@@ -100,4 +100,12 @@
 -keep class com.streamhub.app.data.telegram.ProxyType { *; }
 -keep class com.streamhub.app.ui.theme.AppThemeAccent { *; }
 
+# --- NewPipeExtractor ---
+-keep class org.schabi.newpipe.extractor.** { *; }
+-keep class org.mozilla.javascript.** { *; }
+-keep class org.mozilla.classfile.ClassFileWriter
+-dontwarn org.mozilla.javascript.tools.**
+-dontwarn org.schabi.newpipe.extractor.**
+
+
 

@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withTimeoutOrNull
 import org.drinkless.tdlib.TdApi
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -34,6 +35,20 @@ sealed class TelegramStreamResult {
     /** Failed to resolve the link. */
     data class Failed(val message: String) : TelegramStreamResult()
 }
+
+/**
+ * Metadata extracted from a Telegram video/media message.
+ */
+data class TelegramMessageMetadata(
+    val fileName: String = "",
+    val fileSizeFormatted: String = "",
+    val fileSizeBytes: Long = 0L,
+    val durationSeconds: Int = 0,
+    val durationFormatted: String = "",
+    val thumbnailPath: String = "",
+    val resolution: String = "",
+    val mimeType: String = ""
+)
 
 /**
  * TDLib Media Provider — resolves Telegram links to playable video streams.
@@ -111,19 +126,29 @@ object TdLibMediaProvider {
             }
         }
 
-        // Parse t.me link
+        if (!TdLibManager.isReady()) {
+            return TelegramStreamResult.Failed("TDLib not authenticated. Log in to Telegram first.")
+        }
+
+        // Try TDLib's native GetMessageLinkInfo first
+        val linkInfo = TdLibManager.send(TdApi.GetMessageLinkInfo(url))
+        if (linkInfo is TdApi.MessageLinkInfo) {
+            val msg = linkInfo.message
+            if (msg != null) {
+                val file = extractVideoFile(msg)
+                if (file != null) {
+                    return processFileForStreaming(file, msg.id)
+                }
+            }
+        }
+
+        // Fallback: Parse t.me link
         val parsed = parseTelegramLink(url)
         if (parsed == null) {
-            // If it's an HTTP URL that we couldn't parse as a Telegram link,
-            // try playing it directly (could be a direct video URL)
             if (url.startsWith("http://") || url.startsWith("https://")) {
                 return TelegramStreamResult.HttpUrl(url)
             }
             return TelegramStreamResult.Failed("Cannot parse Telegram link: $url")
-        }
-
-        if (!TdLibManager.isReady()) {
-            return TelegramStreamResult.Failed("TDLib not authenticated. Log in to Telegram first.")
         }
 
         val (chatId, messageId) = parsed
@@ -134,21 +159,45 @@ object TdLibMediaProvider {
             return TelegramStreamResult.Failed("Cannot access chat $chatId. Ensure you are a member.")
         }
 
-        // Get the message
-        val message = getMessage(chat.id, messageId)
-        if (message == null) {
-            return TelegramStreamResult.Failed("Message $messageId not found in chat ${chat.id}")
+        // Try target message
+        var message = getMessage(chat.id, messageId)
+        var file = message?.let { extractVideoFile(it) }
+
+        // If target message doesn't have a video (e.g. banner post), try messageId + 1 (video file post below)
+        if (file == null) {
+            val nextMsg = getMessage(chat.id, messageId + 1)
+            val nextFile = nextMsg?.let { extractVideoFile(it) }
+            if (nextFile != null) {
+                message = nextMsg
+                file = nextFile
+            }
         }
 
-        // Extract video file from message
-        val file = extractVideoFile(message)
-        if (file == null) {
-            return TelegramStreamResult.Failed("Message $messageId does not contain a video or document file.")
+        if (message == null || file == null) {
+            return TelegramStreamResult.Failed("Message $messageId does not contain a video file.")
+        }
+
+        return processFileForStreaming(file, message.id)
+    }
+
+    private val filePathToFileId = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    private val filePathToTotalSize = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    fun getFileIdForPath(path: String): Int? = filePathToFileId[path]
+    fun getTotalSizeForPath(path: String): Long? = filePathToTotalSize[path]
+
+    /**
+     * Process an extracted video file for streaming (cached or downloading).
+     */
+    private suspend fun processFileForStreaming(file: TdApi.File, messageId: Long): TelegramStreamResult {
+        val localPath = file.local.path
+        if (localPath.isNotBlank()) {
+            filePathToFileId[localPath] = file.id
+            filePathToTotalSize[localPath] = file.size
         }
 
         // Check if file is already downloaded
         if (file.local.isDownloadingCompleted) {
-            val localPath = file.local.path
             if (localPath.isNotBlank()) {
                 Log.i(TAG, "File already cached: $localPath (${file.size} bytes)")
                 synchronized(resolvedFiles) { resolvedFiles.put(messageId, localPath) }
@@ -188,26 +237,26 @@ object TdLibMediaProvider {
 
         Log.i(TAG, "Starting download: fileId=$fileId, size=${file.size}, remoteId=${file.remote.id}")
 
-        // Request TDLib to download the file with priority 1 (highest)
-        val result = TdLibManager.send(TdApi.DownloadFile(fileId, 1, 0, 0, true))
+        // Request TDLib to download the file with priority 32 (maximum high-speed priority)
+        val result = TdLibManager.send(TdApi.DownloadFile(fileId, 32, 0, 0, false))
         if (result is TdApi.Error) {
             return TelegramStreamResult.Failed("Download failed: ${result.message}")
         }
 
-        // Wait for the file to become available (with timeout)
-        // TDLib will send UpdateFile updates as the download progresses
-        val waitResult = withTimeoutOrNull(FILE_DOWNLOAD_TIMEOUT_MS) {
-            waitForFileReady(fileId)
-        }
+        // Wait for the file to become available
+        val waitResult = waitForFileReady(fileId)
 
         return if (waitResult != null) {
             Log.i(TAG, "File ready for streaming: $waitResult")
+            filePathToFileId[waitResult] = fileId
+            filePathToTotalSize[waitResult] = file.size
             synchronized(resolvedFiles) { resolvedFiles.put(messageId, waitResult) }
             TelegramStreamResult.LocalFile(waitResult, file.size)
         } else {
-            try { TdLibManager.sendOk(TdApi.CancelDownloadFile(fileId, false)) } catch (_: Exception) {}
             val partialPath = getLocalFilePath(fileId)
             if (partialPath.isNotBlank()) {
+                filePathToFileId[partialPath] = fileId
+                filePathToTotalSize[partialPath] = file.size
                 TelegramStreamResult.Downloading(
                     partialPath = partialPath,
                     downloadedBytes = file.local.downloadedSize,
@@ -221,34 +270,42 @@ object TdLibMediaProvider {
     }
 
     /**
-     * Wait for a file to be fully downloaded by polling its status.
-     * TDLib sends UpdateFile updates which update our file tracking.
+     * Wait for a file to be ready for streaming by polling its status.
+     * Starts playback as soon as the initial buffer (>= 2MB) or full file is downloaded.
      */
     private suspend fun waitForFileReady(fileId: Int): String? {
         val current = TdLibManager.send(TdApi.GetFile(fileId))
-        if (current is TdApi.File && current.local.isDownloadingCompleted && current.local.path.isNotBlank()) {
-            return current.local.path
+        if (current is TdApi.File) {
+            if (current.local.isDownloadingCompleted && current.local.path.isNotBlank()) {
+                return current.local.path
+            }
+            if (current.local.path.isNotBlank()) {
+                val f = File(current.local.path)
+                if (f.exists() && f.length() >= 2_000_000L) {
+                    return current.local.path
+                }
+            }
         }
 
-        return withTimeoutOrNull(FILE_DOWNLOAD_TIMEOUT_MS) {
-            var lastPath: String? = null
-            downloadProgress.collect { progressMap ->
-                if (!progressMap.containsKey(fileId)) {
-                    val result = TdLibManager.send(TdApi.GetFile(fileId))
-                    if (result is TdApi.File) {
-                        if (result.local.isDownloadingCompleted && result.local.path.isNotBlank()) {
-                            lastPath = result.local.path
-                            return@collect
-                        }
-                        if (!result.local.isDownloadingActive && !result.local.isDownloadingCompleted) {
-                            lastPath = null
-                            return@collect
-                        }
+        var elapsed = 0L
+        val maxWait = 15_000L // 15 seconds max initial buffer wait
+        while (elapsed < maxWait) {
+            kotlinx.coroutines.delay(300L)
+            elapsed += 300L
+            val res = TdLibManager.send(TdApi.GetFile(fileId))
+            if (res is TdApi.File) {
+                if (res.local.isDownloadingCompleted && res.local.path.isNotBlank()) {
+                    return res.local.path
+                }
+                if (res.local.path.isNotBlank()) {
+                    val f = File(res.local.path)
+                    if (f.exists() && f.length() >= 2_000_000L) {
+                        return res.local.path
                     }
                 }
             }
-            lastPath
         }
+        return null
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -396,10 +453,17 @@ object TdLibMediaProvider {
      * Get a specific message from a chat.
      */
     private suspend fun getMessage(chatId: Long, messageId: Long): TdApi.Message? {
-        val result = TdLibManager.send(TdApi.GetMessage(chatId, messageId))
+        val tdlibMsgId = if (messageId < (1L shl 20)) (messageId shl 20) else messageId
+        val result = TdLibManager.send(TdApi.GetMessage(chatId, tdlibMsgId))
         if (result is TdApi.Message) return result
+
+        if (tdlibMsgId != messageId) {
+            val rawResult = TdLibManager.send(TdApi.GetMessage(chatId, messageId))
+            if (rawResult is TdApi.Message) return rawResult
+        }
+
         if (result is TdApi.Error) {
-            Log.e(TAG, "GetMessage failed for chat=$chatId msg=$messageId: ${result.message}")
+            Log.e(TAG, "GetMessage failed for chat=$chatId msg=$messageId (tdlibId=$tdlibMsgId): ${result.message}")
         }
         return null
     }
@@ -416,12 +480,16 @@ object TdLibMediaProvider {
         return when (val content = message.content) {
             is TdApi.MessageVideo -> content.video.video
             is TdApi.MessageDocument -> {
-                // Check if document is a video by MIME type
-                val mime = content.document.mimeType
-                if (mime.startsWith("video/") || mime in VIDEO_MIME_TYPES) {
-                    content.document.document
+                val doc = content.document
+                val mime = doc.mimeType.lowercase()
+                val fileName = doc.fileName.lowercase()
+                val isVideoExt = fileName.endsWith(".mkv") || fileName.endsWith(".mp4") || 
+                                 fileName.endsWith(".webm") || fileName.endsWith(".avi") || 
+                                 fileName.endsWith(".mov") || fileName.endsWith(".ts")
+                if (mime.startsWith("video/") || mime in VIDEO_MIME_TYPES || isVideoExt) {
+                    doc.document
                 } else {
-                    Log.w(TAG, "Document is not a video: mime=$mime")
+                    Log.w(TAG, "Document is not a video: mime=$mime, fileName=$fileName")
                     null
                 }
             }
@@ -438,6 +506,154 @@ object TdLibMediaProvider {
         "video/quicktime", "video/x-flv", "video/x-ms-wmv",
         "application/x-mpegURL", "application/vnd.apple.mpegurl"
     )
+
+    /**
+     * Fetch rich metadata (filename, size, duration, thumbnail, resolution) from a Telegram message URL.
+     */
+    suspend fun fetchMessageMetadata(url: String, autoJoin: Boolean = true): TelegramMessageMetadata? {
+        if (!TdLibManager.isReady()) return null
+
+        var targetMsg: TdApi.Message? = null
+
+        // Try GetMessageLinkInfo
+        val linkInfo = TdLibManager.send(TdApi.GetMessageLinkInfo(url))
+        if (linkInfo is TdApi.MessageLinkInfo && linkInfo.message != null) {
+            targetMsg = linkInfo.message
+        }
+
+        // Fallback: parse link and fetch
+        if (targetMsg == null) {
+            val parsed = parseTelegramLink(url) ?: return null
+            val (chatId, messageId) = parsed
+            val chat = ensureChatAccess(chatId, autoJoin) ?: return null
+            targetMsg = getMessage(chat.id, messageId)
+
+            // If message has no video (banner post), check messageId + 1
+            if (targetMsg != null && extractVideoFile(targetMsg) == null) {
+                val nextMsg = getMessage(chat.id, messageId + 1)
+                if (nextMsg != null && extractVideoFile(nextMsg) != null) {
+                    targetMsg = nextMsg
+                }
+            }
+        }
+
+        if (targetMsg == null) return null
+
+        var rawCaption = ""
+        var rawFileName = ""
+        var fileSizeBytes = 0L
+        var durationSec = 0
+        var mimeType = ""
+        var resolution = ""
+        var thumbFileId = 0
+
+        when (val content = targetMsg.content) {
+            is TdApi.MessageVideo -> {
+                rawCaption = content.caption?.text?.trim() ?: ""
+                rawFileName = content.video.fileName
+                fileSizeBytes = content.video.video.size
+                durationSec = content.video.duration
+                mimeType = content.video.mimeType
+                val h = content.video.height
+                val w = content.video.width
+                resolution = when {
+                    h >= 2160 || w >= 3840 -> "4K UHD"
+                    h >= 1080 || w >= 1920 -> "1080p FHD"
+                    h >= 720 || w >= 1280 -> "720p HD"
+                    h > 0 -> "${h}p"
+                    else -> ""
+                }
+                content.video.thumbnail?.file?.let { thumbFileId = it.id }
+            }
+            is TdApi.MessageDocument -> {
+                rawCaption = content.caption?.text?.trim() ?: ""
+                rawFileName = content.document.fileName
+                fileSizeBytes = content.document.document.size
+                mimeType = content.document.mimeType
+                content.document.thumbnail?.file?.let { thumbFileId = it.id }
+            }
+            is TdApi.MessageAnimation -> {
+                rawCaption = content.caption?.text?.trim() ?: ""
+                rawFileName = content.animation.fileName
+                fileSizeBytes = content.animation.animation.size
+                durationSec = content.animation.duration
+                content.animation.thumbnail?.file?.let { thumbFileId = it.id }
+            }
+            is TdApi.MessageText -> {
+                rawCaption = content.text?.text?.trim() ?: ""
+            }
+            else -> {}
+        }
+
+        // Clean display name: caption first, then filename, stripped of video file extension
+        val rawSelectedName = when {
+            rawCaption.isNotBlank() -> rawCaption.lines().firstOrNull { it.isNotBlank() }?.trim() ?: rawCaption
+            rawFileName.isNotBlank() -> rawFileName.trim()
+            else -> "Media"
+        }
+        val fileName = rawSelectedName
+            .replace(Regex("""\.(?i)(mkv|mp4|webm|avi|ts|flv|mov|m4v|3gp|wmv|m2ts|vob)$"""), "")
+            .trim()
+
+        // Format file size
+        val sizeFormatted = when {
+            fileSizeBytes >= 1024L * 1024L * 1024L -> String.format(java.util.Locale.US, "%.2f GB", fileSizeBytes / (1024.0 * 1024.0 * 1024.0))
+            fileSizeBytes >= 1024L * 1024L -> String.format(java.util.Locale.US, "%.1f MB", fileSizeBytes / (1024.0 * 1024.0))
+            fileSizeBytes > 0L -> String.format(java.util.Locale.US, "%.1f KB", fileSizeBytes / 1024.0)
+            else -> ""
+        }
+
+        // Format duration
+        val durationFormatted = when {
+            durationSec >= 3600 -> {
+                val h = durationSec / 3600
+                val m = (durationSec % 3600) / 60
+                val s = durationSec % 60
+                String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, s)
+            }
+            durationSec > 0 -> {
+                val m = durationSec / 60
+                val s = durationSec % 60
+                String.format(java.util.Locale.US, "%02d:%02d", m, s)
+            }
+            else -> ""
+        }
+
+        // Download thumbnail if available
+        var thumbPath = ""
+        if (thumbFileId != 0) {
+            try {
+                val dlRes = TdLibManager.send(TdApi.DownloadFile(thumbFileId, 1, 0, 0, true))
+                if (dlRes is TdApi.File && dlRes.local.isDownloadingCompleted && dlRes.local.path.isNotBlank()) {
+                    thumbPath = dlRes.local.path
+                } else {
+                    var wait = 0
+                    while (wait < 1000) {
+                        kotlinx.coroutines.delay(100L)
+                        wait += 100
+                        val f = TdLibManager.send(TdApi.GetFile(thumbFileId))
+                        if (f is TdApi.File && f.local.isDownloadingCompleted && f.local.path.isNotBlank()) {
+                            thumbPath = f.local.path
+                            break
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to download thumbnail: ${e.message}")
+            }
+        }
+
+        return TelegramMessageMetadata(
+            fileName = fileName,
+            fileSizeFormatted = sizeFormatted,
+            fileSizeBytes = fileSizeBytes,
+            durationSeconds = durationSec,
+            durationFormatted = durationFormatted,
+            thumbnailPath = thumbPath,
+            resolution = resolution,
+            mimeType = mimeType
+        )
+    }
 
     // ──────────────────────────────────────────────────────────────
     // Link Parsing

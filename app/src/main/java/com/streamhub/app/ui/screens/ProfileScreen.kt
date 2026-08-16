@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ElectricBolt
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Lock
@@ -51,6 +52,7 @@ import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -407,6 +409,8 @@ fun CountryPickerDialog(
 fun ProfileScreen(
     onNavigateToSettings: () -> Unit = {},
     onNavigateToVideoSettings: () -> Unit = {},
+    onNavigateToHistory: () -> Unit = {},
+    onNavigateToStorage: () -> Unit = {},
     onOpenAdminPanel: () -> Unit = {},
     onOpenAddContent: () -> Unit = {},
     repository: FirebaseRepository = remember { FirebaseRepository.getInstance() },
@@ -615,6 +619,30 @@ fun ProfileScreen(
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp,
                 modifier = Modifier.padding(top = 8.dp, bottom = 2.dp, start = 4.dp)
+            )
+        }
+
+        item(key = "settings_watch_history") {
+            val historyMap by com.streamhub.app.data.WatchHistoryManager.historyFlow.collectAsState()
+            SettingsPreferenceItem(
+                icon = Icons.Default.History,
+                iconTint = Color(0xFF29B6F6),
+                title = "Watch History",
+                subtitle = "Chronological history & instant resume points",
+                badge = if (historyMap.isNotEmpty()) "${historyMap.size} items" else "Empty",
+                onClick = onNavigateToHistory
+            )
+        }
+
+        item(key = "settings_storage_cache") {
+            val metrics by com.streamhub.app.data.StorageCacheManager.metricsFlow.collectAsState()
+            SettingsPreferenceItem(
+                icon = Icons.Default.Storage,
+                iconTint = Color(0xFF66BB6A),
+                title = "Storage & Cache Management",
+                subtitle = "Storage breakdown, granular cleaner & cache policies",
+                badge = com.streamhub.app.data.StorageCacheManager.formatBytes(metrics.totalAppBytes),
+                onClick = onNavigateToStorage
             )
         }
 

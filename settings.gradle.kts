@@ -19,7 +19,7 @@ dependencyResolutionManagement {
         maven {
             url = java.net.URI("https://jitpack.io")
             content {
-                includeGroup("com.github.tdlibx")
+                includeGroupByRegex("com\\.github\\..*")
             }
         }
     }

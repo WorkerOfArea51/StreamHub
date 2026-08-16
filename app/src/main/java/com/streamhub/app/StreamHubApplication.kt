@@ -126,8 +126,11 @@ class StreamHubApplication : Application() {
         runCatching { UserStatsManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "UserStatsManager.init failed", it) }
 
-        runCatching { NotificationAlertManager.init(applicationContext) }
-            .onFailure { Log.e(TAG, "NotificationAlertManager.init failed", it) }
+        runCatching { com.streamhub.app.data.YoutubeStreamExtractor.init(applicationContext) }
+            .onFailure { Log.e(TAG, "YoutubeStreamExtractor.init failed", it) }
+
+        runCatching { com.streamhub.app.data.StorageCacheManager.init(applicationContext) }
+            .onFailure { Log.e(TAG, "StorageCacheManager.init failed", it) }
 
         // Layer 3 — Network managers (TDLib + Telegram)
         initScope.launch {

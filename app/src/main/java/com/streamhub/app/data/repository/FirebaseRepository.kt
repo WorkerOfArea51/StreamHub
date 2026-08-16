@@ -67,6 +67,7 @@ class FirebaseRepository private constructor() {
 
     init {
         loadInitialCatalog()
+        attachFirestoreListener()
         scope.launch {
             kotlinx.coroutines.delay(30_000L)
             if (_catalogState.value is CatalogState.Loading) {
@@ -245,6 +246,12 @@ class FirebaseRepository private constructor() {
             "description" to item.description,
             "isFeatured" to item.isFeatured,
             "isTrending" to item.isTrending,
+            "franchiseId" to item.franchiseId,
+            "franchiseTitle" to item.franchiseTitle,
+            "seasonNumber" to item.seasonNumber,
+            "seasonTitle" to item.seasonTitle,
+            "relationType" to item.relationType,
+            "relatedMediaIds" to item.relatedMediaIds,
             "mediaInfo" to mapOf(
                 "resolution" to item.mediaInfo.resolution,
                 "videoCodec" to item.mediaInfo.videoCodec,
@@ -260,6 +267,7 @@ class FirebaseRepository private constructor() {
                 mapOf(
                     "episodeNumber" to ep.episodeNumber,
                     "seasonNumber" to ep.seasonNumber,
+                    "arcName" to ep.arcName,
                     "title" to ep.title,
                     "thumbnailUrl" to ep.thumbnailUrl,
                     "streamUrl" to ep.streamUrl,

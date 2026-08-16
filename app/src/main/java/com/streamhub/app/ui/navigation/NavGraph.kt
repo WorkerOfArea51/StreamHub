@@ -17,6 +17,8 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     object Profile : Screen("profile", "Profile", Icons.Default.Person)
     object Settings : Screen("settings", "Settings")
     object VideoSettings : Screen("video-settings", "Video Settings")
+    object StorageManagement : Screen("storage-management", "Storage & Cache")
+    object History : Screen("history", "Watch History")
     object Admin : Screen("admin", "Admin Panel")
     
     object Details : Screen("details/{mediaId}", "Details") {

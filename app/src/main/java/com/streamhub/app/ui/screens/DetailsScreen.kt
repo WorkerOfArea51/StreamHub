@@ -3,7 +3,9 @@ package com.streamhub.app.ui.screens
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import android.view.View
 import android.webkit.WebChromeClient
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
@@ -12,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -19,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -26,17 +30,25 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.zIndex
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.streamhub.app.data.MyListManager
+import com.streamhub.app.ui.components.SeasonArcSelectorSheet
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -47,8 +59,8 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
@@ -66,7 +78,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.streamhub.app.data.api.MetadataFetchManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,6 +85,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -82,6 +94,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.streamhub.app.data.AdminManager
 import com.streamhub.app.data.DownloadManager
+import com.streamhub.app.data.api.MetadataFetchManager
 import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.repository.FirebaseRepository
@@ -112,21 +125,63 @@ fun DetailsScreen(
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
     var showAdminEditDialog by remember { mutableStateOf(false) }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    var selectedSeasonNumber by remember { mutableIntStateOf(1) }
-    var isSeasonDropdownExpanded by remember { mutableStateOf(false) }
-    var showTrailerDialog by remember { mutableStateOf(false) }
-    var activeTrailerId by remember { mutableStateOf("") }
-    var malRecs by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
+    var isSeasonSheetOpen by remember { mutableStateOf(false) }
+    var isTrailerPlaying by remember { mutableStateOf(false) }
+    var recommendations by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
 
-    val mediaItem = catalog.firstOrNull { it.id == mediaId }
+    var currentMediaId by remember(mediaId) { mutableStateOf(mediaId) }
+    val mediaItem = catalog.firstOrNull { it.id == currentMediaId }
 
-    LaunchedEffect(mediaItem?.malId) {
-        val mId = mediaItem?.malId ?: ""
-        if (mId.isNotBlank()) {
+    val effectiveSeasonNumber = remember(mediaItem) {
+        if (mediaItem != null) com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(mediaItem) else 1
+    }
+
+    var selectedSeasonNumber by remember(currentMediaId, effectiveSeasonNumber) {
+        mutableIntStateOf(effectiveSeasonNumber)
+    }
+    var selectedArcName by remember(currentMediaId) { mutableStateOf("") }
+
+    BackHandler(enabled = currentMediaId != mediaId) {
+        currentMediaId = mediaId
+    }
+
+    // Derive Franchise universe items
+    val franchiseItems = remember(mediaItem, catalog) {
+        if (mediaItem != null) {
+            com.streamhub.app.data.FranchiseManager.getFranchiseItems(mediaItem, catalog)
+        } else emptyList()
+    }
+
+    // Build unified Season and Arc dropdown options
+    val seasonArcOptions = remember(mediaItem, catalog, selectedSeasonNumber) {
+        if (mediaItem != null) {
+            com.streamhub.app.data.FranchiseManager.buildSeasonArcOptions(mediaItem, catalog, selectedSeasonNumber)
+        } else emptyList()
+    }
+
+    val isMovie = mediaItem?.category?.equals("MOVIE", true) == true || 
+                  mediaItem?.category?.equals("Movies", true) == true || 
+                  mediaItem?.type?.equals("MOVIE", true) == true
+    val isAnime = mediaItem?.category?.equals("Anime", true) == true
+
+    LaunchedEffect(mediaItem?.id, mediaItem?.tmdbId, mediaItem?.malId) {
+        val tId = mediaItem?.tmdbId?.trim() ?: ""
+        val mId = mediaItem?.malId?.trim() ?: ""
+
+        if (tId.isNotBlank()) {
+            try {
+                val fetched = MetadataFetchManager.fetchTMDBRecommendations(tId, isMovie)
+                if (fetched.isNotEmpty()) {
+                    recommendations = fetched
+                }
+            } catch (e: Exception) {
+                Log.w("DetailsScreen", "Failed to load TMDB recs: ${e.message}")
+            }
+        } else if (mId.isNotBlank()) {
             try {
                 val fetched = MetadataFetchManager.fetchMALRecommendations(mId)
                 if (fetched.isNotEmpty()) {
-                    malRecs = fetched
+                    recommendations = fetched
                 }
             } catch (e: Exception) {
                 Log.w("DetailsScreen", "Failed to load MAL recs: ${e.message}")
@@ -152,20 +207,33 @@ fun DetailsScreen(
         return
     }
 
-    // MAL YouTube Trailer Cover Backdrop Image (mqdefault as shown in Photo 1!)
-    val backdropUrl = if (mediaItem.trailerId.isNotEmpty()) {
-        "https://i.ytimg.com/vi/${mediaItem.trailerId}/mqdefault.jpg"
-    } else {
-        mediaItem.bannerUrl.ifEmpty { mediaItem.posterUrl }
+    // High-Res Cinematic Backdrop Image (Prioritize TMDB Banner -> YouTube MaxRes -> Poster)
+    val backdropUrl = remember(mediaItem.bannerUrl, mediaItem.trailerId, mediaItem.posterUrl) {
+        val cleanTrailerId = when {
+            mediaItem.trailerId.contains("v=") -> mediaItem.trailerId.substringAfter("v=").substringBefore("&")
+            mediaItem.trailerId.contains("youtu.be/") -> mediaItem.trailerId.substringAfter("youtu.be/").substringBefore("?")
+            else -> mediaItem.trailerId.trim()
+        }
+        when {
+            mediaItem.bannerUrl.isNotBlank() -> mediaItem.bannerUrl
+            cleanTrailerId.isNotBlank() -> "https://img.youtube.com/vi/$cleanTrailerId/maxresdefault.jpg"
+            else -> mediaItem.posterUrl
+        }
     }
 
-    // Filter Episodes based on selected Season Number
-    val seasonFilteredEpisodes = remember(mediaItem.episodes, selectedSeasonNumber) {
-        val filtered = mediaItem.episodes.filter { it.seasonNumber == selectedSeasonNumber }
-        if (filtered.isEmpty() && selectedSeasonNumber == 1) mediaItem.episodes else filtered
+    // Filter Episodes based on selected Season Number or Arc Name
+    val seasonFilteredEpisodes = remember(mediaItem.episodes, selectedSeasonNumber, selectedArcName, isMovie) {
+        val allEps = mediaItem.episodes
+        when {
+            isMovie -> allEps
+            selectedArcName.isNotBlank() -> allEps.filter { it.arcName.equals(selectedArcName, ignoreCase = true) }
+            selectedSeasonNumber > 0 -> {
+                val filtered = allEps.filter { it.seasonNumber == selectedSeasonNumber }
+                if (filtered.isEmpty() && (selectedSeasonNumber == 1 || selectedSeasonNumber == effectiveSeasonNumber)) allEps else filtered
+            }
+            else -> allEps
+        }
     }
-
-    val recommendations = malRecs
 
     Scaffold(
         floatingActionButton = {
@@ -187,77 +255,126 @@ fun DetailsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Header Backdrop Container (In-App YouTube Trailer Launcher)
+            // Header Backdrop Container (Modern 16:9 Hero Trailer Player)
             item {
-                val playTrailer = {
-                    val rawId = mediaItem.trailerId.trim()
-                    if (rawId.isNotBlank()) {
-                        val cleanId = when {
-                            rawId.contains("v=") -> rawId.substringAfter("v=").substringBefore("&")
-                            rawId.contains("youtu.be/") -> rawId.substringAfter("youtu.be/").substringBefore("?")
-                            else -> rawId
-                        }
-                        activeTrailerId = cleanId
-                        showTrailerDialog = true
+                val rawId = mediaItem.trailerId.trim()
+                val cleanTrailerId = remember(rawId) {
+                    when {
+                        rawId.contains("v=") -> rawId.substringAfter("v=").substringBefore("&")
+                        rawId.contains("youtu.be/") -> rawId.substringAfter("youtu.be/").substringBefore("?")
+                        else -> rawId
                     }
+                }
+
+                if (isTrailerPlaying && cleanTrailerId.isNotBlank()) {
+                    com.streamhub.app.ui.components.TrailerPlayerDialog(
+                        videoId = cleanTrailerId,
+                        title = mediaItem.title,
+                        onDismiss = { isTrailerPlaying = false }
+                    )
                 }
 
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(280.dp)
+                        .aspectRatio(16f / 9f)
+                        .background(Color.Black)
+                        .clickable(enabled = cleanTrailerId.isNotBlank()) {
+                            isTrailerPlaying = true
+                        }
                 ) {
-                    // MAL YouTube Cover Backdrop Image
+                    // High-Res Cover Backdrop
                     AsyncImage(
                         model = backdropUrl,
                         contentDescription = mediaItem.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .fillMaxSize()
-                            .clickable { playTrailer() }
+                            .clickable {
+                                if (cleanTrailerId.isNotBlank()) {
+                                    isTrailerPlaying = true
+                                }
+                            }
                     )
 
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(Color(0x550A0A0F), Color(0x990A0A0F), BackgroundDark)
-                                )
-                            )
-                    )
-
-                    // YouTube Red Play Icon Overlay
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .clip(CircleShape)
-                            .background(Color(0xEEFF0000))
-                            .clickable { playTrailer() }
-                            .padding(18.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "Play YouTube Trailer",
-                            tint = Color.White,
+                        // Deep Cinematic Gradient Overlay
+                        Box(
                             modifier = Modifier
-                                .width(36.dp)
-                                .height(36.dp)
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color(0x440A0A0F),
+                                            Color(0x880A0A0F),
+                                            BackgroundDark
+                                        )
+                                    )
+                                )
                         )
-                    }
 
-                    IconButton(
-                        onClick = onBackClick,
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(16.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x66000000))
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
+                        // Modern Glassmorphic Trailer Play Badge
+                        if (cleanTrailerId.isNotBlank()) {
+                            Surface(
+                                onClick = { isTrailerPlaying = true },
+                                shape = RoundedCornerShape(24.dp),
+                                color = Color(0xCC181824),
+                                border = BorderStroke(1.dp, Color(0x44FFFFFF)),
+                                shadowElevation = 8.dp,
+                                modifier = Modifier.align(Alignment.Center)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .clip(CircleShape)
+                                            .background(PrimaryRed),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PlayArrow,
+                                            contentDescription = "Play",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = "Watch Trailer",
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+
+                        // Top-Left Back Button
+                        IconButton(
+                            onClick = {
+                                if (currentMediaId != mediaId) {
+                                    currentMediaId = mediaId
+                                } else {
+                                    onBackClick()
+                                }
+                            },
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(12.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x99181824))
+                                .border(1.dp, Color(0x33FFFFFF), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = Color.White
+                            )
+                        }
                     }
                 }
-            }
 
             // Main Info Section
             item {
@@ -276,80 +393,118 @@ fun DetailsScreen(
                             contentDescription = mediaItem.title,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
-                                .width(100.dp)
+                                .width(105.dp)
                                 .aspectRatio(0.7f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(1.dp, CardBorderDark, RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
                         )
 
                         Spacer(modifier = Modifier.width(16.dp))
 
-                        Column {
-                            Text(
-                                text = mediaItem.title,
-                                color = TextPrimary,
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                        Column(modifier = Modifier.weight(1f)) {
+                            val isAnime = mediaItem.category.equals("Anime", ignoreCase = true)
 
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Star, contentDescription = "Rating", tint = AccentGold, modifier = Modifier.height(18.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "MAL Score: ${mediaItem.rating}",
-                                    color = TextPrimary,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                            val displayTitle = if (mediaItem.releaseYear.isNotBlank() && !mediaItem.title.contains(mediaItem.releaseYear)) {
+                                "${mediaItem.title} (${mediaItem.releaseYear})"
+                            } else {
+                                mediaItem.title
                             }
 
-                            Spacer(modifier = Modifier.height(4.dp))
-
                             Text(
-                                text = "${mediaItem.category} • ${mediaItem.studio.ifEmpty { "A-1 Pictures" }} • ${mediaItem.releaseYear}",
+                                text = displayTitle,
+                                color = TextPrimary,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                lineHeight = 26.sp
+                            )
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            if (mediaItem.rating.isNotBlank()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Star, contentDescription = "Rating", tint = AccentGold, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    val ratingLabel = if (isAnime) "MAL Score" else "TMDB Score"
+                                    Text(
+                                        text = "$ratingLabel: ${mediaItem.rating}",
+                                        color = TextPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                            }
+
+                            val studioDisplay = if (mediaItem.studio.isNotBlank()) mediaItem.studio else if (isAnime) "Anime Studio" else "Production Studio"
+                            val durationDisplay = if (mediaItem.duration.isNotBlank()) " • ${mediaItem.duration}" else ""
+                            Text(
+                                text = "${mediaItem.category} • $studioDisplay$durationDisplay",
                                 color = TextSecondary,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium
                             )
+                        }
+                    }
 
-                            val myListSet by MyListManager.myListFlow.collectAsState()
-                            val isBookmarked = myListSet.contains(mediaItem.id)
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Button(
-                                    onClick = { onPlayEpisode(mediaItem, 0) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Icon(Icons.Default.PlayArrow, contentDescription = "Play", tint = Color.White)
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Play", color = Color.White, fontWeight = FontWeight.Bold)
-                                }
+                    // Action Buttons Row: Play Movie on ONE line
+                    val isMovie = mediaItem.category.equals("MOVIE", ignoreCase = true) || 
+                                  mediaItem.category.equals("Movies", ignoreCase = true) || 
+                                  mediaItem.type.equals("MOVIE", ignoreCase = true)
+                    val myListSet by MyListManager.myListFlow.collectAsState()
+                    val isBookmarked = myListSet.contains(mediaItem.id)
 
-                                OutlinedButton(
-                                    onClick = { MyListManager.toggleBookmark(mediaItem.id) },
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Icon(
-                                        imageVector = if (isBookmarked) Icons.Default.Check else Icons.Default.Add,
-                                        contentDescription = "My List",
-                                        tint = if (isBookmarked) AccentOrange else TextPrimary
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = if (isBookmarked) "In My List" else "My List",
-                                        color = if (isBookmarked) AccentOrange else TextPrimary,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Button(
+                            onClick = { onPlayEpisode(mediaItem, 0) },
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(1.3f)
+                                .height(46.dp)
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = "Play", tint = Color.White, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isMovie) "Play Movie" else "Play",
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = { MyListManager.toggleBookmark(mediaItem.id) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = if (isBookmarked) Color(0x33FF9800) else Color(0x22181824)
+                            ),
+                            border = BorderStroke(1.dp, if (isBookmarked) AccentOrange else Color(0x44FFFFFF)),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isBookmarked) Icons.Default.Check else Icons.Default.Add,
+                                contentDescription = "My List",
+                                tint = if (isBookmarked) AccentOrange else TextPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isBookmarked) "In My List" else "My List",
+                                color = if (isBookmarked) AccentOrange else TextPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
 
@@ -386,8 +541,127 @@ fun DetailsScreen(
                                         .background(SurfaceDark)
                                         .border(1.dp, CardBorderDark, RoundedCornerShape(6.dp))
                                         .padding(horizontal = 10.dp, vertical = 6.dp)
-                                ) {
+                                    ) {
                                     Text(text = castName, color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+                    }
+
+                    // Franchise & All Seasons / Sequels Carousel
+                    if (franchiseItems.size > 1) {
+                        val fTitle = com.streamhub.app.data.FranchiseManager.getFranchiseTitle(mediaItem)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "🎬 FRANCHISE & SEASONS (${franchiseItems.size})",
+                                color = AccentGold,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = fTitle,
+                                color = TextSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp)
+                        ) {
+                            items(franchiseItems) { fItem ->
+                                val isCurrent = fItem.id == mediaItem.id
+                                val tag = com.streamhub.app.data.FranchiseManager.getFranchiseTag(fItem, mediaItem)
+                                val subtitle = com.streamhub.app.data.FranchiseManager.getSeasonCardSubtitle(fItem)
+
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isCurrent) Color(0xFF1F1826) else SurfaceDark,
+                                    border = BorderStroke(
+                                        width = if (isCurrent) 1.5.dp else 1.dp,
+                                        color = when {
+                                            isCurrent -> AccentGold
+                                            tag == "SEQUEL" -> Color(0xFF00E676)
+                                            tag == "PREQUEL" -> Color(0xFF7C4DFF)
+                                            tag == "MOVIE" -> AccentOrange
+                                            else -> CardBorderDark
+                                        }
+                                    ),
+                                    modifier = Modifier
+                                        .width(135.dp)
+                                        .clickable {
+                                            if (!isCurrent) {
+                                                currentMediaId = fItem.id
+                                                selectedSeasonNumber = com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(fItem)
+                                                selectedArcName = ""
+                                            }
+                                        }
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(160.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                        ) {
+                                            AsyncImage(
+                                                model = fItem.posterUrl.ifBlank { fItem.bannerUrl },
+                                                contentDescription = fItem.title,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                            // Tag Badge (CURRENT, SEQUEL, PREQUEL, MOVIE)
+                                            Surface(
+                                                shape = RoundedCornerShape(topStart = 0.dp, topEnd = 8.dp, bottomStart = 8.dp, bottomEnd = 0.dp),
+                                                color = when {
+                                                    isCurrent -> AccentGold
+                                                    tag == "SEQUEL" -> Color(0xFF00E676)
+                                                    tag == "PREQUEL" -> Color(0xFF7C4DFF)
+                                                    tag == "MOVIE" -> AccentOrange
+                                                    else -> PrimaryRed
+                                                },
+                                                modifier = Modifier.align(Alignment.TopEnd)
+                                            ) {
+                                                Text(
+                                                    text = tag,
+                                                    color = if (tag == "SEQUEL" || isCurrent) Color.Black else Color.White,
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(6.dp))
+
+                                        Text(
+                                            text = if (fItem.seasonTitle.isNotBlank()) fItem.seasonTitle else fItem.title,
+                                            color = if (isCurrent) AccentGold else TextPrimary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+
+                                        Spacer(modifier = Modifier.height(2.dp))
+
+                                        Text(
+                                            text = subtitle,
+                                            color = TextSecondary,
+                                            fontSize = 9.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -396,7 +670,8 @@ fun DetailsScreen(
                     Spacer(modifier = Modifier.height(24.dp))
 
                     val primaryColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
-                    // 3-Tab Header (EPISODES | MORE INFO | MORE LIKE THIS)
+
+                    // 3-Tab Header (EPISODES/STREAMS | MORE INFO | MORE LIKE THIS)
                     TabRow(
                         selectedTabIndex = selectedTabIndex,
                         containerColor = BackgroundDark,
@@ -413,7 +688,7 @@ fun DetailsScreen(
                         Tab(
                             selected = selectedTabIndex == 0,
                             onClick = { selectedTabIndex = 0 },
-                            text = { Text("EPISODES", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                            text = { Text(if (isMovie) "STREAMS" else "EPISODES", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
                         )
                         Tab(
                             selected = selectedTabIndex == 1,
@@ -431,10 +706,14 @@ fun DetailsScreen(
                 }
             }
 
-            // Tab 0: Episodes List with Season Filter & Dropdown for Anime & Web Series
+            // Tab 0: Episodes / Movie Streams List with Smart Season & Arc Picker
             if (selectedTabIndex == 0) {
+                val isMovie = mediaItem.category.equals("MOVIE", ignoreCase = true) || 
+                              mediaItem.category.equals("Movies", ignoreCase = true) || 
+                              mediaItem.type.equals("MOVIE", ignoreCase = true)
+
                 item {
-                    if (mediaItem.type != "MOVIE") {
+                    if (!isMovie) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -442,46 +721,64 @@ fun DetailsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            val countLabel = if (selectedArcName.isNotBlank()) {
+                                "$selectedArcName (${seasonFilteredEpisodes.size} Eps)"
+                            } else {
+                                "All Episodes (${seasonFilteredEpisodes.size})"
+                            }
+
                             Text(
-                                text = "All Episodes (${seasonFilteredEpisodes.size})",
+                                text = countLabel,
                                 color = TextSecondary,
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
                             )
 
-                            // Season Dropdown Picker
-                            Box {
-                                OutlinedButton(
-                                    onClick = { isSeasonDropdownExpanded = true },
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.height(36.dp)
-                                ) {
-                                    Text("Season $selectedSeasonNumber", color = AccentOrange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Select Season", tint = AccentOrange)
-                                }
+                            Spacer(modifier = Modifier.width(8.dp))
 
-                                DropdownMenu(
-                                    expanded = isSeasonDropdownExpanded,
-                                    onDismissRequest = { isSeasonDropdownExpanded = false }
+                            // Smart Season & Arc Pill Button
+                            val buttonLabel = remember(selectedSeasonNumber, selectedArcName, seasonArcOptions) {
+                                if (selectedArcName.isNotBlank()) selectedArcName
+                                else {
+                                    val currentOpt = seasonArcOptions.firstOrNull { it.isCurrent }
+                                    currentOpt?.shortLabel ?: "Season $selectedSeasonNumber"
+                                }
+                            }
+
+                            Surface(
+                                onClick = { isSeasonSheetOpen = true },
+                                shape = RoundedCornerShape(20.dp),
+                                color = SurfaceDark,
+                                border = BorderStroke(1.dp, Color(0x66FF9800)),
+                                modifier = Modifier.height(34.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                                 ) {
-                                    DropdownMenuItem(
-                                        text = {
-                                            val s1Count = mediaItem.episodes.count { it.seasonNumber == 1 }
-                                            val displayCount = if (s1Count == 0) mediaItem.episodes.size else s1Count
-                                            Text("Season 1 ($displayCount Episodes)")
-                                        },
-                                        onClick = {
-                                            selectedSeasonNumber = 1
-                                            isSeasonDropdownExpanded = false
-                                        }
+                                    Icon(
+                                        imageVector = Icons.Default.Layers,
+                                        contentDescription = null,
+                                        tint = AccentOrange,
+                                        modifier = Modifier.size(15.dp)
                                     )
-                                    DropdownMenuItem(
-                                        text = { Text("Season 2 (Arise from Shadow)") },
-                                        onClick = {
-                                            selectedSeasonNumber = 2
-                                            isSeasonDropdownExpanded = false
-                                        }
+                                    Text(
+                                        text = buttonLabel,
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = "Select Season",
+                                        tint = AccentOrange,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                             }
@@ -495,15 +792,37 @@ fun DetailsScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(32.dp),
+                                .padding(horizontal = 16.dp, vertical = 20.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(SurfaceDark)
+                                .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
+                                .padding(24.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = "Season $selectedSeasonNumber episodes coming soon!",
-                                color = TextSecondary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium
-                            )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    tint = AccentGold,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                val emptyLabel = if (selectedArcName.isNotBlank()) selectedArcName else "Season $selectedSeasonNumber"
+                                Text(
+                                    text = if (isMovie) "Movie Stream Indexing in Progress" else "$emptyLabel Episodes Coming Soon",
+                                    color = TextPrimary,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = if (isMovie) "Telegram stream links will appear here once attached via Creator Studio." else "Episodes will appear once indexed.",
+                                    color = TextSecondary,
+                                    fontSize = 12.sp,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
                         }
                     }
                 } else {
@@ -513,6 +832,7 @@ fun DetailsScreen(
                         EpisodeRowItem(
                             episode = episode,
                             index = index,
+                            mediaItem = mediaItem,
                             isDownloaded = isDownloaded,
                             onPlay = { onPlayEpisode(mediaItem, originalIndex) },
                             onDownload = { DownloadManager.startDownload(context, mediaItem, originalIndex) }
@@ -531,24 +851,32 @@ fun DetailsScreen(
                             .padding(horizontal = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        InfoDetailRow("Synonyms", mediaItem.synonyms)
-                        InfoDetailRow("Total Episodes", mediaItem.totalEpisodes)
-                        InfoDetailRow("Status", mediaItem.status)
-                        InfoDetailRow("Aired Dates", mediaItem.aired)
-                        InfoDetailRow("Premiered", mediaItem.premiered)
-                        InfoDetailRow("Producers", mediaItem.producers)
-                        InfoDetailRow("Studio", mediaItem.studio)
-                        InfoDetailRow("Source", mediaItem.source)
-                        InfoDetailRow("Duration", mediaItem.duration)
-                        InfoDetailRow("Budget / Box Office", mediaItem.budgetBoxOffice)
-                        InfoDetailRow("MAL ID", mediaItem.malId.ifEmpty { "N/A" })
-                        InfoDetailRow("YouTube Trailer ID", mediaItem.trailerId.ifEmpty { "N/A" })
-                        InfoDetailRow("TMDB ID", mediaItem.tmdbId.ifEmpty { "N/A" })
+                        val isAnime = mediaItem.category.equals("Anime", ignoreCase = true)
+                        val isMovie = mediaItem.category.equals("MOVIE", ignoreCase = true) || 
+                                      mediaItem.category.equals("Movies", ignoreCase = true) || 
+                                      mediaItem.type.equals("MOVIE", ignoreCase = true)
+
+                        if (mediaItem.franchiseTitle.isNotEmpty()) InfoDetailRow("Franchise Universe", mediaItem.franchiseTitle)
+                        if (!isMovie && mediaItem.seasonNumber > 0) InfoDetailRow("Season Number", "Season ${mediaItem.seasonNumber}")
+                        if (mediaItem.relationType.isNotEmpty()) InfoDetailRow("Franchise Relation", mediaItem.relationType)
+                        if (mediaItem.synonyms.isNotEmpty()) InfoDetailRow("Synonyms", mediaItem.synonyms)
+                        if (!isMovie && mediaItem.totalEpisodes.isNotEmpty()) InfoDetailRow("Total Episodes", mediaItem.totalEpisodes)
+                        if (mediaItem.status.isNotEmpty()) InfoDetailRow("Status", mediaItem.status)
+                        if (mediaItem.aired.isNotEmpty()) InfoDetailRow(if (isMovie) "Release Date" else "Aired Dates", mediaItem.aired)
+                        if (mediaItem.premiered.isNotEmpty()) InfoDetailRow("Premiered", mediaItem.premiered)
+                        if (mediaItem.producers.isNotEmpty()) InfoDetailRow("Producers", mediaItem.producers)
+                        if (mediaItem.studio.isNotEmpty()) InfoDetailRow("Studio", mediaItem.studio)
+                        if (mediaItem.source.isNotEmpty()) InfoDetailRow("Source", mediaItem.source)
+                        if (mediaItem.duration.isNotEmpty()) InfoDetailRow("Duration", mediaItem.duration)
+                        if (mediaItem.budgetBoxOffice.isNotEmpty()) InfoDetailRow("Budget / Box Office", mediaItem.budgetBoxOffice)
+                        if (isAnime && mediaItem.malId.isNotEmpty()) InfoDetailRow("MAL ID", mediaItem.malId)
+                        if (mediaItem.trailerId.isNotEmpty()) InfoDetailRow("YouTube Trailer ID", mediaItem.trailerId)
+                        if (mediaItem.tmdbId.isNotEmpty()) InfoDetailRow("TMDB ID", mediaItem.tmdbId)
                     }
                 }
             }
 
-            // Tab 2: More Like This (At least 10 Recommendations)
+            // Tab 2: More Like This (Recommendations)
             if (selectedTabIndex == 2) {
                 item {
                     Column(
@@ -556,14 +884,35 @@ fun DetailsScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp)
                     ) {
-                        Text("MAL RECOMMENDATIONS & SIMILAR ANIME", color = AccentOrange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        val recTitle = if (isMovie) "🎬 SIMILAR MOVIES & RECOMMENDATIONS"
+                                       else if (isAnime) "🎌 SIMILAR ANIME & RECOMMENDATIONS"
+                                       else "📺 SIMILAR SHOWS & RECOMMENDATIONS"
+                        Text(recTitle, color = AccentOrange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(recommendations) { recItem ->
-                                MediaCard(
-                                    item = recItem,
-                                    onClick = { onMediaClick(recItem) }
+                        if (recommendations.isNotEmpty()) {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                items(recommendations) { recItem ->
+                                    MediaCard(
+                                        item = recItem,
+                                        onClick = { onMediaClick(recItem) }
+                                    )
+                                }
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 16.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(SurfaceDark)
+                                    .padding(20.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No recommendations available yet.",
+                                    color = TextSecondary,
+                                    fontSize = 12.sp
                                 )
                             }
                         }
@@ -571,6 +920,27 @@ fun DetailsScreen(
                 }
             }
         }
+    }
+
+    if (isSeasonSheetOpen) {
+        SeasonArcSelectorSheet(
+            universeTitle = mediaItem.franchiseTitle.ifBlank { mediaItem.title },
+            options = seasonArcOptions,
+            selectedSeasonNumber = selectedSeasonNumber,
+            selectedArcName = selectedArcName,
+            onDismiss = { isSeasonSheetOpen = false },
+            onSelectOption = { opt ->
+                isSeasonSheetOpen = false
+                if (opt.isExternalMedia && opt.targetMediaItem != null) {
+                    currentMediaId = opt.targetMediaItem.id
+                    selectedSeasonNumber = com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(opt.targetMediaItem)
+                    selectedArcName = ""
+                } else {
+                    selectedSeasonNumber = opt.internalSeasonNumber
+                    selectedArcName = opt.internalArcName
+                }
+            }
+        )
     }
 
     if (showAdminEditDialog) {
@@ -588,94 +958,56 @@ fun DetailsScreen(
             }
         )
     }
-
-    if (showTrailerDialog && activeTrailerId.isNotBlank()) {
-        Dialog(
-            onDismissRequest = { showTrailerDialog = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black)
-            ) {
-                var webView by remember { mutableStateOf<WebView?>(null) }
-
-                DisposableEffect(activeTrailerId) {
-                    onDispose {
-                        webView?.loadUrl("about:blank")
-                        webView?.destroy()
-                        webView = null
-                    }
-                }
-
-                AndroidView(
-                    factory = { ctx ->
-                        WebView(ctx).apply {
-                            setBackgroundColor(android.graphics.Color.BLACK)
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.mediaPlaybackRequiresUserGesture = false
-                            settings.allowFileAccess = false
-                            settings.allowContentAccess = false
-                            settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
-                            webChromeClient = WebChromeClient()
-                            webViewClient = WebViewClient()
-
-                            val embedHtml = """
-                                <!DOCTYPE html>
-                                <html>
-                                <head>
-                                    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                                    <style>
-                                        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #000; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-                                        iframe { width: 100%; height: 100%; border: 0; }
-                                    </style>
-                                </head>
-                                <body>
-                                    <iframe src="https://www.youtube-nocookie.com/embed/$activeTrailerId?autoplay=1&playsinline=1&rel=0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-                                </body>
-                                </html>
-                            """.trimIndent()
-                            loadDataWithBaseURL("https://www.youtube.com", embedHtml, "text/html", "utf-8", null)
-                            webView = this
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(16f / 9f)
-                        .align(Alignment.Center)
-                )
-
-                IconButton(
-                    onClick = { showTrailerDialog = false },
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(24.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xAA000000))
-                ) {
-                    Icon(Icons.Default.Close, contentDescription = "Close Trailer", tint = Color.White)
-                }
-            }
-        }
-    }
 }
 
 @Composable
 fun EpisodeRowItem(
     episode: Episode,
     index: Int,
-    isDownloaded: Boolean = false,
+    mediaItem: MediaItem,
+    isDownloaded: Boolean,
     onPlay: () -> Unit,
-    onDownload: () -> Unit = {}
+    onDownload: () -> Unit
 ) {
+    val isMovie = mediaItem.category.equals("MOVIE", ignoreCase = true) ||
+                  mediaItem.category.equals("Movies", ignoreCase = true) ||
+                  mediaItem.type.equals("MOVIE", ignoreCase = true)
+
+    val effectiveThumbnail = episode.thumbnailUrl.ifBlank {
+        mediaItem.bannerUrl.ifBlank { mediaItem.posterUrl }
+    }
+
+    val rawTitle = if (isMovie) {
+        episode.fileName.ifBlank { mediaItem.title }
+    } else {
+        episode.title.ifBlank { "Episode ${index + 1}" }
+    }
+    val displayTitle = rawTitle.replace(Regex("""\.(?i)(mkv|mp4|webm|avi|ts|flv|mov|m4v|3gp|wmv|m2ts|vob)$"""), "")
+
+    val metaDetails = buildList {
+        if (isMovie) {
+            val size = episode.fileSize.ifBlank { mediaItem.mediaInfo.fileSize }
+            if (size.isNotBlank()) add(size)
+            if (mediaItem.duration.isNotBlank()) add(mediaItem.duration)
+            val res = mediaItem.mediaInfo.resolution.ifBlank { "1080p" }
+            add(res)
+        } else {
+            if (episode.arcName.isNotBlank()) {
+                add("${episode.arcName} • Ep ${episode.episodeNumber}")
+            } else {
+                add("Season ${episode.seasonNumber} • Ep ${episode.episodeNumber}")
+            }
+            if (episode.fileSize.isNotBlank()) add(episode.fileSize)
+        }
+    }.joinToString(" • ")
+
     Card(
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
+            .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
             .clickable { onPlay() }
     ) {
         Row(
@@ -684,52 +1016,99 @@ fun EpisodeRowItem(
                 .padding(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Thumbnail with Duration & Play overlay
             Box(
                 modifier = Modifier
-                    .width(90.dp)
-                    .height(55.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFF1F1F2C))
+                    .width(105.dp)
+                    .height(64.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF14141E))
             ) {
-                if (episode.thumbnailUrl.isNotEmpty()) {
+                if (effectiveThumbnail.isNotEmpty()) {
                     AsyncImage(
-                        model = episode.thumbnailUrl,
-                        contentDescription = episode.title,
+                        model = effectiveThumbnail,
+                        contentDescription = displayTitle,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
 
+                // Dark Scrim + Play Icon
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color(0x44000000)),
+                        .background(Color(0x33000000)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Play",
-                        tint = Color.White,
-                        modifier = Modifier.height(24.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x99000000)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Play",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                // Duration Badge (bottom-right)
+                val durationLabel = when {
+                    episode.durationMs > 0 -> {
+                        val totalSec = (episode.durationMs / 1000).toInt()
+                        val h = totalSec / 3600
+                        val m = (totalSec % 3600) / 60
+                        val s = totalSec % 60
+                        if (h > 0) String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, s)
+                        else String.format(java.util.Locale.US, "%02d:%02d", m, s)
+                    }
+                    mediaItem.duration.isNotBlank() -> mediaItem.duration
+                    else -> ""
+                }
+                if (durationLabel.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(4.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xCC000000))
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = durationLabel,
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.width(12.dp))
 
+            // Details Column
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = episode.title,
+                    text = displayTitle,
                     color = TextPrimary,
                     fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+
+                Spacer(modifier = Modifier.height(2.dp))
+
                 Text(
-                    text = "Episode ${index + 1}",
+                    text = metaDetails,
                     color = TextSecondary,
-                    fontSize = 11.sp
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 

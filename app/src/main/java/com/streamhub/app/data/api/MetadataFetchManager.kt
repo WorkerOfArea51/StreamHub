@@ -34,7 +34,12 @@ data class FetchedMetadata(
     val castList: String = "",
     val youtubeTrailerId: String = "",
     val aired: String = "",
-    val maturityRating: String = ""
+    val maturityRating: String = "",
+    val franchiseId: String = "",
+    val franchiseTitle: String = "",
+    val seasonNumber: Int = 1,
+    val seasonTitle: String = "",
+    val relationType: String = ""
 )
 
 /**
@@ -107,23 +112,49 @@ object MetadataFetchManager {
             return Result.failure(Exception("TMDB API Key is missing. Add STREAMHUB_TMDB_API_KEY secret."))
         }
 
-        val isMovie = category.equals("Movies", ignoreCase = true)
+        val isMovie = category.equals("MOVIE", ignoreCase = true) || 
+                      category.startsWith("Movie", ignoreCase = true)
         val endpoint = if (isMovie) "search/movie" else "search/tv"
-        val encodedQuery = URLEncoder.encode(query.trim(), Charsets.UTF_8.name())
-        val searchUrl = "$TMDB_BASE/$endpoint?query=$encodedQuery&include_adult=false"
+        val detailType = if (isMovie) "movie" else "tv"
 
-        val request = Request.Builder()
-            .url(searchUrl)
-            .header("Accept", "application/json")
-            .build()
+        val cleanQuery = query.trim()
+        val directTmdbId = when {
+            cleanQuery.toIntOrNull() != null -> cleanQuery.toInt()
+            cleanQuery.contains("themoviedb.org/movie/") -> cleanQuery.substringAfter("themoviedb.org/movie/").substringBefore("-").substringBefore("/").substringBefore("?").toIntOrNull()
+            cleanQuery.contains("themoviedb.org/tv/") -> cleanQuery.substringAfter("themoviedb.org/tv/").substringBefore("-").substringBefore("/").substringBefore("?").toIntOrNull()
+            else -> null
+        }
 
-        httpClient.newCall(request).execute().use { response ->
+        var tmdbIdNum = directTmdbId ?: 0
+        var title = cleanQuery
+        var originalTitle = ""
+        var overview = "No synopsis available."
+        var posterPath = ""
+        var backdropPath = ""
+        var releaseDate = ""
+        var voteAverage = 0.0
+        val genreIdsList = mutableListOf<Int>()
+
+        if (directTmdbId == null) {
+            val encodedQuery = URLEncoder.encode(cleanQuery, Charsets.UTF_8.name())
+            val searchUrl = "$TMDB_BASE/$endpoint?query=$encodedQuery&include_adult=false"
+
+            val request = Request.Builder()
+                .url(searchUrl)
+                .header("Accept", "application/json")
+                .build()
+
+            val response = httpClient.newCall(request).execute()
             if (!response.isSuccessful) {
+                response.close()
                 return Result.failure(Exception("TMDB API returned HTTP ${response.code}"))
             }
 
             val body = response.body?.string()
-                ?: return Result.failure(Exception("Empty response from TMDB"))
+            response.close()
+            if (body.isNullOrBlank()) {
+                return Result.failure(Exception("Empty response from TMDB"))
+            }
 
             val json = JSONObject(body)
             val results = json.optJSONArray("results")
@@ -132,14 +163,22 @@ object MetadataFetchManager {
             }
 
             val first = results.getJSONObject(0)
-            val tmdbIdNum = first.optInt("id", 0)
-            val title = if (isMovie) first.optString("title", query) else first.optString("name", query)
-            val originalTitle = if (isMovie) first.optString("original_title", "") else first.optString("original_name", "")
-            val overview = first.optString("overview", "No synopsis available.")
-            val posterPath = first.optString("poster_path", "")
-            val backdropPath = first.optString("backdrop_path", "")
-            val releaseDate = if (isMovie) first.optString("release_date", "") else first.optString("first_air_date", "")
-            val voteAverage = first.optDouble("vote_average", 0.0)
+            tmdbIdNum = first.optInt("id", 0)
+            title = if (isMovie) first.optString("title", query) else first.optString("name", query)
+            originalTitle = if (isMovie) first.optString("original_title", "") else first.optString("original_name", "")
+            overview = first.optString("overview", "No synopsis available.")
+            posterPath = first.optString("poster_path", "")
+            backdropPath = first.optString("backdrop_path", "")
+            releaseDate = if (isMovie) first.optString("release_date", "") else first.optString("first_air_date", "")
+            voteAverage = first.optDouble("vote_average", 0.0)
+
+            val gIds = first.optJSONArray("genre_ids")
+            if (gIds != null) {
+                for (i in 0 until gIds.length()) {
+                    genreIdsList.add(gIds.getInt(i))
+                }
+            }
+        }
 
             val releaseYear = if (releaseDate.length >= 4) {
                 releaseDate.substring(0, 4).toIntOrNull() ?: 0
@@ -151,15 +190,11 @@ object MetadataFetchManager {
 
             ensureGenreCache(apiKey, isMovie)
             val genreMap = if (isMovie) movieGenreMap else tvGenreMap
-            val genreIds = first.optJSONArray("genre_ids")
             val genresList = mutableListOf<String>()
-            if (genreIds != null) {
-                for (i in 0 until genreIds.length()) {
-                    val id = genreIds.getInt(i)
-                    genreMap[id]?.let { genresList.add(it) }
-                }
+            for (id in genreIdsList) {
+                genreMap[id]?.let { genresList.add(it) }
             }
-            if (genresList.isEmpty()) {
+            if (genresList.isEmpty() && genreIdsList.isEmpty()) {
                 genresList.add(if (isMovie) "Movie" else "TV Series")
             }
 
@@ -174,7 +209,6 @@ object MetadataFetchManager {
 
             if (tmdbIdNum > 0) {
                 try {
-                    val detailType = if (isMovie) "movie" else "tv"
                     val detailUrl = "$TMDB_BASE/$detailType/$tmdbIdNum?append_to_response=credits,videos"
                     val detailReq = Request.Builder().url(detailUrl).header("Accept", "application/json").build()
 
@@ -183,6 +217,23 @@ object MetadataFetchManager {
                             val dBody = dResp.body?.string()
                             if (!dBody.isNullOrBlank()) {
                                 val dJson = JSONObject(dBody)
+                                if (directTmdbId != null) {
+                                    title = if (isMovie) dJson.optString("title", title) else dJson.optString("name", title)
+                                    originalTitle = if (isMovie) dJson.optString("original_title", "") else dJson.optString("original_name", "")
+                                    overview = dJson.optString("overview", overview)
+                                    posterPath = dJson.optString("poster_path", posterPath)
+                                    backdropPath = dJson.optString("backdrop_path", backdropPath)
+                                    releaseDate = if (isMovie) dJson.optString("release_date", "") else dJson.optString("first_air_date", "")
+                                    voteAverage = dJson.optDouble("vote_average", voteAverage)
+                                    val dGenres = dJson.optJSONArray("genres")
+                                    if (dGenres != null && genresList.isEmpty()) {
+                                        for (gi in 0 until dGenres.length()) {
+                                            val gName = dGenres.getJSONObject(gi).optString("name", "")
+                                            if (gName.isNotBlank()) genresList.add(gName)
+                                        }
+                                    }
+                                }
+
                                 status = dJson.optString("status", "")
 
                                 if (isMovie) {
@@ -224,15 +275,31 @@ object MetadataFetchManager {
                                 val videos = dJson.optJSONObject("videos")
                                 val videoResults = videos?.optJSONArray("results")
                                 if (videoResults != null) {
+                                    var officialTrailer = ""
+                                    var anyTrailer = ""
+                                    var teaserOrClip = ""
                                     for (vi in 0 until videoResults.length()) {
                                         val vObj = videoResults.getJSONObject(vi)
                                         val site = vObj.optString("site", "")
                                         val typeStr = vObj.optString("type", "")
                                         val keyStr = vObj.optString("key", "")
-                                        if (site.equalsIgnoreCase("YouTube") && typeStr.equalsIgnoreCase("Trailer") && keyStr.isNotBlank()) {
-                                            youtubeTrailerId = keyStr
-                                            break
+                                        val isOfficial = vObj.optBoolean("official", false)
+                                        if (site.equals("YouTube", ignoreCase = true) && keyStr.isNotBlank()) {
+                                            if (typeStr.equals("Trailer", ignoreCase = true)) {
+                                                if (isOfficial && officialTrailer.isBlank()) {
+                                                    officialTrailer = keyStr
+                                                } else if (anyTrailer.isBlank()) {
+                                                    anyTrailer = keyStr
+                                                }
+                                            } else if (typeStr.equals("Teaser", ignoreCase = true) || typeStr.equals("Clip", ignoreCase = true)) {
+                                                if (teaserOrClip.isBlank()) teaserOrClip = keyStr
+                                            }
                                         }
+                                    }
+                                    youtubeTrailerId = when {
+                                        officialTrailer.isNotBlank() -> officialTrailer
+                                        anyTrailer.isNotBlank() -> anyTrailer
+                                        else -> teaserOrClip
                                     }
                                 }
                             }
@@ -242,6 +309,11 @@ object MetadataFetchManager {
                     Log.w(TAG, "Failed to fetch TMDB detail specs: ${e.message}")
                 }
             }
+
+            val detectedSeason = com.streamhub.app.data.FranchiseManager.detectSeasonNumber(title)
+            val detectedFranchiseId = com.streamhub.app.data.FranchiseManager.getFranchiseId(com.streamhub.app.data.models.MediaItem(title = title))
+            val detectedFranchiseTitle = com.streamhub.app.data.FranchiseManager.getFranchiseTitle(com.streamhub.app.data.models.MediaItem(title = title))
+            val detectedRelation = if (isMovie) "Movie" else if (detectedSeason > 1) "Sequel" else "Main Story"
 
             val fetched = FetchedMetadata(
                 title = title,
@@ -261,11 +333,15 @@ object MetadataFetchManager {
                 tmdbId = if (tmdbIdNum > 0) tmdbIdNum.toString() else "",
                 castList = castList,
                 youtubeTrailerId = youtubeTrailerId,
-                aired = releaseDate
+                aired = releaseDate,
+                franchiseId = detectedFranchiseId,
+                franchiseTitle = detectedFranchiseTitle,
+                seasonNumber = detectedSeason,
+                seasonTitle = if (detectedSeason > 1) "Season $detectedSeason" else "",
+                relationType = detectedRelation
             )
             return Result.success(fetched)
         }
-    }
 
     /**
      * MyAnimeList Search for Anime — prefers English title over Romaji/Japanese title
@@ -425,12 +501,20 @@ object MetadataFetchManager {
             // Fetch YouTube Trailer ID & Cast List via TMDB fallback if needed
             var youtubeTrailerId = ""
             var castListStr = ""
+            var finalBackdropUrl = posterUrl
 
             try {
-                val tmdbResult = fetchFromTMDB(finalTitle, "Anime")
+                val queryForTmdb = if (finalTitle.contains(" Season ", ignoreCase = true) || finalTitle.contains(":")) {
+                    finalTitle.substringBefore(" Season ").substringBefore(":").trim()
+                } else finalTitle
+
+                val tmdbResult = fetchFromTMDB(queryForTmdb, "Anime")
                 tmdbResult.getOrNull()?.let { tmdbMeta ->
                     if (youtubeTrailerId.isBlank()) youtubeTrailerId = tmdbMeta.youtubeTrailerId
                     if (castListStr.isBlank()) castListStr = tmdbMeta.castList
+                    if (finalBackdropUrl.isBlank() || finalBackdropUrl == posterUrl) {
+                        if (tmdbMeta.backdropUrl.isNotBlank()) finalBackdropUrl = tmdbMeta.backdropUrl
+                    }
                     if (producerStr.isBlank()) {
                         producerStr = tmdbMeta.producers.split(", ")
                             .map { it.trim() }
@@ -445,11 +529,16 @@ object MetadataFetchManager {
             // Score precision: e.g. 8.14 instead of 8.1
             val formattedRating = if (mean > 0) String.format("%.2f", mean).trimEnd('0').trimEnd('.') else ""
 
+            val detectedSeason = com.streamhub.app.data.FranchiseManager.detectSeasonNumber(finalTitle)
+            val detectedFranchiseId = com.streamhub.app.data.FranchiseManager.getFranchiseId(com.streamhub.app.data.models.MediaItem(title = finalTitle))
+            val detectedFranchiseTitle = com.streamhub.app.data.FranchiseManager.getFranchiseTitle(com.streamhub.app.data.models.MediaItem(title = finalTitle))
+            val detectedRelation = if (detectedSeason > 1) "Sequel" else "Main Story"
+
             val fetched = FetchedMetadata(
                 title = finalTitle,
                 synopsis = synopsis,
                 posterUrl = posterUrl,
-                backdropUrl = posterUrl,
+                backdropUrl = finalBackdropUrl,
                 releaseYear = releaseYear,
                 rating = formattedRating,
                 category = "Anime",
@@ -465,7 +554,12 @@ object MetadataFetchManager {
                 castList = castListStr,
                 youtubeTrailerId = youtubeTrailerId,
                 aired = airedRange,
-                maturityRating = maturityStr
+                maturityRating = maturityStr,
+                franchiseId = detectedFranchiseId,
+                franchiseTitle = detectedFranchiseTitle,
+                seasonNumber = detectedSeason,
+                seasonTitle = if (detectedSeason > 1) "Season $detectedSeason" else "",
+                relationType = detectedRelation
             )
             return Result.success(fetched)
         }
@@ -525,6 +619,73 @@ object MetadataFetchManager {
             Log.w(TAG, "Failed to fetch MAL recommendations: ${e.message}")
             emptyList()
         }
+    }
+
+    suspend fun fetchTMDBRecommendations(tmdbId: String, isMovie: Boolean): List<MediaItem> = withContext(Dispatchers.IO) {
+        if (tmdbId.isBlank()) return@withContext emptyList()
+        val apiKey = Secrets.TMDB_API_KEY
+        if (apiKey.isBlank()) return@withContext emptyList()
+
+        val endpoint = if (isMovie) "movie" else "tv"
+        val urls = listOf(
+            "$TMDB_BASE/$endpoint/$tmdbId/recommendations",
+            "$TMDB_BASE/$endpoint/$tmdbId/similar"
+        )
+
+        for (url in urls) {
+            val request = Request.Builder()
+                .url(url)
+                .header("Accept", "application/json")
+                .build()
+
+            try {
+                httpClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string()
+                        if (!body.isNullOrBlank()) {
+                            val json = JSONObject(body)
+                            val results = json.optJSONArray("results")
+                            if (results != null && results.length() > 0) {
+                                val list = mutableListOf<MediaItem>()
+                                for (i in 0 until minOf(12, results.length())) {
+                                    val obj = results.getJSONObject(i)
+                                    val id = obj.optInt("id", 0).toString()
+                                    val title = if (isMovie) obj.optString("title", "") else obj.optString("name", "")
+                                    val posterPath = obj.optString("poster_path", "")
+                                    val backdropPath = obj.optString("backdrop_path", "")
+                                    val voteAvg = obj.optDouble("vote_average", 0.0)
+                                    val relDate = if (isMovie) obj.optString("release_date", "") else obj.optString("first_air_date", "")
+                                    val rating = if (voteAvg > 0) String.format("%.1f", voteAvg) else ""
+                                    val posterUrl = if (posterPath.isNotBlank()) "https://image.tmdb.org/t/p/w500$posterPath" else ""
+                                    val backdropUrl = if (backdropPath.isNotBlank()) "https://image.tmdb.org/t/p/w1280$backdropPath" else posterUrl
+
+                                    if (title.isNotBlank() && posterUrl.isNotBlank()) {
+                                        list.add(
+                                            MediaItem(
+                                                id = "tmdb_rec_$id",
+                                                title = title,
+                                                category = if (isMovie) "MOVIE" else "WEB_SERIES",
+                                                type = if (isMovie) "MOVIE" else "SERIES",
+                                                posterUrl = posterUrl,
+                                                bannerUrl = backdropUrl,
+                                                rating = rating,
+                                                releaseYear = if (relDate.length >= 4) relDate.take(4) else "",
+                                                tmdbId = id,
+                                                description = obj.optString("overview", "Recommended from TMDB.")
+                                            )
+                                        )
+                                    }
+                                }
+                                if (list.isNotEmpty()) return@withContext list
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to fetch TMDB recommendations from $url: ${e.message}")
+            }
+        }
+        emptyList()
     }
 
     private fun String.equalsIgnoreCase(other: String): Boolean = this.equals(other, ignoreCase = true)

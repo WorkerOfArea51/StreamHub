@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -44,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -62,6 +64,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.streamhub.app.data.TelegramLinkResolver
 import com.streamhub.app.data.api.MetadataFetchManager
+import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.models.MediaInfo
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.ui.theme.PrimaryRed
@@ -112,6 +115,19 @@ fun AdminEditorDialog(
     var isFeatured by remember(initialItem) { mutableStateOf(initialItem?.isFeatured ?: true) }
     var isTrending by remember(initialItem) { mutableStateOf(initialItem?.isTrending ?: true) }
 
+    // --- State: Franchise & Sequel Grouping ---
+    var franchiseId by remember(initialItem) { mutableStateOf(initialItem?.franchiseId ?: "") }
+    var franchiseTitle by remember(initialItem) { mutableStateOf(initialItem?.franchiseTitle ?: "") }
+    val isInitMovie = initialItem?.type?.equals("MOVIE", ignoreCase = true) == true ||
+                      initialItem?.category?.equals("Movie", ignoreCase = true) == true ||
+                      initialItem?.category?.equals("Movies", ignoreCase = true) == true ||
+                      initialItem?.relationType?.equals("Movie", ignoreCase = true) == true
+    var seasonNumberText by remember(initialItem) {
+        mutableStateOf(if (isInitMovie) "" else (initialItem?.seasonNumber?.takeIf { it > 0 } ?: 1).toString())
+    }
+    var seasonTitle by remember(initialItem) { mutableStateOf(initialItem?.seasonTitle ?: "") }
+    var relationType by remember(initialItem) { mutableStateOf(initialItem?.relationType ?: if (isInitMovie) "Movie" else "Main Story") }
+
     // --- State: Technical Specs ---
     var resolution by remember(initialItem) { mutableStateOf(initialItem?.mediaInfo?.resolution ?: "") }
     var videoCodec by remember(initialItem) { mutableStateOf(initialItem?.mediaInfo?.videoCodec ?: "") }
@@ -122,13 +138,17 @@ fun AdminEditorDialog(
     var audioTracksText by remember(initialItem) { mutableStateOf(initialItem?.mediaInfo?.audioTracks?.joinToString(", ") ?: "") }
     var subtitleTracksText by remember(initialItem) { mutableStateOf(initialItem?.mediaInfo?.subtitleTracks?.joinToString(", ") ?: "") }
 
-    // --- State: Telegram Batch / Single Movie ---
+    // --- State: Telegram Batch / Single Movie / Multi-Arc ---
     val isMovieFormat = type.equals("MOVIE", ignoreCase = true) || category.equals("MOVIE", ignoreCase = true)
     var startBatchLink by remember(initialItem) {
         mutableStateOf(initialItem?.episodes?.firstOrNull()?.streamUrl ?: "")
     }
     var endBatchLink by remember { mutableStateOf("") }
+    var arcNameText by remember { mutableStateOf("") }
     var generatedEpisodesText by remember { mutableStateOf("") }
+    var isFetchingMeta by remember { mutableStateOf(false) }
+    var fetchedFileName by remember(initialItem) { mutableStateOf(initialItem?.episodes?.firstOrNull()?.fileName ?: "") }
+    var fetchedDurationMs by remember(initialItem) { mutableLongStateOf(initialItem?.episodes?.firstOrNull()?.durationMs ?: 0L) }
 
     // --- State: UI Feedback ---
     var isFetchingApi by remember { mutableStateOf(false) }
@@ -148,6 +168,7 @@ fun AdminEditorDialog(
             colors = CardDefaults.cardColors(containerColor = Color(0xFF13131F)),
             modifier = Modifier
                 .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.90f)
                 .border(
                     BorderStroke(
                         1.5.dp,
@@ -158,9 +179,8 @@ fun AdminEditorDialog(
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(20.dp)
+                    .fillMaxSize()
+                    .padding(16.dp)
             ) {
                 // Header Bar
                 Row(
@@ -206,10 +226,18 @@ fun AdminEditorDialog(
                     TabButton("⚙️ Full Specs", isSelected = selectedTab == 2, modifier = Modifier.weight(1f)) { selectedTab = 2 }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                when (selectedTab) {
-                    0 -> {
+                // Scrollable Content Area (Tabs)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(vertical = 4.dp)
+                ) {
+                    when (selectedTab) {
+                        0 -> {
                         // ==========================================
                         // TAB 0: OVERVIEW & TITLE AUTO-FETCH
                         // ==========================================
@@ -395,6 +423,11 @@ fun AdminEditorDialog(
                                             if (meta.youtubeTrailerId.isNotBlank()) trailerId = meta.youtubeTrailerId
                                             if (meta.aired.isNotBlank()) aired = meta.aired
                                             if (meta.maturityRating.isNotBlank()) maturityRating = meta.maturityRating
+                                            if (meta.franchiseId.isNotBlank()) franchiseId = meta.franchiseId
+                                            if (meta.franchiseTitle.isNotBlank()) franchiseTitle = meta.franchiseTitle
+                                            if (meta.seasonNumber > 0) seasonNumberText = meta.seasonNumber.toString()
+                                            if (meta.seasonTitle.isNotBlank()) seasonTitle = meta.seasonTitle
+                                            if (meta.relationType.isNotBlank()) relationType = meta.relationType
                                             isFeatured = true
                                             isTrending = true
                                         },
@@ -520,23 +553,81 @@ fun AdminEditorDialog(
 
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            Button(
-                                onClick = {
-                                    batchError = null
-                                    if (startBatchLink.isBlank()) {
-                                        batchError = "Movie link is required"
-                                        return@Button
-                                    }
-                                    generatedEpisodesText = startBatchLink.trim()
-                                },
-                                enabled = startBatchLink.isNotBlank(),
-                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth()
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("⚡ Attach Movie Stream Link", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Button(
+                                    onClick = {
+                                        batchError = null
+                                        if (startBatchLink.isBlank()) {
+                                            batchError = "Movie link is required"
+                                            return@Button
+                                        }
+                                        val link = startBatchLink.trim()
+                                        generatedEpisodesText = link
+                                        isFetchingMeta = true
+                                        scope.launch {
+                                            try {
+                                                val meta = com.streamhub.app.data.telegram.TdLibMediaProvider.fetchMessageMetadata(link)
+                                                if (meta != null) {
+                                                    if (fileSize.isBlank() && meta.fileSizeFormatted.isNotBlank()) {
+                                                        fileSize = meta.fileSizeFormatted
+                                                    }
+                                                    if (duration.isBlank() && meta.durationFormatted.isNotBlank()) {
+                                                        duration = meta.durationFormatted
+                                                    }
+                                                    if (resolution.isBlank() && meta.resolution.isNotBlank()) {
+                                                        resolution = meta.resolution
+                                                    }
+                                                    if (meta.fileName.isNotBlank()) {
+                                                        fetchedFileName = meta.fileName
+                                                    }
+                                                    if (meta.durationSeconds > 0) {
+                                                        fetchedDurationMs = meta.durationSeconds * 1000L
+                                                    }
+                                                }
+                                            } catch (e: Exception) {
+                                                android.util.Log.w("AdminEditorDialog", "Failed to auto-fetch metadata: ${e.message}")
+                                            } finally {
+                                                isFetchingMeta = false
+                                            }
+                                        }
+                                    },
+                                    enabled = startBatchLink.isNotBlank(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    if (isFetchingMeta) {
+                                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Auto-Fetching Specs...", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    } else {
+                                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("⚡ Attach & Auto-Fetch Specs", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                if (startBatchLink.isNotBlank() || generatedEpisodesText.isNotBlank()) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            startBatchLink = ""
+                                            generatedEpisodesText = ""
+                                            fetchedFileName = ""
+                                            fetchedDurationMs = 0L
+                                            batchError = null
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryRed),
+                                        border = BorderStroke(1.dp, PrimaryRed)
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Clear", tint = PrimaryRed, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Clear", color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             }
 
                             batchError?.let {
@@ -551,13 +642,27 @@ fun AdminEditorDialog(
                                     color = Color(0xFF1E2E1E),
                                     border = BorderStroke(1.dp, Color(0xFF4CAF50))
                                 ) {
-                                    Text(
-                                        "✅ Movie Stream Link Successfully Attached!",
-                                        color = Color(0xFF81C784),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                    )
+                                    Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                                        Text(
+                                            "✅ Movie Stream Link Successfully Attached!",
+                                            color = Color(0xFF81C784),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        if (fetchedFileName.isNotBlank() || fileSize.isNotBlank() || duration.isNotBlank()) {
+                                            val metaSummary = listOfNotNull(
+                                                fetchedFileName.ifBlank { null },
+                                                fileSize.ifBlank { null },
+                                                duration.ifBlank { null }
+                                            ).joinToString(" • ")
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                "🎬 $metaSummary",
+                                                color = Color(0xFFA5D6A7),
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         } else {
@@ -571,7 +676,31 @@ fun AdminEditorDialog(
                                 lineHeight = 15.sp
                             )
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Season / Arc configuration for Anime / Sagas
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = seasonNumberText,
+                                    onValueChange = { seasonNumberText = it },
+                                    label = { Text("Season # *", color = TextSecondary) },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = arcNameText,
+                                    onValueChange = { arcNameText = it },
+                                    label = { Text("Arc / Saga Name (Optional)", color = TextSecondary) },
+                                    placeholder = { Text("e.g. Chunin Exams", color = TextSecondary) },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(2f)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
 
                             OutlinedTextField(
                                 value = startBatchLink,
@@ -595,28 +724,51 @@ fun AdminEditorDialog(
 
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            Button(
-                                onClick = {
-                                    batchError = null
-                                    if (startBatchLink.isBlank()) {
-                                        batchError = "Start link is required"
-                                        return@Button
-                                    }
-                                    val generated = TelegramLinkResolver.generateBatchTelegramLinks(startBatchLink, endBatchLink)
-                                    if (generated.isBlank()) {
-                                        batchError = "No episodes generated. Check link format."
-                                    } else {
-                                        generatedEpisodesText = generated
-                                    }
-                                },
-                                enabled = startBatchLink.isNotBlank(),
-                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth()
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("⚡ Index Episode Range", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Button(
+                                    onClick = {
+                                        batchError = null
+                                        if (startBatchLink.isBlank()) {
+                                            batchError = "Start link is required"
+                                            return@Button
+                                        }
+                                        val generated = TelegramLinkResolver.generateBatchTelegramLinks(startBatchLink, endBatchLink)
+                                        if (generated.isBlank()) {
+                                            batchError = "No episodes generated. Check link format."
+                                        } else {
+                                            generatedEpisodesText = generated
+                                        }
+                                    },
+                                    enabled = startBatchLink.isNotBlank(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("⚡ Index Episode Range", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                if (startBatchLink.isNotBlank() || endBatchLink.isNotBlank() || generatedEpisodesText.isNotBlank()) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            startBatchLink = ""
+                                            endBatchLink = ""
+                                            generatedEpisodesText = ""
+                                            batchError = null
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryRed),
+                                        border = BorderStroke(1.dp, PrimaryRed)
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Clear", tint = PrimaryRed, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Clear", color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             }
 
                             batchError?.let {
@@ -711,7 +863,13 @@ fun AdminEditorDialog(
                         MetadataRow(bitrate, { bitrate = it }, "Bitrate (e.g. 4500 kb/s)", frameRate, { frameRate = it }, "FPS (e.g. 23.976)")
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        MetadataRow(aspectRatio, { aspectRatio = it }, "Aspect Ratio (16:9)", fileSize, { fileSize = it }, "File Size (e.g. 1.4 GB)")
+                        OutlinedTextField(
+                            value = fileSize,
+                            onValueChange = { fileSize = it },
+                            label = { Text("File Size (e.g. 1.4 GB)", color = TextSecondary) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
 
                         OutlinedTextField(
@@ -731,18 +889,56 @@ fun AdminEditorDialog(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Text("Franchise Universe & Sequel Grouping", color = Color(0xFFFFD700), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        MetadataRow(franchiseTitle, { franchiseTitle = it }, "Franchise Name (e.g. Solo Leveling)", franchiseId, { franchiseId = it }, "Franchise Slug (e.g. solo-leveling)")
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        MetadataRow(seasonNumberText, { seasonNumberText = it }, "Season # (1, 2, 3...)", seasonTitle, { seasonTitle = it }, "Season/Arc Title (e.g. Arise from the Shadow)")
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text("Relation Type", color = TextSecondary, fontSize = 11.sp)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            listOf("Main Story", "Sequel", "Prequel", "Movie", "Side Story").forEach { rel ->
+                                val isSelected = relationType.equals(rel, ignoreCase = true)
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSelected) PrimaryRed else Color(0xFF1E1E2C),
+                                    border = BorderStroke(1.dp, if (isSelected) PrimaryRed else Color(0x33FFFFFF)),
+                                    modifier = Modifier.clickable { relationType = rel }
+                                ) {
+                                    Text(
+                                        text = rel,
+                                        color = if (isSelected) Color.White else TextSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-                validationError?.let {
-                    Text(it, color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
+            validationError?.let {
+                Text(it, color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(6.dp))
+            }
 
                 // ==========================================
-                // BOTTOM SAVE BAR
+                // BOTTOM SAVE BAR (Fixed Footer)
                 // ==========================================
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -786,16 +982,49 @@ fun AdminEditorDialog(
                                 title.isBlank() -> validationError = "Title is required (Type title in Tab 1)"
                                 category.isBlank() -> validationError = "Category is required"
                                 else -> {
-                                    val episodes = if (generatedEpisodesText.isNotBlank()) {
-                                        TelegramLinkResolver.parseAndGroupTelegramLinks(generatedEpisodesText)
-                                    } else if (startBatchLink.isNotBlank()) {
-                                        TelegramLinkResolver.parseAndGroupTelegramLinks(startBatchLink)
-                                    } else {
-                                        initialItem?.episodes ?: emptyList()
+                                    val isMovieItem = isMovieFormat ||
+                                                      relationType.equals("Movie", ignoreCase = true) ||
+                                                      category.equals("Movie", ignoreCase = true) ||
+                                                      category.equals("Movies", ignoreCase = true)
+                                    val parsedSeasonNum = if (isMovieItem) 0 else (seasonNumberText.toIntOrNull() ?: 1)
+                                    val episodes = when {
+                                        isMovieFormat && (generatedEpisodesText.isNotBlank() || startBatchLink.isNotBlank()) -> {
+                                            val link = generatedEpisodesText.ifBlank { startBatchLink }.trim()
+                                            val existingEp = initialItem?.episodes?.firstOrNull()
+                                            listOf(
+                                                Episode(
+                                                    episodeNumber = 1,
+                                                    seasonNumber = if (isMovieItem) 0 else 1,
+                                                    title = title.ifBlank { "Movie Stream" },
+                                                    streamUrl = link,
+                                                    mirrorStreamUrl = link,
+                                                    telegramFileId = TelegramLinkResolver.extractTelegramMessageOrFileId(link),
+                                                    fileSize = fileSize.ifBlank { existingEp?.fileSize ?: "" },
+                                                    durationMs = if (fetchedDurationMs > 0) fetchedDurationMs else (existingEp?.durationMs ?: 0L),
+                                                    fileName = fetchedFileName.ifBlank { existingEp?.fileName ?: "" }
+                                                )
+                                            )
+                                        }
+                                        generatedEpisodesText.isNotBlank() -> TelegramLinkResolver.parseAndGroupTelegramLinks(generatedEpisodesText, seasonNumber = parsedSeasonNum, arcName = arcNameText)
+                                        startBatchLink.isNotBlank() -> TelegramLinkResolver.parseAndGroupTelegramLinks(startBatchLink, seasonNumber = parsedSeasonNum, arcName = arcNameText)
+                                        else -> initialItem?.episodes ?: emptyList()
+                                    }
+
+                                    val generatedId = generateReadableMediaId(
+                                        title = title,
+                                        releaseYear = premiered.take(4),
+                                        type = if (category.isNotBlank()) category else type
+                                    )
+
+                                    val finalFranchiseId = franchiseId.ifBlank {
+                                        com.streamhub.app.data.FranchiseManager.getFranchiseId(MediaItem(title = title))
+                                    }
+                                    val finalFranchiseTitle = franchiseTitle.ifBlank {
+                                        com.streamhub.app.data.FranchiseManager.getFranchiseTitle(MediaItem(title = title))
                                     }
 
                                     val mediaItem = MediaItem(
-                                        id = initialItem?.id ?: "media_${System.currentTimeMillis()}_${java.util.UUID.randomUUID().toString().take(8)}",
+                                        id = initialItem?.id ?: generatedId,
                                         title = title,
                                         type = type,
                                         category = category,
@@ -822,6 +1051,11 @@ fun AdminEditorDialog(
                                         description = description,
                                         isFeatured = isFeatured,
                                         isTrending = isTrending,
+                                        franchiseId = finalFranchiseId,
+                                        franchiseTitle = finalFranchiseTitle,
+                                        seasonNumber = parsedSeasonNum,
+                                        seasonTitle = seasonTitle,
+                                        relationType = relationType,
                                         mediaInfo = MediaInfo(
                                             resolution = resolution,
                                             videoCodec = videoCodec,
@@ -917,5 +1151,24 @@ private fun MetadataRow(
             singleLine = true,
             modifier = Modifier.weight(1f)
         )
+    }
+}
+
+private fun generateReadableMediaId(title: String, releaseYear: String, type: String): String {
+    val cleanSlug = title.lowercase()
+        .replace("&", "and")
+        .replace(Regex("[^a-z0-9]+"), "_")
+        .trim('_')
+        .take(40)
+    val year = releaseYear.trim().take(4)
+    val typePrefix = type.lowercase().trim()
+    return buildString {
+        if (typePrefix.isNotBlank()) {
+            append("${typePrefix}_")
+        }
+        append(cleanSlug.ifBlank { "item_${System.currentTimeMillis()}" })
+        if (year.isNotBlank() && !cleanSlug.endsWith(year)) {
+            append("_$year")
+        }
     }
 }
