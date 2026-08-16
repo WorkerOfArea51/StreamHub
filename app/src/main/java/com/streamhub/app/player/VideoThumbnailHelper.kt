@@ -60,12 +60,19 @@ object VideoThumbnailHelper {
                 }
 
                 val timeUs = bucketMs * 1000L
-                val frame = retriever?.getScaledFrameAtTime(
-                    timeUs,
-                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                    240, // 240px width for sharp lightweight thumbnail
-                    135  // 135px height (16:9)
-                ) ?: retriever?.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                val frame = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+                    retriever?.getScaledFrameAtTime(
+                        timeUs,
+                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                        240, // 240px width for sharp lightweight thumbnail
+                        135  // 135px height (16:9)
+                    )
+                } else {
+                    val fullFrame = retriever?.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    if (fullFrame != null) {
+                        Bitmap.createScaledBitmap(fullFrame, 240, 135, true)
+                    } else null
+                } ?: retriever?.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
 
                 if (frame != null) {
                     memoryCache.put(cacheKey, frame)

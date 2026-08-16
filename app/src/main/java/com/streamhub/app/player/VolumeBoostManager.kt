@@ -11,6 +11,8 @@ import androidx.media3.common.C
  * Supports up to +19 dB (+1900 milliBels) of audio gain, effectively doubling (200%)
  * the perceived output volume without audible distortion or clipping.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@OptIn(androidx.media3.common.util.UnstableApi::class)
 class VolumeBoostManager {
 
     companion object {
