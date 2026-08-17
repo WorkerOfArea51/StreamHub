@@ -17,8 +17,8 @@ object VideoThumbnailHelper {
 
     private const val TAG = "VideoThumbnailHelper"
 
-    // 16MB LRU Cache for scrubbing preview thumbnails
-    private val memoryCache: LruCache<String, Bitmap> = object : LruCache<String, Bitmap>(30) {
+    // 16MB LRU Cache for scrubbing preview thumbnails (size measured in KB)
+    private val memoryCache: LruCache<String, Bitmap> = object : LruCache<String, Bitmap>(16 * 1024) {
         override fun sizeOf(key: String, bitmap: Bitmap): Int {
             return bitmap.byteCount / 1024
         }

@@ -235,6 +235,10 @@ fun DetailsScreen(
         }
     }
 
+    val episodeIndexMap = remember(mediaItem.episodes) {
+        mediaItem.episodes.withIndex().associate { (i, ep) -> ep to i }
+    }
+
     Scaffold(
         floatingActionButton = {
             if (isAdminMode) {
@@ -827,7 +831,7 @@ fun DetailsScreen(
                     }
                 } else {
                     itemsIndexed(seasonFilteredEpisodes, key = { _, episode -> "${episode.seasonNumber}_${episode.episodeNumber}_${episode.title}" }) { index, episode ->
-                        val originalIndex = remember(episode, mediaItem.episodes) { mediaItem.episodes.indexOf(episode).coerceAtLeast(0) }
+                        val originalIndex = episodeIndexMap[episode] ?: index
                         val isDownloaded = downloads.any { it.mediaId == mediaItem.id && it.episodeIndex == originalIndex && it.isCompleted }
                         EpisodeRowItem(
                             episode = episode,

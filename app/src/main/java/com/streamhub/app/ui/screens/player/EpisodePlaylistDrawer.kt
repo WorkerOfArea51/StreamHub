@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -111,7 +112,7 @@ fun EpisodePlaylistDrawer(
                 IconButton(
                     onClick = onDismiss,
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(36.dp)
                         .clip(CircleShape)
                         .background(Color(0x22FFFFFF))
                 ) {
@@ -119,7 +120,7 @@ fun EpisodePlaylistDrawer(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Close",
                         tint = Color.White,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -131,7 +132,7 @@ fun EpisodePlaylistDrawer(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
+                    .heightIn(min = 120.dp, max = 420.dp)
             ) {
                 itemsIndexed(episodes) { index, episode ->
                     val isPlaying = index == currentEpisodeIndex

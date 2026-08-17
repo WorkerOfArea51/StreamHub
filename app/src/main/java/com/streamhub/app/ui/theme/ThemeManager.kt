@@ -32,33 +32,39 @@ object ThemeManager {
     private const val PREFS_NAME = "streamhub_theme_prefs"
     private const val KEY_ACCENT = "theme_accent_key"
 
-    private lateinit var appContext: Context
+    @Volatile
+    private var appContext: Context? = null
 
     private val _currentAccent = MutableStateFlow(AppThemeAccent.RED)
     val currentAccent: StateFlow<AppThemeAccent> = _currentAccent.asStateFlow()
 
     fun init(context: Context) {
-        if (::appContext.isInitialized) return
-        appContext = context.applicationContext
-        loadFromDisk()
+        if (appContext != null) return
+        synchronized(this) {
+            if (appContext == null) {
+                appContext = context.applicationContext
+                loadFromDisk()
+            }
+        }
     }
 
     private fun loadFromDisk() {
-        val prefs = getPrefs()
+        val prefs = getPrefs() ?: return
         val savedKey = prefs.getString(KEY_ACCENT, AppThemeAccent.RED.key) ?: AppThemeAccent.RED.key
         _currentAccent.value = AppThemeAccent.entries.firstOrNull { it.key == savedKey } ?: AppThemeAccent.RED
     }
 
     fun setAccent(accent: AppThemeAccent) {
-        if (!::appContext.isInitialized) {
+        val prefs = getPrefs()
+        if (prefs == null) {
             Log.w(TAG, "setAccent called before init — no-op")
             return
         }
         _currentAccent.value = accent
-        getPrefs().edit().putString(KEY_ACCENT, accent.key).apply()
+        prefs.edit().putString(KEY_ACCENT, accent.key).apply()
     }
 
-    private fun getPrefs(): SharedPreferences {
-        return appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private fun getPrefs(): SharedPreferences? {
+        return appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
 }

@@ -117,6 +117,12 @@ fun NotificationAlertCard(currentAccent: AppThemeAccent) {
     val alertsEnabled by NotificationAlertManager.alertsEnabled.collectAsState()
     val context = LocalContext.current
 
+    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        NotificationAlertManager.setAlertsEnabled(context, isGranted)
+    }
+
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
@@ -159,6 +165,16 @@ fun NotificationAlertCard(currentAccent: AppThemeAccent) {
             Switch(
                 checked = alertsEnabled,
                 onCheckedChange = { isChecked ->
+                    if (isChecked && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                            context,
+                            android.Manifest.permission.POST_NOTIFICATIONS
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        if (!hasPermission) {
+                            permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                            return@Switch
+                        }
+                    }
                     NotificationAlertManager.setAlertsEnabled(context, isChecked)
                 },
                 colors = SwitchDefaults.colors(

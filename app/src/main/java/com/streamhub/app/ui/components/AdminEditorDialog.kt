@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Whatshot
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -42,6 +43,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -155,6 +157,7 @@ fun AdminEditorDialog(
     var fetchError by remember { mutableStateOf<String?>(null) }
     var batchError by remember { mutableStateOf<String?>(null) }
     var validationError by remember { mutableStateOf<String?>(null) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -163,6 +166,31 @@ fun AdminEditorDialog(
             dismissOnClickOutside = false
         )
     ) {
+        if (showDeleteConfirmDialog && initialItem != null && onDelete != null) {
+            AlertDialog(
+                onDismissRequest = { showDeleteConfirmDialog = false },
+                title = { Text("Delete Media?", color = Color.White, fontWeight = FontWeight.Bold) },
+                text = { Text("Are you sure you want to permanently delete \"${initialItem.title}\"? This action cannot be undone.", color = TextSecondary) },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showDeleteConfirmDialog = false
+                            onDelete(initialItem.id)
+                            onDismiss()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed)
+                    ) {
+                        Text("Delete Permanently", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                        Text("Cancel", color = TextSecondary)
+                    }
+                },
+                containerColor = Color(0xFF1E1E2E)
+            )
+        }
         Card(
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF13131F)),
@@ -959,8 +987,7 @@ fun AdminEditorDialog(
                     if (initialItem != null && onDelete != null) {
                         Button(
                             onClick = {
-                                onDelete(initialItem.id)
-                                onDismiss()
+                                showDeleteConfirmDialog = true
                             },
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0x33FF3B30)),

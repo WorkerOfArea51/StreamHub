@@ -53,6 +53,8 @@ import com.streamhub.app.data.SubtitleSettingsManager
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 
+private data class SubtitleColorPreset(val color: Color, val argb: Long)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubtitleCustomizerDrawer(
@@ -63,18 +65,21 @@ fun SubtitleCustomizerDrawer(
 ) {
     val subConfig by SubtitleSettingsManager.subtitleConfig.collectAsState()
     var isEnabled by remember { mutableStateOf(selectedTrack != "Off") }
+    var draftFontSize by remember(subConfig.fontSizeSp) { mutableStateOf(subConfig.fontSizeSp) }
     val scrollState = rememberScrollState()
 
-    val presetColors = listOf(
-        Color.White to 0xFFFFFFFF,
-        Color.Black to 0xFF000000,
-        Color(0xFFFFEB3B) to 0xFFFFEB3BL,
-        Color(0xFF4CAF50) to 0xFF4CAF50L,
-        Color(0xFFF44336) to 0xFFF44336L,
-        Color(0xFF00E5FF) to 0xFF00E5FFL,
-        Color(0xFF2196F3) to 0xFF2196F3L,
-        Color(0xFFFF9800) to 0xFFFF9800L
-    )
+    val presetColors = remember {
+        listOf(
+            SubtitleColorPreset(Color.White, 0xFFFFFFFFL),
+            SubtitleColorPreset(Color.Black, 0xFF000000L),
+            SubtitleColorPreset(Color(0xFFFFEB3B), 0xFFFFEB3BL),
+            SubtitleColorPreset(Color(0xFF4CAF50), 0xFF4CAF50L),
+            SubtitleColorPreset(Color(0xFFF44336), 0xFFF44336L),
+            SubtitleColorPreset(Color(0xFF00E5FF), 0xFF00E5FFL),
+            SubtitleColorPreset(Color(0xFF2196F3), 0xFF2196F3L),
+            SubtitleColorPreset(Color(0xFFFF9800), 0xFFFF9800L)
+        )
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -207,28 +212,28 @@ fun SubtitleCustomizerDrawer(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    items(presetColors) { (color, argb) ->
-                        val isSelected = subConfig.textColorArgb == argb
+                    items(presetColors) { preset ->
+                        val isSelected = subConfig.textColorArgb == preset.argb
                         Box(
                             modifier = Modifier
                                 .size(34.dp)
                                 .clip(CircleShape)
-                                .background(color)
+                                .background(preset.color)
                                 .border(
                                     width = if (isSelected) 2.5.dp else 1.dp,
                                     color = if (isSelected) Color(0xFF4CAF50) else Color(0x33FFFFFF),
                                     shape = CircleShape
                                 )
                                 .clickable {
-                                    SubtitleSettingsManager.updateConfig(subConfig.copy(textColorArgb = argb))
+                                    SubtitleSettingsManager.updateConfig(subConfig.copy(textColorArgb = preset.argb))
                                 },
                             contentAlignment = Alignment.Center
-                        ) {
+                         ) {
                             if (isSelected) {
                                 Icon(
                                     imageVector = Icons.Default.Check,
                                     contentDescription = "Selected",
-                                    tint = if (color == Color.White) Color.Black else Color.White,
+                                    tint = if (preset.color == Color.White) Color.Black else Color.White,
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
@@ -238,19 +243,22 @@ fun SubtitleCustomizerDrawer(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Subtitle Size Slider
+                // Subtitle Size Slider (Debounced)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("Size", color = TextSecondary, fontSize = 13.sp)
-                    Text("${subConfig.fontSizeSp.toInt()} sp", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text("${draftFontSize.toInt()} sp", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
                 Slider(
-                    value = subConfig.fontSizeSp,
+                    value = draftFontSize,
                     onValueChange = { size ->
-                        SubtitleSettingsManager.updateConfig(subConfig.copy(fontSizeSp = size))
+                        draftFontSize = size
+                    },
+                    onValueChangeFinished = {
+                        SubtitleSettingsManager.updateConfig(subConfig.copy(fontSizeSp = draftFontSize))
                     },
                     valueRange = 14f..36f,
                     colors = SliderDefaults.colors(

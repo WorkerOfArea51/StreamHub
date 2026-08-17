@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Warning
 import com.streamhub.app.ui.components.EmptyStateCard
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -43,6 +44,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -96,6 +98,7 @@ fun HomeScreen(
     var selectedCategoryFilter by remember { mutableStateOf("ALL") }
     var showAdminAddDialog by remember { mutableStateOf(false) }
     var showSurpriseMeDialog by remember { mutableStateOf(false) }
+    var showClearHistoryDialog by remember { mutableStateOf(false) }
     var isTelegramBannerDismissed by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -138,11 +141,20 @@ fun HomeScreen(
             }
     }
 
-    val trendingItems = remember(filteredCatalog) { filteredCatalog.filter { it.isTrending } }
-    val animeItems = remember(filteredCatalog) { filteredCatalog.filter { it.category.equals("ANIME", ignoreCase = true) } }
-    val movieItems = remember(filteredCatalog) { filteredCatalog.filter { it.category.equals("MOVIE", ignoreCase = true) || it.category.equals("MOVIES", ignoreCase = true) } }
-    val webSeriesItems = remember(filteredCatalog) { filteredCatalog.filter { it.category.equals("WEB_SERIES", ignoreCase = true) || it.category.equals("SERIES", ignoreCase = true) } }
-    val recentlyAddedItems = remember(filteredCatalog) { filteredCatalog }
+    val (trendingItems, animeItems, movieItems, webSeriesItems) = remember(filteredCatalog) {
+        val trending = mutableListOf<MediaItem>()
+        val anime = mutableListOf<MediaItem>()
+        val movies = mutableListOf<MediaItem>()
+        val series = mutableListOf<MediaItem>()
+        for (item in filteredCatalog) {
+            if (item.isTrending) trending.add(item)
+            if (item.category.equals("ANIME", ignoreCase = true)) anime.add(item)
+            if (item.category.equals("MOVIE", ignoreCase = true) || item.category.equals("MOVIES", ignoreCase = true)) movies.add(item)
+            if (item.category.equals("WEB_SERIES", ignoreCase = true) || item.category.equals("SERIES", ignoreCase = true)) series.add(item)
+        }
+        CategorizedCatalog(trending, anime, movies, series)
+    }
+    val recentlyAddedItems = filteredCatalog
 
     val tgState by com.streamhub.app.data.telegram.TelegramAuthManager.authState.collectAsState()
 
@@ -379,7 +391,7 @@ fun HomeScreen(
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium,
                                     modifier = Modifier.clickable {
-                                        WatchHistoryManager.clearAllHistory()
+                                        showClearHistoryDialog = true
                                     }
                                 )
                             }
@@ -481,6 +493,30 @@ fun HomeScreen(
                 showSurpriseMeDialog = false
                 onMediaClick(media)
             }
+        )
+    }
+
+    if (showClearHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearHistoryDialog = false },
+            title = { Text("Clear Watch History?", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to clear your continue watching history?", color = TextSecondary) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showClearHistoryDialog = false
+                        WatchHistoryManager.clearAllHistory()
+                    }
+                ) {
+                    Text("Clear", color = PrimaryRed, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearHistoryDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            },
+            containerColor = Color(0xFF1E1E2E)
         )
     }
 }
@@ -697,3 +733,10 @@ fun CategoryFilterChip(
         )
     }
 }
+
+private data class CategorizedCatalog(
+    val trending: List<MediaItem>,
+    val anime: List<MediaItem>,
+    val movies: List<MediaItem>,
+    val series: List<MediaItem>
+)

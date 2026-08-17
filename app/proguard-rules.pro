@@ -60,15 +60,11 @@
     static final java.lang.String VERSION_NAME;
 }
 
-# --- Compose runtime (rarely needed but safe) ---
--keep class androidx.compose.runtime.** { *; }
-
-# --- Remove logging in release ---
+# --- Remove verbose/debug/info logging in release (keep warn & error for crash diagnostics) ---
 -assumenosideeffects class android.util.Log {
     public static *** v(...);
     public static *** d(...);
     public static *** i(...);
-    public static *** w(...);
 }
 
 # --- ZXing ---

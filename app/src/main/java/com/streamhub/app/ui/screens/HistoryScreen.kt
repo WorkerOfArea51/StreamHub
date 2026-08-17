@@ -86,6 +86,7 @@ fun HistoryScreen(
 ) {
     val historyMap by WatchHistoryManager.historyFlow.collectAsState()
     val catalog by repository.mediaCatalog.collectAsState()
+    val catalogById = remember(catalog) { catalog.associateBy { it.id } }
 
     var selectedFilter by remember { mutableStateOf("All") }
     var searchQuery by remember { mutableStateOf("") }
@@ -286,7 +287,7 @@ fun HistoryScreen(
                         }
 
                         items(items, key = { it.mediaId }) { progress ->
-                            val matchedMedia = catalog.firstOrNull { it.id == progress.mediaId }
+                            val matchedMedia = catalogById[progress.mediaId]
                             HistoryItemCard(
                                 progress = progress,
                                 mediaItem = matchedMedia,

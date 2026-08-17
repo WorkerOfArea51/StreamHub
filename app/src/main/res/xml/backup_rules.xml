@@ -19,7 +19,7 @@
     <include domain="sharedpref" path="streamhub_player_settings.xml"/>
     <include domain="sharedpref" path="streamhub_subtitle_prefs.xml"/>
     <include domain="sharedpref" path="streamhub_home_layout_prefs.xml"/>
-    <include domain="sharedpref" path="streamhub_downloads_prefs.xml"/>
     <include domain="sharedpref" path="streamhub_user_stats.xml"/>
     <include domain="sharedpref" path="streamhub_notification_prefs.xml"/>
+    <exclude domain="sharedpref" path="streamhub_downloads_prefs.xml"/>
 </full-backup-content>

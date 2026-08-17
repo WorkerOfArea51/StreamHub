@@ -99,6 +99,7 @@ fun HeroCarousel(
             state = pagerState,
             modifier = Modifier.fillMaxSize()
         ) { page ->
+            if (page !in featuredItems.indices) return@HorizontalPager
             val media = featuredItems[page]
             val isBookmarked = myListSet.contains(media.id)
 
