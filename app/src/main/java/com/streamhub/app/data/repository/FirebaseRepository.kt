@@ -115,7 +115,9 @@ class FirebaseRepository private constructor() {
                     }
 
                     if (snapshot == null || snapshot.isEmpty) {
+                        _mediaCatalog.value = emptyList()
                         _catalogState.value = CatalogState.Ready
+                        Log.d(TAG, "Firestore catalog updated: 0 items (empty)")
                         return@addSnapshotListener
                     }
 
@@ -131,10 +133,9 @@ class FirebaseRepository private constructor() {
                             }
                         }
 
-                        if (remoteItems.isNotEmpty()) {
-                            _mediaCatalog.update { current -> (remoteItems + current).distinctBy { it.id } }
-                        }
+                        _mediaCatalog.value = remoteItems
                         _catalogState.value = CatalogState.Ready
+                        Log.d(TAG, "Firestore real-time catalog synced: ${remoteItems.size} items")
                     }
                 }
         } catch (e: Exception) {
@@ -273,7 +274,9 @@ class FirebaseRepository private constructor() {
                     "streamUrl" to ep.streamUrl,
                     "mirrorStreamUrl" to ep.mirrorStreamUrl,
                     "telegramFileId" to ep.telegramFileId,
-                    "durationMs" to ep.durationMs
+                    "durationMs" to ep.durationMs,
+                    "fileName" to ep.fileName,
+                    "fileSize" to ep.fileSize
                 )
             }
         )
