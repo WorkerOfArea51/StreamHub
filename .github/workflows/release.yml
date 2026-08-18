@@ -48,14 +48,20 @@ jobs:
 
       - name: Restore google-services.json
         env:
-          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.FIREBASE_GOOGLE_SERVICES_JSON }}
+          GS_SECRET: ${{ secrets.FIREBASE_GOOGLE_SERVICES_JSON }}
         run: |
-          if [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
-            echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > app/google-services.json
-            echo "google-services.json restored ($(wc -c < app/google-services.json) bytes)"
-          else
-            echo "FIREBASE_GOOGLE_SERVICES_JSON is empty, using fallback template"
+          if [ -z "$GS_SECRET" ]; then
+            echo "FIREBASE_GOOGLE_SERVICES_JSON secret is empty, using fallback template"
             cp app/google-services.json.example app/google-services.json
+          elif echo "$GS_SECRET" | base64 --decode 2>/dev/null | grep -q "project_info"; then
+            echo "$GS_SECRET" | base64 --decode > app/google-services.json
+            echo "google-services.json restored from base64 secret ($(wc -c < app/google-services.json) bytes)"
+          elif echo "$GS_SECRET" | grep -q "project_info"; then
+            echo "$GS_SECRET" > app/google-services.json
+            echo "google-services.json restored from raw JSON secret ($(wc -c < app/google-services.json) bytes)"
+          else
+            echo "::error::Invalid FIREBASE_GOOGLE_SERVICES_JSON secret content"
+            exit 1
           fi
 
       - name: Restore release keystore
