@@ -220,13 +220,14 @@ object DownloadManager {
     }
 
     fun setCustomScreenshotPath(path: String) {
-        _customScreenshotPath.value = path
-        prefs?.edit()?.putString(KEY_CUSTOM_SCREENSHOT_PATH, path)?.apply()
+        val cleanPath = if (path.startsWith("content://")) "" else path
+        _customScreenshotPath.value = cleanPath
+        prefs?.edit()?.putString(KEY_CUSTOM_SCREENSHOT_PATH, cleanPath)?.apply()
     }
 
     fun getEffectiveDownloadDir(context: Context): File {
         val custom = _customDownloadPath.value
-        if (custom.isNotBlank()) {
+        if (custom.isNotBlank() && !custom.startsWith("content://")) {
             val customDir = File(custom)
             if (customDir.exists() || customDir.mkdirs()) {
                 return customDir
@@ -244,7 +245,7 @@ object DownloadManager {
 
     fun getEffectiveScreenshotDir(context: Context): File {
         val custom = _customScreenshotPath.value
-        if (custom.isNotBlank()) {
+        if (custom.isNotBlank() && !custom.startsWith("content://")) {
             val customDir = File(custom)
             if (customDir.exists() || customDir.mkdirs()) {
                 return customDir
@@ -502,25 +503,26 @@ object DownloadManager {
     }
 
     fun setCustomDownloadPath(path: String) {
-        if (path.isNotBlank() && !path.startsWith("content://")) {
-            val file = File(path)
+        val cleanPath = if (path.startsWith("content://")) "" else path
+        if (cleanPath.isNotBlank()) {
+            val file = File(cleanPath)
             if (!file.exists() && !file.mkdirs()) {
-                Log.w(TAG, "Cannot create directory: $path — using default")
+                Log.w(TAG, "Cannot create directory: $cleanPath — using default")
                 return
             }
             if (!file.canWrite()) {
-                Log.w(TAG, "Directory not writable: $path — using default")
+                Log.w(TAG, "Directory not writable: $cleanPath — using default")
                 return
             }
             val canonical = file.canonicalPath
             val suspiciousPaths = listOf("/data/", "/system/", "/proc/", "/dev/")
             if (suspiciousPaths.any { canonical.startsWith(it) }) {
-                Log.w(TAG, "Suspicious path rejected: $path")
+                Log.w(TAG, "Suspicious path rejected: $cleanPath")
                 return
             }
         }
-        _customDownloadPath.value = path
-        prefs?.edit()?.putString(KEY_CUSTOM_DOWNLOAD_PATH, path)?.apply()
+        _customDownloadPath.value = cleanPath
+        prefs?.edit()?.putString(KEY_CUSTOM_DOWNLOAD_PATH, cleanPath)?.apply()
     }
 
     fun cancelDownload(item: DownloadedItem) {

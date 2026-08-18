@@ -1,10 +1,5 @@
 package com.streamhub.app.ui.screens.settings
 
-import android.content.Intent
-import android.net.Uri
-import android.util.Log
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -20,8 +15,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -47,40 +42,11 @@ import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 
-private fun formatPathDisplay(path: String, defaultLabel: String): String {
-    if (path.isBlank()) return defaultLabel
-    return if (path.startsWith("content://")) {
-        try {
-            val uri = Uri.parse(path)
-            val docId = uri.lastPathSegment ?: path
-            val decoded = Uri.decode(docId).substringAfterLast(":")
-            if (decoded.isNotBlank()) "SAF: $decoded" else "SAF: $path"
-        } catch (_: Exception) {
-            "SAF: $path"
-        }
-    } else {
-        path
-    }
-}
-
 @Composable
 fun DownloadPathCard(currentAccent: AppThemeAccent) {
     val customDownloadPath by DownloadManager.customDownloadPath.collectAsState()
     val context = LocalContext.current
-
-    val downloadDirLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { uri: Uri? ->
-        uri?.let {
-            try {
-                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                context.contentResolver.takePersistableUriPermission(it, flags)
-            } catch (e: Exception) {
-                Log.w("DownloadPathCard", "Could not persist URI permission: ${e.message}")
-            }
-            DownloadManager.setCustomDownloadPath(it.toString())
-        }
-    }
+    val defaultDir = DownloadManager.getEffectiveDownloadDir(context)
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -111,9 +77,23 @@ fun DownloadPathCard(currentAccent: AppThemeAccent) {
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Custom Download Path 📁", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Download Storage 📁", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0x2210B981))
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        ) {
+                            Text("Scoped", color = Color(0xFF10B981), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                     Text(
-                        text = formatPathDisplay(customDownloadPath, "Default: App Storage (Movies/StreamHub)"),
+                        text = if (customDownloadPath.isNotBlank() && !customDownloadPath.startsWith("content://"))
+                            customDownloadPath
+                        else
+                            "App Storage: Movies/StreamHub",
                         color = TextSecondary,
                         fontSize = 11.sp,
                         maxLines = 2,
@@ -122,6 +102,16 @@ fun DownloadPathCard(currentAccent: AppThemeAccent) {
                 }
             }
 
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "Path: ${defaultDir.absolutePath}",
+                color = TextSecondary.copy(alpha = 0.7f),
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
             Spacer(modifier = Modifier.height(12.dp))
 
             Row(
@@ -129,24 +119,14 @@ fun DownloadPathCard(currentAccent: AppThemeAccent) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Button(
-                    onClick = { downloadDirLauncher.launch(null) },
+                    onClick = { DownloadManager.setCustomDownloadPath("") },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E1E2D)),
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp), tint = TextPrimary)
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp), tint = currentAccent.color)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Choose Folder", color = TextPrimary, fontSize = 11.sp)
-                }
-                if (customDownloadPath.isNotBlank()) {
-                    Button(
-                        onClick = { DownloadManager.setCustomDownloadPath("") },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A1010)),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Reset Default", color = Color(0xFFEF4444), fontSize = 11.sp)
-                    }
+                    Text("Default Storage", color = TextPrimary, fontSize = 11.sp)
                 }
             }
         }
@@ -157,20 +137,7 @@ fun DownloadPathCard(currentAccent: AppThemeAccent) {
 fun ScreenshotPathCard(currentAccent: AppThemeAccent) {
     val customScreenshotPath by DownloadManager.customScreenshotPath.collectAsState()
     val context = LocalContext.current
-
-    val screenshotDirLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { uri: Uri? ->
-        uri?.let {
-            try {
-                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                context.contentResolver.takePersistableUriPermission(it, flags)
-            } catch (e: Exception) {
-                Log.w("ScreenshotPathCard", "Could not persist URI permission: ${e.message}")
-            }
-            DownloadManager.setCustomScreenshotPath(it.toString())
-        }
-    }
+    val defaultDir = DownloadManager.getEffectiveScreenshotDir(context)
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -201,9 +168,23 @@ fun ScreenshotPathCard(currentAccent: AppThemeAccent) {
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Custom Screenshot Path 📸", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Screenshot Storage 📸", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0x2210B981))
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        ) {
+                            Text("Scoped", color = Color(0xFF10B981), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                     Text(
-                        text = formatPathDisplay(customScreenshotPath, "Default: App Storage (Pictures/StreamHub_Screenshots)"),
+                        text = if (customScreenshotPath.isNotBlank() && !customScreenshotPath.startsWith("content://"))
+                            customScreenshotPath
+                        else
+                            "App Storage: Pictures/StreamHub_Screenshots",
                         color = TextSecondary,
                         fontSize = 11.sp,
                         maxLines = 2,
@@ -212,6 +193,16 @@ fun ScreenshotPathCard(currentAccent: AppThemeAccent) {
                 }
             }
 
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "Path: ${defaultDir.absolutePath}",
+                color = TextSecondary.copy(alpha = 0.7f),
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
             Spacer(modifier = Modifier.height(12.dp))
 
             Row(
@@ -219,24 +210,14 @@ fun ScreenshotPathCard(currentAccent: AppThemeAccent) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Button(
-                    onClick = { screenshotDirLauncher.launch(null) },
+                    onClick = { DownloadManager.setCustomScreenshotPath("") },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E1E2D)),
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp), tint = TextPrimary)
+                    Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp), tint = currentAccent.color)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Choose Folder", color = TextPrimary, fontSize = 11.sp)
-                }
-                if (customScreenshotPath.isNotBlank()) {
-                    Button(
-                        onClick = { DownloadManager.setCustomScreenshotPath("") },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A1010)),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Reset Default", color = Color(0xFFEF4444), fontSize = 11.sp)
-                    }
+                    Text("Default Storage", color = TextPrimary, fontSize = 11.sp)
                 }
             }
         }
