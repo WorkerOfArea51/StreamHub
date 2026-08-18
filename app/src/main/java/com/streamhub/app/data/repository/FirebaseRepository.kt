@@ -48,9 +48,15 @@ class FirebaseRepository private constructor() {
             }
     }
 
-    private val firestore by lazy {
-        runCatching { FirebaseFirestore.getInstance() }.getOrNull()
-    }
+    private val firestore: FirebaseFirestore?
+        get() = runCatching {
+            val app = com.google.firebase.FirebaseApp.getInstance()
+            FirebaseFirestore.getInstance(app)
+        }.recoverCatching {
+            FirebaseFirestore.getInstance()
+        }.onFailure { e ->
+            Log.e(TAG, "Failed to get FirebaseFirestore instance", e)
+        }.getOrNull()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -99,8 +105,8 @@ class FirebaseRepository private constructor() {
     private fun attachFirestoreListener() {
         val db = firestore
         if (db == null) {
-            Log.w(TAG, "Firestore instance is null — using empty catalog")
-            _catalogState.value = CatalogState.Ready
+            Log.e(TAG, "CRITICAL: Firestore instance is null — FirebaseApp may not be initialized")
+            _catalogState.value = CatalogState.Error("Firebase database not initialized")
             return
         }
 
@@ -156,18 +162,13 @@ class FirebaseRepository private constructor() {
         _adminOperationState.value = AdminOperationState.Loading
         val db = firestore
         if (db == null) {
-            _mediaCatalog.update { current ->
-                val list = current.toMutableList()
-                val index = list.indexOfFirst { it.id == item.id }
-                if (index >= 0) list[index] = item else list.add(0, item)
-                list
-            }
-            _catalogState.value = CatalogState.Ready
-            _adminOperationState.value = AdminOperationState.Success()
+            Log.e(TAG, "CRITICAL: Cannot save media item ${item.id} because Firestore instance is null!")
+            _adminOperationState.value = AdminOperationState.Error("Firebase database not initialized")
             return
         }
 
         val docMap = mediaItemToMap(item)
+        Log.d(TAG, "Writing media item ${item.id} to Firestore collection '$COLLECTION_NAME'...")
         db.collection(COLLECTION_NAME)
             .document(item.id)
             .set(docMap)

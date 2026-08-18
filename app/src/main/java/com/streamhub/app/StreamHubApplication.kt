@@ -58,6 +58,11 @@ class StreamHubApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        runCatching {
+            com.google.firebase.FirebaseApp.initializeApp(this)
+            Log.d(TAG, "FirebaseApp successfully initialized")
+        }.onFailure { Log.e(TAG, "FirebaseApp.initializeApp failed", it) }
+
         if (BuildConfig.DEBUG) {
             android.os.StrictMode.setThreadPolicy(
                 android.os.StrictMode.ThreadPolicy.Builder()
