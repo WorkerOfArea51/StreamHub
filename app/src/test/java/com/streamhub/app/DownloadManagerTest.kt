@@ -11,7 +11,6 @@ class DownloadManagerTest {
 
     @Test
     fun downloadManager_setCustomDownloadPath_sanitizesContentUris() {
-        // Direct call on DownloadManager
         DownloadManager.setCustomDownloadPath("content://com.android.externalstorage.documents/tree/primary%3AMovies")
         assertEquals("content:// URIs should be sanitized to empty string", "", DownloadManager.customDownloadPath.value)
 
@@ -21,7 +20,6 @@ class DownloadManagerTest {
 
     @Test
     fun downloadManager_setCustomScreenshotPath_sanitizesContentUris() {
-        // Direct call on DownloadManager
         DownloadManager.setCustomScreenshotPath("content://com.android.externalstorage.documents/tree/primary%3APictures")
         assertEquals("content:// URIs should be sanitized to empty string", "", DownloadManager.customScreenshotPath.value)
 
@@ -44,13 +42,23 @@ class DownloadManagerTest {
             streamUrl = "https://cdn.example.com/aot_ep4.mp4"
         )
 
-        // Directly call pauseDownload
+        // Seed DownloadManager._downloads via the public API
+        DownloadManager.addOrUpdateDownload(initialItem)
+
+        // Pre-condition: verify the seed took effect
+        val beforePause = DownloadManager.downloads.value
+        assertEquals(1, beforePause.size)
+        assertEquals(1001L, beforePause[0].downloadId)
+        assertFalse(beforePause[0].isPaused)
+
+        // Call the real method under test
         DownloadManager.pauseDownload(initialItem)
 
-        // Verify paused copy
-        val pausedCopy = initialItem.copy(isPaused = true, downloadId = -1L)
-        assertTrue(pausedCopy.isPaused)
-        assertEquals(-1L, pausedCopy.downloadId)
-        assertEquals(45, pausedCopy.progressPercent)
+        // Assert on the REAL state change in DownloadManager.downloads
+        val afterPause = DownloadManager.downloads.value
+        assertEquals(1, afterPause.size)
+        assertTrue("Item should be marked paused", afterPause[0].isPaused)
+        assertEquals("Download ID should be reset to -1L", -1L, afterPause[0].downloadId)
+        assertEquals("Progress should be preserved", 45, afterPause[0].progressPercent)
     }
 }

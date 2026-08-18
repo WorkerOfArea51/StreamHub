@@ -97,6 +97,15 @@ object DownloadManager {
         }
     }
 
+    fun addOrUpdateDownload(item: DownloadedItem) {
+        _downloads.update { currentList ->
+            val mutableList = currentList.toMutableList()
+            mutableList.removeAll { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
+            mutableList.add(item)
+            mutableList
+        }
+    }
+
     /**
      * FIX #4: Register BroadcastReceiver for ACTION_DOWNLOAD_COMPLETE
      * so downloads automatically transition to "completed" state.
