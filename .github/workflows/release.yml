@@ -91,7 +91,7 @@ jobs:
         run: ./gradlew testDebugUnitTest --stacktrace
 
       - name: Run Lint
-        run: ./gradlew lintDebug
+        run: ./gradlew lintRelease --stacktrace
 
       - name: Build signed release APK
         env:

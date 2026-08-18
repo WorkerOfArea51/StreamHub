@@ -502,7 +502,7 @@ object DownloadManager {
     }
 
     fun setCustomDownloadPath(path: String) {
-        if (path.isNotBlank()) {
+        if (path.isNotBlank() && !path.startsWith("content://")) {
             val file = File(path)
             if (!file.exists() && !file.mkdirs()) {
                 Log.w(TAG, "Cannot create directory: $path — using default")

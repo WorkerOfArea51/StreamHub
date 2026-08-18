@@ -71,10 +71,6 @@
 -keep class com.google.zxing.** { *; }
 -dontwarn com.google.zxing.**
 
-# --- bcrypt (at.favre.lib:bcrypt) — used by AdminManager for PIN verification ---
--keep class at.favre.lib.crypto.bcrypt.** { *; }
--dontwarn at.favre.lib.crypto.bcrypt.**
-
 # --- StateFlow data classes used by Compose ---
 -keep class com.streamhub.app.data.SubtitleConfig { *; }
 -keep class com.streamhub.app.data.HomeLayoutConfig { *; }

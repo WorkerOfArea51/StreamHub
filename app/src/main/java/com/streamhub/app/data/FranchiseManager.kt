@@ -295,6 +295,10 @@ object FranchiseManager {
         if (sMatch != null) {
             return sMatch.groupValues[1].toIntOrNull() ?: 1
         }
+        val sShortMatch = Regex("\\bS(\\d+)\\b", RegexOption.IGNORE_CASE).find(title)
+        if (sShortMatch != null) {
+            return sShortMatch.groupValues[1].toIntOrNull() ?: 1
+        }
         val thMatch = Regex("(\\d+)(st|nd|rd|th)\\s*Season", RegexOption.IGNORE_CASE).find(title)
         if (thMatch != null) {
             return thMatch.groupValues[1].toIntOrNull() ?: 1

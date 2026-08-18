@@ -184,7 +184,6 @@ dependencies {
     // NOTE: Using 1.1.0-alpha06 for KeyScheme.AES256_GCM support (not available in 1.0.0 stable)
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
-    implementation(libs.bcrypt)
     implementation("com.google.zxing:core:3.5.3")
 
     // TDLib — Telegram Database Library (native MTProto client)
