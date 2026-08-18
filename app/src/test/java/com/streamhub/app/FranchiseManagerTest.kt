@@ -34,4 +34,20 @@ class FranchiseManagerTest {
         val title = FranchiseManager.getFranchiseTitle(item)
         assertTrue("Title should contain Demon Slayer", title.contains("Demon Slayer", ignoreCase = true))
     }
+
+    @Test
+    fun getFranchiseItems_groupsAndSortsChronologically() {
+        val s1 = MediaItem(id = "s1", title = "My Hero Academia Season 1", releaseYear = "2016", seasonNumber = 1)
+        val s3 = MediaItem(id = "s3", title = "My Hero Academia Season 3", releaseYear = "2018", seasonNumber = 3)
+        val s2 = MediaItem(id = "s2", title = "My Hero Academia Season 2", releaseYear = "2017", seasonNumber = 2)
+        val unrelated = MediaItem(id = "other", title = "One Piece", releaseYear = "1999", seasonNumber = 1)
+
+        val catalog = listOf(s3, unrelated, s1, s2)
+        val franchiseGroup = FranchiseManager.getFranchiseItems(s1, catalog)
+
+        assertEquals("Should only contain 3 franchise items", 3, franchiseGroup.size)
+        assertEquals("s1 should be first", "s1", franchiseGroup[0].id)
+        assertEquals("s2 should be second", "s2", franchiseGroup[1].id)
+        assertEquals("s3 should be third", "s3", franchiseGroup[2].id)
+    }
 }

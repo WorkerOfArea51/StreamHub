@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,7 +47,9 @@ import com.streamhub.app.ui.theme.TextSecondary
 fun DownloadPathCard(currentAccent: AppThemeAccent) {
     val customDownloadPath by DownloadManager.customDownloadPath.collectAsState()
     val context = LocalContext.current
-    val defaultDir = DownloadManager.getEffectiveDownloadDir(context)
+    val defaultDir = remember(customDownloadPath, context) {
+        DownloadManager.getEffectiveDownloadDir(context)
+    }
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -137,7 +140,9 @@ fun DownloadPathCard(currentAccent: AppThemeAccent) {
 fun ScreenshotPathCard(currentAccent: AppThemeAccent) {
     val customScreenshotPath by DownloadManager.customScreenshotPath.collectAsState()
     val context = LocalContext.current
-    val defaultDir = DownloadManager.getEffectiveScreenshotDir(context)
+    val defaultDir = remember(customScreenshotPath, context) {
+        DownloadManager.getEffectiveScreenshotDir(context)
+    }
 
     Card(
         shape = RoundedCornerShape(16.dp),
