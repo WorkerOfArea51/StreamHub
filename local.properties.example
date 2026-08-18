@@ -41,8 +41,5 @@ streamhub.telegram_anime_channel=                                   # STREAMHUB_
 streamhub.telegram_movies_channel=                                  # STREAMHUB_TELEGRAM_MOVIES_CHANNEL
 streamhub.telegram_series_channel=                                  # STREAMHUB_TELEGRAM_SERIES_CHANNEL
 
-# Owner usernames (comma-separated, without @) for Channel Owner Dashboard access
-streamhub.owner_usernames=                                          # STREAMHUB_OWNER_USERNAMES
-
-# Admin PIN — bcrypt hash (NOT the plaintext PIN)
-streamhub.admin_pin_hash=0000                                       # STREAMHUB_ADMIN_PIN_HASH
+# Owner usernames (comma-separated, without @) for Channel Owner Dashboard & Admin access
+streamhub.owner_usernames=YOUR_TELEGRAM_USERNAME                     # STREAMHUB_OWNER_USERNAMES

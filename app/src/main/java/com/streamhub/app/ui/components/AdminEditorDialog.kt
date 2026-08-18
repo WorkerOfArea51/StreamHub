@@ -159,6 +159,32 @@ fun AdminEditorDialog(
     var validationError by remember { mutableStateOf<String?>(null) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
+    if (showDeleteConfirmDialog && initialItem != null && onDelete != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = { Text("Delete Media?", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to permanently delete \"${initialItem.title}\"? This action cannot be undone.", color = TextSecondary) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        onDelete(initialItem.id)
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed)
+                ) {
+                    Text("Delete Permanently", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            },
+            containerColor = Color(0xFF1E1E2E)
+        )
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -166,31 +192,6 @@ fun AdminEditorDialog(
             dismissOnClickOutside = false
         )
     ) {
-        if (showDeleteConfirmDialog && initialItem != null && onDelete != null) {
-            AlertDialog(
-                onDismissRequest = { showDeleteConfirmDialog = false },
-                title = { Text("Delete Media?", color = Color.White, fontWeight = FontWeight.Bold) },
-                text = { Text("Are you sure you want to permanently delete \"${initialItem.title}\"? This action cannot be undone.", color = TextSecondary) },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showDeleteConfirmDialog = false
-                            onDelete(initialItem.id)
-                            onDismiss()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed)
-                    ) {
-                        Text("Delete Permanently", color = Color.White)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showDeleteConfirmDialog = false }) {
-                        Text("Cancel", color = TextSecondary)
-                    }
-                },
-                containerColor = Color(0xFF1E1E2E)
-            )
-        }
         Card(
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF13131F)),

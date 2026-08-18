@@ -51,8 +51,8 @@ jobs:
           GS_SECRET: ${{ secrets.FIREBASE_GOOGLE_SERVICES_JSON }}
         run: |
           if [ -z "$GS_SECRET" ]; then
-            echo "FIREBASE_GOOGLE_SERVICES_JSON secret is empty, using fallback template"
-            cp app/google-services.json.example app/google-services.json
+            echo "::error::FIREBASE_GOOGLE_SERVICES_JSON repository secret is missing in GitHub repository settings!"
+            exit 1
           elif echo "$GS_SECRET" | base64 --decode 2>/dev/null | grep -q "project_info"; then
             echo "$GS_SECRET" | base64 --decode > app/google-services.json
             echo "google-services.json restored from base64 secret ($(wc -c < app/google-services.json) bytes)"

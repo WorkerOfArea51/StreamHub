@@ -48,15 +48,25 @@ class FirebaseRepository private constructor() {
             }
     }
 
+    @Volatile
+    private var firestoreCache: FirebaseFirestore? = null
+    @Volatile
+    private var firestoreResolved = false
+
     private val firestore: FirebaseFirestore?
-        get() = runCatching {
-            val app = com.google.firebase.FirebaseApp.getInstance()
-            FirebaseFirestore.getInstance(app)
-        }.recoverCatching {
-            FirebaseFirestore.getInstance()
-        }.onFailure { e ->
-            Log.e(TAG, "Failed to get FirebaseFirestore instance", e)
-        }.getOrNull()
+        get() {
+            if (firestoreResolved) return firestoreCache
+            firestoreCache = runCatching {
+                val app = com.google.firebase.FirebaseApp.getInstance()
+                FirebaseFirestore.getInstance(app)
+            }.recoverCatching {
+                FirebaseFirestore.getInstance()
+            }.onFailure { e ->
+                Log.e(TAG, "Failed to get FirebaseFirestore instance", e)
+            }.getOrNull()
+            firestoreResolved = true
+            return firestoreCache
+        }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 

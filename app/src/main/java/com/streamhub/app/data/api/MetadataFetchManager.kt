@@ -186,7 +186,7 @@ object MetadataFetchManager {
 
             val posterUrl = if (posterPath.isNotBlank()) "https://image.tmdb.org/t/p/w500$posterPath" else ""
             val backdropUrl = if (backdropPath.isNotBlank()) "https://image.tmdb.org/t/p/w1280$backdropPath" else posterUrl
-            val rating = if (voteAverage > 0) String.format("%.1f", voteAverage) else ""
+            val rating = if (voteAverage > 0) String.format(java.util.Locale.US, "%.1f", voteAverage) else ""
 
             ensureGenreCache(apiKey, isMovie)
             val genreMap = if (isMovie) movieGenreMap else tvGenreMap
@@ -527,7 +527,7 @@ object MetadataFetchManager {
             }
 
             // Score precision: e.g. 8.14 instead of 8.1
-            val formattedRating = if (mean > 0) String.format("%.2f", mean).trimEnd('0').trimEnd('.') else ""
+            val formattedRating = if (mean > 0) String.format(java.util.Locale.US, "%.2f", mean).trimEnd('0').trimEnd('.') else ""
 
             val detectedSeason = com.streamhub.app.data.FranchiseManager.detectSeasonNumber(finalTitle)
             val detectedFranchiseId = com.streamhub.app.data.FranchiseManager.getFranchiseId(com.streamhub.app.data.models.MediaItem(title = finalTitle))
@@ -655,7 +655,7 @@ object MetadataFetchManager {
                                     val backdropPath = obj.optString("backdrop_path", "")
                                     val voteAvg = obj.optDouble("vote_average", 0.0)
                                     val relDate = if (isMovie) obj.optString("release_date", "") else obj.optString("first_air_date", "")
-                                    val rating = if (voteAvg > 0) String.format("%.1f", voteAvg) else ""
+                                    val rating = if (voteAvg > 0) String.format(java.util.Locale.US, "%.1f", voteAvg) else ""
                                     val posterUrl = if (posterPath.isNotBlank()) "https://image.tmdb.org/t/p/w500$posterPath" else ""
                                     val backdropUrl = if (backdropPath.isNotBlank()) "https://image.tmdb.org/t/p/w1280$backdropPath" else posterUrl
 

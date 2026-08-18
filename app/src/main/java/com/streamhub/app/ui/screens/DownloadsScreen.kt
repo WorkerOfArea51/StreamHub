@@ -161,9 +161,9 @@ fun DownloadsScreen(
                             }
                             Text(
                                 text = if (totalMbUsed > 0)
-                                    "${String.format("%.1f", totalMbUsed)} MB used (${String.format("%.1f", freeGb)} GB free)"
+                                    "${String.format(java.util.Locale.US, "%.1f", totalMbUsed)} MB used (${String.format(java.util.Locale.US, "%.1f", freeGb)} GB free)"
                                 else
-                                    "0.0 MB used / ${String.format("%.1f", freeGb)} GB free of ${String.format("%.1f", totalGb)} GB",
+                                    "0.0 MB used / ${String.format(java.util.Locale.US, "%.1f", freeGb)} GB free of ${String.format(java.util.Locale.US, "%.1f", totalGb)} GB",
                                 color = TextSecondary,
                                 fontSize = 11.sp
                             )
@@ -338,7 +338,7 @@ fun DownloadedEpisodeCard(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = if (item.isCompleted) "${String.format("%.1f", item.fileSizeMb)} MB • Offline Ready" else "Downloading... ${item.progressPercent}%",
+                        text = if (item.isCompleted) "${String.format(java.util.Locale.US, "%.1f", item.fileSizeMb)} MB • Offline Ready" else "Downloading... ${item.progressPercent}%",
                         color = primaryColor,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold

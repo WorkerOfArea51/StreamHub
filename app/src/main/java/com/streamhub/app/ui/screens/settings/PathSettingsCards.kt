@@ -76,7 +76,7 @@ fun DownloadPathCard(currentAccent: AppThemeAccent) {
                 Column {
                     Text("Custom Download Path 📁", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text(
-                        text = customDownloadPath.ifEmpty { "Default: Movies/StreamHub" },
+                        text = customDownloadPath.ifEmpty { "Default: App Storage (Movies/StreamHub)" },
                         color = TextSecondary,
                         fontSize = 11.sp
                     )
@@ -151,7 +151,7 @@ fun ScreenshotPathCard(currentAccent: AppThemeAccent) {
                 Column {
                     Text("Custom Screenshot Path 📸", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text(
-                        text = customScreenshotPath.ifEmpty { "Default: Pictures/StreamHub_Screenshots" },
+                        text = customScreenshotPath.ifEmpty { "Default: App Storage (Pictures/StreamHub_Screenshots)" },
                         color = TextSecondary,
                         fontSize = 11.sp
                     )
