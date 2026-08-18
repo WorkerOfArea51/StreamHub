@@ -7,8 +7,6 @@ name: Build & Publish Signed Release APK
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
   workflow_dispatch:
