@@ -434,7 +434,7 @@ object TelegramAuthManager {
         }
     }
 
-    private suspend fun completeLogin(user: TelegramUser, isOwner: Boolean = checkIsOwner(user)) {
+    private suspend fun completeLogin(user: TelegramUser, isOwner: Boolean) {
         // Cache user info in EncryptedSharedPreferences for fast cold-start reads
         prefs?.edit()
             ?.putBoolean(KEY_IS_LOGGED_IN, true)
@@ -489,7 +489,7 @@ object TelegramAuthManager {
      * Admin mode is activated if user is a Channel Administrator/Creator, matches OWNER_USERNAMES,
      * or unlocks via Admin Password.
      */
-    private fun checkIsOwner(user: TelegramUser): Boolean {
+    private suspend fun checkIsOwner(user: TelegramUser): Boolean {
         val apiId = Secrets.TELEGRAM_API_ID
         val apiHash = Secrets.TELEGRAM_API_HASH
         if (apiId.isBlank() || apiHash.isBlank() || user.id == 0L) return false
@@ -517,30 +517,18 @@ object TelegramAuthManager {
             return true
         }
 
-        // Trigger async TDLib channel creator/admin check (immune to username changes)
-        verifyChannelAdminStatus(user.id)
+        // Fast parallel TDLib channel creator/admin check (immune to username changes)
+        val isChannelAdmin = TdLibMediaProvider.checkIfUserIsChannelAdmin(user.id)
+        if (isChannelAdmin) {
+            prefs?.edit()?.putBoolean(KEY_IS_OWNER, true)?.apply()
+            com.streamhub.app.data.AdminManager.markOwnerVerified()
+            com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
+            return true
+        }
 
         return false
     }
 
-    private fun verifyChannelAdminStatus(userId: Long) {
-        scope.launch {
-            try {
-                val isChannelAdmin = TdLibMediaProvider.checkIfUserIsChannelAdmin(userId)
-                if (isChannelAdmin) {
-                    com.streamhub.app.data.AdminManager.markOwnerVerified()
-                    com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
-                    prefs?.edit()?.putBoolean(KEY_IS_OWNER, true)?.apply()
-                    val currentAuth = _authState.value
-                    if (currentAuth is TelegramAuthState.Authenticated && !currentAuth.isOwner) {
-                        _authState.value = currentAuth.copy(isOwner = true)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to verify channel admin status for user $userId", e)
-            }
-        }
-    }
 
     /**
      * Auto-join all configured private Telegram channels.

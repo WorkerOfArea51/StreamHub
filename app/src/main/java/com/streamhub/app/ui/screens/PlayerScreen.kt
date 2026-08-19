@@ -1195,7 +1195,18 @@ fun PlayerScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        val totalDuration = uiState.durationMs.coerceAtLeast(1L)
+                        val fallbackDuration = remember(mediaItem, currentEpisode) {
+                            when {
+                                (currentEpisode?.durationMs ?: 0L) > 0L -> currentEpisode!!.durationMs
+                                mediaItem.duration.isNotBlank() -> {
+                                    val mins = Regex("""(\d+)\s*m""").find(mediaItem.duration)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                                    val hours = Regex("""(\d+)\s*h""").find(mediaItem.duration)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                                    (hours * 3600 + mins * 60) * 1000L
+                                }
+                                else -> 0L
+                            }
+                        }
+                        val totalDuration = if (uiState.durationMs > 0L) uiState.durationMs else (if (fallbackDuration > 0L) fallbackDuration else 1L)
                         val currentDuration by rememberUpdatedState(totalDuration)
                         val currentDisplayPos = if (isScrubbing) scrubbingPositionMs else uiState.currentPositionMs
                         val bufferedPos = uiState.bufferedPositionMs.coerceIn(0L, totalDuration)

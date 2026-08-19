@@ -366,14 +366,65 @@ object DownloadManager {
                 rawUrl
             }
 
-            if (resolvedUrl.isBlank() || (!resolvedUrl.startsWith("http://") && !resolvedUrl.startsWith("https://"))) {
-                Log.w(TAG, "Cannot download unresolved non-HTTP URL: $resolvedUrl")
+            if (resolvedUrl.isBlank()) {
+                Log.w(TAG, "Cannot download blank resolved URL")
                 return@launch
             }
 
             val downloadsDir = getEffectiveDownloadDir(context)
-            val fileName = "${mediaItem.title.replace(FILENAME_SANITIZE_REGEX, "_")}_Ep${episodeIndex + 1}.mp4"
+            val isMovie = mediaItem.category.equals("Movie", ignoreCase = true) || 
+                          mediaItem.category.equals("Movies", ignoreCase = true) || 
+                          mediaItem.type.equals("Movie", ignoreCase = true)
+            val fileName = if (isMovie) {
+                "${mediaItem.title.replace(FILENAME_SANITIZE_REGEX, "_")}.mp4"
+            } else {
+                "${mediaItem.title.replace(FILENAME_SANITIZE_REGEX, "_")}_Ep${episodeIndex + 1}.mp4"
+            }
             val targetFile = File(downloadsDir, fileName)
+            val epTitle = if (isMovie) mediaItem.title else (episode.title.ifEmpty { "Episode ${episodeIndex + 1}" })
+
+            // Handle local file (e.g. from Telegram MTProto / TDLib)
+            if (resolvedUrl.startsWith("/") || File(resolvedUrl).exists()) {
+                val sourceFile = File(resolvedUrl)
+                if (sourceFile.exists()) {
+                    try {
+                        if (sourceFile.absolutePath != targetFile.absolutePath) {
+                            sourceFile.copyTo(targetFile, overwrite = true)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed copying local file to target: ${targetFile.absolutePath}", e)
+                    }
+                    val effectiveFile = if (targetFile.exists()) targetFile else sourceFile
+                    val sizeMb = effectiveFile.length() / (1024.0 * 1024.0)
+                    val newItem = DownloadedItem(
+                        mediaId = mediaItem.id,
+                        mediaTitle = mediaItem.title,
+                        posterUrl = mediaItem.posterUrl,
+                        episodeIndex = episodeIndex,
+                        episodeTitle = epTitle,
+                        localFilePath = effectiveFile.absolutePath,
+                        fileSizeMb = sizeMb,
+                        downloadId = -1L,
+                        progressPercent = 100,
+                        isCompleted = true,
+                        streamUrl = rawUrl
+                    )
+                    _downloads.update { currentList ->
+                        val mutableList = currentList.toMutableList()
+                        mutableList.removeAll { it.mediaId == mediaItem.id && it.episodeIndex == episodeIndex }
+                        mutableList.add(newItem)
+                        mutableList
+                    }
+                    saveToDisk()
+                    Log.i(TAG, "Successfully attached local Telegram download for ${mediaItem.title}: ${effectiveFile.absolutePath}")
+                    return@launch
+                }
+            }
+
+            if (!resolvedUrl.startsWith("http://") && !resolvedUrl.startsWith("https://")) {
+                Log.w(TAG, "Cannot download non-HTTP URL via SystemDownloadManager: $resolvedUrl")
+                return@launch
+            }
 
             var sysDownloadId = -1L
 
@@ -392,7 +443,6 @@ object DownloadManager {
                 Log.e(TAG, "DownloadManager enqueue failed", e)
             }
 
-            val epTitle = episode.title.ifEmpty { "Episode ${episodeIndex + 1}" }
             val newItem = DownloadedItem(
                 mediaId = mediaItem.id,
                 mediaTitle = mediaItem.title,

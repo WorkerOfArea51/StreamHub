@@ -257,7 +257,8 @@ fun DetailsScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(innerPadding),
+            contentPadding = PaddingValues(bottom = 120.dp)
         ) {
             // Header Backdrop Container (Modern 16:9 Hero Trailer Player)
             item {
@@ -839,7 +840,10 @@ fun DetailsScreen(
                             mediaItem = mediaItem,
                             isDownloaded = isDownloaded,
                             onPlay = { onPlayEpisode(mediaItem, originalIndex) },
-                            onDownload = { DownloadManager.startDownload(context, mediaItem, originalIndex) }
+                            onDownload = { 
+                                android.widget.Toast.makeText(context, "Starting download...", android.widget.Toast.LENGTH_SHORT).show()
+                                DownloadManager.startDownload(context, mediaItem, originalIndex) 
+                            }
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                     }
@@ -990,18 +994,16 @@ fun EpisodeRowItem(
 
     val metaDetails = buildList {
         if (isMovie) {
-            val size = episode.fileSize.ifBlank { mediaItem.mediaInfo.fileSize }
-            if (size.isNotBlank()) add(size)
-            if (mediaItem.duration.isNotBlank()) add(mediaItem.duration)
-            val res = mediaItem.mediaInfo.resolution.ifBlank { "1080p" }
-            add(res)
+            // Technical specs are already prominently featured in the TECHNICAL MEDIAINFO SPECS chips above
+            if (mediaItem.episodes.size > 1) {
+                add("Stream ${index + 1}")
+            }
         } else {
             if (episode.arcName.isNotBlank()) {
                 add("${episode.arcName} • Ep ${episode.episodeNumber}")
             } else {
                 add("Season ${episode.seasonNumber} • Ep ${episode.episodeNumber}")
             }
-            if (episode.fileSize.isNotBlank()) add(episode.fileSize)
         }
     }.joinToString(" • ")
 
@@ -1012,7 +1014,6 @@ fun EpisodeRowItem(
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
-            .clickable { onPlay() }
     ) {
         Row(
             modifier = Modifier
@@ -1020,107 +1021,123 @@ fun EpisodeRowItem(
                 .padding(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Thumbnail with Duration & Play overlay
-            Box(
+            // Playable left & center area
+            Row(
                 modifier = Modifier
-                    .width(105.dp)
-                    .height(64.dp)
+                    .weight(1f)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF14141E))
+                    .clickable { onPlay() },
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                if (effectiveThumbnail.isNotEmpty()) {
-                    AsyncImage(
-                        model = effectiveThumbnail,
-                        contentDescription = displayTitle,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-
-                // Dark Scrim + Play Icon
+                // Thumbnail with Duration & Play overlay
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color(0x33000000)),
-                    contentAlignment = Alignment.Center
+                        .width(105.dp)
+                        .height(64.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF14141E))
                 ) {
+                    if (effectiveThumbnail.isNotEmpty()) {
+                        AsyncImage(
+                            model = effectiveThumbnail,
+                            contentDescription = displayTitle,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+
+                    // Dark Scrim + Play Icon
                     Box(
                         modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x99000000)),
+                            .fillMaxSize()
+                            .background(Color(0x33000000)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "Play",
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x99000000)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Play",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    // Duration Badge (bottom-right)
+                    val durationLabel = when {
+                        episode.durationMs > 0 -> {
+                            val totalSec = (episode.durationMs / 1000).toInt()
+                            val h = totalSec / 3600
+                            val m = (totalSec % 3600) / 60
+                            val s = totalSec % 60
+                            if (h > 0) String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, s)
+                            else String.format(java.util.Locale.US, "%02d:%02d", m, s)
+                        }
+                        mediaItem.duration.isNotBlank() -> mediaItem.duration
+                        else -> ""
+                    }
+                    if (durationLabel.isNotBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(4.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0xCC000000))
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = durationLabel,
+                                color = Color.White,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
 
-                // Duration Badge (bottom-right)
-                val durationLabel = when {
-                    episode.durationMs > 0 -> {
-                        val totalSec = (episode.durationMs / 1000).toInt()
-                        val h = totalSec / 3600
-                        val m = (totalSec % 3600) / 60
-                        val s = totalSec % 60
-                        if (h > 0) String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, s)
-                        else String.format(java.util.Locale.US, "%02d:%02d", m, s)
-                    }
-                    mediaItem.duration.isNotBlank() -> mediaItem.duration
-                    else -> ""
-                }
-                if (durationLabel.isNotBlank()) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(4.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xCC000000))
-                            .padding(horizontal = 4.dp, vertical = 2.dp)
-                    ) {
+                Spacer(modifier = Modifier.width(12.dp))
+
+                // Details Column
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = displayTitle,
+                        color = TextPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    if (metaDetails.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = durationLabel,
-                            color = Color.White,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold
+                            text = metaDetails,
+                            color = TextSecondary,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(6.dp))
 
-            // Details Column
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = displayTitle,
-                    color = TextPrimary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(modifier = Modifier.height(2.dp))
-
-                Text(
-                    text = metaDetails,
-                    color = TextSecondary,
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            IconButton(onClick = onDownload) {
+            // Dedicated Download Button
+            IconButton(
+                onClick = onDownload,
+                modifier = Modifier.size(44.dp)
+            ) {
                 Icon(
-                    imageVector = Icons.Default.Download,
+                    imageVector = if (isDownloaded) Icons.Default.Check else Icons.Default.Download,
                     contentDescription = "Download Episode",
-                    tint = if (isDownloaded) AccentOrange else TextSecondary
+                    tint = if (isDownloaded) Color(0xFF4CAF50) else TextSecondary
                 )
             }
         }

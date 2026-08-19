@@ -55,13 +55,8 @@ object ThemeManager {
     }
 
     fun setAccent(accent: AppThemeAccent) {
-        val prefs = getPrefs()
-        if (prefs == null) {
-            Log.w(TAG, "setAccent called before init — no-op")
-            return
-        }
         _currentAccent.value = accent
-        prefs.edit().putString(KEY_ACCENT, accent.key).apply()
+        getPrefs()?.edit()?.putString(KEY_ACCENT, accent.key)?.apply()
     }
 
     private fun getPrefs(): SharedPreferences? {

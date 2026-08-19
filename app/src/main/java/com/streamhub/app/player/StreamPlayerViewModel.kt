@@ -113,11 +113,11 @@ class StreamPlayerViewModel : ViewModel() {
                     .setBufferDurationsMs(
                         60_000,     // minBufferMs (60s continuous aggressive buffer)
                         300_000,    // maxBufferMs (5 minutes aggressive buffer)
-                        500,        // bufferForPlaybackMs (0.5s ultra-fast start)
-                        1_000       // bufferForPlaybackAfterRebufferMs (1s rebuffer)
+                        1_000,      // bufferForPlaybackMs (1s ultra-smooth start)
+                        2_000       // bufferForPlaybackAfterRebufferMs (2s rebuffer)
                     )
                     .setBackBuffer(
-                        120_000,    // backBufferDurationMs (2 minutes for instant rewind)
+                        180_000,    // backBufferDurationMs (3 minutes for instant rewind)
                         true        // retainBackBufferFromKeyframe
                     )
                     .setPrioritizeTimeOverSizeThresholds(true)
@@ -127,7 +127,7 @@ class StreamPlayerViewModel : ViewModel() {
                     .setAudioAttributes(audioAttributes, true)
                     .setHandleAudioBecomingNoisy(true)
                     .setLoadControl(loadControl)
-                    .setSeekParameters(androidx.media3.exoplayer.SeekParameters.DEFAULT)
+                    .setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
                     .setMediaSourceFactory(
                         androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
                     )
@@ -171,6 +171,17 @@ class StreamPlayerViewModel : ViewModel() {
 
                     if (playbackState == Player.STATE_ENDED) {
                         playNextEpisode()
+                    }
+                }
+
+                override fun onPositionDiscontinuity(
+                    oldPosition: Player.PositionInfo,
+                    newPosition: Player.PositionInfo,
+                    reason: Int
+                ) {
+                    if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+                        pendingSeekTargetMs = null
+                        _uiState.update { it.copy(currentPositionMs = newPosition.positionMs) }
                     }
                 }
 
@@ -307,11 +318,23 @@ class StreamPlayerViewModel : ViewModel() {
         if (episodesList.isEmpty() || index !in episodesList.indices) return
         val episode = episodesList[index]
         val rawUrl = episode.streamUrl.ifEmpty { episode.mirrorStreamUrl }
-        if (rawUrl.isBlank()) {
-            _uiState.update { it.copy(playerError = "Episode stream link is missing or empty") }
-            return
+        val fallbackDurationMs = when {
+            episode.durationMs > 0L -> episode.durationMs
+            !currentMediaItem?.duration.isNullOrBlank() -> {
+                val durStr = currentMediaItem!!.duration
+                val mins = Regex("""(\d+)\s*m""").find(durStr)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                val hours = Regex("""(\d+)\s*h""").find(durStr)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                (hours * 3600 + mins * 60) * 1000L
+            }
+            else -> 0L
         }
-        _uiState.update { it.copy(currentEpisodeIndex = index, playerError = null) }
+        _uiState.update {
+            it.copy(
+                currentEpisodeIndex = index,
+                playerError = null,
+                durationMs = if (fallbackDurationMs > 0) fallbackDurationMs else it.durationMs
+            )
+        }
 
         resolutionJob?.cancel()
         resolutionJob = viewModelScope.launch {
@@ -629,17 +652,7 @@ class StreamPlayerViewModel : ViewModel() {
                     val buffered = player.bufferedPosition.coerceAtLeast(0L)
                     val isBuffering = player.playbackState == Player.STATE_BUFFERING
 
-                    val pendingSeek = pendingSeekTargetMs
-                    val currentPos = if (pendingSeek != null) {
-                        if (Math.abs(playerPos - pendingSeek) < 5000L || (!player.isPlaying && player.playbackState == Player.STATE_ENDED)) {
-                            pendingSeekTargetMs = null
-                            playerPos
-                        } else {
-                            pendingSeek
-                        }
-                    } else {
-                        playerPos
-                    }
+                    val currentPos = pendingSeekTargetMs ?: playerPos
 
                     _uiState.update {
                         it.copy(

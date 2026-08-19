@@ -4,11 +4,14 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.drinkless.tdlib.TdApi
 import java.io.File
@@ -766,54 +769,74 @@ object TdLibMediaProvider {
      * Checks whether the user is an Administrator or Creator of any of the configured channels,
      * or owns/admins any channel supergroup in their account.
      */
-    suspend fun checkIfUserIsChannelAdmin(userId: Long): Boolean {
+    suspend fun checkIfUserIsChannelAdmin(userId: Long): Boolean = withContext(Dispatchers.IO) {
         val channelUrls = listOf(
             com.streamhub.app.data.api.Secrets.TELEGRAM_ANIME_CHANNEL,
             com.streamhub.app.data.api.Secrets.TELEGRAM_MOVIES_CHANNEL,
             com.streamhub.app.data.api.Secrets.TELEGRAM_SERIES_CHANNEL
         ).filter { it.isNotBlank() }
 
-        // 1. Check explicitly configured channels
-        for (channel in channelUrls) {
-            try {
-                val chat = joinChannel(channel)
-                if (chat != null) {
-                    val member = TdLibManager.send(TdApi.GetChatMember(chat.id, TdApi.MessageSenderUser(userId)))
-                    if (member is TdApi.ChatMember) {
-                        val status = member.status
-                        if (status is TdApi.ChatMemberStatusCreator || status is TdApi.ChatMemberStatusAdministrator) {
-                            return true
+        // 1. Check explicitly configured channels concurrently
+        if (channelUrls.isNotEmpty()) {
+            val isAdmin = coroutineScope {
+                val channelDeferreds = channelUrls.map { channel ->
+                    async {
+                        try {
+                            val chat = joinChannel(channel)
+                            if (chat != null) {
+                                val member = TdLibManager.send(TdApi.GetChatMember(chat.id, TdApi.MessageSenderUser(userId)), timeoutMs = 8000L)
+                                if (member is TdApi.ChatMember) {
+                                    val status = member.status
+                                    if (status is TdApi.ChatMemberStatusCreator || status is TdApi.ChatMemberStatusAdministrator) {
+                                        Log.i(TAG, "User $userId verified as Creator/Admin of configured channel: $channel")
+                                        return@async true
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed checking chat member status for $channel", e)
                         }
+                        false
                     }
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed checking chat member status for $channel", e)
+                channelDeferreds.any { it.await() }
             }
+            if (isAdmin) return@withContext true
         }
 
-        // 2. Scan user's joined chats for any channel/supergroup where they are Creator/Admin
+        // 2. Scan user's joined supergroups/channels in parallel (batch of top 30 chats)
         try {
-            val chatsResult = TdLibManager.send(TdApi.GetChats(TdApi.ChatListMain(), 50))
+            val chatsResult = TdLibManager.send(TdApi.GetChats(TdApi.ChatListMain(), 30), timeoutMs = 6000L)
             if (chatsResult is TdApi.Chats) {
-                for (chatId in chatsResult.chatIds) {
-                    val chat = TdLibManager.send(TdApi.GetChat(chatId))
-                    if (chat is TdApi.Chat && chat.type is TdApi.ChatTypeSupergroup) {
-                        val supergroupType = chat.type as TdApi.ChatTypeSupergroup
-                        val supergroup = TdLibManager.send(TdApi.GetSupergroup(supergroupType.supergroupId))
-                        if (supergroup is TdApi.Supergroup) {
-                            val status = supergroup.status
-                            if (status is TdApi.ChatMemberStatusCreator || status is TdApi.ChatMemberStatusAdministrator) {
-                                Log.i(TAG, "User is Creator/Admin of channel: ${chat.title}")
-                                return true
-                            }
+                val isAdminInChats = coroutineScope {
+                    val chatDeferreds = chatsResult.chatIds.map { chatId ->
+                        async {
+                            try {
+                                val chat = TdLibManager.send(TdApi.GetChat(chatId), timeoutMs = 4000L)
+                                if (chat is TdApi.Chat && chat.type is TdApi.ChatTypeSupergroup) {
+                                    val supergroupType = chat.type as TdApi.ChatTypeSupergroup
+                                    val supergroup = TdLibManager.send(TdApi.GetSupergroup(supergroupType.supergroupId), timeoutMs = 4000L)
+                                    if (supergroup is TdApi.Supergroup) {
+                                        val status = supergroup.status
+                                        if (status is TdApi.ChatMemberStatusCreator || status is TdApi.ChatMemberStatusAdministrator) {
+                                            Log.i(TAG, "User is Creator/Admin of channel: ${chat.title}")
+                                            return@async true
+                                        }
+                                    }
+                                }
+                            } catch (_: Exception) {}
+                            false
                         }
                     }
+                    chatDeferreds.any { it.await() }
                 }
+                if (isAdminInChats) return@withContext true
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed checking user chat list for admin status", e)
         }
 
-        return false
+        false
     }
 }
+

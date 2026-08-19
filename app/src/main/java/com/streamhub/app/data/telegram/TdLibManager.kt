@@ -67,7 +67,7 @@ sealed class TdLibAuthState {
 object TdLibManager {
 
     private const val TAG = "TdLibManager"
-    private const val REQUEST_TIMEOUT_MS = 30_000L
+    private const val REQUEST_TIMEOUT_MS = 60_000L
 
     /** Coroutine scope for internal async work. SupervisorJob so one failure doesn't cancel all. */
     private var scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

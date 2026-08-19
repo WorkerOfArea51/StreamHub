@@ -145,17 +145,17 @@ class TdLibStreamingDataSource : DataSource {
         val position = dataSpec.position
         currentPosition = position
 
-        // If seeking beyond currently downloaded bytes on disk, request TDLib download chunk from that offset!
         val fId = fileId
-        if (fId != null && position >= f.length()) {
-            Log.i(TAG, "Seeking beyond current disk size: pos=$position, diskSize=${f.length()}, requesting TDLib chunk from offset $position...")
+        // If seeking beyond currently downloaded bytes on disk, request TDLib download chunk from that offset!
+        if (fId != null && position >= f.length() && position < totalFileSize) {
+            Log.i(TAG, "Seeking to unbuffered offset $position (disk: ${f.length()}, total: $totalFileSize)")
             try {
                 runBlocking {
                     TdLibManager.send(TdApi.DownloadFile(fId, 32, position, 0, false))
                     var waitMs = 0
-                    while (waitMs < 10_000 && (!f.exists() || f.length() <= position)) {
-                        kotlinx.coroutines.delay(100)
-                        waitMs += 100
+                    while (waitMs < 6_000 && (!f.exists() || f.length() <= position)) {
+                        kotlinx.coroutines.delay(80)
+                        waitMs += 80
                     }
                 }
             } catch (e: Exception) {
@@ -168,13 +168,8 @@ class TdLibStreamingDataSource : DataSource {
         }
 
         randomAccessFile = RandomAccessFile(f, "r")
-        if (position > 0) {
-            val actualLen = f.length()
-            if (position <= actualLen) {
-                randomAccessFile!!.seek(position)
-            } else {
-                randomAccessFile!!.seek(actualLen)
-            }
+        if (position > 0 && position <= f.length()) {
+            randomAccessFile!!.seek(position)
         }
 
         val length = dataSpec.length
@@ -194,19 +189,23 @@ class TdLibStreamingDataSource : DataSource {
 
         val toRead = kotlin.math.min(length.toLong(), bytesRemaining).toInt()
 
-        // If reading ahead of downloaded bytes, wait briefly for TDLib download chunks
+        // If reading ahead of downloaded bytes, wait up to 8s for TDLib download chunks to arrive
         var currentFileLen = f.length()
         var waitCount = 0
         while (currentPosition + toRead > currentFileLen && currentPosition < totalFileSize && waitCount < 100) {
             val fId = fileId
             if (fId == null) break
             try {
-                Thread.sleep(50)
+                Thread.sleep(60)
             } catch (_: InterruptedException) {
                 break
             }
             waitCount++
             currentFileLen = f.length()
+        }
+
+        if (currentPosition >= currentFileLen) {
+            return if (currentPosition >= totalFileSize) C.RESULT_END_OF_INPUT else 0
         }
 
         val available = (currentFileLen - currentPosition).coerceAtLeast(0L).toInt()
@@ -215,6 +214,7 @@ class TdLibStreamingDataSource : DataSource {
         }
 
         val actualReadSize = kotlin.math.min(toRead, available)
+        raf.seek(currentPosition) // Always synchronize exact file pointer with currentPosition
         val bytesRead = raf.read(buffer, offset, actualReadSize)
         if (bytesRead > 0) {
             currentPosition += bytesRead

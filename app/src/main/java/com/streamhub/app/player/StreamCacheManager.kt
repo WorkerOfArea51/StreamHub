@@ -24,7 +24,7 @@ object StreamCacheManager {
         return cacheLock.write {
             if (simpleCache == null) {
                 cacheDir = File(context.cacheDir, "media_stream_cache")
-                val evictor = LeastRecentlyUsedCacheEvictor(500 * 1024 * 1024L) // 500 MB cache
+                val evictor = LeastRecentlyUsedCacheEvictor(2048 * 1024 * 1024L) // 2 GB high-performance media cache
                 databaseProvider = StandaloneDatabaseProvider(context.applicationContext)
                 simpleCache = SimpleCache(cacheDir!!, evictor, databaseProvider!!)
             }

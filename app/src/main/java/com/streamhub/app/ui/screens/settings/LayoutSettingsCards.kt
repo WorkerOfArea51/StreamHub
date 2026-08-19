@@ -207,7 +207,7 @@ fun SubtitleAppearanceCard(currentAccent: AppThemeAccent) {
                     "Green 💚" to 0xFF4ADE80L
                 ).forEach { (label, colorArgb) ->
                     val isSelected = subConfig.textColorArgb == colorArgb
-                    val chipColor = Color(colorArgb)
+                    val chipColor = Color(colorArgb.toInt())
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -218,7 +218,7 @@ fun SubtitleAppearanceCard(currentAccent: AppThemeAccent) {
                             .background(if (isSelected) currentAccent.color.copy(alpha = 0.2f) else Color(0xFF191924))
                             .border(if (isSelected) 1.5.dp else 1.dp, if (isSelected) currentAccent.color else Color(0xFF2C2C3E), RoundedCornerShape(8.dp))
                             .clickable { SubtitleSettingsManager.updateConfig(subConfig.copy(textColorArgb = colorArgb)) }
-                            .padding(vertical = 8.dp)
+                            .padding(vertical = 8.dp),
                     ) {
                         Box(
                             modifier = Modifier
@@ -226,7 +226,7 @@ fun SubtitleAppearanceCard(currentAccent: AppThemeAccent) {
                                 .clip(CircleShape)
                                 .background(chipColor)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
                         Text(label.split(" ")[0], color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                     }
                 }
@@ -243,11 +243,11 @@ fun SubtitleAppearanceCard(currentAccent: AppThemeAccent) {
                     .border(1.dp, CardBorderDark, RoundedCornerShape(8.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                val textColor = Color(subConfig.textColorArgb)
+                val textColor = Color(subConfig.textColorArgb.toInt())
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
-                        .background(Color(subConfig.backgroundColorArgb))
+                        .background(Color(subConfig.backgroundColorArgb.toInt()))
                         .padding(horizontal = 10.dp, vertical = 4.dp)
                 ) {
                     Text(
