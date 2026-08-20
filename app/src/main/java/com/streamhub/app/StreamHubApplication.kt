@@ -137,9 +137,21 @@ class StreamHubApplication : Application() {
 
     private fun startBackgroundServices() {
         runCatching {
+            val vName = try {
+                packageManager.getPackageInfo(packageName, 0).versionName ?: BuildConfig.VERSION_NAME
+            } catch (_: Exception) { BuildConfig.VERSION_NAME }
+            val vCode = try {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    packageManager.getPackageInfo(packageName, 0).longVersionCode
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageManager.getPackageInfo(packageName, 0).versionCode.toLong()
+                }
+            } catch (_: Exception) { BuildConfig.VERSION_CODE.toLong() }
+
             AppUpdateManager.checkForUpdate(
-                currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
-                currentVersionName = BuildConfig.VERSION_NAME
+                currentVersionCode = vCode,
+                currentVersionName = vName
             )
         }.onFailure { Log.e(TAG, "AppUpdateManager.checkForUpdate failed", it) }
     }

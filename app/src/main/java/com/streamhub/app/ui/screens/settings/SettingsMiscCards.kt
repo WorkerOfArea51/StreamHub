@@ -400,6 +400,26 @@ fun AppUpdateCard() {
     val updateState by AppUpdateManager.updateState.collectAsState()
     val primaryColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
 
+    val currentVersionName = remember(context) {
+        try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: BuildConfig.VERSION_NAME
+        } catch (_: Exception) {
+            BuildConfig.VERSION_NAME
+        }
+    }
+    val currentVersionCode = remember(context) {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(context.packageName, 0).versionCode.toLong()
+            }
+        } catch (_: Exception) {
+            BuildConfig.VERSION_CODE.toLong()
+        }
+    }
+
     var userChecked by remember { mutableStateOf(false) }
     var showUpdateDialog by remember { mutableStateOf(false) }
     var previousState by remember { mutableStateOf<UpdateState>(UpdateState.Idle) }
@@ -460,7 +480,7 @@ fun AppUpdateCard() {
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text("App Updates & Version 🚀", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("StreamHub v${BuildConfig.VERSION_NAME}", color = TextSecondary, fontSize = 11.sp)
+                        Text("StreamHub v$currentVersionName", color = TextSecondary, fontSize = 11.sp)
                     }
                 }
 
@@ -468,8 +488,8 @@ fun AppUpdateCard() {
                     onClick = {
                         userChecked = true
                         AppUpdateManager.checkForUpdate(
-                            currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
-                            currentVersionName = BuildConfig.VERSION_NAME,
+                            currentVersionCode = currentVersionCode,
+                            currentVersionName = currentVersionName,
                             repoOwner = "WorkerOfArea51",
                             repoName = "StreamHub",
                             forceCheck = true
@@ -499,7 +519,7 @@ fun AppUpdateCard() {
 
             if (userChecked && updateState is UpdateState.UpToDate) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("You are on the latest version (v${BuildConfig.VERSION_NAME}).", color = primaryColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                Text("You are on the latest version (v$currentVersionName).", color = primaryColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
             }
 
             if (updateState is UpdateState.Downloading) {
