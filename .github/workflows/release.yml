@@ -86,6 +86,20 @@ jobs:
           keyPassword=$KEY_PASSWORD
           EOF
 
+      - name: Configure local.properties from GitHub Secrets
+        run: |
+          cat > ${{ github.workspace }}/local.properties <<'EOF'
+          streamhub.telegram_api_id=${{ secrets.STREAMHUB_TELEGRAM_API_ID || secrets.TELEGRAM_API_ID }}
+          streamhub.telegram_api_hash=${{ secrets.STREAMHUB_TELEGRAM_API_HASH || secrets.TELEGRAM_API_HASH }}
+          streamhub.tmdb_api_key=${{ secrets.STREAMHUB_TMDB_API_KEY || secrets.TMDB_API_KEY }}
+          streamhub.mal_client_id=${{ secrets.STREAMHUB_MAL_CLIENT_ID || secrets.MAL_CLIENT_ID }}
+          streamhub.mal_client_secret=${{ secrets.STREAMHUB_MAL_CLIENT_SECRET || secrets.MAL_CLIENT_SECRET }}
+          streamhub.telegram_anime_channel=${{ secrets.STREAMHUB_TELEGRAM_ANIME_CHANNEL || secrets.TELEGRAM_ANIME_CHANNEL }}
+          streamhub.telegram_movies_channel=${{ secrets.STREAMHUB_TELEGRAM_MOVIES_CHANNEL || secrets.TELEGRAM_MOVIES_CHANNEL }}
+          streamhub.telegram_series_channel=${{ secrets.STREAMHUB_TELEGRAM_SERIES_CHANNEL || secrets.TELEGRAM_SERIES_CHANNEL }}
+          streamhub.owner_usernames=${{ secrets.STREAMHUB_OWNER_USERNAMES || secrets.OWNER_USERNAMES }}
+          EOF
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
@@ -99,15 +113,15 @@ jobs:
         env:
           VERSION_NAME: ${{ inputs.tag_name || (startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v4.8.{0}', github.run_number)) }}
           BUILD_NUMBER: ${{ github.run_number }}
-          STREAMHUB_TMDB_API_KEY: ${{ secrets.STREAMHUB_TMDB_API_KEY }}
-          STREAMHUB_MAL_CLIENT_ID: ${{ secrets.STREAMHUB_MAL_CLIENT_ID }}
-          STREAMHUB_MAL_CLIENT_SECRET: ${{ secrets.STREAMHUB_MAL_CLIENT_SECRET }}
-          STREAMHUB_TELEGRAM_API_ID: ${{ secrets.STREAMHUB_TELEGRAM_API_ID }}
-          STREAMHUB_TELEGRAM_API_HASH: ${{ secrets.STREAMHUB_TELEGRAM_API_HASH }}
-          STREAMHUB_TELEGRAM_ANIME_CHANNEL: ${{ secrets.STREAMHUB_TELEGRAM_ANIME_CHANNEL }}
-          STREAMHUB_TELEGRAM_MOVIES_CHANNEL: ${{ secrets.STREAMHUB_TELEGRAM_MOVIES_CHANNEL }}
-          STREAMHUB_TELEGRAM_SERIES_CHANNEL: ${{ secrets.STREAMHUB_TELEGRAM_SERIES_CHANNEL }}
-          STREAMHUB_OWNER_USERNAMES: ${{ secrets.STREAMHUB_OWNER_USERNAMES }}
+          STREAMHUB_TMDB_API_KEY: ${{ secrets.STREAMHUB_TMDB_API_KEY || secrets.TMDB_API_KEY }}
+          STREAMHUB_MAL_CLIENT_ID: ${{ secrets.STREAMHUB_MAL_CLIENT_ID || secrets.MAL_CLIENT_ID }}
+          STREAMHUB_MAL_CLIENT_SECRET: ${{ secrets.STREAMHUB_MAL_CLIENT_SECRET || secrets.MAL_CLIENT_SECRET }}
+          STREAMHUB_TELEGRAM_API_ID: ${{ secrets.STREAMHUB_TELEGRAM_API_ID || secrets.TELEGRAM_API_ID }}
+          STREAMHUB_TELEGRAM_API_HASH: ${{ secrets.STREAMHUB_TELEGRAM_API_HASH || secrets.TELEGRAM_API_HASH }}
+          STREAMHUB_TELEGRAM_ANIME_CHANNEL: ${{ secrets.STREAMHUB_TELEGRAM_ANIME_CHANNEL || secrets.TELEGRAM_ANIME_CHANNEL }}
+          STREAMHUB_TELEGRAM_MOVIES_CHANNEL: ${{ secrets.STREAMHUB_TELEGRAM_MOVIES_CHANNEL || secrets.TELEGRAM_MOVIES_CHANNEL }}
+          STREAMHUB_TELEGRAM_SERIES_CHANNEL: ${{ secrets.STREAMHUB_TELEGRAM_SERIES_CHANNEL || secrets.TELEGRAM_SERIES_CHANNEL }}
+          STREAMHUB_OWNER_USERNAMES: ${{ secrets.STREAMHUB_OWNER_USERNAMES || secrets.OWNER_USERNAMES }}
         run: ./gradlew assembleRelease --stacktrace
 
       - name: Verify APKs are signed
@@ -158,8 +172,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Clean up keystore
+      - name: Clean up temporary credentials
         if: always()
         run: |
           rm -f ${{ github.workspace }}/release.keystore
           rm -f ${{ github.workspace }}/keystore.properties
+          rm -f ${{ github.workspace }}/local.properties

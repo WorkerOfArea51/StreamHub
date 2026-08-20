@@ -8,16 +8,31 @@ plugins {
     alias(libs.plugins.google.services)
 }
 
-// --- Secret loading: env vars first (CI / GitHub Actions), then local.properties (local dev) ---
+// --- Secret loading: local.properties, project properties, and all CI env var variations ---
 val localProps = Properties().apply {
     val file = rootProject.file("local.properties")
-    if (file.exists()) load(FileInputStream(file))
+    if (file.exists()) {
+        try {
+            file.inputStream().use { load(it) }
+        } catch (_: Exception) {}
+    }
 }
 
 fun secret(key: String, default: String = ""): String {
+    val localVal = localProps.getProperty(key)?.trim()
+    if (!localVal.isNullOrBlank()) return localVal
+
+    if (project.hasProperty(key)) {
+        val prop = project.property(key)?.toString()?.trim()
+        if (!prop.isNullOrBlank()) return prop
+    }
+
     val envKey = key.uppercase().replace(".", "_")
-    System.getenv(envKey)?.let { return it }
-    localProps.getProperty(key)?.let { return it }
+    val envShort = envKey.removePrefix("STREAMHUB_")
+    System.getenv(envKey)?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+    System.getenv(envShort)?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+    System.getenv(key)?.trim()?.takeIf { it.isNotBlank() }?.let { return it }
+
     return default
 }
 
