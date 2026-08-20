@@ -182,11 +182,11 @@ object StorageCacheManager {
     suspend fun clearVideoCache(): Boolean = withContext(Dispatchers.IO) {
         clearMutex.withLock {
             try {
-                // 1. Ask TDLib to optimize storage — it knows which files are open and won't delete them.
+                // 1. Ask TDLib to optimize storage — size=1L means delete all files of specified types.
                 runCatching {
                     TdLibManager.send(
                         TdApi.OptimizeStorage(
-                            0L, 0, 0, 0,
+                            1L, 0, 0, 0,
                             arrayOf(TdApi.FileTypeVideo(), TdApi.FileTypeDocument(), TdApi.FileTypeAnimation()),
                             null, null, false, 0
                         )
@@ -225,7 +225,7 @@ object StorageCacheManager {
                 runCatching {
                     TdLibManager.send(
                         TdApi.OptimizeStorage(
-                            0, 0, 0, 0,
+                            1L, 0, 0, 0,
                             arrayOf(TdApi.FileTypeThumbnail(), TdApi.FileTypePhoto()),
                             null, null, false, 0
                         )
@@ -258,7 +258,7 @@ object StorageCacheManager {
                 runCatching {
                     TdLibManager.send(
                         TdApi.OptimizeStorage(
-                            0L, 0, 0, 0,
+                            1L, 0, 0, 0,
                             arrayOf(TdApi.FileTypeVideo(), TdApi.FileTypeDocument(), TdApi.FileTypeAnimation()),
                             null, null, false, 0
                         )
@@ -276,7 +276,7 @@ object StorageCacheManager {
                 runCatching {
                     TdLibManager.send(
                         TdApi.OptimizeStorage(
-                            0L, 0, 0, 0,
+                            1L, 0, 0, 0,
                             arrayOf(TdApi.FileTypeThumbnail(), TdApi.FileTypePhoto()),
                             null, null, false, 0
                         )
@@ -351,11 +351,12 @@ object StorageCacheManager {
 
                 // 1. Enforce TTL via TDLib (uses internal access time, not filesystem mtime).
                 if (config.cacheTtlDays > 0) {
+                    // FIX: duration is arg 3, not arg 4 (which is longCount).
                     val maxAgeSeconds = config.cacheTtlDays * 24 * 60 * 60
                     runCatching {
                         TdLibManager.send(
                             TdApi.OptimizeStorage(
-                                0L, 0, 0, maxAgeSeconds,
+                                0L, 0, maxAgeSeconds, 0,
                                 arrayOf(TdApi.FileTypeVideo(), TdApi.FileTypeDocument(), TdApi.FileTypeAnimation()),
                                 null, null, false, 0
                             )
