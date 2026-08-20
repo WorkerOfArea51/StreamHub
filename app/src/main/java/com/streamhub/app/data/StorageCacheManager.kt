@@ -7,6 +7,7 @@ import android.os.StatFs
 import android.util.Log
 import coil.Coil
 import com.streamhub.app.data.telegram.TdLibManager
+import com.streamhub.app.player.StreamCacheManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -14,13 +15,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.drinkless.tdlib.TdApi
 import java.io.File
 
-/**
- * Storage metrics breakdown data class.
- */
 data class StorageMetrics(
     val videoCacheBytes: Long = 0L,
     val imageCacheBytes: Long = 0L,
@@ -32,24 +32,13 @@ data class StorageMetrics(
     val isCalculating: Boolean = false
 )
 
-/**
- * Cache policy configuration.
- */
 data class CacheConfig(
-    val cacheLimitMb: Int = 2048,       // 500, 1024, 2048, 5120, -1 (unlimited)
-    val cacheTtlDays: Int = 7,         // 3, 7, 14, -1 (never)
+    val cacheLimitMb: Int = 2048,
+    val cacheTtlDays: Int = 7,
     val keepWatchedForInstantResume: Boolean = true
 )
 
-/**
- * Advanced Storage & Cache Manager for StreamHub.
- *
- * Provides:
- *  - Real-time disk size calculation for video stream buffers, Coil image cache, and app data.
- *  - Granular in-app purge operations (Clear Video Cache, Clear Image Cache, Master Clear).
- *  - TDLib SQLite database defragmentation and optimization.
- *  - Automated background eviction enforcing size limits and TTL on app startup.
- */
+@OptIn(coil.annotation.ExperimentalCoilApi::class)
 object StorageCacheManager {
 
     private const val TAG = "StorageCacheManager"
@@ -57,9 +46,13 @@ object StorageCacheManager {
     private const val KEY_CACHE_LIMIT = "cache_limit_mb"
     private const val KEY_CACHE_TTL = "cache_ttl_days"
     private const val KEY_INSTANT_RESUME = "keep_watched_instant_resume"
+    private const val LARGE_FILE_THRESHOLD_BYTES = 500_000L
 
     private lateinit var appContext: Context
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // FIX: Mutex prevents concurrent cache-clear operations from racing with each other.
+    private val clearMutex = Mutex()
 
     private val _metricsFlow = MutableStateFlow(StorageMetrics())
     val metricsFlow: StateFlow<StorageMetrics> = _metricsFlow.asStateFlow()
@@ -104,7 +97,8 @@ object StorageCacheManager {
     }
 
     /**
-     * Calculates storage breakdown across all subsystems asynchronously.
+     * FIX: Single-pass iteration of tdlibDir. Previously walked the tree TWICE
+     * (once for video, once for image bytes), doubling IO on large caches.
      */
     fun calculateStorageUsage() {
         if (!::appContext.isInitialized) return
@@ -112,27 +106,31 @@ object StorageCacheManager {
 
         scope.launch {
             try {
-                // 1. Video Cache (TDLib temp & videos & documents directories)
                 val tdlibDir = File(appContext.filesDir, "tdlib")
                 var videoBytes = 0L
+                var imageBytes = 0L
                 var appDataBytes = 0L
 
                 if (tdlibDir.exists()) {
                     tdlibDir.walkTopDown().forEach { file ->
-                        if (file.isFile) {
-                            val path = file.absolutePath.lowercase()
-                            val len = file.length()
-                            if (path.contains("videos") || path.contains("documents") || (path.contains("temp") && len > 500_000L)) {
+                        if (!file.isFile) return@forEach
+                        val path = file.absolutePath.lowercase()
+                        val len = file.length()
+                        when {
+                            path.contains("videos") || path.contains("documents") ||
+                            (path.contains("temp") && len > LARGE_FILE_THRESHOLD_BYTES) -> {
                                 videoBytes += len
-                            } else if (!path.contains("photos") && !path.contains("thumbnails")) {
+                            }
+                            path.contains("photos") || path.contains("thumbnails") -> {
+                                imageBytes += len
+                            }
+                            else -> {
                                 appDataBytes += len
                             }
                         }
                     }
                 }
 
-                // 2. Image Cache (Coil disk cache & thumbnails/photos)
-                var imageBytes = 0L
                 val coilCacheDir = File(appContext.cacheDir, "image_cache")
                 if (coilCacheDir.exists()) {
                     imageBytes += getDirSize(coilCacheDir)
@@ -142,28 +140,14 @@ object StorageCacheManager {
                     imageBytes = maxOf(imageBytes, coilDiskCache)
                 }
 
-                if (tdlibDir.exists()) {
-                    tdlibDir.walkTopDown().forEach { file ->
-                        if (file.isFile) {
-                            val path = file.absolutePath.lowercase()
-                            if (path.contains("photos") || path.contains("thumbnails")) {
-                                imageBytes += file.length()
-                            }
-                        }
-                    }
-                }
-
-                // 3. App Data & Temp Cache
                 val appCache = getDirSize(appContext.cacheDir)
                 val appExtCache = appContext.externalCacheDir?.let { getDirSize(it) } ?: 0L
                 val codeCache = getDirSize(appContext.codeCacheDir)
                 appDataBytes += (appCache + appExtCache + codeCache - getDirSize(coilCacheDir)).coerceAtLeast(0L)
 
-                // 4. Offline Downloads
                 val downloadsDir = appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
                 val downloadsBytes = if (downloadsDir != null && downloadsDir.exists()) getDirSize(downloadsDir) else 0L
 
-                // 5. Device Free & Total Space
                 val statFs = StatFs(appContext.filesDir.absolutePath)
                 val freeDeviceBytes = statFs.availableBlocksLong * statFs.blockSizeLong
                 val totalDeviceBytes = statFs.blockCountLong * statFs.blockSizeLong
@@ -188,104 +172,112 @@ object StorageCacheManager {
     }
 
     /**
-     * Clears all temporary video stream cache without affecting saved history or downloads.
+     * FIX: Acquire mutex + ask TDLib to optimize storage (atomic from TDLib's perspective)
+     * instead of walking the file tree and calling file.delete() on files that may be open.
      */
     suspend fun clearVideoCache(): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val tdlibDir = File(appContext.filesDir, "tdlib")
-            if (tdlibDir.exists()) {
-                tdlibDir.walkTopDown().forEach { file ->
-                    if (file.isFile) {
-                        val path = file.absolutePath.lowercase()
-                        val len = file.length()
-                        if (path.contains("videos") || path.contains("documents") || (path.contains("temp") && len > 500_000L)) {
-                            file.delete()
-                        }
-                    }
-                }
-            }
-
-            // Call TDLib optimize storage for video files
-            runCatching {
-                TdLibManager.send(
-                    TdApi.OptimizeStorage(
-                        0, 0, 0, 0,
-                        arrayOf(TdApi.FileTypeVideo(), TdApi.FileTypeDocument(), TdApi.FileTypeAnimation()),
-                        null, null, false, 0
+        clearMutex.withLock {
+            try {
+                // 1. Ask TDLib to optimize storage — it knows which files are open and won't delete them.
+                runCatching {
+                    TdLibManager.send(
+                        TdApi.OptimizeStorage(
+                            0, 0, 0, 0,
+                            arrayOf(TdApi.FileTypeVideo(), TdApi.FileTypeDocument(), TdApi.FileTypeAnimation()),
+                            null, null, false, 0
+                        )
                     )
-                )
-            }
+                }
 
-            calculateStorageUsage()
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "clearVideoCache failed", e)
-            false
+                // 2. Also ask ExoPlayer's StreamCacheManager to release + clear (defers if readers active).
+                val cacheCleared = StreamCacheManager.clearCache(appContext)
+                if (!cacheCleared) {
+                    Log.w(TAG, "ExoPlayer cache clear deferred")
+                }
+
+                calculateStorageUsage()
+                true
+            } catch (e: Exception) {
+                Log.e(TAG, "clearVideoCache failed", e)
+                false
+            }
         }
     }
 
     /**
-     * Clears image & thumbnail cache (Coil & TDLib thumbnails).
+     * FIX: Use Coil's diskCache.clear() only — don't manually delete the directory,
+     * which Coil may have open file handles on. Also let TDLib optimize thumbnails.
      */
     suspend fun clearImageCache(): Boolean = withContext(Dispatchers.IO) {
-        try {
-            // Clear Coil memory and disk caches
-            val imageLoader = Coil.imageLoader(appContext)
-            imageLoader.memoryCache?.clear()
-            imageLoader.diskCache?.clear()
+        clearMutex.withLock {
+            try {
+                val imageLoader = Coil.imageLoader(appContext)
+                imageLoader.memoryCache?.clear()
+                imageLoader.diskCache?.clear()
 
-            val coilCacheDir = File(appContext.cacheDir, "image_cache")
-            if (coilCacheDir.exists()) {
-                coilCacheDir.deleteRecursively()
-            }
-
-            val tdlibDir = File(appContext.filesDir, "tdlib")
-            if (tdlibDir.exists()) {
-                tdlibDir.walkTopDown().forEach { file ->
-                    if (file.isFile) {
-                        val path = file.absolutePath.lowercase()
-                        if (path.contains("photos") || path.contains("thumbnails")) {
-                            file.delete()
-                        }
-                    }
+                runCatching {
+                    TdLibManager.send(
+                        TdApi.OptimizeStorage(
+                            0, 0, 0, 0,
+                            arrayOf(TdApi.FileTypeThumbnail(), TdApi.FileTypePhoto()),
+                            null, null, false, 0
+                        )
+                    )
                 }
-            }
 
-            calculateStorageUsage()
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "clearImageCache failed", e)
-            false
+                calculateStorageUsage()
+                true
+            } catch (e: Exception) {
+                Log.e(TAG, "clearImageCache failed", e)
+                false
+            }
         }
     }
 
     /**
-     * One-tap master purge for all temporary cache files.
+     * FIX: Clear video + image caches, but NEVER call cacheDir.deleteRecursively().
+     * The cacheDir contains ExoPlayer's SimpleCache SQLite index — deleting it while
+     * SimpleCache has open handles corrupts the cache permanently.
      */
     suspend fun clearAllCache(): Boolean = withContext(Dispatchers.IO) {
-        try {
-            clearVideoCache()
-            clearImageCache()
+        clearMutex.withLock {
+            try {
+                clearVideoCache()
+                clearImageCache()
 
-            appContext.cacheDir.deleteRecursively()
-            appContext.externalCacheDir?.deleteRecursively()
+                // FIX: Only clear non-critical cache subdirs — leave media_stream_cache alone
+                // (StreamCacheManager.clearCache handles it via SimpleCache.release()).
+                val cacheDir = appContext.cacheDir
+                cacheDir.listFiles()?.forEach { child ->
+                    if (child.name != "media_stream_cache" && child.name != "exoplayer_downloads") {
+                        try { child.deleteRecursively() } catch (_: Exception) {}
+                    }
+                }
+                appContext.externalCacheDir?.listFiles()?.forEach { child ->
+                    try { child.deleteRecursively() } catch (_: Exception) {}
+                }
 
-            calculateStorageUsage()
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "clearAllCache failed", e)
-            false
+                calculateStorageUsage()
+                true
+            } catch (e: Exception) {
+                Log.e(TAG, "clearAllCache failed", e)
+                false
+            }
         }
     }
 
     /**
-     * Compacts SQLite database and vacuums TDLib index files.
+     * FIX: TDLib optimize storage is the canonical way to compact the SQLite DB.
+     * Don't call TdApi.OptimizeStorage with file_size_limit=0 (that means "no limit"),
+     * use a small size limit to force compaction.
      */
     suspend fun compactAndOptimizeDatabase(): Boolean = withContext(Dispatchers.IO) {
         try {
             TdLibManager.send(
                 TdApi.OptimizeStorage(
-                    0, 0, 0, 0,
+                    1L * 1024 * 1024, // 1 MB size limit forces aggressive compaction
+                    1, // count limit
+                    0, 0,
                     arrayOf(
                         TdApi.FileTypeVideo(),
                         TdApi.FileTypeThumbnail(),
@@ -305,7 +297,13 @@ object StorageCacheManager {
     }
 
     /**
-     * Enforces Cache TTL and Cache Size Limits automatically.
+     * FIX: Enforce Cache TTL and Size Limits — but use TDLib's OptimizeStorage instead of
+     * manually deleting files based on lastModified (which TDLib updates on every read,
+     * making the TTL effectively useless).
+     *
+     * Strategy:
+     *   - For size limit: call OptimizeStorage with the deficit as size_limit.
+     *   - For TTL: convert TTL days to seconds and pass as max_seconds_from_last_access.
      */
     private fun enforceCachePolicies() {
         scope.launch {
@@ -314,52 +312,40 @@ object StorageCacheManager {
                 val tdlibDir = File(appContext.filesDir, "tdlib")
                 if (!tdlibDir.exists()) return@launch
 
-                val now = System.currentTimeMillis()
-
-                // 1. Enforce TTL
+                // 1. Enforce TTL via TDLib (uses internal access time, not filesystem mtime).
                 if (config.cacheTtlDays > 0) {
-                    val maxAgeMs = config.cacheTtlDays * 24 * 60 * 60 * 1000L
-                    tdlibDir.walkTopDown().forEach { file ->
-                        if (file.isFile) {
-                            val path = file.absolutePath.lowercase()
-                            if (path.contains("videos") || path.contains("documents") || path.contains("temp")) {
-                                val age = now - file.lastModified()
-                                if (age > maxAgeMs) {
-                                    file.delete()
-                                }
-                            }
-                        }
+                    val maxAgeSeconds = config.cacheTtlDays * 24 * 60 * 60
+                    runCatching {
+                        TdLibManager.send(
+                            TdApi.OptimizeStorage(
+                                0L, 0, 0, maxAgeSeconds,
+                                arrayOf(TdApi.FileTypeVideo(), TdApi.FileTypeDocument(), TdApi.FileTypeAnimation()),
+                                null, null, false, 0
+                            )
+                        )
                     }
                 }
 
-                // 2. Enforce Size Limit
+                // 2. Enforce Size Limit via TDLib.
                 if (config.cacheLimitMb > 0) {
                     val maxLimitBytes = config.cacheLimitMb * 1024L * 1024L
-                    val videoFiles = mutableListOf<File>()
-                    var totalSize = 0L
-
-                    tdlibDir.walkTopDown().forEach { file ->
-                        if (file.isFile) {
-                            val path = file.absolutePath.lowercase()
-                            if (path.contains("videos") || path.contains("documents") || (path.contains("temp") && file.length() > 500_000L)) {
-                                videoFiles.add(file)
-                                totalSize += file.length()
-                            }
-                        }
-                    }
-
-                    if (totalSize > maxLimitBytes) {
-                        // Sort oldest first
-                        videoFiles.sortBy { it.lastModified() }
-                        for (file in videoFiles) {
-                            if (totalSize <= maxLimitBytes) break
-                            val len = file.length()
-                            if (file.delete()) {
-                                totalSize -= len
-                            }
+                    // Calculate current size from metrics flow (already computed by calculateStorageUsage).
+                    val currentVideoBytes = _metricsFlow.value.videoCacheBytes
+                    if (currentVideoBytes > maxLimitBytes) {
+                        val deficit = currentVideoBytes - maxLimitBytes
+                        runCatching {
+                            TdLibManager.send(
+                                TdApi.OptimizeStorage(
+                                    deficit, 0, 0, 0,
+                                    arrayOf(TdApi.FileTypeVideo(), TdApi.FileTypeDocument(), TdApi.FileTypeAnimation()),
+                                    null, null, false, 0
+                                )
+                            )
                         }
                     }
                 }
+
+                calculateStorageUsage()
             } catch (e: Exception) {
                 Log.w(TAG, "Error enforcing cache policies", e)
             }

@@ -11,20 +11,14 @@ import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.offline.DownloadManager
 import java.io.File
 import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
-/**
- * ExoPlayer Download Manager — INTERNAL player component for stream caching.
- *
- * This is NOT the same as com.streamhub.app.data.DownloadManager (which handles
- * user-initiated episode downloads via the system DownloadManager). This class
- * manages ExoPlayer's offline DownloadManager instance for pre-caching and
- * offline playback support.
- */
 @OptIn(UnstableApi::class)
 object StreamDownloadManager {
     private const val TAG = "StreamDownloadManager"
+    private const val DOWNLOAD_CACHE_SIZE_BYTES = 2L * 1024 * 1024 * 1024 // 2 GB
 
     @Volatile
     private var downloadManager: DownloadManager? = null
@@ -47,10 +41,17 @@ object StreamDownloadManager {
                 .setConnectTimeoutMs(15_000)
                 .setReadTimeoutMs(15_000)
 
-            val exec = java.util.concurrent.ThreadPoolExecutor(
+            // FIX: Use a dedicated thread pool with DiscardOldestPolicy so caller thread is NEVER blocked.
+            // ExoPlayer calls into this from its load thread — CallerRunsPolicy would freeze playback.
+            val exec = ThreadPoolExecutor(
                 4, 4, 60L, TimeUnit.SECONDS,
-                java.util.concurrent.ArrayBlockingQueue(32),
-                java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy()
+                LinkedBlockingQueue(32),
+                { r ->
+                    val t = Thread(r, "StreamHub-Downloader-${System.nanoTime()}")
+                    t.isDaemon = true
+                    t
+                },
+                ThreadPoolExecutor.DiscardOldestPolicy()
             ).also { executor = it }
 
             downloadManager = DownloadManager(
@@ -78,14 +79,42 @@ object StreamDownloadManager {
     fun getDownloadCache(context: Context): SimpleCache {
         if (downloadCache == null) {
             val cacheDir = File(context.applicationContext.cacheDir, "exoplayer_downloads")
-            val evictor = LeastRecentlyUsedCacheEvictor(2L * 1024 * 1024 * 1024) // 2 GB download cache limit
+            val evictor = LeastRecentlyUsedCacheEvictor(DOWNLOAD_CACHE_SIZE_BYTES)
             downloadCache = SimpleCache(cacheDir, evictor, getDatabaseProvider(context))
         }
         return downloadCache!!
     }
 
     /**
-     * FIX #29: Release resources and shutdown thread pool on app termination.
+     * FIX: pauseDownloads() — pauses active downloads without destroying the cache.
+     * Called on app background instead of release().
+     */
+    @Synchronized
+    fun pauseDownloads() {
+        try {
+            downloadManager?.pauseDownloads()
+            Log.i(TAG, "All downloads paused (cache preserved)")
+        } catch (e: Exception) {
+            Log.w(TAG, "pauseDownloads failed: ${e.message}")
+        }
+    }
+
+    /**
+     * FIX: resumeDownloads() — called when app returns to foreground.
+     */
+    @Synchronized
+    fun resumeDownloads(context: Context) {
+        try {
+            val dm = downloadManager ?: getDownloadManager(context)
+            dm.resumeDownloads()
+            Log.i(TAG, "All downloads resumed")
+        } catch (e: Exception) {
+            Log.w(TAG, "resumeDownloads failed: ${e.message}")
+        }
+    }
+
+    /**
+     * Full teardown — call ONLY from Application.onTerminate() or process death handler.
      */
     @Synchronized
     fun release() {

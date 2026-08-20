@@ -12,6 +12,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -29,20 +30,43 @@ class StreamMediaService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
     private var wakeLock: android.os.PowerManager.WakeLock? = null
+    private var fallbackPlayer: ExoPlayer? = null
+    private var playerListener: Player.Listener? = null
 
     override fun onCreate() {
         super.onCreate()
-
         createNotificationChannel()
-        startForegroundNotification()
 
         val sharedPlayer = StreamPlayerViewModel.currentPlayer
-        val player = sharedPlayer ?: createFallbackPlayer()
+        val player = sharedPlayer ?: createFallbackPlayer().also { fallbackPlayer = it }
+
+        // FIX: Register fallback player in PlayerHolder so the ViewModel can pick it up
+        // if it (re)initializes after the service has started.
+        if (sharedPlayer == null) {
+            PlayerHolder.setPlayer(player)
+        }
 
         mediaSession = MediaSession.Builder(this, player)
             .setCallback(StreamSessionCallback())
             .build()
 
+        // FIX: Attach a listener to update the foreground notification when media item changes.
+        val listener = object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                updateForegroundNotification()
+            }
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                updateForegroundNotification()
+            }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                updateForegroundNotification()
+            }
+        }
+        playerListener = listener
+        player.addListener(listener)
+
+        // FIX: Start foreground AFTER session is built, so notification title reflects actual media.
+        startForegroundNotification()
         acquireWakeLock()
     }
 
@@ -63,16 +87,38 @@ class StreamMediaService : MediaSessionService() {
     }
 
     private fun startForegroundNotification() {
-        val title = mediaSession?.player?.currentMediaItem?.mediaMetadata?.title?.toString() ?: "StreamHub"
-        val notification = buildPlaybackNotification(title, "Playing media")
+        // FIX: Pull title from mediaSession.player (now guaranteed non-null).
+        val player = mediaSession?.player
+        val title = player?.currentMediaItem?.mediaMetadata?.title?.toString()
+            ?.ifBlank { "StreamHub" } ?: "StreamHub"
+        val subtitle = if (player?.isPlaying == true) "Playing media" else "Paused"
+        val notification = buildPlaybackNotification(title, subtitle)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForeground(NOTIFICATION_ID, notification)
         } else {
-            @Suppress("DEPRECATION")
             startForeground(NOTIFICATION_ID, notification)
         }
+    }
+
+    /**
+     * FIX: Update the existing foreground notification without re-calling startForeground
+     * (which can crash on Android 12+ if called too frequently).
+     */
+    private fun updateForegroundNotification() {
+        val player = mediaSession?.player ?: return
+        val title = player.currentMediaItem?.mediaMetadata?.title?.toString()
+            ?.ifBlank { "StreamHub" } ?: "StreamHub"
+        val subtitle = when {
+            player.isPlaying -> "Playing media"
+            player.playbackState == Player.STATE_BUFFERING -> "Buffering…"
+            player.playbackState == Player.STATE_ENDED -> "Playback ended"
+            else -> "Paused"
+        }
+        val notification = buildPlaybackNotification(title, subtitle)
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        try {
+            nm?.notify(NOTIFICATION_ID, notification)
+        } catch (_: SecurityException) {}
     }
 
     private fun buildPlaybackNotification(title: String, subtitle: String): Notification {
@@ -143,14 +189,24 @@ class StreamMediaService : MediaSessionService() {
 
     override fun onDestroy() {
         releaseWakeLock()
+        // FIX: Remove listener before releasing session.
+        mediaSession?.player?.let { p ->
+            playerListener?.let { p.removeListener(it) }
+        }
+        playerListener = null
+
         mediaSession?.run {
             val sharedPlayer = StreamPlayerViewModel.currentPlayer
-            if (player !== sharedPlayer) {
-                player.release()
+            val sessionPlayer = player
+            // FIX: Release the fallback player (owned by this service).
+            // Never release the shared player here — the ViewModel owns its lifecycle.
+            if (sessionPlayer !== sharedPlayer) {
+                sessionPlayer.release()
             }
             release()
         }
         mediaSession = null
+        fallbackPlayer = null
         super.onDestroy()
     }
 

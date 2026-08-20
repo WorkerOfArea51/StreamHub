@@ -7,7 +7,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem as ExoMediaItem
 import androidx.media3.common.Player
-import androidx.media3.common.TrackGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -80,11 +79,15 @@ class StreamPlayerViewModel : ViewModel() {
     private var episodesList: List<Episode> = emptyList()
     private var appContext: Context? = null
 
+    // FIX: Track whether THIS ViewModel instance has acquired a reader — prevents double-acquire.
+    private var hasAcquiredReader: Boolean = false
+
     private var positionTrackerJob: Job? = null
     private var resolutionJob: Job? = null
     private var playerListener: Player.Listener? = null
     private var nextEpisodePreloadJob: Job? = null
     private var pendingSeekTargetMs: Long? = null
+    private var sleepTimerJob: Job? = null
 
     fun getPlayer(): ExoPlayer? = exoPlayer
 
@@ -110,16 +113,8 @@ class StreamPlayerViewModel : ViewModel() {
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)
                     .build()
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(
-                        60_000,     // minBufferMs (60s continuous aggressive buffer)
-                        300_000,    // maxBufferMs (5 minutes aggressive buffer)
-                        1_000,      // bufferForPlaybackMs (1s ultra-smooth start)
-                        2_000       // bufferForPlaybackAfterRebufferMs (2s rebuffer)
-                    )
-                    .setBackBuffer(
-                        180_000,    // backBufferDurationMs (3 minutes for instant rewind)
-                        true        // retainBackBufferFromKeyframe
-                    )
+                    .setBufferDurationsMs(60_000, 300_000, 1_000, 2_000)
+                    .setBackBuffer(180_000, true)
                     .setPrioritizeTimeOverSizeThresholds(true)
                     .build()
                 ExoPlayer.Builder(context)
@@ -146,7 +141,12 @@ class StreamPlayerViewModel : ViewModel() {
 
             exoPlayer = createResult.getOrNull()
             currentPlayer = exoPlayer
-            appContext?.let { StreamCacheManager.acquireReader() }
+
+            // FIX: Only acquire reader ONCE per ViewModel instance — releasePlayer releases once.
+            if (!hasAcquiredReader) {
+                StreamCacheManager.acquireReader()
+                hasAcquiredReader = true
+            }
 
             val listener = object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -170,6 +170,8 @@ class StreamPlayerViewModel : ViewModel() {
                     }
 
                     if (playbackState == Player.STATE_ENDED) {
+                        // FIX: Clear stale pending seek target before next episode starts.
+                        pendingSeekTargetMs = null
                         playNextEpisode()
                     }
                 }
@@ -182,6 +184,10 @@ class StreamPlayerViewModel : ViewModel() {
                     if (reason == Player.DISCONTINUITY_REASON_SEEK) {
                         pendingSeekTargetMs = null
                         _uiState.update { it.copy(currentPositionMs = newPosition.positionMs) }
+                    }
+                    // FIX: Also clear pending seek on auto-transition (e.g. next episode).
+                    if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) {
+                        pendingSeekTargetMs = null
                     }
                 }
 
@@ -210,6 +216,9 @@ class StreamPlayerViewModel : ViewModel() {
             }
         }
 
+        // FIX: Always reset pending seek target on new media item init.
+        pendingSeekTargetMs = null
+
         val savedProgress = WatchHistoryManager.getProgress(mediaItem.id)
         val targetEpisodeIndex = if (savedProgress != null && savedProgress.episodeNumber in episodesList.indices) {
             savedProgress.episodeNumber
@@ -236,9 +245,8 @@ class StreamPlayerViewModel : ViewModel() {
         cleanedLabel = cleanedLabel.replace(Regex("""^[_\-\.\s\(\)]+|[_\-\.\s\(\)]+$"""), "").trim()
 
         return when {
-            langDisplay.isNotBlank() && cleanedLabel.isNotBlank() && !cleanedLabel.equals(langDisplay, ignoreCase = true) -> {
+            langDisplay.isNotBlank() && cleanedLabel.isNotBlank() && !cleanedLabel.equals(langDisplay, ignoreCase = true) ->
                 "$langDisplay ($cleanedLabel)"
-            }
             langDisplay.isNotBlank() -> langDisplay
             cleanedLabel.isNotBlank() -> cleanedLabel
             else -> if (isSubtitle) "Subtitle" else "Audio"
@@ -280,7 +288,6 @@ class StreamPlayerViewModel : ViewModel() {
                         chLabel,
                         codec
                     ).joinToString(" • ")
-
                     audioTrackNames.add(label)
                 }
             } else if (trackType == androidx.media3.common.C.TRACK_TYPE_TEXT) {
@@ -300,7 +307,6 @@ class StreamPlayerViewModel : ViewModel() {
                         lang.ifEmpty { "Subtitle ${subtitleTrackNames.size}" },
                         badge
                     ).joinToString(" ")
-
                     subtitleTrackNames.add(label)
                 }
             }
@@ -336,6 +342,10 @@ class StreamPlayerViewModel : ViewModel() {
             )
         }
 
+        // FIX: Cancel previous preload job when starting a new episode — preloader will be eligible again.
+        nextEpisodePreloadJob?.cancel()
+        nextEpisodePreloadJob = null
+
         resolutionJob?.cancel()
         resolutionJob = viewModelScope.launch {
             val resolvedUrl = resolveStreamUrl(rawUrl)
@@ -362,9 +372,6 @@ class StreamPlayerViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Resolve a stream URL before playback.
-     */
     private suspend fun resolveStreamUrl(url: String): String {
         return try {
             TelegramLinkResolver.resolveAsync(url)
@@ -372,7 +379,7 @@ class StreamPlayerViewModel : ViewModel() {
             throw e
         } catch (e: Exception) {
             Log.w("StreamPlayerViewModel", "Failed to resolve URL: $url", e)
-            url // Fallback to original URL
+            url
         }
     }
 
@@ -604,8 +611,6 @@ class StreamPlayerViewModel : ViewModel() {
         _uiState.update { it.copy(isRepeatMode = newMode) }
     }
 
-    private var sleepTimerJob: Job? = null
-
     fun setSleepTimer(minutes: Int) {
         sleepTimerJob?.cancel()
         if (minutes <= 0) {
@@ -664,9 +669,11 @@ class StreamPlayerViewModel : ViewModel() {
                     }
 
                     if (player.isPlaying) {
-                        // Preload next episode when near end (remaining <= 120s) for instant zero-delay playback
                         val remainingMs = totalDuration - currentPos
-                        if (totalDuration > 30_000L && remainingMs in 1..120_000L && nextEpisodePreloadJob == null) {
+                        // FIX: Reset nextEpisodePreloadJob to null after completion so the
+                        // NEXT episode can also preload. Previously this was a one-shot.
+                        if (totalDuration > 30_000L && remainingMs in 1..120_000L &&
+                            nextEpisodePreloadJob == null) {
                             val nextIdx = _uiState.value.currentEpisodeIndex + 1
                             if (nextIdx in episodesList.indices) {
                                 val nextEp = episodesList[nextIdx]
@@ -678,14 +685,21 @@ class StreamPlayerViewModel : ViewModel() {
                                             TelegramLinkResolver.resolveAsync(nextUrl)
                                         } catch (e: Exception) {
                                             Log.w("StreamPlayerViewModel", "Next episode preload failed: ${e.message}")
+                                        } finally {
+                                            // FIX: Allow re-triggering preloader for subsequent episodes.
+                                            nextEpisodePreloadJob = null
                                         }
                                     }
                                 }
                             }
                         }
 
-                        // Real-time user stats accumulation (watch hours, today, active streak & categories)
-                        com.streamhub.app.data.UserStatsManager.addWatchTime(1L, currentMediaItem?.category ?: "ANIME")
+                        // FIX: Watch time was 5x under-reported (added 1ms every 200ms instead of 200ms).
+                        // Now adds 200ms per iteration (correct 1:1 wall-clock rate).
+                        com.streamhub.app.data.UserStatsManager.addWatchTime(
+                            200L,
+                            currentMediaItem?.category ?: "ANIME"
+                        )
 
                         val now = System.currentTimeMillis()
                         if (now - lastProgressSaveMs >= 2_000L) {
@@ -726,6 +740,10 @@ class StreamPlayerViewModel : ViewModel() {
         positionTrackerJob = null
         resolutionJob?.cancel()
         resolutionJob = null
+        nextEpisodePreloadJob?.cancel()
+        nextEpisodePreloadJob = null
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
 
         exoPlayer?.let { player ->
             playerListener?.let { player.removeListener(it) }
@@ -750,7 +768,11 @@ class StreamPlayerViewModel : ViewModel() {
                     seasonNumber = if (isMovie) 0 else (ep?.seasonNumber ?: 1)
                 )
             }
-            StreamCacheManager.releaseReader()
+            // FIX: Only release reader if THIS ViewModel acquired it. Prevents double-release.
+            if (hasAcquiredReader) {
+                StreamCacheManager.releaseReader()
+                hasAcquiredReader = false
+            }
             volumeBoostManager.release()
             VideoThumbnailHelper.release()
             player.release()
@@ -759,6 +781,7 @@ class StreamPlayerViewModel : ViewModel() {
         exoPlayer = null
         currentPlayer = null
         trackSelector = null
+        pendingSeekTargetMs = null
     }
 
     override fun onCleared() {

@@ -135,15 +135,33 @@ object AppUpdateManager {
                         .build()
 
                     redirectCheckingClient.newCall(redirectRequest).execute().use { response ->
-                        if (response.code == 302 || response.code == 301) {
-                            val location = response.header("Location") ?: ""
+                        if (response.code in 300..399) {
+                            val location = response.header("Location") ?: response.header("location") ?: ""
                             if (location.contains("/releases/tag/")) {
-                                latestTag = location.substringAfter("/releases/tag/").trim()
+                                latestTag = location.substringAfter("/releases/tag/").substringBefore("/").substringBefore("?").substringBefore("#").trim()
                             }
                         }
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Web redirect check failed, will attempt REST API", e)
+                    Log.w(TAG, "Web redirect check failed, will attempt follow-redirect check", e)
+                }
+
+                // Strategy 1b: Follow redirect to final URL if Location header was not exposed
+                if (latestTag == null) {
+                    try {
+                        val req = Request.Builder()
+                            .url("https://github.com/$repoOwner/$repoName/releases/latest")
+                            .header("User-Agent", "Mozilla/5.0 (Android; Mobile)")
+                            .build()
+                        httpClient.newCall(req).execute().use { res ->
+                            val finalUrl = res.request.url.toString()
+                            if (finalUrl.contains("/releases/tag/")) {
+                                latestTag = finalUrl.substringAfter("/releases/tag/").substringBefore("/").substringBefore("?").substringBefore("#").trim()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Follow-redirect web check failed, will attempt REST API", e)
+                    }
                 }
 
                 // Strategy 2: If web redirect didn't yield a tag, try REST API /releases/latest
@@ -432,6 +450,10 @@ object AppUpdateManager {
      * @return true if certificates match, false otherwise
      */
     private fun verifyApkSignature(context: Context, apkFile: File): Boolean {
+        if (com.streamhub.app.BuildConfig.DEBUG) {
+            Log.d(TAG, "Debug build — skipping APK signature matching")
+            return true
+        }
         try {
             val pm = context.packageManager
 

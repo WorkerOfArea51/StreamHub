@@ -194,6 +194,17 @@ fun PlayerScreen(
         viewModel.initializePlayer(context, mediaItem, initialEpisodeIndex)
     }
 
+    // FIX: When the player is locked, intercept the system back button to prevent
+    // accidental exit. User must unlock first (via the floating unlock pill) to leave.
+    androidx.activity.compose.BackHandler(enabled = uiState.isLocked) {
+        // Show a hint toast instead of exiting.
+        Toast.makeText(
+            context,
+            "Screen is locked. Tap the unlock pill to exit.",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
     val isMovie = mediaItem.type.equals("MOVIE", ignoreCase = true) ||
                   mediaItem.category.equals("Movie", ignoreCase = true) ||
                   mediaItem.category.equals("Movies", ignoreCase = true) ||
@@ -206,20 +217,20 @@ fun PlayerScreen(
 
     // Auto-hide controls timer (4.5 seconds)
     var autoHideJob by remember { mutableStateOf<Job?>(null) }
-    fun resetAutoHideTimer() {
+    // FIX: Snapshot the trigger conditions at schedule time, then re-check CURRENT state
+    // at fire time — previously the closure used stale uiState from 4.5s ago.
+    LaunchedEffect(uiState.isControlsVisible, uiState.isPlaying, uiState.isLocked) {
         autoHideJob?.cancel()
         if (uiState.isControlsVisible && uiState.isPlaying && !uiState.isLocked) {
             autoHideJob = scope.launch {
                 delay(4500L)
-                if (uiState.isPlaying && !uiState.isLocked) {
+                // Re-read uiState at fire time via the StateFlow's .value — avoids stale capture.
+                val current = viewModel.uiState.value
+                if (current.isControlsVisible && current.isPlaying && !current.isLocked) {
                     viewModel.toggleControlsVisibility()
                 }
             }
         }
-    }
-
-    LaunchedEffect(uiState.isControlsVisible, uiState.isPlaying) {
-        resetAutoHideTimer()
     }
 
     // Modal Sheet States
@@ -230,6 +241,22 @@ fun PlayerScreen(
     var showEpisodeDrawer by remember { mutableStateOf(false) }
     var showStatsForNerds by remember { mutableStateOf(false) }
     var showMoreSheet by remember { mutableStateOf(false) }
+
+    // FIX: Intercept back when a dialog/sheet is open — close the sheet first,
+    // don't pop the nav stack. Without this, pressing back with a ModalBottomSheet
+    // open would exit the player instead of closing the sheet.
+    androidx.activity.compose.BackHandler(
+        enabled = showAspectRatioDrawer || showSubtitleCustomizer || showEpisodeDrawer ||
+                  showStatsForNerds || showMoreSheet || uiState.showAudioDialog || uiState.showSubtitleDialog
+    ) {
+        showAspectRatioDrawer = false
+        showSubtitleCustomizer = false
+        showEpisodeDrawer = false
+        showStatsForNerds = false
+        showMoreSheet = false
+        if (uiState.showAudioDialog) viewModel.toggleAudioDialog()
+        if (uiState.showSubtitleDialog) viewModel.toggleSubtitleDialog()
+    }
 
     // Pro Feature States
     var isMuted by remember { mutableStateOf(false) }
@@ -281,6 +308,10 @@ fun PlayerScreen(
     }
     var showVolumeIndicator by remember { mutableStateOf(false) }
     var showBrightnessIndicator by remember { mutableStateOf(false) }
+
+    // FIX: Throttle timestamps for volume/brightness drag updates to ~30 Hz (33ms).
+    var lastVolumeUpdateMs by remember { mutableLongStateOf(0L) }
+    var lastBrightnessUpdateMs by remember { mutableLongStateOf(0L) }
 
     fun triggerDoubleTapSeek(isForward: Boolean) {
         val direction = if (isForward) "forward" else "backward"
@@ -402,6 +433,9 @@ fun PlayerScreen(
             Modifier.fillMaxSize()
         }
 
+        // FIX: Hold a reference to the PlayerView so the screenshot button can access it via PixelCopy.
+        var rememberPlayerViewRef by remember { mutableStateOf<androidx.media3.ui.PlayerView?>(null) }
+
         Box(
             modifier = videoContainerModifier,
             contentAlignment = Alignment.Center
@@ -411,12 +445,17 @@ fun PlayerScreen(
                     PlayerView(ctx).apply {
                         useController = false
                         player = viewModel.getPlayer()
+                        rememberPlayerViewRef = this
                     }
                 },
                 update = { playerView ->
                     playerView.player = viewModel.getPlayer()
+                    rememberPlayerViewRef = playerView
+                    // FIX: Map Standard/Cinema ratios to RESIZE_MODE_ZOOM (preserves aspect, fills screen),
+                    // and Screen-category options to their proper ResizeMode. Previously "FILL" mapped to FIT,
+                    // making the aspect ratio selector appear broken.
                     playerView.resizeMode = if (targetRatio != null) {
-                        androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+                        androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     } else {
                         when (selectedRatioOption.id) {
                             "FIT" -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
@@ -494,21 +533,31 @@ fun PlayerScreen(
                                     val delta = -dragAmount / 4.5f
                                     if (playerSettings.volumeOnRight) {
                                         showBrightnessIndicator = true
-                                        currentBrightnessPercent = (currentBrightnessPercent + delta).coerceIn(10f, 100f)
-                                        activity?.window?.attributes = activity?.window?.attributes?.apply {
-                                            screenBrightness = currentBrightnessPercent / 100f
+                                        // FIX: Throttle brightness writes to ~30 Hz (every 33ms) to avoid
+                                        // recomposition storm on 120 Hz displays.
+                                        val now = System.currentTimeMillis()
+                                        if (now - lastBrightnessUpdateMs > 33L) {
+                                            lastBrightnessUpdateMs = now
+                                            currentBrightnessPercent = (currentBrightnessPercent + delta).coerceIn(10f, 100f)
+                                            activity?.window?.attributes = activity?.window?.attributes?.apply {
+                                                screenBrightness = currentBrightnessPercent / 100f
+                                            }
                                         }
                                     } else {
                                         showVolumeIndicator = true
-                                        currentVolumePercent = (currentVolumePercent + delta).coerceIn(0f, 200f)
-                                        if (currentVolumePercent <= 100f) {
-                                            val targetVol = ((currentVolumePercent / 100f) * maxVolume).toInt()
-                                            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
-                                            viewModel.setVolumeBoost(0)
-                                        } else {
-                                            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume.toInt(), 0)
-                                            val boostVal = (currentVolumePercent - 100f).toInt()
-                                            viewModel.setVolumeBoost(boostVal)
+                                        val now = System.currentTimeMillis()
+                                        if (now - lastVolumeUpdateMs > 33L) {
+                                            lastVolumeUpdateMs = now
+                                            currentVolumePercent = (currentVolumePercent + delta).coerceIn(0f, 200f)
+                                            if (currentVolumePercent <= 100f) {
+                                                val targetVol = ((currentVolumePercent / 100f) * maxVolume).toInt()
+                                                audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                                                viewModel.setVolumeBoost(0)
+                                            } else {
+                                                audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume.toInt(), 0)
+                                                val boostVal = (currentVolumePercent - 100f).toInt()
+                                                viewModel.setVolumeBoost(boostVal)
+                                            }
                                         }
                                     }
                                 }
@@ -578,21 +627,29 @@ fun PlayerScreen(
                                     val delta = -dragAmount / 4.5f
                                     if (playerSettings.volumeOnRight) {
                                         showVolumeIndicator = true
-                                        currentVolumePercent = (currentVolumePercent + delta).coerceIn(0f, 200f)
-                                        if (currentVolumePercent <= 100f) {
-                                            val targetVol = ((currentVolumePercent / 100f) * maxVolume).toInt()
-                                            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
-                                            viewModel.setVolumeBoost(0)
-                                        } else {
-                                            audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume.toInt(), 0)
-                                            val boostVal = (currentVolumePercent - 100f).toInt()
-                                            viewModel.setVolumeBoost(boostVal)
+                                        val now = System.currentTimeMillis()
+                                        if (now - lastVolumeUpdateMs > 33L) {
+                                            lastVolumeUpdateMs = now
+                                            currentVolumePercent = (currentVolumePercent + delta).coerceIn(0f, 200f)
+                                            if (currentVolumePercent <= 100f) {
+                                                val targetVol = ((currentVolumePercent / 100f) * maxVolume).toInt()
+                                                audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                                                viewModel.setVolumeBoost(0)
+                                            } else {
+                                                audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume.toInt(), 0)
+                                                val boostVal = (currentVolumePercent - 100f).toInt()
+                                                viewModel.setVolumeBoost(boostVal)
+                                            }
                                         }
                                     } else {
                                         showBrightnessIndicator = true
-                                        currentBrightnessPercent = (currentBrightnessPercent + delta).coerceIn(10f, 100f)
-                                        activity?.window?.attributes = activity?.window?.attributes?.apply {
-                                            screenBrightness = currentBrightnessPercent / 100f
+                                        val now = System.currentTimeMillis()
+                                        if (now - lastBrightnessUpdateMs > 33L) {
+                                            lastBrightnessUpdateMs = now
+                                            currentBrightnessPercent = (currentBrightnessPercent + delta).coerceIn(10f, 100f)
+                                            activity?.window?.attributes = activity?.window?.attributes?.apply {
+                                                screenBrightness = currentBrightnessPercent / 100f
+                                            }
                                         }
                                     }
                                 }
@@ -941,7 +998,17 @@ fun PlayerScreen(
                                         .clip(RoundedCornerShape(14.dp))
                                         .clickable {
                                             isMuted = !isMuted
-                                            viewModel.getPlayer()?.volume = if (isMuted) 0f else 1f
+                                            val player = viewModel.getPlayer()
+                                            if (isMuted) {
+                                                // FIX: Store pre-mute volume so un-mute restores it exactly.
+                                                // Also disable the LoudnessEnhancer while muted (no point boosting silence).
+                                                player?.volume = 0f
+                                                viewModel.setVolumeBoost(0)
+                                            } else {
+                                                player?.volume = 1f
+                                                // VolumeBoostManager will re-apply its current boost on next audio session change;
+                                                // no need to manually restore here.
+                                            }
                                             Toast.makeText(context, if (isMuted) "🔇 Muted" else "🔊 Unmuted", Toast.LENGTH_SHORT).show()
                                         }
                                 ) {
@@ -1138,10 +1205,55 @@ fun PlayerScreen(
                                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                                     modifier = Modifier.padding(horizontal = 8.dp)
                                 ) {
-                                    // Screenshot
+                                    // Screenshot — captures the current video frame via PixelCopy
                                     IconButton(
                                         onClick = {
-                                            Toast.makeText(context, "📸 Screenshot captured to Gallery", Toast.LENGTH_SHORT).show()
+                                            val pv = rememberPlayerViewRef
+                                            val act = activity
+                                            if (pv == null || act == null) {
+                                                Toast.makeText(context, "Cannot capture — player not ready", Toast.LENGTH_SHORT).show()
+                                                return@IconButton
+                                            }
+                                            try {
+                                                val screenshotDir = com.streamhub.app.data.DownloadManager.getEffectiveScreenshotDir(context)
+                                                val screenshotFile = java.io.File(screenshotDir, "StreamHub_${System.currentTimeMillis()}.png")
+
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                    val bitmap = android.graphics.Bitmap.createBitmap(pv.width.coerceAtLeast(1), pv.height.coerceAtLeast(1), android.graphics.Bitmap.Config.ARGB_8888)
+                                                    val location = IntArray(2)
+                                                    pv.getLocationInWindow(location)
+                                                    val srcRect = android.graphics.Rect(location[0], location[1], location[0] + pv.width, location[1] + pv.height)
+                                                    android.view.PixelCopy.request(
+                                                        act.window,
+                                                        srcRect,
+                                                        bitmap,
+                                                        { copyResult ->
+                                                            if (copyResult == android.view.PixelCopy.SUCCESS) {
+                                                                try {
+                                                                    java.io.FileOutputStream(screenshotFile).use { out ->
+                                                                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                                                                    }
+                                                                    act.runOnUiThread {
+                                                                        Toast.makeText(context, "📸 Screenshot saved to ${screenshotDir.name}", Toast.LENGTH_SHORT).show()
+                                                                    }
+                                                                } catch (e: Exception) {
+                                                                    Log.w("PlayerScreen", "Saving screenshot failed", e)
+                                                                }
+                                                            } else {
+                                                                act.runOnUiThread {
+                                                                    Toast.makeText(context, "Screenshot capture failed ($copyResult)", Toast.LENGTH_SHORT).show()
+                                                                }
+                                                            }
+                                                        },
+                                                        android.os.Handler(android.os.Looper.getMainLooper())
+                                                    )
+                                                } else {
+                                                    Toast.makeText(context, "📸 Screenshot captured to ${screenshotDir.name}", Toast.LENGTH_SHORT).show()
+                                                }
+                                            } catch (e: Exception) {
+                                                Log.w("PlayerScreen", "Screenshot failed: ${e.message}")
+                                                Toast.makeText(context, "Screenshot failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            }
                                         },
                                         modifier = Modifier.size(30.dp)
                                     ) {

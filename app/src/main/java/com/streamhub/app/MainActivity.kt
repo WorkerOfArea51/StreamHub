@@ -26,9 +26,12 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -64,17 +67,23 @@ import com.streamhub.app.ui.theme.StreamHubTheme
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
 
     companion object {
         private const val TAG = "MainActivity"
+        private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 101
     }
 
     /**
-     * FIX: Deep link mediaId extracted from streamhub://media/{id} intents.
+     * FIX: Use a single mutableStateOf for the deep link, scoped to the Activity.
      */
-    val deepLinkMediaId = androidx.compose.runtime.mutableStateOf<String?>(null)
+    val deepLinkMediaId = mutableStateOf<String?>(null)
+
+    @Volatile
+    var shouldAutoEnterPip: Boolean = false
+        internal set
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -84,19 +93,34 @@ class MainActivity : ComponentActivity() {
         }
         handleDeepLink(intent)
 
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
-            }
-        }
-
-        // All managers are initialized in StreamHubApplication.onCreate().
-        // No manager init calls belong here — see StreamHubApplication KDoc.
-
         setContent {
             StreamHubTheme {
                 StreamHubApp(deepLinkMediaId = deepLinkMediaId)
             }
+        }
+
+        // FIX: Defer notification permission request until AFTER first frame renders.
+        // Asking during onCreate blocks the splash animation and confuses users.
+        window.decorView.post {
+            requestNotificationPermissionIfNeeded()
+        }
+    }
+
+    /**
+     * FIX: Separate method — only asks for permission if not already granted,
+     * and only after the first frame is rendered (via decorView.post).
+     */
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED) return
+        try {
+            requestPermissions(
+                arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                NOTIFICATION_PERMISSION_REQUEST_CODE
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Notification permission request failed: ${e.message}")
         }
     }
 
@@ -107,78 +131,65 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // FIX: setIntent so subsequent onResume can re-read it if needed.
+        setIntent(intent)
         handleDeepLink(intent)
     }
 
     private fun handleDeepLink(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_VIEW) {
-            val uri: Uri? = intent.data
-            if (uri != null && uri.scheme == "streamhub" && uri.host == "media") {
-                val mediaId = uri.lastPathSegment
-                if (!mediaId.isNullOrBlank() && mediaId.matches(Regex("^[a-zA-Z0-9_-]{1,64}$"))) {
-                    Log.d(TAG, "Deep link: streamhub://media/$mediaId")
-                    deepLinkMediaId.value = mediaId
-                } else {
-                    Log.w(TAG, "Invalid deep link mediaId rejected: $mediaId")
-                }
-            }
+        if (intent?.action != Intent.ACTION_VIEW) return
+        val uri: Uri? = intent.data
+        if (uri == null || uri.scheme != "streamhub" || uri.host != "media") return
+        val mediaId = uri.lastPathSegment
+        if (mediaId.isNullOrBlank() || !mediaId.matches(Regex("^[a-zA-Z0-9_-]{1,64}$"))) {
+            Log.w(TAG, "Invalid deep link mediaId rejected: $mediaId")
+            return
+        }
+        Log.d(TAG, "Deep link: streamhub://media/$mediaId")
+        // FIX: Only update if different — prevents re-navigation when the same deep link
+        // is delivered twice (e.g. via onNewIntent after onCreate already handled it).
+        if (deepLinkMediaId.value != mediaId) {
+            deepLinkMediaId.value = mediaId
         }
     }
 
     /**
      * Called when the user leaves the activity (presses Home, recents, etc.).
-     *
      * If we are currently on the Player route and the player is playing,
      * enter PiP automatically. This matches YouTube/Netflix behavior.
-     *
-     * Note: we cannot directly check ExoPlayer's.isPlaying from here (the
-     * player is owned by StreamPlayerViewModel). The PlayerScreen sets
-     * an instance field [shouldAutoEnterPip] via the activity cast.
-     * A future refactor will replace this with a proper MediaSessionService
-     * that exposes playback state to the activity via a Flow.
      */
-    @Volatile
-    var shouldAutoEnterPip: Boolean = false
-        internal set
-
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (shouldAutoEnterPip && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                val player = com.streamhub.app.player.StreamPlayerViewModel.currentPlayer
-                val videoSize = player?.videoSize
-                val ratio = if (videoSize != null && videoSize.width > 0 && videoSize.height > 0) {
-                    Rational(videoSize.width.coerceIn(1, 239), videoSize.height.coerceIn(1, 239))
-                } else {
-                    Rational(16, 9)
+        if (!shouldAutoEnterPip || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        try {
+            val player = StreamPlayerViewModel.currentPlayer
+            val videoSize = player?.videoSize
+            val ratio = if (videoSize != null && videoSize.width > 0 && videoSize.height > 0) {
+                // FIX: Validate the RATIO is within Android's allowed range (≤ 2.39:1, ≥ 0.42:1),
+                // not the dimensions. Rational simplifies internally so 1920x1080 becomes 16/9.
+                val w = videoSize.width
+                val h = videoSize.height
+                val r = w.toFloat() / h.toFloat()
+                when {
+                    r > 2.39f -> Rational(239, 100)
+                    r < 0.42f -> Rational(42, 100)
+                    else -> Rational(w, h)
                 }
-                val params = PictureInPictureParams.Builder()
-                    .setAspectRatio(ratio)
-                    .build()
-                enterPictureInPictureMode(params)
-            } catch (e: Exception) {
-                Log.w(TAG, "PiP entry failed: ${e.message}")
+            } else {
+                Rational(16, 9)
             }
+            val params = PictureInPictureParams.Builder()
+                .setAspectRatio(ratio)
+                .build()
+            enterPictureInPictureMode(params)
+        } catch (e: Exception) {
+            Log.w(TAG, "PiP entry failed: ${e.message}")
         }
     }
 
-    /**
-     * Called when the system enters or exits PiP mode.
-     *
-     * We log the transition for debugging. Future work will use this to:
-     *   - Hide player controls on enter, show on exit
-     *   - Pause background downloads on enter
-     *   - Switch to compact HUD layout on enter
-     *
-     * The actual UI reaction happens in PlayerScreen via its DisposableEffect,
-     * which reads `resources.configuration.uiMode` to detect PiP. This override
-     * is the system-level hook for any activity-wide side effects.
-     */
     @androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        }
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         Log.d(TAG, "PiP mode changed: isInPip=$isInPictureInPictureMode")
         if (isInPictureInPictureMode) {
             // Disable auto-PiP re-entry while already in PiP
@@ -192,17 +203,26 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
     val navController = rememberNavController()
     val repository = remember { FirebaseRepository.getInstance() }
 
-    androidx.compose.runtime.LaunchedEffect(Unit) {
+    LaunchedEffect(Unit) {
         repository.connect()
     }
 
-    // FIX: Handle deep link navigation
-    androidx.compose.runtime.LaunchedEffect(deepLinkMediaId?.value) {
-        val mediaId = deepLinkMediaId?.value
-        if (mediaId != null) {
-            navController.navigate(Screen.Details.createRoute(mediaId))
-            deepLinkMediaId.value = null  // Consumed
+    // FIX: Handle deep link with retry — if the catalog isn't loaded yet, wait for it
+    // instead of dropping the deep link. Previously, if user navigated back before
+    // catalog loaded, the deep link was lost forever.
+    LaunchedEffect(deepLinkMediaId?.value) {
+        val mediaId = deepLinkMediaId?.value ?: return@LaunchedEffect
+        // Wait up to 10 seconds for catalog to load before navigating.
+        var attempts = 0
+        while (repository.catalogState.value is CatalogState.Loading && attempts < 20) {
+            delay(500L)
+            attempts++
         }
+        if (attempts >= 20) {
+            Log.w("StreamHubApp", "Catalog still loading after 10s — navigating anyway with deep link $mediaId")
+        }
+        navController.navigate(Screen.Details.createRoute(mediaId))
+        deepLinkMediaId.value = null  // Consumed
     }
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -426,17 +446,14 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                 }
 
                 when {
-                    // Catalog still loading — show spinner, will recompute when state changes
                     catalogState is CatalogState.Loading && mediaItem == null -> {
                         PlayerLoadingScreen()
                     }
-                    // Catalog loaded but mediaId not found — show error
                     mediaItem == null -> {
                         PlayerNotFoundScreen(
                             onBackClick = { navController.popBackStack() }
                         )
                     }
-                    // Happy path — render PlayerScreen
                     else -> {
                         PlayerScreen(
                             mediaItem = mediaItem,
@@ -451,14 +468,6 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
     }
 }
 
-/**
- * Loading state for PlayerScreen — shown when the catalog is still loading
- * from Firestore and the requested mediaId has not been found yet.
- *
- * This fixes the "black screen on player open" bug where navigating to
- * player/{mediaId}/{episodeIndex} before Firestore returns its first
- * snapshot would render nothing.
- */
 @Composable
 private fun PlayerLoadingScreen() {
     Box(
@@ -480,11 +489,6 @@ private fun PlayerLoadingScreen() {
     }
 }
 
-/**
- * Error state for PlayerScreen — shown when the catalog has finished loading
- * but the requested mediaId was not found. This usually means the user
- * navigated to a deleted media item via a stale deep link.
- */
 @Composable
 private fun PlayerNotFoundScreen(onBackClick: () -> Unit) {
     Box(

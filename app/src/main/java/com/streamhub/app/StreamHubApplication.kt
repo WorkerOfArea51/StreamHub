@@ -2,17 +2,23 @@ package com.streamhub.app
 
 import android.app.Application
 import android.util.Log
+import com.streamhub.app.data.AdminManager
 import com.streamhub.app.data.AppUpdateManager
+import com.streamhub.app.data.DownloadManager
 import com.streamhub.app.data.HomeScreenLayoutManager
 import com.streamhub.app.data.MyListManager
 import com.streamhub.app.data.NotificationAlertManager
 import com.streamhub.app.data.PlayerSettingsManager
+import com.streamhub.app.data.StorageCacheManager
 import com.streamhub.app.data.SubtitleSettingsManager
 import com.streamhub.app.data.UserStatsManager
 import com.streamhub.app.data.WatchHistoryManager
+import com.streamhub.app.data.YoutubeStreamExtractor
 import com.streamhub.app.data.telegram.TelegramAuthManager
 import com.streamhub.app.data.telegram.TdLibManager
 import com.streamhub.app.data.telegram.TelegramProxyManager
+import com.streamhub.app.player.StreamCacheManager
+import com.streamhub.app.player.StreamDownloadManager
 import com.streamhub.app.ui.theme.ThemeManager
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -22,32 +28,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-/**
- * Custom Application class — the single source of truth for app initialization.
- *
- * Created by the system before any Activity. Its onCreate() runs exactly once
- * per process. All singleton managers are initialized here with applicationContext,
- * so by the time any Composable is rendered, every StateFlow is already populated.
- *
- * Contract: screens must NOT call Manager.init(context) themselves. The managers
- * are guaranteed ready before any UI code runs.
- *
- * To add a new manager:
- *   1. Add its init() call in initializeManagers() in the correct order
- *   2. Remove any LaunchedEffect { Manager.init(context) } from screens
- *   3. Document the dependency order in the KDoc below
- *
- * Dependency order:
- *   Layer 1 — Core preferences (no dependencies):
- *     PlayerSettingsManager, ThemeManager, MyListManager, WatchHistoryManager,
- *     SubtitleSettingsManager, HomeScreenLayoutManager
- *   Layer 2 — Data managers (depend on SharedPreferences from Layer 1):
- *     UserStatsManager, NotificationAlertManager
- *   Layer 3 — Network managers (depend on Secrets, which is BuildConfig — always ready):
- *     TelegramAuthManager, TelegramProxyManager
- *   Layer 4 — Background services (depend on Layer 3 being initialized):
- *     AppUpdateManager.checkForUpdate()
- */
 class StreamHubApplication : Application() {
 
     companion object {
@@ -55,6 +35,9 @@ class StreamHubApplication : Application() {
     }
 
     private val initScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @Volatile
+    private var lastForegroundTimeMs: Long = System.currentTimeMillis()
 
     override fun onCreate() {
         super.onCreate()
@@ -83,70 +66,67 @@ class StreamHubApplication : Application() {
         initializeManagers()
         startBackgroundServices()
 
-        androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
-            override fun onStop(owner: androidx.lifecycle.LifecycleOwner) {
-                Log.d(TAG, "App moved to background — executing cleanup")
-                runCatching { com.streamhub.app.player.StreamDownloadManager.release() }
-                runCatching { com.streamhub.app.player.StreamCacheManager.release() }
-                runCatching { com.streamhub.app.data.DownloadManager.cleanup() }
+        // FIX: Track foreground/background transitions WITHOUT releasing caches on every stop.
+        // StreamDownloadManager / StreamCacheManager are kept warm so video resumes instantly.
+        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) {
+                lastForegroundTimeMs = System.currentTimeMillis()
+                Log.d(TAG, "App returned to foreground — caches preserved")
+                runCatching { DownloadManager.resumeProgressPolling() }
+                runCatching { StreamDownloadManager.resumeDownloads(this@StreamHubApplication) }
+            }
+
+            override fun onStop(owner: LifecycleOwner) {
+                val backgroundDuration = System.currentTimeMillis() - lastForegroundTimeMs
+                Log.d(TAG, "App moved to background (foreground lasted ${backgroundDuration}ms)")
+                // FIX: Only pause download progress and active downloads, do NOT wipe media caches.
+                runCatching { DownloadManager.pauseProgressPolling() }
+                runCatching { StreamDownloadManager.pauseDownloads() }
             }
         })
     }
 
     /**
-     * Initialize all singleton managers in dependency order.
-     *
-     * If any init throws, we log but do NOT crash — the app should still launch
-     * with degraded functionality (empty StateFlows) rather than brick entirely.
-     * The manager itself is responsible for catching its own internal errors
-     * (e.g. corrupted JSON in prefs) and emitting an empty StateFlow as fallback.
+     * Public entry-point for explicit cache flush — called ONLY from the user-initiated
+     * "Clear Cache" button in StorageManagementScreen, never automatically on app switch.
      */
+    fun performEmergencyCacheFlush() {
+        Log.w(TAG, "Emergency cache flush invoked by user/system pressure")
+        runCatching { StreamDownloadManager.release() }
+        runCatching { StreamCacheManager.release() }
+        runCatching { DownloadManager.pauseProgressPolling() }
+    }
+
     private fun initializeManagers() {
-        // Layer 1 — Core preferences (no cross-dependencies)
         runCatching { PlayerSettingsManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "PlayerSettingsManager.init failed", it) }
-
-        runCatching { com.streamhub.app.data.AdminManager.init(applicationContext) }
+        runCatching { AdminManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "AdminManager.init failed", it) }
-
         runCatching { ThemeManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "ThemeManager.init failed", it) }
-
         runCatching { MyListManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "MyListManager.init failed", it) }
-
         runCatching { WatchHistoryManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "WatchHistoryManager.init failed", it) }
-
         runCatching { SubtitleSettingsManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "SubtitleSettingsManager.init failed", it) }
-
         runCatching { HomeScreenLayoutManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "HomeScreenLayoutManager.init failed", it) }
-
-        runCatching { com.streamhub.app.data.DownloadManager.init(applicationContext) }
+        runCatching { DownloadManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "DownloadManager.init failed", it) }
-
-        // Layer 2 — Data managers
         runCatching { UserStatsManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "UserStatsManager.init failed", it) }
-
-        runCatching { com.streamhub.app.data.YoutubeStreamExtractor.init(applicationContext) }
+        runCatching { YoutubeStreamExtractor.init(applicationContext) }
             .onFailure { Log.e(TAG, "YoutubeStreamExtractor.init failed", it) }
-
-        runCatching { com.streamhub.app.data.StorageCacheManager.init(applicationContext) }
+        runCatching { StorageCacheManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "StorageCacheManager.init failed", it) }
 
-        // Layer 3 — Network managers (TDLib + Telegram)
         initScope.launch {
-            // Initialize TDLib on background thread (JNI work)
             val tdLibOk = runCatching { TdLibManager.initialize(applicationContext) }
                 .getOrDefault(false)
             if (tdLibOk) {
-                // TelegramAuthManager observes TdLibManager, so init after TDLib succeeds
                 runCatching { TelegramAuthManager.init(applicationContext) }
                     .onFailure { Log.e(TAG, "TelegramAuthManager.init failed", it) }
-
                 runCatching { TelegramProxyManager.init(applicationContext) }
                     .onFailure { Log.e(TAG, "TelegramProxyManager.init failed", it) }
             } else {
@@ -155,12 +135,6 @@ class StreamHubApplication : Application() {
         }
     }
 
-    /**
-     * Start background services that should run from app launch.
-     *
-     * Separated from manager init so that a failure here doesn't block
-     * the UI from rendering. These are fire-and-forget coroutines.
-     */
     private fun startBackgroundServices() {
         runCatching {
             AppUpdateManager.checkForUpdate(
