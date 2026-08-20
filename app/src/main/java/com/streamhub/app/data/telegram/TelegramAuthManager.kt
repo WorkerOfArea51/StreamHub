@@ -256,34 +256,19 @@ object TelegramAuthManager {
 
     /**
      * Actively fetches user profile and downloads high-resolution profile photo from TDLib.
+     * Completes login INSTANTLY to prevent UI lag, while downloading photos and checking channels in background.
      */
     fun fetchUserProfileAndPhoto(tdUser: TdApi.User) {
         scope.launch {
-            var photoPath = ""
-            val photo = tdUser.profilePhoto
-            val fileToDownload = photo?.big ?: photo?.small
-            if (fileToDownload != null) {
-                if (fileToDownload.local.isDownloadingCompleted && fileToDownload.local.path.isNotBlank()) {
-                    photoPath = fileToDownload.local.path
-                } else {
-                    pendingPhotoFileId.set(fileToDownload.id)
-                    try {
-                        val downloadResult = TdLibManager.send(TdApi.DownloadFile(fileToDownload.id, 32, 0, 0, false))
-                        if (downloadResult is TdApi.File && downloadResult.local.isDownloadingCompleted && downloadResult.local.path.isNotBlank()) {
-                            photoPath = downloadResult.local.path
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "DownloadFile failed for profile photo ${fileToDownload.id}", e)
-                    }
-                    pendingPhotoFileId.set(0)
-                }
-            }
-
             val username = tdUser.usernames?.activeUsernames?.firstOrNull()
                 ?: tdUser.usernames?.editableUsername
                 ?: ""
 
-            val user = TelegramUser(
+            val photo = tdUser.profilePhoto
+            val fileToDownload = photo?.big ?: photo?.small
+            var photoPath = if (fileToDownload?.local?.isDownloadingCompleted == true) fileToDownload.local.path else ""
+
+            val initialUser = TelegramUser(
                 id = tdUser.id.toLong(),
                 firstName = tdUser.firstName,
                 lastName = tdUser.lastName,
@@ -294,8 +279,60 @@ object TelegramAuthManager {
                 isPremium = tdUser.isPremium
             )
 
-            val isOwner = checkIsOwner(user)
-            completeLogin(user, isOwner)
+            // Fast instant check without blocking network RPC
+            val ownerIdentifiers = com.streamhub.app.BuildConfig.OWNER_USERNAMES
+                .split(",")
+                .map { it.trim().lowercase().removePrefix("@") }
+                .filter { it.isNotBlank() }
+            val cleanUsername = username.lowercase().removePrefix("@")
+            val userIdStr = tdUser.id.toString()
+
+            val isOwnerInstantly = prefs?.getBoolean(KEY_IS_OWNER, false) == true ||
+                    com.streamhub.app.data.AdminManager.isAdminMode.value ||
+                    (cleanUsername.isNotBlank() && cleanUsername in ownerIdentifiers) ||
+                    userIdStr in ownerIdentifiers
+
+            // 1. INSTANTLY COMPLETE LOGIN — 0ms lag for UI profile card transition
+            completeLogin(initialUser, isOwnerInstantly)
+
+            // 2. Perform background tasks (photo download, deep channel admin check) asynchronously
+            scope.launch(Dispatchers.IO) {
+                var updatedUser = initialUser
+
+                // Download profile photo if not already local
+                if (fileToDownload != null && photoPath.isBlank()) {
+                    pendingPhotoFileId.set(fileToDownload.id)
+                    try {
+                        val downloadResult = TdLibManager.send(TdApi.DownloadFile(fileToDownload.id, 32, 0, 0, false))
+                        if (downloadResult is TdApi.File && downloadResult.local.isDownloadingCompleted && downloadResult.local.path.isNotBlank()) {
+                            photoPath = downloadResult.local.path
+                            updatedUser = updatedUser.copy(photoUrl = photoPath)
+                            prefs?.edit()?.putString(KEY_PHOTO_URL, photoPath)?.apply()
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Background profile photo download failed: ${e.message}")
+                    } finally {
+                        pendingPhotoFileId.set(0)
+                    }
+                }
+
+                // If not already verified as owner, check channel admin status asynchronously
+                var isOwnerFinal = isOwnerInstantly
+                if (!isOwnerFinal) {
+                    val isChannelAdmin = TdLibMediaProvider.checkIfUserIsChannelAdmin(tdUser.id.toLong())
+                    if (isChannelAdmin) {
+                        isOwnerFinal = true
+                        prefs?.edit()?.putBoolean(KEY_IS_OWNER, true)?.apply()
+                        com.streamhub.app.data.AdminManager.markOwnerVerified()
+                        com.streamhub.app.data.AdminManager.enableAdminModeFromOwner()
+                    }
+                }
+
+                // Update UI state if photo or owner status changed
+                if (updatedUser != initialUser || isOwnerFinal != isOwnerInstantly) {
+                    _authState.value = TelegramAuthState.Authenticated(updatedUser, isOwnerFinal)
+                }
+            }
         }
     }
 

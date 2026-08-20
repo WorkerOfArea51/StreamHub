@@ -511,16 +511,6 @@ fun ProfileScreen(
                 )
             }
 
-            if (isAdminMode) {
-                item(key = "admin_owner_dashboard_card") {
-                    AdminOwnerDashboardCard(
-                        isOwner = isOwnerUser,
-                        primaryColor = primaryColor,
-                        onOpenAdminStudio = { showAddContentDialog = true }
-                    )
-                }
-            }
-
             // ── MTProto Proxy Shortcut (Bypass Censorship / Unblock Telegram) ──
             item(key = "mtproto_proxy_shortcut") {
                 Card(
@@ -1339,12 +1329,27 @@ fun TelegramLoginCard(
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         Button(
-                            onClick = { TelegramAuthManager.submitPassword(twoFaPassword) },
-                            colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
+                            enabled = !isSubmitting,
+                            onClick = {
+                                isSubmitting = true
+                                TelegramAuthManager.submitPassword(twoFaPassword)
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = primaryColor,
+                                disabledContainerColor = primaryColor.copy(alpha = 0.5f)
+                            ),
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Submit Password", color = Color.White, fontWeight = FontWeight.Bold)
+                            if (isSubmitting) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Verifying Password...", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            } else {
+                                Text("Submit Password 🔓", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedButton(
