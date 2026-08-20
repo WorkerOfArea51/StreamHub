@@ -152,26 +152,17 @@ class TdLibStreamingDataSource : DataSource {
         currentPosition = position
 
         val fId = fileId
-        // FIX: If seeking beyond currently downloaded bytes on disk, request TDLib download chunk
-        // from that offset. Use coroutine with bounded timeout instead of runBlocking+sleep loop.
-        if (fId != null && position >= f.length() && position < totalFileSize) {
-            Log.i(TAG, "Seeking to unbuffered offset $position (disk: ${f.length()}, total: $totalFileSize)")
+        // FIX: When opening/seeking, request TDLib download continuously from that offset (limit=0L).
+        if (fId != null && position < totalFileSize) {
+            Log.i(TAG, "Opening TDLib stream at offset $position (disk: ${f.length()}, total: $totalFileSize)")
             try {
-                runBlocking {
-                    withTimeout(6_000L) {
-                        TdLibManager.send(
-                            TdApi.DownloadFile(fId, DOWNLOAD_CHUNK_PRIORITY, position, DOWNLOAD_CHUNK_SIZE, false)
-                        )
-                        // FIX: Use wait/notify instead of fixed sleep — wakes immediately when file grows.
-                        while (f.length() <= position) {
-                            delay(CHUNK_POLL_INTERVAL_MS)
-                        }
-                    }
+                fetchScope.launch {
+                    TdLibManager.send(
+                        TdApi.DownloadFile(fId, DOWNLOAD_CHUNK_PRIORITY, position, 0L, false)
+                    )
                 }
-            } catch (_: TimeoutCancellationException) {
-                Log.w(TAG, "Timed out waiting for TDLib to deliver offset $position")
             } catch (e: Exception) {
-                Log.w(TAG, "Error requesting TDLib offset chunk: ${e.message}")
+                Log.w(TAG, "Error requesting TDLib offset stream: ${e.message}")
             }
         }
 
@@ -180,8 +171,12 @@ class TdLibStreamingDataSource : DataSource {
         }
 
         randomAccessFile = RandomAccessFile(f, "r")
-        if (position > 0 && position <= f.length()) {
-            randomAccessFile!!.seek(position)
+        if (position > 0) {
+            try {
+                randomAccessFile!!.seek(position)
+            } catch (e: Exception) {
+                Log.w(TAG, "Initial seek to $position: ${e.message}")
+            }
         }
 
         val length = dataSpec.length
@@ -200,10 +195,6 @@ class TdLibStreamingDataSource : DataSource {
         val f = file ?: throw IOException("File reference lost")
 
         val toRead = kotlin.math.min(length.toLong(), bytesRemaining).toInt()
-
-        // FIX: If reading ahead of downloaded bytes, wait BOUNDED time using Object.wait().
-        // Previously used Thread.sleep(60) in a loop with no upper bound, which leaked threads
-        // and blocked ExoPlayer's load thread indefinitely.
         val fId = fileId
         var currentFileLen = f.length()
         val waitDeadlineMs = System.currentTimeMillis() + MAX_WAIT_FOR_CHUNK_MS
@@ -213,16 +204,14 @@ class TdLibStreamingDataSource : DataSource {
             val remainingWait = waitDeadlineMs - System.currentTimeMillis()
             if (remainingWait <= 0L) {
                 Log.w(TAG, "Chunk wait exceeded ${MAX_WAIT_FOR_CHUNK_MS}ms at position $currentPosition — aborting read")
-                // FIX: Throw IOException instead of returning 0 — ExoPlayer will retry the load.
-                // Returning 0 caused ExoPlayer to spin in a tight loop burning CPU.
                 throw IOException("TDLib chunk wait timed out at position $currentPosition")
             }
 
-            // Kick off an async fetch in case TDLib hasn't been asked for this region yet.
+            // Kick off an async fetch to keep downloading forward from currentPosition
             ensureFetchRunning(fId, currentPosition)
 
             synchronized(monitorLock) {
-                val smallWait = kotlin.math.min(remainingWait, CHUNK_POLL_INTERVAL_MS * 4)
+                val smallWait = kotlin.math.min(remainingWait, 100L)
                 (monitorLock as java.lang.Object).wait(smallWait)
             }
             currentFileLen = f.length()
@@ -253,19 +242,17 @@ class TdLibStreamingDataSource : DataSource {
     }
 
     /**
-     * FIX: Ensure TDLib has an active DownloadFile request for the current read position.
-     * Previously only triggered once during open(), which meant forward reads beyond the
-     * initial chunk would stall forever if TDLib's download completed before reaching them.
+     * Ensure TDLib has an active DownloadFile request for the current read position.
      */
     private fun ensureFetchRunning(fId: Int, position: Long) {
         if (fetchJob?.isActive == true) return
         fetchJob = fetchScope.launch {
             try {
                 TdLibManager.send(
-                    TdApi.DownloadFile(fId, DOWNLOAD_CHUNK_PRIORITY, position, DOWNLOAD_CHUNK_SIZE, false)
+                    TdApi.DownloadFile(fId, DOWNLOAD_CHUNK_PRIORITY, position, 0L, false)
                 )
             } catch (e: Exception) {
-                Log.w(TAG, "Async TDLib fetch failed at $position: ${e.message}")
+                Log.w(TAG, "Async TDLib stream fetch failed at $position: ${e.message}")
             }
         }
     }

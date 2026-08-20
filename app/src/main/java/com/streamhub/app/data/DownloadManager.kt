@@ -401,16 +401,21 @@ object DownloadManager {
             val targetFile = File(downloadsDir, fileName)
             val epTitle = if (isMovie) mediaItem.title else (episode.title.ifEmpty { "Episode ${episodeIndex + 1}" })
 
-            // Handle local file (e.g. from Telegram MTProto / TDLib)
+            // Handle local / TDLib file (e.g. from Telegram MTProto streaming)
             if (resolvedUrl.startsWith("/") || File(resolvedUrl).exists()) {
                 val sourceFile = File(resolvedUrl)
-                if (sourceFile.exists()) {
+                val fileId = com.streamhub.app.data.telegram.TdLibMediaProvider.getFileIdForPath(resolvedUrl)
+                val tdlibTotalSize = com.streamhub.app.data.telegram.TdLibMediaProvider.getTotalSizeForPath(resolvedUrl) ?: 0L
+
+                val isAlreadyComplete = tdlibTotalSize > 0L && sourceFile.exists() && sourceFile.length() >= tdlibTotalSize
+
+                if (isAlreadyComplete) {
                     try {
                         if (sourceFile.absolutePath != targetFile.absolutePath) {
                             sourceFile.copyTo(targetFile, overwrite = true)
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Failed copying local file to target: ${targetFile.absolutePath}", e)
+                        Log.e(TAG, "Failed copying completed local file to target: ${targetFile.absolutePath}", e)
                     }
                     val effectiveFile = if (targetFile.exists()) targetFile else sourceFile
                     val sizeMb = effectiveFile.length() / (1024.0 * 1024.0)
@@ -434,7 +439,96 @@ object DownloadManager {
                         mutableList
                     }
                     saveToDisk()
-                    Log.i(TAG, "Successfully attached local Telegram download for ${mediaItem.title}: ${effectiveFile.absolutePath}")
+                    Log.i(TAG, "Attached already completed Telegram download for ${mediaItem.title}: ${effectiveFile.absolutePath} (${sizeMb} MB)")
+                    return@launch
+                } else if (fileId != null) {
+                    // TDLib partial file — trigger full download and stream progress updates until 100% complete
+                    val initialDlBytes = if (sourceFile.exists()) sourceFile.length() else 0L
+                    val initialPct = if (tdlibTotalSize > 0L) (initialDlBytes * 100 / tdlibTotalSize).toInt().coerceIn(0, 99) else 0
+                    val initialMb = initialDlBytes / (1024.0 * 1024.0)
+
+                    val newItem = DownloadedItem(
+                        mediaId = mediaItem.id,
+                        mediaTitle = mediaItem.title,
+                        posterUrl = mediaItem.posterUrl,
+                        episodeIndex = episodeIndex,
+                        episodeTitle = epTitle,
+                        localFilePath = targetFile.absolutePath,
+                        fileSizeMb = initialMb,
+                        downloadId = -1L,
+                        progressPercent = initialPct,
+                        isCompleted = false,
+                        streamUrl = rawUrl
+                    )
+                    _downloads.update { currentList ->
+                        val mutableList = currentList.toMutableList()
+                        mutableList.removeAll { it.mediaId == mediaItem.id && it.episodeIndex == episodeIndex }
+                        mutableList.add(newItem)
+                        mutableList
+                    }
+                    saveToDisk()
+
+                    // Request TDLib full download with maximum high priority (32)
+                    scope.launch(Dispatchers.IO) {
+                        try {
+                            com.streamhub.app.data.telegram.TdLibManager.send(
+                                org.drinkless.tdlib.TdApi.DownloadFile(fileId, 32, 0L, 0L, false)
+                            )
+                            while (isActive) {
+                                delay(600L)
+                                val fRes = com.streamhub.app.data.telegram.TdLibManager.send(
+                                    org.drinkless.tdlib.TdApi.GetFile(fileId)
+                                )
+                                if (fRes is org.drinkless.tdlib.TdApi.File) {
+                                    val dlBytes = fRes.local.downloadedSize
+                                    val totBytes = fRes.size
+                                    val pct = if (totBytes > 0L) (dlBytes * 100 / totBytes).toInt().coerceIn(0, 100) else 0
+                                    val mb = dlBytes / (1024.0 * 1024.0)
+
+                                    _downloads.update { list ->
+                                        list.map { item ->
+                                            if (item.mediaId == mediaItem.id && item.episodeIndex == episodeIndex) {
+                                                item.copy(
+                                                    progressPercent = pct,
+                                                    fileSizeMb = mb,
+                                                    isCompleted = fRes.local.isDownloadingCompleted
+                                                )
+                                            } else item
+                                        }
+                                    }
+
+                                    if (fRes.local.isDownloadingCompleted) {
+                                        val completedSrc = File(fRes.local.path)
+                                        if (completedSrc.exists()) {
+                                            try {
+                                                completedSrc.copyTo(targetFile, overwrite = true)
+                                            } catch (e: Exception) {
+                                                Log.e(TAG, "Error copying completed TDLib file to target: ${targetFile.absolutePath}", e)
+                                            }
+                                            val finalFile = if (targetFile.exists()) targetFile else completedSrc
+                                            _downloads.update { list ->
+                                                list.map { item ->
+                                                    if (item.mediaId == mediaItem.id && item.episodeIndex == episodeIndex) {
+                                                        item.copy(
+                                                            localFilePath = finalFile.absolutePath,
+                                                            fileSizeMb = finalFile.length() / (1024.0 * 1024.0),
+                                                            progressPercent = 100,
+                                                            isCompleted = true
+                                                        )
+                                                    } else item
+                                                }
+                                            }
+                                            saveToDisk()
+                                            Log.i(TAG, "Full TDLib download finished for ${mediaItem.title}: ${finalFile.absolutePath} (${finalFile.length() / (1024 * 1024)} MB)")
+                                        }
+                                        break
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "TDLib background full download failed: ${e.message}")
+                        }
+                    }
                     return@launch
                 }
             }

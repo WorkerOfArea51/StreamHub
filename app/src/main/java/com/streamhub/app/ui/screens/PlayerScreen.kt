@@ -433,54 +433,58 @@ fun PlayerScreen(
             Modifier.fillMaxSize()
         }
 
-        // FIX: Hold a reference to the PlayerView so the screenshot button can access it via PixelCopy.
+        // Hold a reference to the PlayerView so screenshot and controls can access it
         var rememberPlayerViewRef by remember { mutableStateOf<androidx.media3.ui.PlayerView?>(null) }
 
         Box(
-            modifier = videoContainerModifier,
+            modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            AndroidView(
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        useController = false
-                        player = viewModel.getPlayer()
-                        rememberPlayerViewRef = this
-                    }
-                },
-                update = { playerView ->
-                    playerView.player = viewModel.getPlayer()
-                    rememberPlayerViewRef = playerView
-                    // FIX: Map Standard/Cinema ratios to RESIZE_MODE_ZOOM (preserves aspect, fills screen),
-                    // and Screen-category options to their proper ResizeMode. Previously "FILL" mapped to FIT,
-                    // making the aspect ratio selector appear broken.
-                    playerView.resizeMode = if (targetRatio != null) {
-                        androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                    } else {
-                        when (selectedRatioOption.id) {
-                            "FIT" -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                            "FILL" -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                            "STRETCH" -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
-                            "ORIGINAL" -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                            else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+            Box(
+                modifier = videoContainerModifier,
+                contentAlignment = Alignment.Center
+            ) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { ctx ->
+                        PlayerView(ctx).apply {
+                            useController = false
+                            player = viewModel.getPlayer()
+                            rememberPlayerViewRef = this
+                        }
+                    },
+                    update = { playerView ->
+                        playerView.player = viewModel.getPlayer()
+                        rememberPlayerViewRef = playerView
+                        // Standard/Cinema ratios: scale to fill the custom-ratio container Box.
+                        // Screen options: use native AspectRatioFrameLayout modes (FIT, ZOOM, FILL).
+                        playerView.resizeMode = if (targetRatio != null) {
+                            androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+                        } else {
+                            when (selectedRatioOption.id) {
+                                "FIT" -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                "FILL" -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                "STRETCH" -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL
+                                "ORIGINAL" -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            }
+                        }
+                        playerView.subtitleView?.apply {
+                            setStyle(
+                                androidx.media3.ui.CaptionStyleCompat(
+                                    subConfig.textColorArgb.toInt(),
+                                    subConfig.backgroundColorArgb.toInt(),
+                                    android.graphics.Color.TRANSPARENT,
+                                    subConfig.edgeType,
+                                    android.graphics.Color.BLACK,
+                                    null
+                                )
+                            )
+                            setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, subConfig.fontSizeSp)
                         }
                     }
-                    playerView.subtitleView?.apply {
-                        setStyle(
-                            androidx.media3.ui.CaptionStyleCompat(
-                                subConfig.textColorArgb.toInt(),
-                                subConfig.backgroundColorArgb.toInt(),
-                                android.graphics.Color.TRANSPARENT,
-                                subConfig.edgeType,
-                                android.graphics.Color.BLACK,
-                                null
-                            )
-                        )
-                        setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, subConfig.fontSizeSp)
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
+                )
+            }
         }
 
         // Night Shield Eye Protection Filter Overlay
@@ -1308,22 +1312,20 @@ fun PlayerScreen(
                                         }
                                     }
 
-                                    // Screen Orientation Toggle (Fix: properly flips between landscape / reverse landscape / sensor)
+                                    // Screen Orientation Toggle (Toggles between Landscape and Portrait)
                                     IconButton(
                                         onClick = {
                                             activity?.let { act ->
-                                                val nextOri = when (act.requestedOrientation) {
-                                                    ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
-                                                    ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                                                    else -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                                                val currentOri = act.resources.configuration.orientation
+                                                val isCurrentlyLandscape = currentOri == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                                                val nextOri = if (isCurrentlyLandscape) {
+                                                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                                } else {
+                                                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                                                 }
                                                 act.requestedOrientation = nextOri
-                                                val oriName = when (nextOri) {
-                                                    ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE -> "Landscape"
-                                                    ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE -> "Reverse Landscape"
-                                                    else -> "Sensor Auto-Rotate"
-                                                }
-                                                Toast.makeText(context, "🔄 Screen: $oriName", Toast.LENGTH_SHORT).show()
+                                                val toastLabel = if (isCurrentlyLandscape) "📱 Portrait Mode" else "🖥️ Landscape Mode"
+                                                Toast.makeText(context, toastLabel, Toast.LENGTH_SHORT).show()
                                             }
                                         },
                                         modifier = Modifier.size(30.dp)
