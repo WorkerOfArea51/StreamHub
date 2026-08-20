@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     StreamHub Network Security Configuration
-    Enforces strict HTTPS, system CA verification, and SHA-256 SPKI certificate pinning.
+    Enforces strict HTTPS and system CA certificate verification across all endpoints.
+    Eliminates brittle SPKI pin-sets that break during third-party CDN/CA rotations (GitHub, TMDB, Firebase, etc.).
 -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false">
@@ -10,69 +11,20 @@
         </trust-anchors>
     </base-config>
 
-    <!-- Telegram API & MTProto endpoints -->
-    <domain-config cleartextTrafficPermitted="false">
-        <domain includeSubdomains="true">api.telegram.org</domain>
-        <domain includeSubdomains="true">t.me</domain>
-        <pin-set expiration="2027-01-01">
-            <pin digest="SHA-256">AgyCmTysFOI6aQCSyQJ+QIXpnGn0v7n+D+mv6jWAtQc=</pin>
-            <pin digest="SHA-256">8Rw90Ej3Ttt8RRkrg+WYDS9n7IS03bk5bjP/UXPtaY8=</pin>
-        </pin-set>
-        <trust-anchors>
-            <certificates src="system" />
-        </trust-anchors>
-    </domain-config>
-
-    <!-- TMDB API & CDN -->
-    <domain-config cleartextTrafficPermitted="false">
-        <domain includeSubdomains="true">api.themoviedb.org</domain>
-        <domain includeSubdomains="true">image.tmdb.org</domain>
-        <pin-set expiration="2027-01-01">
-            <pin digest="SHA-256">QfyoR20v8hyYX7L+ikLzM/euPGSDl67gFFcor/sROMs=</pin>
-            <pin digest="SHA-256">G9LNNAql897egYsabashkzUCTEJkWBzgoEtk8X/678c=</pin>
-        </pin-set>
-        <trust-anchors>
-            <certificates src="system" />
-        </trust-anchors>
-    </domain-config>
-
-    <!-- Firebase / Google Cloud Services -->
-    <domain-config cleartextTrafficPermitted="false">
-        <domain includeSubdomains="true">firestore.googleapis.com</domain>
-        <domain includeSubdomains="true">firebase.googleapis.com</domain>
-        <domain includeSubdomains="true">securetoken.googleapis.com</domain>
-        <domain includeSubdomains="true">firebasestorage.googleapis.com</domain>
-        <pin-set expiration="2027-01-01">
-            <pin digest="SHA-256">/PKoq0TFwuR3NTIPfgSH/CYc28eY3PVfAMmzjp1PC0c=</pin>
-            <pin digest="SHA-256">YPtHaftLw6/0vnc2BnNKGF54xiCA28WFcccjkA4ypCM=</pin>
-        </pin-set>
-        <trust-anchors>
-            <certificates src="system" />
-        </trust-anchors>
-    </domain-config>
-
-    <!-- GitHub Releases (In-App OTA Updates) -->
+    <!-- Specific domain configurations ensuring strict HTTPS and system trust -->
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">github.com</domain>
         <domain includeSubdomains="true">api.github.com</domain>
         <domain includeSubdomains="true">objects.githubusercontent.com</domain>
-        <pin-set expiration="2027-01-01">
-            <pin digest="SHA-256">p4MbBTfU3MTzqPxM2Cjv0q3WON8L6FqSzam65NVEkcM=</pin>
-            <pin digest="SHA-256">LoMHBotttiDko50Gi13uXW71eIy7LAttI+rYT8wXF4w=</pin>
-        </pin-set>
-        <trust-anchors>
-            <certificates src="system" />
-        </trust-anchors>
-    </domain-config>
-
-    <!-- MyAnimeList API & CDN -->
-    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">api.themoviedb.org</domain>
+        <domain includeSubdomains="true">image.tmdb.org</domain>
+        <domain includeSubdomains="true">api.telegram.org</domain>
+        <domain includeSubdomains="true">t.me</domain>
         <domain includeSubdomains="true">api.myanimelist.net</domain>
         <domain includeSubdomains="true">cdn.myanimelist.net</domain>
-        <pin-set expiration="2027-01-01">
-            <pin digest="SHA-256">1PnQBMduiWmZ1W9s5g4Oc60IzJ7btXnnVSXB5bCkNPk=</pin>
-            <pin digest="SHA-256">qBRjZmOmkSNJL0p70zek7odSIzqs/muR4Jk9xYyCP+E=</pin>
-        </pin-set>
+        <domain includeSubdomains="true">firestore.googleapis.com</domain>
+        <domain includeSubdomains="true">firebase.googleapis.com</domain>
+        <domain includeSubdomains="true">firebasestorage.googleapis.com</domain>
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
