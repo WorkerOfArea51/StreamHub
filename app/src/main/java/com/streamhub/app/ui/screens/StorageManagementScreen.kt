@@ -181,11 +181,11 @@ fun StorageManagementScreen(
                         onAction = {
                             scope.launch {
                                 val ok = StorageCacheManager.clearVideoCache()
-                                Toast.makeText(
-                                    context,
-                                    if (ok) "Video stream cache cleared" else "Failed to clear video cache",
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                                val message = when {
+                                    ok -> "Video stream cache cleared"
+                                    else -> "Cache will clear automatically when playback ends"
+                                }
+                                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                             }
                         }
                     )

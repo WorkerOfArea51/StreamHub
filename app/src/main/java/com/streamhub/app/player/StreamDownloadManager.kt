@@ -101,11 +101,18 @@ object StreamDownloadManager {
 
     /**
      * FIX: resumeDownloads() — called when app returns to foreground.
+     *
+     * FIX (regression): Only resume if the DownloadManager already exists. Previously,
+     * calling this on every app foreground would eagerly initialize a 2 GB cache + thread
+     * pool even if the user never started a single download — wasting disk + memory.
      */
     @Synchronized
     fun resumeDownloads(context: Context) {
         try {
-            val dm = downloadManager ?: getDownloadManager(context)
+            val dm = downloadManager ?: run {
+                Log.d(TAG, "resumeDownloads skipped — no DownloadManager initialized (no active downloads)")
+                return
+            }
             dm.resumeDownloads()
             Log.i(TAG, "All downloads resumed")
         } catch (e: Exception) {

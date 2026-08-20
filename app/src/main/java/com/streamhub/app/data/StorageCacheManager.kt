@@ -174,6 +174,10 @@ object StorageCacheManager {
     /**
      * FIX: Acquire mutex + ask TDLib to optimize storage (atomic from TDLib's perspective)
      * instead of walking the file tree and calling file.delete() on files that may be open.
+     *
+     * FIX (regression): Return false if StreamCacheManager.clearCache deferred the clear
+     * (active readers). Previously this function returned true unconditionally, so the UI
+     * showed "Cache cleared" even though the cache was still full.
      */
     suspend fun clearVideoCache(): Boolean = withContext(Dispatchers.IO) {
         clearMutex.withLock {
@@ -182,17 +186,20 @@ object StorageCacheManager {
                 runCatching {
                     TdLibManager.send(
                         TdApi.OptimizeStorage(
-                            0, 0, 0, 0,
+                            0L, 0, 0, 0,
                             arrayOf(TdApi.FileTypeVideo(), TdApi.FileTypeDocument(), TdApi.FileTypeAnimation()),
                             null, null, false, 0
                         )
                     )
                 }
 
-                // 2. Also ask ExoPlayer's StreamCacheManager to release + clear (defers if readers active).
+                // 2. Ask ExoPlayer's StreamCacheManager to release + clear (defers if readers active).
                 val cacheCleared = StreamCacheManager.clearCache(appContext)
                 if (!cacheCleared) {
-                    Log.w(TAG, "ExoPlayer cache clear deferred")
+                    Log.w(TAG, "ExoPlayer cache clear deferred — video is currently playing")
+                    // Signal to the UI that the clear was deferred.
+                    calculateStorageUsage()
+                    return@withLock false
                 }
 
                 calculateStorageUsage()
@@ -238,15 +245,45 @@ object StorageCacheManager {
      * FIX: Clear video + image caches, but NEVER call cacheDir.deleteRecursively().
      * The cacheDir contains ExoPlayer's SimpleCache SQLite index — deleting it while
      * SimpleCache has open handles corrupts the cache permanently.
+     *
+     * FIX (regression): clearVideoCache() and clearImageCache() each acquire clearMutex
+     * internally. Calling them from inside clearAllCache's withLock would deadlock
+     * (kotlinx Mutex is non-reentrant). The inline logic below performs the same work
+     * WITHOUT calling the public functions — keeping a single lock acquisition.
      */
     suspend fun clearAllCache(): Boolean = withContext(Dispatchers.IO) {
         clearMutex.withLock {
             try {
-                clearVideoCache()
-                clearImageCache()
+                // 1. Video cache — inline (mirrors clearVideoCache logic).
+                runCatching {
+                    TdLibManager.send(
+                        TdApi.OptimizeStorage(
+                            0L, 0, 0, 0,
+                            arrayOf(TdApi.FileTypeVideo(), TdApi.FileTypeDocument(), TdApi.FileTypeAnimation()),
+                            null, null, false, 0
+                        )
+                    )
+                }
+                val cacheCleared = StreamCacheManager.clearCache(appContext)
+                if (!cacheCleared) {
+                    Log.w(TAG, "ExoPlayer cache clear deferred (active readers)")
+                }
 
-                // FIX: Only clear non-critical cache subdirs — leave media_stream_cache alone
-                // (StreamCacheManager.clearCache handles it via SimpleCache.release()).
+                // 2. Image cache — inline (mirrors clearImageCache logic).
+                val imageLoader = Coil.imageLoader(appContext)
+                imageLoader.memoryCache?.clear()
+                imageLoader.diskCache?.clear()
+                runCatching {
+                    TdLibManager.send(
+                        TdApi.OptimizeStorage(
+                            0L, 0, 0, 0,
+                            arrayOf(TdApi.FileTypeThumbnail(), TdApi.FileTypePhoto()),
+                            null, null, false, 0
+                        )
+                    )
+                }
+
+                // 3. Non-critical cache subdirs — leave media_stream_cache / exoplayer_downloads alone.
                 val cacheDir = appContext.cacheDir
                 cacheDir.listFiles()?.forEach { child ->
                     if (child.name != "media_stream_cache" && child.name != "exoplayer_downloads") {

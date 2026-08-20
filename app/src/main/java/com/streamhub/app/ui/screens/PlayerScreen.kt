@@ -1205,7 +1205,7 @@ fun PlayerScreen(
                                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                                     modifier = Modifier.padding(horizontal = 8.dp)
                                 ) {
-                                    // Screenshot — captures the current video frame via PixelCopy
+                                    // Screenshot — captures the current video frame via PixelCopy.
                                     IconButton(
                                         onClick = {
                                             val pv = rememberPlayerViewRef
@@ -1219,10 +1219,19 @@ fun PlayerScreen(
                                                 val screenshotFile = java.io.File(screenshotDir, "StreamHub_${System.currentTimeMillis()}.png")
 
                                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                                    val bitmap = android.graphics.Bitmap.createBitmap(pv.width.coerceAtLeast(1), pv.height.coerceAtLeast(1), android.graphics.Bitmap.Config.ARGB_8888)
+                                                    // FIX: Capture width/height before creating bitmap — clamp to >=1 to avoid
+                                                    // IllegalArgumentException on views not yet laid out (width=0).
+                                                    val viewWidth = pv.width.coerceAtLeast(1)
+                                                    val viewHeight = pv.height.coerceAtLeast(1)
+                                                    val bitmap = android.graphics.Bitmap.createBitmap(
+                                                        viewWidth, viewHeight, android.graphics.Bitmap.Config.ARGB_8888
+                                                    )
                                                     val location = IntArray(2)
                                                     pv.getLocationInWindow(location)
-                                                    val srcRect = android.graphics.Rect(location[0], location[1], location[0] + pv.width, location[1] + pv.height)
+                                                    val srcRect = android.graphics.Rect(
+                                                        location[0], location[1],
+                                                        location[0] + viewWidth, location[1] + viewHeight
+                                                    )
                                                     android.view.PixelCopy.request(
                                                         act.window,
                                                         srcRect,
@@ -1234,21 +1243,41 @@ fun PlayerScreen(
                                                                         bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
                                                                     }
                                                                     act.runOnUiThread {
-                                                                        Toast.makeText(context, "📸 Screenshot saved to ${screenshotDir.name}", Toast.LENGTH_SHORT).show()
+                                                                        Toast.makeText(
+                                                                            context,
+                                                                            "📸 Screenshot saved to ${screenshotDir.name}",
+                                                                            Toast.LENGTH_SHORT
+                                                                        ).show()
                                                                     }
                                                                 } catch (e: Exception) {
                                                                     Log.w("PlayerScreen", "Saving screenshot failed", e)
+                                                                    act.runOnUiThread {
+                                                                        Toast.makeText(
+                                                                            context,
+                                                                            "Save failed: ${e.message}",
+                                                                            Toast.LENGTH_SHORT
+                                                                        ).show()
+                                                                    }
+                                                                } finally {
+                                                                    // FIX: Always recycle the bitmap after use — prevents 8 MB
+                                                                    // leak per screenshot tap that would only be reclaimed on GC.
+                                                                    bitmap.recycle()
                                                                 }
                                                             } else {
+                                                                bitmap.recycle()
                                                                 act.runOnUiThread {
-                                                                    Toast.makeText(context, "Screenshot capture failed ($copyResult)", Toast.LENGTH_SHORT).show()
+                                                                    Toast.makeText(
+                                                                        context,
+                                                                        "Screenshot capture failed ($copyResult)",
+                                                                        Toast.LENGTH_SHORT
+                                                                    ).show()
                                                                 }
                                                             }
                                                         },
                                                         android.os.Handler(android.os.Looper.getMainLooper())
                                                     )
                                                 } else {
-                                                    Toast.makeText(context, "📸 Screenshot captured to ${screenshotDir.name}", Toast.LENGTH_SHORT).show()
+                                                    Toast.makeText(context, "Screenshot requires Android 8.0+", Toast.LENGTH_SHORT).show()
                                                 }
                                             } catch (e: Exception) {
                                                 Log.w("PlayerScreen", "Screenshot failed: ${e.message}")
