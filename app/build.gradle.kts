@@ -38,14 +38,14 @@ android {
             useSupportLibrary = true
         }
 
-        buildConfigField("String", "TMDB_API_KEY", "\"${secret("streamhub.tmdb_api_key")}\"")
-        buildConfigField("String", "MAL_CLIENT_ID", "\"${secret("streamhub.mal_client_id")}\"")
-        buildConfigField("String", "MAL_CLIENT_SECRET", "\"${secret("streamhub.mal_client_secret")}\"")
-        buildConfigField("String", "TELEGRAM_API_ID", "\"${secret("streamhub.telegram_api_id")}\"")
-        buildConfigField("String", "TELEGRAM_API_HASH", "\"${secret("streamhub.telegram_api_hash")}\"")
-        buildConfigField("String", "TELEGRAM_ANIME_CHANNEL", "\"${secret("streamhub.telegram_anime_channel", "")}\"")
-        buildConfigField("String", "TELEGRAM_MOVIES_CHANNEL", "\"${secret("streamhub.telegram_movies_channel", "")}\"")
-        buildConfigField("String", "TELEGRAM_SERIES_CHANNEL", "\"${secret("streamhub.telegram_series_channel", "")}\"")
+        buildConfigField("String", "TMDB_API_KEY", "\"${secret("streamhub.tmdb_api_key", "ec562d9f2a8a07ffb7fa3308fb5bec9c")}\"")
+        buildConfigField("String", "MAL_CLIENT_ID", "\"${secret("streamhub.mal_client_id", "4f7167fe0e6ff0b5832d117657a1aefb")}\"")
+        buildConfigField("String", "MAL_CLIENT_SECRET", "\"${secret("streamhub.mal_client_secret", "c721d0b2400eeb7893c2e958514be9279736d7f202b6734e4eef913e098b71df")}\"")
+        buildConfigField("String", "TELEGRAM_API_ID", "\"${secret("streamhub.telegram_api_id", "23143864")}\"")
+        buildConfigField("String", "TELEGRAM_API_HASH", "\"${secret("streamhub.telegram_api_hash", "726e02cd51d31364d6aca817dac5ed81")}\"")
+        buildConfigField("String", "TELEGRAM_ANIME_CHANNEL", "\"${secret("streamhub.telegram_anime_channel", "https://t.me/+AkdK7gDbYWRmZTc1")}\"")
+        buildConfigField("String", "TELEGRAM_MOVIES_CHANNEL", "\"${secret("streamhub.telegram_movies_channel", "https://t.me/+dx2YihneVQczNTM1")}\"")
+        buildConfigField("String", "TELEGRAM_SERIES_CHANNEL", "\"${secret("streamhub.telegram_series_channel", "https://t.me/+FiQ7kG8Ofh5jMDU1")}\"")
         buildConfigField("boolean", "DEBUG_LOGGING", "false")
         buildConfigField("String", "OWNER_USERNAMES", "\"${secret("streamhub.owner_usernames", "")}\"")
     }
