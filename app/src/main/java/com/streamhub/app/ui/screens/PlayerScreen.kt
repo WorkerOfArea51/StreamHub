@@ -316,10 +316,37 @@ fun PlayerScreen(
     }
 
     // Volume & Brightness Drag States
+    // FIX: Track system volume changes via ContentObserver — syncs when user presses
+    // the physical volume rocker while in the player.
     val audioManager = remember { context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
     val maxVolume = remember { audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC)?.toFloat()?.coerceAtLeast(1f) ?: 1f }
+
     var currentVolumePercent by remember {
         mutableFloatStateOf(((audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0) / maxVolume) * 100f)
+    }
+
+    // FIX: Register a ContentObserver to sync currentVolumePercent when the system
+    // volume changes (physical rocker, notification shade, Bluetooth headset).
+    DisposableEffect(audioManager) {
+        val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                val currentVol = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
+                val newPercent = (currentVol / maxVolume) * 100f
+                // Only update if the difference is meaningful (>2%) to avoid feedback loops
+                // with our own setStreamVolume calls.
+                if (kotlin.math.abs(newPercent - currentVolumePercent) > 2f) {
+                    currentVolumePercent = newPercent
+                }
+            }
+        }
+        context.applicationContext.contentResolver.registerContentObserver(
+            android.provider.Settings.System.CONTENT_URI,
+            true,
+            observer
+        )
+        onDispose {
+            context.applicationContext.contentResolver.unregisterContentObserver(observer)
+        }
     }
 
     var currentBrightnessPercent by remember {
