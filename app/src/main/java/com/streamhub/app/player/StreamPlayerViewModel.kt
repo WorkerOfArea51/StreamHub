@@ -28,6 +28,21 @@ enum class AspectRatioMode {
     FIT, CROP, STRETCH, FILL
 }
 
+enum class PlayerErrorType {
+    NETWORK,           // Connection timeout, DNS failure, socket reset
+    STREAM_RESOLVE,    // Telegram link couldn't be resolved
+    DECODER,           // Codec init failure, unsupported format
+    SOURCE_NOT_FOUND,  // 404, file deleted, TDLib file gone
+    UNKNOWN            // Fallback
+}
+
+data class PlayerErrorInfo(
+    val type: PlayerErrorType,
+    val message: String,
+    val canRetry: Boolean,
+    val httpStatusCode: Int = 0
+)
+
 data class PlayerUiState(
     val isPlaying: Boolean = false,
     val currentPositionMs: Long = 0L,
@@ -50,6 +65,7 @@ data class PlayerUiState(
     val sleepTimerMinutesRemaining: Int? = null,
     val volumeBoostPercent: Int = 0,
     val playerError: String? = null,
+    val playerErrorInfo: PlayerErrorInfo? = null,  // NEW: structured error for UI
     val resolvedStreamUrl: String = "",
     val posterUrl: String = ""
 )
@@ -167,6 +183,7 @@ class StreamPlayerViewModel : ViewModel() {
 
                     if (playbackState == Player.STATE_READY) {
                         exoPlayer?.let { updateAvailableTracks(it.currentTracks) }
+                        resetRetryCounter()  // NEW: clear retry counter on successful playback
                     }
 
                     if (playbackState == Player.STATE_ENDED) {
@@ -193,11 +210,18 @@ class StreamPlayerViewModel : ViewModel() {
 
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                     Log.e("StreamPlayerViewModel", "ExoPlayer error", error)
+                    val errorInfo = classifyError(error)
                     _uiState.update {
                         it.copy(
                             isBuffering = false,
-                            playerError = "Playback error: ${error.localizedMessage ?: "Unknown"}"
+                            isPlaying = false,
+                            playerError = errorInfo.message,
+                            playerErrorInfo = errorInfo
                         )
+                    }
+                    // Auto-retry network errors up to 2 times with exponential backoff
+                    if (errorInfo.type == PlayerErrorType.NETWORK && errorInfo.canRetry) {
+                        scheduleAutoRetry()
                     }
                 }
 
@@ -250,6 +274,40 @@ class StreamPlayerViewModel : ViewModel() {
             langDisplay.isNotBlank() -> langDisplay
             cleanedLabel.isNotBlank() -> cleanedLabel
             else -> if (isSubtitle) "Subtitle" else "Audio"
+        }
+    }
+
+    private fun classifyError(error: Throwable): PlayerErrorInfo {
+        val message = error.localizedMessage ?: error.message ?: "Unknown playback error"
+        val canRetry = true  // Most errors are retryable; specific cases set false below
+
+        return when (error) {
+            is androidx.media3.common.PlaybackException -> {
+                when (error.errorCode) {
+                    androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                    androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+                    androidx.media3.common.PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE,
+                    androidx.media3.common.PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> {
+                        PlayerErrorInfo(PlayerErrorType.NETWORK, message, canRetry)
+                    }
+                    androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+                    androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FAILED,
+                    androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED -> {
+                        PlayerErrorInfo(PlayerErrorType.DECODER, "This video format isn't supported by your device's decoder.", false)
+                    }
+                    androidx.media3.common.PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
+                    androidx.media3.common.PlaybackException.ERROR_CODE_IO_NO_PERMISSION -> {
+                        PlayerErrorInfo(PlayerErrorType.SOURCE_NOT_FOUND, "This video source is no longer available.", false)
+                    }
+                    else -> PlayerErrorInfo(PlayerErrorType.UNKNOWN, message, canRetry)
+                }
+            }
+            is java.io.IOException,
+            is java.net.SocketTimeoutException,
+            is java.net.UnknownHostException -> {
+                PlayerErrorInfo(PlayerErrorType.NETWORK, "Network connection failed. Check your internet and retry.", canRetry)
+            }
+            else -> PlayerErrorInfo(PlayerErrorType.UNKNOWN, message, canRetry)
         }
     }
 
@@ -338,6 +396,7 @@ class StreamPlayerViewModel : ViewModel() {
             it.copy(
                 currentEpisodeIndex = index,
                 playerError = null,
+                playerErrorInfo = null,
                 durationMs = if (fallbackDurationMs > 0) fallbackDurationMs else it.durationMs
             )
         }
@@ -350,7 +409,16 @@ class StreamPlayerViewModel : ViewModel() {
         resolutionJob = viewModelScope.launch {
             val resolvedUrl = resolveStreamUrl(rawUrl)
             if (resolvedUrl.isBlank()) {
-                _uiState.update { it.copy(playerError = "Failed to resolve stream link") }
+                _uiState.update {
+                    it.copy(
+                        playerError = "Failed to resolve stream link",
+                        playerErrorInfo = PlayerErrorInfo(
+                            PlayerErrorType.STREAM_RESOLVE,
+                            "Couldn't resolve the Telegram stream link. It may have expired.",
+                            canRetry = true
+                        )
+                    )
+                }
                 return@launch
             }
             _uiState.update {
@@ -393,7 +461,7 @@ class StreamPlayerViewModel : ViewModel() {
 
     fun retryCurrentEpisode() {
         val snapshot = _uiState.value
-        _uiState.update { it.copy(playerError = null, isBuffering = true) }
+        _uiState.update { it.copy(playerError = null, playerErrorInfo = null, isBuffering = true) }
         playEpisode(snapshot.currentEpisodeIndex, snapshot.currentPositionMs)
     }
 
@@ -735,7 +803,38 @@ class StreamPlayerViewModel : ViewModel() {
         }
     }
 
+    private var autoRetryCount: Int = 0
+    private var autoRetryJob: Job? = null
+
+    private fun scheduleAutoRetry() {
+        if (autoRetryCount >= 2) {
+            Log.w("StreamPlayerViewModel", "Auto-retry exhausted ($autoRetryCount attempts) — giving up")
+            return
+        }
+        autoRetryCount++
+        val backoffMs = (1500L * autoRetryCount) // 1.5s, then 3s
+        Log.i("StreamPlayerViewModel", "Scheduling auto-retry #$autoRetryCount in ${backoffMs}ms")
+        autoRetryJob?.cancel()
+        autoRetryJob = viewModelScope.launch {
+            delay(backoffMs)
+            // Clear error state and retry — but only if user hasn't navigated away
+            _uiState.update { it.copy(playerError = null, playerErrorInfo = null, isBuffering = true) }
+            retryCurrentEpisode()
+        }
+    }
+
+    /**
+     * Reset retry counter on successful playback start — call from onPlaybackStateChanged STATE_READY
+     */
+    private fun resetRetryCounter() {
+        autoRetryCount = 0
+        autoRetryJob?.cancel()
+        autoRetryJob = null
+    }
+
     fun releasePlayer() {
+        autoRetryJob?.cancel()
+        autoRetryJob = null
         positionTrackerJob?.cancel()
         positionTrackerJob = null
         resolutionJob?.cancel()

@@ -54,6 +54,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -76,20 +77,29 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.LinkOff
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material.icons.filled.VolumeMute
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -697,14 +707,24 @@ fun PlayerScreen(
             }
         }
 
-        // Buffering Indicator
-        if (uiState.isBuffering) {
+        // Buffering Indicator (only when not in error state)
+        if (uiState.isBuffering && uiState.playerError == null && uiState.playerErrorInfo == null) {
             CircularProgressIndicator(
                 color = Color.White,
                 strokeWidth = 3.5.dp,
                 modifier = Modifier
                     .size(52.dp)
                     .align(Alignment.Center)
+            )
+        }
+
+        // Robust Error Overlay with Retry
+        if (uiState.playerError != null || uiState.playerErrorInfo != null) {
+            PlayerErrorOverlay(
+                errorInfo = uiState.playerErrorInfo,
+                errorMessage = uiState.playerError,
+                onRetry = { viewModel.retryCurrentEpisode() },
+                onBack = onBackClick
             )
         }
 
@@ -1868,6 +1888,126 @@ fun PlayerScreen(
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayerErrorOverlay(
+    errorInfo: com.streamhub.app.player.PlayerErrorInfo?,
+    errorMessage: String?,
+    onRetry: () -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val type = errorInfo?.type ?: com.streamhub.app.player.PlayerErrorType.UNKNOWN
+    val message = errorInfo?.message ?: errorMessage ?: "An unexpected playback error occurred."
+    val canRetry = errorInfo?.canRetry ?: true
+
+    val icon = when (type) {
+        com.streamhub.app.player.PlayerErrorType.NETWORK -> Icons.Default.WifiOff
+        com.streamhub.app.player.PlayerErrorType.STREAM_RESOLVE -> Icons.Default.LinkOff
+        com.streamhub.app.player.PlayerErrorType.DECODER -> Icons.Default.VideoFile
+        com.streamhub.app.player.PlayerErrorType.SOURCE_NOT_FOUND -> Icons.Default.SearchOff
+        com.streamhub.app.player.PlayerErrorType.UNKNOWN -> Icons.Default.ErrorOutline
+    }
+
+    val title = when (type) {
+        com.streamhub.app.player.PlayerErrorType.NETWORK -> "Network Connection Error"
+        com.streamhub.app.player.PlayerErrorType.STREAM_RESOLVE -> "Stream Unavailable"
+        com.streamhub.app.player.PlayerErrorType.DECODER -> "Playback Unsupported"
+        com.streamhub.app.player.PlayerErrorType.SOURCE_NOT_FOUND -> "Media Not Found"
+        com.streamhub.app.player.PlayerErrorType.UNKNOWN -> "Playback Error"
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color(0xCC0A0A10)),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = Color(0xFF14141E),
+            border = BorderStroke(1.dp, Color(0xFF2C2C3E)),
+            modifier = Modifier
+                .padding(horizontal = 28.dp)
+                .widthIn(max = 420.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x22EF4444)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = "Error",
+                        tint = Color(0xFFEF4444),
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    text = title,
+                    color = Color.White,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = message,
+                    color = com.streamhub.app.ui.theme.TextSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedButton(
+                        onClick = onBack,
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFF2C2C3E)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = com.streamhub.app.ui.theme.TextSecondary),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Go Back", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    if (canRetry) {
+                        Button(
+                            onClick = onRetry,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = com.streamhub.app.ui.theme.PrimaryRed),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Retry",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Retry", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
