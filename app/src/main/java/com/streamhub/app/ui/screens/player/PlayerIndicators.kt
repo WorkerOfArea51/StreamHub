@@ -49,9 +49,20 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.BrokenImage
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.LinkOff
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.ui.text.style.TextAlign
+import com.streamhub.app.player.PlayerErrorInfo
+import com.streamhub.app.player.PlayerErrorType
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.CardBorderDark
 import com.streamhub.app.ui.theme.PrimaryRed
+import com.streamhub.app.ui.theme.TextSecondary
 
 @Composable
 fun VolumeIndicator(
@@ -315,6 +326,132 @@ fun AspectRatioToast(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun PlayerErrorOverlay(
+    errorInfo: PlayerErrorInfo,
+    onRetry: () -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val icon = when (errorInfo.type) {
+        PlayerErrorType.NETWORK -> Icons.Default.WifiOff
+        PlayerErrorType.STREAM_RESOLVE -> Icons.Default.LinkOff
+        PlayerErrorType.DECODER -> Icons.Default.BrokenImage
+        PlayerErrorType.SOURCE_NOT_FOUND -> Icons.Default.SearchOff
+        PlayerErrorType.UNKNOWN -> Icons.Default.Error
+    }
+    val title = when (errorInfo.type) {
+        PlayerErrorType.NETWORK -> "Network Error"
+        PlayerErrorType.STREAM_RESOLVE -> "Stream Unavailable"
+        PlayerErrorType.DECODER -> "Unsupported Format"
+        PlayerErrorType.SOURCE_NOT_FOUND -> "Source Removed"
+        PlayerErrorType.UNKNOWN -> "Playback Error"
+    }
+    val subtitle = when (errorInfo.type) {
+        PlayerErrorType.NETWORK -> "Check your internet connection and try again."
+        PlayerErrorType.STREAM_RESOLVE -> "The Telegram link couldn't be resolved. It may have expired."
+        PlayerErrorType.DECODER -> "Your device can't decode this video. Try a different quality or source."
+        PlayerErrorType.SOURCE_NOT_FOUND -> "This video has been removed from the source."
+        PlayerErrorType.UNKNOWN -> errorInfo.message
+    }
+
+    Box(
+        modifier = modifier.fillMaxSize().background(Color(0xE6000000)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(horizontal = 32.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Color(0xFFFF5252),
+                modifier = Modifier.size(72.dp)
+            )
+            Spacer(modifier = Modifier.height(20.dp))
+            Text(
+                text = title,
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = subtitle,
+                color = TextSecondary,
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(28.dp))
+            if (errorInfo.canRetry) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.Transparent,
+                        border = BorderStroke(1.dp, Color(0x55FFFFFF)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onBack() }
+                    ) {
+                        Text(
+                            "Go Back",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = PrimaryRed,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onRetry() }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Retry",
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = PrimaryRed,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onBack() }
+                ) {
+                    Text(
+                        "Go Back",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 32.dp, vertical = 12.dp)
+                    )
+                }
             }
         }
     }
