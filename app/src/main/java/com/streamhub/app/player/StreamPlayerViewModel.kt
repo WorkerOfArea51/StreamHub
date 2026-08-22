@@ -73,7 +73,8 @@ data class PlayerUiState(
     val networkSpeedKbps: Long = 0L,        // Rolling average bytes/sec from ExoPlayer
     val bufferHealthSeconds: Long = 0L,      // (buffered - current) / 1000
     val isLowQuality: Boolean = false,       // True if adaptive bitrate dropped quality
-    val subtitleOffsetMs: Long = 0L          // Negative = subs earlier, positive = subs later
+    val subtitleOffsetMs: Long = 0L,         // Negative = subs earlier, positive = subs later
+    val isBackgroundAudioEnabled: Boolean = false
 )
 
 @OptIn(UnstableApi::class)
@@ -779,6 +780,10 @@ class StreamPlayerViewModel : ViewModel() {
         _uiState.update { it.copy(volumeBoostPercent = clamped) }
     }
 
+    fun setBackgroundAudio(enabled: Boolean) {
+        _uiState.update { it.copy(isBackgroundAudioEnabled = enabled) }
+    }
+
     fun toggleEpisodeDrawer() {
         _uiState.update { it.copy(showEpisodeDrawer = !it.showEpisodeDrawer) }
     }
@@ -940,6 +945,34 @@ class StreamPlayerViewModel : ViewModel() {
     }
 
     fun releasePlayer() {
+        // FIX: If background audio is enabled, DON'T release the player — hand it off to
+        // StreamMediaService for background playback. The service owns the player lifecycle
+        // until the user stops it from the notification.
+        if (_uiState.value.isBackgroundAudioEnabled && exoPlayer != null) {
+            Log.i("StreamPlayerViewModel", "Background audio enabled — keeping player alive for service")
+            // Detach our listener but don't release the player
+            playerListener?.let { exoPlayer?.removeListener(it) }
+            playerListener = null
+            // Don't null out exoPlayer — the service still holds it via PlayerHolder
+            // Cancel all our jobs but keep the player running
+            autoRetryJob?.cancel()
+            autoRetryJob = null
+            autoRetryCount = 0
+            positionTrackerJob?.cancel()
+            positionTrackerJob = null
+            resolutionJob?.cancel()
+            resolutionJob = null
+            nextEpisodePreloadJob?.cancel()
+            nextEpisodePreloadJob = null
+            sleepTimerJob?.cancel()
+            sleepTimerJob = null
+            pendingSeekTimeoutJob?.cancel()
+            pendingSeekTimeoutJob = null
+            pendingSeekTargetMs = null
+            volumeBoostManager.release()
+            return
+        }
+
         autoRetryJob?.cancel()
         autoRetryJob = null
         autoRetryCount = 0  // FIX: Reset retry budget for next playback session

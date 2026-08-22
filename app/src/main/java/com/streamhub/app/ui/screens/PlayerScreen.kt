@@ -2036,6 +2036,50 @@ fun PlayerScreen(
                                 }
                             }
 
+                            Spacer(modifier = Modifier.height(18.dp))
+
+                            // Background Audio Toggle
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (uiState.isBackgroundAudioEnabled) Color(0xFFD0BCFF).copy(alpha = 0.2f) else Color(0x22FFFFFF),
+                                border = BorderStroke(1.dp, if (uiState.isBackgroundAudioEnabled) Color(0xFFD0BCFF) else Color(0x1AFFFFFF)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(44.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { viewModel.setBackgroundAudio(!uiState.isBackgroundAudioEnabled) }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Headphones,
+                                            contentDescription = null,
+                                            tint = if (uiState.isBackgroundAudioEnabled) Color(0xFFD0BCFF) else Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text(
+                                            text = "Background Audio",
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                    Text(
+                                        text = if (uiState.isBackgroundAudioEnabled) "On" else "Off",
+                                        color = if (uiState.isBackgroundAudioEnabled) Color(0xFFD0BCFF) else TextSecondary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
                             Spacer(modifier = Modifier.height(24.dp))
                         }
                     }
