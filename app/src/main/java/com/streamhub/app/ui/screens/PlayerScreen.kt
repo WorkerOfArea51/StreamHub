@@ -856,6 +856,25 @@ fun PlayerScreen(
                     .background(Color(0x66000000))
             ) {
                 // ── Top Header & Sub-Bar Strip ──
+                // FIX: Swipe-down-from-top gesture to exit the player (YouTube-style).
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(40.dp)
+                        .align(Alignment.TopCenter)
+                        .pointerInput(Unit) {
+                            detectVerticalDragGestures(
+                                onDragStart = { },
+                                onVerticalDrag = { change, dragAmount ->
+                                    if (dragAmount > 30f) {  // Only trigger on significant downward swipe
+                                        change.consume()
+                                        onBackClick()
+                                    }
+                                }
+                            )
+                        }
+                )
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
