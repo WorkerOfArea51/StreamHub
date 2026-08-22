@@ -182,6 +182,9 @@ fun PlayerScreen(
     DisposableEffect(Unit) {
         val window = activity?.window
         val originalOrientation = activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        // FIX: Save original screen brightness so it can be restored on exit.
+        // -1f means "use system default" — must be restored, not overwritten.
+        val originalBrightness = window?.attributes?.screenBrightness ?: -1f
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -195,6 +198,12 @@ fun PlayerScreen(
         onDispose {
             activity?.requestedOrientation = originalOrientation
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            // FIX: Restore screen brightness to system default (or pre-player value).
+            window?.let { win ->
+                val attrs = win.attributes
+                attrs.screenBrightness = originalBrightness
+                win.attributes = attrs
+            }
             window?.let { win ->
                 val insetsController = WindowCompat.getInsetsController(win, win.decorView)
                 insetsController.show(WindowInsetsCompat.Type.systemBars())
