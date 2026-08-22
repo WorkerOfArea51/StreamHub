@@ -229,6 +229,9 @@ fun PlayerScreen(
 
     // Auto-hide controls timer (4.5 seconds)
     var autoHideJob by remember { mutableStateOf<Job?>(null) }
+    // FIX: Auto-hide Skip Intro after 8 seconds — Netflix-style.
+    var showSkipIntro by remember { mutableStateOf(false) }
+    var skipIntroHideJob by remember { mutableStateOf<Job?>(null) }
     // FIX: Snapshot the trigger conditions at schedule time, then re-check CURRENT state
     // at fire time — previously the closure used stale uiState from 4.5s ago.
     LaunchedEffect(uiState.isControlsVisible, uiState.isPlaying, uiState.isLocked) {
@@ -1200,9 +1203,22 @@ fun PlayerScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Left: Smart Skip Intro
+                            // Left: Smart Skip Intro (auto-hides after 8s — Netflix-style)
                             val isIntroTimeframe = !isMovie && uiState.currentPositionMs in 5_000L..180_000L
-                            if (isIntroTimeframe) {
+                            LaunchedEffect(isIntroTimeframe, uiState.currentEpisodeIndex) {
+                                if (isIntroTimeframe) {
+                                    showSkipIntro = true
+                                    skipIntroHideJob?.cancel()
+                                    skipIntroHideJob = scope.launch {
+                                        delay(8_000L)
+                                        showSkipIntro = false
+                                    }
+                                } else {
+                                    showSkipIntro = false
+                                    skipIntroHideJob?.cancel()
+                                }
+                            }
+                            if (isIntroTimeframe && showSkipIntro) {
                                 Surface(
                                     shape = RoundedCornerShape(14.dp),
                                     color = AccentOrange.copy(alpha = 0.35f),
