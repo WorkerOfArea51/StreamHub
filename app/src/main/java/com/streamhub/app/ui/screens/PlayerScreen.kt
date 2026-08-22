@@ -32,9 +32,11 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -302,6 +304,11 @@ fun PlayerScreen(
     var aspectToastText by remember { mutableStateOf("") }
     var showAspectToast by remember { mutableStateOf(false) }
 
+    // FIX: Two-finger pinch-to-zoom — zooms the video surface (1.0x to 3.0x).
+    var videoZoomScale by remember { mutableFloatStateOf(1.0f) }
+    var videoZoomOffsetX by remember { mutableFloatStateOf(0f) }
+    var videoZoomOffsetY by remember { mutableFloatStateOf(0f) }
+
     var isScrubbing by remember { mutableStateOf(false) }
     var scrubbingPositionMs by remember { mutableLongStateOf(0L) }
     var scrubberThumbnailBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
@@ -496,7 +503,14 @@ fun PlayerScreen(
                 contentAlignment = Alignment.Center
             ) {
                 AndroidView(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer(
+                            scaleX = videoZoomScale,
+                            scaleY = videoZoomScale,
+                            translationX = videoZoomOffsetX,
+                            translationY = videoZoomOffsetY
+                        ),
                     factory = { ctx ->
                         PlayerView(ctx).apply {
                             useController = false
@@ -649,6 +663,25 @@ fun PlayerScreen(
                                         viewModel.setPlaybackSpeed(2.0f)
                                         is2xSpeedHolding = true
                                     }
+                                }
+                            )
+                        }
+                        // FIX: Two-finger pinch-to-zoom — zooms the video surface.
+                        .pointerInput(Unit) {
+                            detectTransformGestures(
+                                onGesture = { _, pan, zoom, _ ->
+                                    val newScale = (videoZoomScale * zoom).coerceIn(1.0f, 3.0f)
+                                    if (newScale > 1.0f) {
+                                        // Allow panning when zoomed in
+                                        val maxX = (newScale - 1f) * 200f
+                                        val maxY = (newScale - 1f) * 200f
+                                        videoZoomOffsetX = (videoZoomOffsetX + pan.x).coerceIn(-maxX, maxX)
+                                        videoZoomOffsetY = (videoZoomOffsetY + pan.y).coerceIn(-maxY, maxY)
+                                    } else {
+                                        videoZoomOffsetX = 0f
+                                        videoZoomOffsetY = 0f
+                                    }
+                                    videoZoomScale = newScale
                                 }
                             )
                         }
@@ -1659,6 +1692,10 @@ fun PlayerScreen(
                         selectedId = selectedRatioOption.id,
                         onSelect = { opt ->
                             selectedRatioOption = opt
+                            // FIX: Reset zoom when user picks a non-zoomed aspect ratio.
+                            videoZoomScale = 1.0f
+                            videoZoomOffsetX = 0f
+                            videoZoomOffsetY = 0f
                             aspectToastText = "Aspect: ${opt.label}"
                             showAspectToast = true
                             showAspectRatioDrawer = false
