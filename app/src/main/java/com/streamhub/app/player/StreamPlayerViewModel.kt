@@ -72,7 +72,8 @@ data class PlayerUiState(
     val showResumePrompt: Boolean = false,
     val networkSpeedKbps: Long = 0L,        // Rolling average bytes/sec from ExoPlayer
     val bufferHealthSeconds: Long = 0L,      // (buffered - current) / 1000
-    val isLowQuality: Boolean = false        // True if adaptive bitrate dropped quality
+    val isLowQuality: Boolean = false,       // True if adaptive bitrate dropped quality
+    val subtitleOffsetMs: Long = 0L          // Negative = subs earlier, positive = subs later
 )
 
 @OptIn(UnstableApi::class)
@@ -653,6 +654,16 @@ class StreamPlayerViewModel : ViewModel() {
                 showSubtitleDialog = false
             )
         }
+    }
+
+    @OptIn(UnstableApi::class)
+    fun setSubtitleOffset(offsetMs: Long) {
+        val clamped = offsetMs.coerceIn(-1000L, 1000L)  // Cap at ±1s
+        _uiState.update { it.copy(subtitleOffsetMs = clamped) }
+    }
+
+    fun adjustSubtitleOffset(deltaMs: Long) {
+        setSubtitleOffset(_uiState.value.subtitleOffsetMs + deltaMs)
     }
 
     fun toggleAudioDialog() {

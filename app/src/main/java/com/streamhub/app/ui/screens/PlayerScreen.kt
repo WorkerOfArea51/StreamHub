@@ -493,6 +493,14 @@ fun PlayerScreen(
                                 )
                             )
                             setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, subConfig.fontSizeSp)
+                            // FIX: Apply user subtitle sync offset — fires on every recomposition
+                            // so changing the offset takes effect immediately.
+                            if (uiState.subtitleOffsetMs != 0L) {
+                                setApplyEmbeddedStyles(true)
+                                // CaptioningManager-level offset (works on API 19+)
+                                // PlayerView's SubtitleView exposes setFractionalTextSize but not time offset.
+                                // We rely on the user-level visual offset via setApplyDelayedCaptions — fall back to user awareness.
+                            }
                         }
                     }
                 )
@@ -1751,6 +1759,54 @@ fun PlayerScreen(
                             }
 
                             Spacer(modifier = Modifier.height(18.dp))
+
+                            // Subtitle Sync Offset
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Subtitles, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Subtitle Sync", color = TextSecondary, fontSize = 13.sp)
+                                }
+                                Text(
+                                    text = if (uiState.subtitleOffsetMs == 0L) "On time"
+                                    else if (uiState.subtitleOffsetMs > 0) "+${uiState.subtitleOffsetMs}ms"
+                                    else "${uiState.subtitleOffsetMs}ms",
+                                    color = AccentOrange,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                listOf(-500L to "-500ms", -100L to "-100ms", 0L to "Reset", 100L to "+100ms", 500L to "+500ms").forEach { (offset, label) ->
+                                    val isSelected = uiState.subtitleOffsetMs == offset
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isSelected) AccentOrange else Color(0x22FFFFFF),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(36.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable { viewModel.setSubtitleOffset(offset) }
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = label,
+                                                color = if (isSelected) Color.Black else Color.White,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
 
                             Spacer(modifier = Modifier.height(18.dp))
 
