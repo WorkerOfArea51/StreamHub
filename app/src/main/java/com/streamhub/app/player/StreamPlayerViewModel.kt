@@ -109,6 +109,7 @@ class StreamPlayerViewModel : ViewModel() {
     private var playerListener: Player.Listener? = null
     private var nextEpisodePreloadJob: Job? = null
     private var pendingSeekTargetMs: Long? = null
+    private var pendingSeekTimeoutJob: Job? = null
     private var sleepTimerJob: Job? = null
 
     private var lastBufferedBytes: Long = 0L
@@ -234,11 +235,16 @@ class StreamPlayerViewModel : ViewModel() {
                 ) {
                     if (reason == Player.DISCONTINUITY_REASON_SEEK) {
                         pendingSeekTargetMs = null
+                        // FIX: Cancel the seek timeout — the seek completed successfully.
+                        pendingSeekTimeoutJob?.cancel()
+                        pendingSeekTimeoutJob = null
                         _uiState.update { it.copy(currentPositionMs = newPosition.positionMs) }
                     }
                     // FIX: Also clear pending seek on auto-transition (e.g. next episode).
                     if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) {
                         pendingSeekTargetMs = null
+                        pendingSeekTimeoutJob?.cancel()
+                        pendingSeekTimeoutJob = null
                     }
                 }
 
@@ -693,6 +699,18 @@ class StreamPlayerViewModel : ViewModel() {
                 bufferedPositionMs = player.bufferedPosition.coerceAtLeast(target)
             )
         }
+
+        // FIX: Safety timeout — if ExoPlayer doesn't fire onPositionDiscontinuity within 3s
+        // (e.g. broken source, network stall), clear pendingSeekTargetMs so future seeks
+        // compute from the actual player position instead of a stale target.
+        pendingSeekTimeoutJob?.cancel()
+        pendingSeekTimeoutJob = viewModelScope.launch {
+            delay(3_000L)
+            if (pendingSeekTargetMs != null) {
+                Log.w("StreamPlayerViewModel", "Seek timeout — clearing stale pendingSeekTargetMs=$pendingSeekTargetMs")
+                pendingSeekTargetMs = null
+            }
+        }
     }
 
     fun seekForward(offsetMs: Long = 10000L) {
@@ -933,6 +951,8 @@ class StreamPlayerViewModel : ViewModel() {
         nextEpisodePreloadJob = null
         sleepTimerJob?.cancel()
         sleepTimerJob = null
+        pendingSeekTimeoutJob?.cancel()
+        pendingSeekTimeoutJob = null
 
         exoPlayer?.let { player ->
             playerListener?.let { player.removeListener(it) }
