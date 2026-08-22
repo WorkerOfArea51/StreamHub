@@ -881,8 +881,11 @@ class StreamPlayerViewModel : ViewModel() {
         autoRetryJob?.cancel()
         autoRetryJob = viewModelScope.launch {
             delay(backoffMs)
-            // Clear error state and retry — but only if user hasn't navigated away
-            _uiState.update { it.copy(playerError = null, playerErrorInfo = null, isBuffering = true) }
+            // FIX: Don't clear the error info — keep it visible so the user knows what failed.
+            // Just set isBuffering = true to show the spinner alongside the error overlay.
+            // The error overlay will be dismissed automatically when STATE_READY fires
+            // (via resetRetryCounter → which we should also use to clear error state).
+            _uiState.update { it.copy(isBuffering = true) }
             retryCurrentEpisode()
         }
     }
@@ -894,6 +897,10 @@ class StreamPlayerViewModel : ViewModel() {
         autoRetryCount = 0
         autoRetryJob?.cancel()
         autoRetryJob = null
+        // FIX: Clear error state when playback succeeds — the error overlay is no longer needed.
+        _uiState.update {
+            it.copy(playerError = null, playerErrorInfo = null)
+        }
     }
 
     fun acceptResume() {
@@ -917,6 +924,7 @@ class StreamPlayerViewModel : ViewModel() {
     fun releasePlayer() {
         autoRetryJob?.cancel()
         autoRetryJob = null
+        autoRetryCount = 0  // FIX: Reset retry budget for next playback session
         positionTrackerJob?.cancel()
         positionTrackerJob = null
         resolutionJob?.cancel()
