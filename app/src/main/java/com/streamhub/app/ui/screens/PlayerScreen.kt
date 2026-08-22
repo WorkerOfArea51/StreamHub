@@ -1414,9 +1414,15 @@ fun PlayerScreen(
                                             val fraction = (down.position.x / width).coerceIn(0f, 1f)
                                             scrubbingPositionMs = (fraction.toDouble() * duration).toLong()
                                             isScrubbing = true
-                                            Log.i("SEEKBAR_TOUCH", "Seekbar down at x=${down.position.x}/$width -> fraction=$fraction, duration=$duration, target=$scrubbingPositionMs ms")
 
                                             var finalTarget = scrubbingPositionMs
+                                            var lastSeekUpdateMs = 0L
+
+                                            // FIX: Long-press detection — if user holds finger still for >400ms,
+                                            // enter "live preview" mode: seek every 100ms to scrub through frames.
+                                            var isLongPress = false
+                                            val longPressDeadlineMs = down.uptimeMillis + 400L
+
                                             while (true) {
                                                 val event = awaitPointerEvent()
                                                 val change = event.changes.firstOrNull { it.id == down.id } ?: event.changes.firstOrNull()
@@ -1425,12 +1431,31 @@ fun PlayerScreen(
                                                     Log.i("SEEKBAR_TOUCH", "Seekbar released -> seekTo($finalTarget) of duration $currentDuration")
                                                     viewModel.seekTo(finalTarget)
                                                     isScrubbing = false
+                                                    // Reset playback speed if we were in preview mode
+                                                    if (isLongPress) {
+                                                        viewModel.setPlaybackSpeed(speedBeforeHold)
+                                                    }
                                                     break
                                                 }
                                                 change.consume()
                                                 val currentFraction = (change.position.x / width).coerceIn(0f, 1f)
                                                 finalTarget = (currentFraction.toDouble() * duration).toLong()
                                                 scrubbingPositionMs = finalTarget
+
+                                                // FIX: Live-preview seek — if finger is moving, seek every 100ms
+                                                // so the user sees the frame under their finger.
+                                                val now = System.currentTimeMillis()
+                                                if (now - lastSeekUpdateMs > 100L) {
+                                                    lastSeekUpdateMs = now
+                                                    viewModel.seekTo(finalTarget)
+                                                }
+
+                                                // Detect long-press for 2x preview mode
+                                                if (!isLongPress && now >= longPressDeadlineMs) {
+                                                    isLongPress = true
+                                                    speedBeforeHold = uiState.playbackSpeed
+                                                    viewModel.setPlaybackSpeed(2.0f)
+                                                }
                                             }
                                         }
                                     },
