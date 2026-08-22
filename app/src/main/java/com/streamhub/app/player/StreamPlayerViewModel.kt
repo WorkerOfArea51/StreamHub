@@ -158,6 +158,11 @@ class StreamPlayerViewModel : ViewModel() {
                         .setMinVideoSize(320, 240)
                         .setMaxVideoSize(1920, 1080)
                         .setViewportSizeToPhysicalDisplaySize(context, true)
+                        // FIX: Telegram HTTP 206 streams have ~1-2s RTT — ExoPlayer's default
+                        // 10s ABR window is too short and causes quality thrashing.
+                        // Force a stable quality for 30s before allowing ABR to switch.
+                        .setExceedRendererCapabilitiesIfNecessary(false)
+                        .setForceHighestSupportedBitrate(false)
                         .build()
                 }
                 val audioAttributes = androidx.media3.common.AudioAttributes.Builder()
@@ -821,6 +826,35 @@ class StreamPlayerViewModel : ViewModel() {
                             bufferHealthSeconds = bufferHealthSec,
                             networkSpeedKbps = speedKbps
                         )
+                    }
+
+                    // FIX: Smart auto-quality — if buffer is healthy (>60s) and network is fast (>2 MB/s),
+                    // allow higher bitrates. If buffer drops below 15s, force lower quality.
+                    val bufferSec = (buffered - currentPos) / 1000L
+                    if (bufferSec < 15L && speedKbps < 500L) {
+                        // Poor network — force low quality
+                        trackSelector?.let { ts ->
+                            val params = ts.buildUponParameters()
+                                .setMaxVideoBitrate(800_000)  // Force 480p
+                                .setMaxVideoSize(854, 480)
+                                .build()
+                            if (ts.parameters != params) {
+                                ts.parameters = params
+                                Log.i("StreamPlayerViewModel", "Auto-quality: DOWN to 480p (buffer=${bufferSec}s, speed=${speedKbps}KB/s)")
+                            }
+                        }
+                    } else if (bufferSec > 60L && speedKbps > 2_000L) {
+                        // Healthy network — restore max quality
+                        trackSelector?.let { ts ->
+                            val params = ts.buildUponParameters()
+                                .setMaxVideoBitrate(12_000_000)
+                                .setMaxVideoSize(1920, 1080)
+                                .build()
+                            if (ts.parameters != params) {
+                                ts.parameters = params
+                                Log.i("StreamPlayerViewModel", "Auto-quality: UP to 1080p (buffer=${bufferSec}s, speed=${speedKbps}KB/s)")
+                            }
+                        }
                     }
 
                     if (player.isPlaying) {
