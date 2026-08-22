@@ -67,7 +67,9 @@ data class PlayerUiState(
     val playerError: String? = null,
     val playerErrorInfo: PlayerErrorInfo? = null,  // NEW: structured error for UI
     val resolvedStreamUrl: String = "",
-    val posterUrl: String = ""
+    val posterUrl: String = "",
+    val pendingResumePositionMs: Long = 0L,
+    val showResumePrompt: Boolean = false
 )
 
 @OptIn(UnstableApi::class)
@@ -240,9 +242,7 @@ class StreamPlayerViewModel : ViewModel() {
             }
         }
 
-        // FIX: Always reset pending seek target on new media item init.
-        pendingSeekTargetMs = null
-
+        // FIX: Smart resume prompt — if saved position is >30s, ask user before seeking.
         val savedProgress = WatchHistoryManager.getProgress(mediaItem.id)
         val targetEpisodeIndex = if (savedProgress != null && savedProgress.episodeNumber in episodesList.indices) {
             savedProgress.episodeNumber
@@ -250,7 +250,22 @@ class StreamPlayerViewModel : ViewModel() {
             initialEpisodeIndex
         }
 
-        playEpisode(targetEpisodeIndex, savedProgress?.positionMs ?: 0L)
+        val savedPositionMs = savedProgress?.positionMs ?: 0L
+        val RESUME_PROMPT_THRESHOLD_MS = 30_000L  // 30 seconds
+
+        if (savedPositionMs > RESUME_PROMPT_THRESHOLD_MS &&
+            (savedProgress?.durationMs ?: 0L) - savedPositionMs > 5_000L) {  // Don't prompt if <5s remaining
+            _uiState.update {
+                it.copy(
+                    pendingResumePositionMs = savedPositionMs,
+                    showResumePrompt = true
+                )
+            }
+            // Load the episode but DON'T auto-seek yet — user must choose
+            playEpisode(targetEpisodeIndex, 0L)
+        } else {
+            playEpisode(targetEpisodeIndex, savedPositionMs)
+        }
         startPositionTracker()
     }
 
@@ -830,6 +845,24 @@ class StreamPlayerViewModel : ViewModel() {
         autoRetryCount = 0
         autoRetryJob?.cancel()
         autoRetryJob = null
+    }
+
+    fun acceptResume() {
+        val pos = _uiState.value.pendingResumePositionMs
+        if (pos > 0L) {
+            exoPlayer?.seekTo(pos)
+            _uiState.update {
+                it.copy(showResumePrompt = false, pendingResumePositionMs = 0L)
+            }
+        }
+    }
+
+    fun dismissResume() {
+        _uiState.update {
+            it.copy(showResumePrompt = false, pendingResumePositionMs = 0L)
+        }
+        // Start from beginning — already at position 0
+        exoPlayer?.seekTo(0L)
     }
 
     fun releasePlayer() {

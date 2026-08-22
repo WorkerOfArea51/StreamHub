@@ -1901,5 +1901,52 @@ fun PlayerScreen(
                 }
             }
         }
+
+        // Smart Resume Prompt — shown when user returns to a partially-watched video
+        if (uiState.showResumePrompt) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { viewModel.dismissResume() },
+                title = {
+                    Text(
+                        text = "Resume Playback?",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Column {
+                        Text(
+                            text = "You were watching ${mediaItem.title}",
+                            color = TextSecondary,
+                            fontSize = 13.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        val resumeTime = formatTime(uiState.pendingResumePositionMs)
+                        val totalTime = formatTime(uiState.durationMs)
+                        Text(
+                            text = "Resume from $resumeTime / $totalTime?",
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(
+                        onClick = { viewModel.acceptResume() }
+                    ) {
+                        Text("Resume", color = AccentOrange, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(
+                        onClick = { viewModel.dismissResume() }
+                    ) {
+                        Text("Start Over", color = TextSecondary)
+                    }
+                },
+                containerColor = Color(0xF212121A)
+            )
+        }
     }
 }
