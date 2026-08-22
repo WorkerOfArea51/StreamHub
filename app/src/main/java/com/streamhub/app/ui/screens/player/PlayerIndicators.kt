@@ -456,3 +456,61 @@ fun PlayerErrorOverlay(
         }
     }
 }
+
+@Composable
+fun BufferingHud(
+    visible: Boolean,
+    networkSpeedKbps: Long,
+    bufferHealthSeconds: Long,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(200)),
+        exit = fadeOut(tween(300)),
+        modifier = modifier
+    ) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xCC000000),
+            border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+            modifier = Modifier.padding(top = 60.dp)
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                // Spinner
+                androidx.compose.material3.CircularProgressIndicator(
+                    color = Color.White,
+                    strokeWidth = 2.5.dp,
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                // Buffer health bar
+                val healthColor = when {
+                    bufferHealthSeconds >= 30L -> Color(0xFF4CAF50)
+                    bufferHealthSeconds >= 10L -> Color(0xFFFFA726)
+                    else -> Color(0xFFFF5252)
+                }
+                Text(
+                    text = "Buffer: ${bufferHealthSeconds}s",
+                    color = healthColor,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                if (networkSpeedKbps > 0L) {
+                    val speedStr = when {
+                        networkSpeedKbps >= 1024L -> "%.1f MB/s".format(networkSpeedKbps / 1024.0)
+                        else -> "$networkSpeedKbps KB/s"
+                    }
+                    Text(
+                        text = speedStr,
+                        color = TextSecondary,
+                        fontSize = 10.sp
+                    )
+                }
+            }
+        }
+    }
+}

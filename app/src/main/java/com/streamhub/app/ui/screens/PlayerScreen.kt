@@ -142,6 +142,7 @@ import com.streamhub.app.ui.screens.player.AspectRatioOption
 import com.streamhub.app.ui.screens.player.AspectRatioToast
 import com.streamhub.app.ui.screens.player.AudioTrackDialog
 import com.streamhub.app.ui.screens.player.BrightnessIndicator
+import com.streamhub.app.ui.screens.player.BufferingHud
 import com.streamhub.app.ui.screens.player.DoubleTapSeekOverlay
 import com.streamhub.app.ui.screens.player.EpisodePlaylistDrawer
 import com.streamhub.app.ui.screens.player.NerdStats
@@ -718,23 +719,12 @@ fun PlayerScreen(
                 modifier = Modifier.align(Alignment.Center)
             )
         } else if (uiState.isBuffering) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.align(Alignment.Center)
-            ) {
-                CircularProgressIndicator(
-                    color = Color.White,
-                    strokeWidth = 3.5.dp,
-                    modifier = Modifier.size(52.dp)
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = if (uiState.currentPositionMs > 0L) "Buffering…" else "Loading…",
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
+            BufferingHud(
+                visible = true,
+                networkSpeedKbps = uiState.networkSpeedKbps,
+                bufferHealthSeconds = uiState.bufferHealthSeconds,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
         }
 
         // Gesture HUD Overlays

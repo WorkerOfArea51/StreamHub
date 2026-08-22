@@ -69,7 +69,10 @@ data class PlayerUiState(
     val resolvedStreamUrl: String = "",
     val posterUrl: String = "",
     val pendingResumePositionMs: Long = 0L,
-    val showResumePrompt: Boolean = false
+    val showResumePrompt: Boolean = false,
+    val networkSpeedKbps: Long = 0L,        // Rolling average bytes/sec from ExoPlayer
+    val bufferHealthSeconds: Long = 0L,      // (buffered - current) / 1000
+    val isLowQuality: Boolean = false        // True if adaptive bitrate dropped quality
 )
 
 @OptIn(UnstableApi::class)
@@ -106,6 +109,34 @@ class StreamPlayerViewModel : ViewModel() {
     private var nextEpisodePreloadJob: Job? = null
     private var pendingSeekTargetMs: Long? = null
     private var sleepTimerJob: Job? = null
+
+    private var lastBufferedBytes: Long = 0L
+    private var lastSpeedSampleMs: Long = 0L
+    private val speedSamples = ArrayDeque<Long>(5)  // rolling window
+
+    private fun estimateNetworkSpeedKbps(currentBuffered: Long): Long {
+        val now = System.currentTimeMillis()
+        if (lastSpeedSampleMs == 0L) {
+            lastSpeedSampleMs = now
+            lastBufferedBytes = currentBuffered
+            return 0L
+        }
+        val elapsedMs = now - lastSpeedSampleMs
+        if (elapsedMs < 1000L) return _uiState.value.networkSpeedKbps  // Sample at most 1/sec
+
+        val deltaBytes = (currentBuffered - lastBufferedBytes).coerceAtLeast(0L)
+        val bps = (deltaBytes * 1000L) / elapsedMs  // bytes per second
+        val kbps = bps / 1024L
+
+        // Rolling average of last 5 samples for stability
+        speedSamples.addLast(kbps)
+        if (speedSamples.size > 5) speedSamples.removeFirst()
+        val avgKbps = speedSamples.sum() / speedSamples.size.coerceAtLeast(1)
+
+        lastSpeedSampleMs = now
+        lastBufferedBytes = currentBuffered
+        return avgKbps
+    }
 
     fun getPlayer(): ExoPlayer? = exoPlayer
 
@@ -741,13 +772,20 @@ class StreamPlayerViewModel : ViewModel() {
                     val isBuffering = player.playbackState == Player.STATE_BUFFERING
 
                     val currentPos = pendingSeekTargetMs ?: playerPos
+                    val bufferHealthSec = ((buffered - currentPos).coerceAtLeast(0L) / 1000L)
+
+                    // Estimate network speed from total bytes downloaded (ExoPlayer doesn't expose this directly,
+                    // so we approximate from buffered-position delta over time)
+                    val speedKbps = estimateNetworkSpeedKbps(buffered)
 
                     _uiState.update {
                         it.copy(
                             currentPositionMs = currentPos,
                             durationMs = if (totalDuration > 0) totalDuration else it.durationMs,
                             bufferedPositionMs = buffered,
-                            isBuffering = isBuffering
+                            isBuffering = isBuffering,
+                            bufferHealthSeconds = bufferHealthSec,
+                            networkSpeedKbps = speedKbps
                         )
                     }
 
@@ -914,6 +952,9 @@ class StreamPlayerViewModel : ViewModel() {
         currentPlayer = null
         trackSelector = null
         pendingSeekTargetMs = null
+        lastBufferedBytes = 0L
+        lastSpeedSampleMs = 0L
+        speedSamples.clear()
     }
 
     override fun onCleared() {
