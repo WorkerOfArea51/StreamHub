@@ -233,6 +233,17 @@ fun PlayerScreen(
         }
     }
 
+    // FIX: When entering PiP mode, hide the app's own control overlay — the system
+    // PiP controls (RemoteActions) take over. Showing both creates clutter.
+    LaunchedEffect(isPipMode) {
+        if (isPipMode) {
+            // Force-hide the app's control overlay
+            if (uiState.isControlsVisible) {
+                viewModel.toggleControlsVisibility()
+            }
+        }
+    }
+
     // ──────────────────────────────────────────────────────────────
     // 1. True Immersive Fullscreen (Hide Status & Navigation Bars)
     // ──────────────────────────────────────────────────────────────

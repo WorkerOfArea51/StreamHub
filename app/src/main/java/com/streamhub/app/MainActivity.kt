@@ -264,6 +264,16 @@ class MainActivity : ComponentActivity() {
         val builder = PictureInPictureParams.Builder()
             .setAspectRatio(ratio)
 
+        // FIX: On Android 8-11, set source rect hint so the system knows the exact
+        // video bounds — prevents the "black shape" cropping artifact.
+        try {
+            // Use the player's video size as the source rect hint
+            if (videoSize != null && videoSize.width > 0 && videoSize.height > 0) {
+                val sourceRect = android.graphics.Rect(0, 0, videoSize.width, videoSize.height)
+                builder.setSourceRectHint(sourceRect)
+            }
+        } catch (_: Exception) {}
+
         // FIX: Add custom RemoteActions for play/pause, next, prev
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val actions = mutableListOf<RemoteAction>()
@@ -316,6 +326,12 @@ class MainActivity : ComponentActivity() {
             )
 
             builder.setActions(actions)
+        }
+
+        // FIX: On Android 12+, enable auto-enter so PiP transitions are seamless.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setAutoEnterEnabled(true)
+            builder.setSeamlessResizeEnabled(true)
         }
 
         return builder.build()
