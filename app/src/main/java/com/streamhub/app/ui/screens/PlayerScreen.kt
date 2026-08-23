@@ -48,15 +48,20 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -149,6 +154,7 @@ import com.streamhub.app.ui.screens.player.DoubleTapSeekOverlay
 import com.streamhub.app.ui.screens.player.EpisodePlaylistDrawer
 import com.streamhub.app.ui.screens.player.NerdStats
 import com.streamhub.app.ui.screens.player.PlayerErrorOverlay
+import com.streamhub.app.ui.screens.player.SmartResumePill
 import com.streamhub.app.ui.screens.player.StatsForNerdsDialog
 import com.streamhub.app.ui.screens.player.SubtitleCustomizerDrawer
 import com.streamhub.app.ui.screens.player.VolumeIndicator
@@ -238,27 +244,6 @@ fun PlayerScreen(
     val hasNextEpisode = (uiState.currentEpisodeIndex + 1) in mediaItem.episodes.indices
     val hasPrevEpisode = (uiState.currentEpisodeIndex - 1) in mediaItem.episodes.indices
 
-    // Auto-hide controls timer (4.5 seconds)
-    var autoHideJob by remember { mutableStateOf<Job?>(null) }
-    // FIX: Auto-hide Skip Intro after 8 seconds — Netflix-style.
-    var showSkipIntro by remember { mutableStateOf(false) }
-    var skipIntroHideJob by remember { mutableStateOf<Job?>(null) }
-    // FIX: Snapshot the trigger conditions at schedule time, then re-check CURRENT state
-    // at fire time — previously the closure used stale uiState from 4.5s ago.
-    LaunchedEffect(uiState.isControlsVisible, uiState.isPlaying, uiState.isLocked) {
-        autoHideJob?.cancel()
-        if (uiState.isControlsVisible && uiState.isPlaying && !uiState.isLocked) {
-            autoHideJob = scope.launch {
-                delay(4500L)
-                // Re-read uiState at fire time via the StateFlow's .value — avoids stale capture.
-                val current = viewModel.uiState.value
-                if (current.isControlsVisible && current.isPlaying && !current.isLocked) {
-                    viewModel.toggleControlsVisibility()
-                }
-            }
-        }
-    }
-
     // Modal Sheet States
     var showAspectRatioDrawer by remember { mutableStateOf(false) }
     var selectedRatioOption by remember { mutableStateOf(AllAspectRatioOptions.first()) }
@@ -268,9 +253,17 @@ fun PlayerScreen(
     var showStatsForNerds by remember { mutableStateOf(false) }
     var showMoreSheet by remember { mutableStateOf(false) }
 
-    // FIX: Intercept back when a dialog/sheet is open — close the sheet first,
-    // don't pop the nav stack. Without this, pressing back with a ModalBottomSheet
-    // open would exit the player instead of closing the sheet.
+    val isAnySheetOpen = showAspectRatioDrawer || showSubtitleCustomizer || showEpisodeDrawer ||
+                         showStatsForNerds || showMoreSheet || uiState.showAudioDialog ||
+                         uiState.showSubtitleDialog || uiState.playerErrorInfo != null
+
+    // Auto-hide controls timer (4.5 seconds)
+    var autoHideJob by remember { mutableStateOf<Job?>(null) }
+    // FIX: Auto-hide Skip Intro after 8 seconds — Netflix-style.
+    var showSkipIntro by remember { mutableStateOf(false) }
+    var skipIntroHideJob by remember { mutableStateOf<Job?>(null) }
+
+    // Intercept back when a dialog/sheet is open — close the sheet first, don't pop the nav stack.
     androidx.activity.compose.BackHandler(
         enabled = showAspectRatioDrawer || showSubtitleCustomizer || showEpisodeDrawer ||
                   showStatsForNerds || showMoreSheet || uiState.showAudioDialog || uiState.showSubtitleDialog
@@ -293,24 +286,64 @@ fun PlayerScreen(
     var doubleTapRippleText by remember { mutableStateOf("") }
     var doubleTapAlignment by remember { mutableStateOf(Alignment.Center) }
     var showDoubleTapRipple by remember { mutableStateOf(false) }
+    var doubleTapRippleJob by remember { mutableStateOf<Job?>(null) }
     var cumulativeSeekSeconds by remember { mutableIntStateOf(0) }
     var lastSeekDirection by remember { mutableStateOf("") }
     var resetCumulativeJob by remember { mutableStateOf<Job?>(null) }
 
-    // Fast 2X Speed Press & Hold
+    var showAspectToast by remember { mutableStateOf(false) }
+    var aspectToastText by remember { mutableStateOf("") }
+    var aspectToastJob by remember { mutableStateOf<Job?>(null) }
+
+    // Gesture Scrub / Hold States
+    var isScrubbing by remember { mutableStateOf(false) }
+    var scrubbingPositionMs by remember { mutableLongStateOf(0L) }
     var is2xSpeedHolding by remember { mutableStateOf(false) }
     var speedBeforeHold by remember { mutableFloatStateOf(1.0f) }
 
-    var aspectToastText by remember { mutableStateOf("") }
-    var showAspectToast by remember { mutableStateOf(false) }
+    // System Brightness & Volume Gestures
+    var showBrightnessIndicator by remember { mutableStateOf(false) }
+    var showVolumeIndicator by remember { mutableStateOf(false) }
 
     // FIX: Two-finger pinch-to-zoom — zooms the video surface (1.0x to 3.0x).
     var videoZoomScale by remember { mutableFloatStateOf(1.0f) }
     var videoZoomOffsetX by remember { mutableFloatStateOf(0f) }
     var videoZoomOffsetY by remember { mutableFloatStateOf(0f) }
 
-    var isScrubbing by remember { mutableStateOf(false) }
-    var scrubbingPositionMs by remember { mutableLongStateOf(0L) }
+    // Auto-hide controls timer: never fires while sheets, dialogs, or gestures are active
+    LaunchedEffect(
+        uiState.isControlsVisible,
+        uiState.isPlaying,
+        uiState.isLocked,
+        isAnySheetOpen,
+        isScrubbing,
+        is2xSpeedHolding,
+        showBrightnessIndicator,
+        showVolumeIndicator
+    ) {
+        autoHideJob?.cancel()
+        if (uiState.isControlsVisible && uiState.isPlaying && !uiState.isLocked &&
+            !isAnySheetOpen && !isScrubbing && !is2xSpeedHolding &&
+            !showBrightnessIndicator && !showVolumeIndicator) {
+            autoHideJob = scope.launch {
+                delay(4500L)
+                val current = viewModel.uiState.value
+                if (current.isControlsVisible && current.isPlaying && !current.isLocked && !isAnySheetOpen) {
+                    viewModel.toggleControlsVisibility()
+                }
+            }
+        }
+    }
+
+    // Non-blocking auto-dismiss for Resume prompt after 7 seconds
+    LaunchedEffect(uiState.showResumePrompt) {
+        if (uiState.showResumePrompt) {
+            delay(7000L)
+            if (viewModel.uiState.value.showResumePrompt) {
+                viewModel.dismissResume()
+            }
+        }
+    }
     var scrubberThumbnailBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
 
     LaunchedEffect(isScrubbing, scrubbingPositionMs, uiState.resolvedStreamUrl) {
@@ -364,8 +397,6 @@ fun PlayerScreen(
             }
         )
     }
-    var showVolumeIndicator by remember { mutableStateOf(false) }
-    var showBrightnessIndicator by remember { mutableStateOf(false) }
 
     // FIX: Throttle timestamps for volume/brightness drag updates to ~30 Hz (33ms).
     var lastVolumeUpdateMs by remember { mutableLongStateOf(0L) }
@@ -814,12 +845,14 @@ fun PlayerScreen(
         AspectRatioToast(visible = showAspectToast, text = aspectToastText)
 
         // ──────────────────────────────────────────────────────────────
+        // ──────────────────────────────────────────────────────────────
         // Floating Left Screen Lock Button (Matching XPlayer)
         // ──────────────────────────────────────────────────────────────
-        if (uiState.isControlsVisible && !uiState.isLocked) {
+        if (uiState.isControlsVisible && !uiState.isLocked && errorInfo == null && !showBrightnessIndicator && !showVolumeIndicator) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start))
                     .padding(start = 20.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
@@ -856,25 +889,6 @@ fun PlayerScreen(
                     .background(Color(0x66000000))
             ) {
                 // ── Top Header & Sub-Bar Strip ──
-                // FIX: Swipe-down-from-top gesture to exit the player (YouTube-style).
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(40.dp)
-                        .align(Alignment.TopCenter)
-                        .pointerInput(Unit) {
-                            detectVerticalDragGestures(
-                                onDragStart = { },
-                                onVerticalDrag = { change, dragAmount ->
-                                    if (dragAmount > 30f) {  // Only trigger on significant downward swipe
-                                        change.consume()
-                                        onBackClick()
-                                    }
-                                }
-                            )
-                        }
-                )
-
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -884,7 +898,8 @@ fun PlayerScreen(
                                 listOf(Color(0xCC000000), Color(0x66000000), Color.Transparent)
                             )
                         )
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         Row(
@@ -1198,7 +1213,7 @@ fun PlayerScreen(
                 }
 
                 // ── Center Controls (mpvEx 3-Button Layout) ──
-                if (!uiState.isLocked) {
+                if (!uiState.isLocked && errorInfo == null) {
                     Row(
                         modifier = Modifier.align(Alignment.Center),
                         horizontalArrangement = Arrangement.spacedBy(36.dp),
@@ -1273,7 +1288,7 @@ fun PlayerScreen(
                 }
 
                 // ── Bottom Scrubber & Action Strip ──
-                if (!uiState.isLocked) {
+                if (!uiState.isLocked && errorInfo == null) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1283,6 +1298,7 @@ fun PlayerScreen(
                                     listOf(Color.Transparent, Color(0x88000000), Color(0xCC000000))
                                 )
                             )
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
                             .padding(horizontal = 20.dp, vertical = 10.dp)
                     ) {
                         // Row 1: Action Controls (Skip Intro on Left, Screenshot / PiP / Rotate on Right)
@@ -2092,6 +2108,7 @@ fun PlayerScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
                     .padding(28.dp),
                 contentAlignment = Alignment.BottomCenter
             ) {
@@ -2125,51 +2142,22 @@ fun PlayerScreen(
             }
         }
 
-        // Smart Resume Prompt — shown when user returns to a partially-watched video
-        if (uiState.showResumePrompt) {
-            androidx.compose.material3.AlertDialog(
-                onDismissRequest = { viewModel.dismissResume() },
-                title = {
-                    Text(
-                        text = "Resume Playback?",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                text = {
-                    Column {
-                        Text(
-                            text = "You were watching ${mediaItem.title}",
-                            color = TextSecondary,
-                            fontSize = 13.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        val resumeTime = formatTime(uiState.pendingResumePositionMs)
-                        val totalTime = formatTime(uiState.durationMs)
-                        Text(
-                            text = "Resume from $resumeTime / $totalTime?",
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                },
-                confirmButton = {
-                    androidx.compose.material3.TextButton(
-                        onClick = { viewModel.acceptResume() }
-                    ) {
-                        Text("Resume", color = AccentOrange, fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    androidx.compose.material3.TextButton(
-                        onClick = { viewModel.dismissResume() }
-                    ) {
-                        Text("Start Over", color = TextSecondary)
-                    }
-                },
-                containerColor = Color(0xF212121A)
-            )
+        // Smart Resume Prompt — non-intrusive floating pill that auto-dismisses after 7s
+        if (uiState.showResumePrompt && uiState.pendingResumePositionMs > 0L && errorInfo == null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start + WindowInsetsSides.Bottom))
+                    .padding(start = 20.dp, bottom = 84.dp),
+                contentAlignment = Alignment.BottomStart
+            ) {
+                SmartResumePill(
+                    visible = true,
+                    resumePositionMs = uiState.pendingResumePositionMs,
+                    onAccept = { viewModel.acceptResume() },
+                    onDismiss = { viewModel.dismissResume() }
+                )
+            }
         }
     }
 }

@@ -51,9 +51,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.filled.BrokenImage
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.ui.text.style.TextAlign
@@ -508,6 +510,88 @@ fun BufferingHud(
                         text = speedStr,
                         color = TextSecondary,
                         fontSize = 10.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SmartResumePill(
+    visible: Boolean,
+    resumePositionMs: Long,
+    onAccept: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(250)) + scaleIn(tween(250), initialScale = 0.9f),
+        exit = fadeOut(tween(200)) + scaleOut(tween(200), targetScale = 0.9f),
+        modifier = modifier
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = Color(0xF2161622),
+            border = BorderStroke(1.dp, Color(0xFF7C4DFF).copy(alpha = 0.6f)),
+            shadowElevation = 8.dp
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Replay,
+                    contentDescription = null,
+                    tint = Color(0xFFD0BCFF),
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                val totalSeconds = (resumePositionMs / 1000).coerceAtLeast(0)
+                val minutes = totalSeconds / 60
+                val seconds = totalSeconds % 60
+                val hours = minutes / 60
+                val posStr = if (hours > 0) {
+                    String.format("%d:%02d:%02d", hours, minutes % 60, seconds)
+                } else {
+                    String.format("%02d:%02d", minutes, seconds)
+                }
+                Text(
+                    text = "Resume from $posStr?",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF7C4DFF),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onAccept() }
+                ) {
+                    Text(
+                        text = "Resume",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .clickable { onDismiss() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Dismiss",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
