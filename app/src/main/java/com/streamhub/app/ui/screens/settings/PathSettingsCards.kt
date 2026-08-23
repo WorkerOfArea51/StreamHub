@@ -81,7 +81,7 @@ fun DownloadPathCard(currentAccent: AppThemeAccent) {
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Download Storage 📁", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("Download Directory 📁", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Spacer(modifier = Modifier.width(6.dp))
                         Box(
                             modifier = Modifier
@@ -174,7 +174,7 @@ fun ScreenshotPathCard(currentAccent: AppThemeAccent) {
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Screenshot Storage 📸", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("Screenshot Directory 📸", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Spacer(modifier = Modifier.width(6.dp))
                         Box(
                             modifier = Modifier

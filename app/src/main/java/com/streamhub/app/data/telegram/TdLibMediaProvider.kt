@@ -199,26 +199,25 @@ object TdLibMediaProvider {
             filePathToTotalSize[localPath] = file.size
         }
 
-        // Check if file is already downloaded
-        if (file.local.isDownloadingCompleted) {
-            if (localPath.isNotBlank()) {
-                Log.i(TAG, "File already cached: $localPath (${file.size} bytes)")
+        // Check if file is already downloaded and exists on disk
+        if (file.local.isDownloadingCompleted && localPath.isNotBlank()) {
+            val f = File(localPath)
+            if (f.exists() && f.length() > 0L) {
+                Log.i(TAG, "File already fully cached: $localPath (${file.size} bytes)")
                 synchronized(resolvedFiles) { resolvedFiles.put(messageId, localPath) }
                 return TelegramStreamResult.LocalFile(localPath, file.size)
             }
         }
 
-        // If file is currently downloading, return partial info
-        if (file.local.isDownloadingActive) {
-            val downloaded = file.local.downloadedSize
-            val total = file.size
-            val progress = if (total > 0) downloaded.toFloat() / total else 0f
-            return TelegramStreamResult.Downloading(
-                partialPath = file.local.path,
-                downloadedBytes = downloaded,
-                totalBytes = total,
-                progress = progress
-            )
+        // If file has partial data on disk or is downloading, ensure download continues and return local stream path
+        if (localPath.isNotBlank()) {
+            val f = File(localPath)
+            if (f.exists() && f.length() >= 500_000L) {
+                TdLibManager.send(TdApi.DownloadFile(file.id, 32, 0, 0, false))
+                Log.i(TAG, "Resuming existing cached/downloading stream: $localPath (disk: ${f.length()}/${file.size})")
+                synchronized(resolvedFiles) { resolvedFiles.put(messageId, localPath) }
+                return TelegramStreamResult.LocalFile(localPath, file.size)
+            }
         }
 
         // Start downloading the file

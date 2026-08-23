@@ -295,20 +295,18 @@ class StreamPlayerViewModel : ViewModel() {
         }
 
         val savedPositionMs = savedProgress?.positionMs ?: 0L
-        val RESUME_PROMPT_THRESHOLD_MS = 30_000L  // 30 seconds
-
-        if (savedPositionMs > RESUME_PROMPT_THRESHOLD_MS &&
-            (savedProgress?.durationMs ?: 0L) - savedPositionMs > 5_000L) {  // Don't prompt if <5s remaining
+        if (savedPositionMs > 5_000L &&
+            (savedProgress?.durationMs ?: 0L) - savedPositionMs > 5_000L) {
             _uiState.update {
                 it.copy(
                     pendingResumePositionMs = savedPositionMs,
                     showResumePrompt = true
                 )
             }
-            // Load the episode but DON'T auto-seek yet — user must choose
-            playEpisode(targetEpisodeIndex, 0L)
-        } else {
+            // Auto-resume directly from saved position so playback starts instantly
             playEpisode(targetEpisodeIndex, savedPositionMs)
+        } else {
+            playEpisode(targetEpisodeIndex, 0L)
         }
         startPositionTracker()
     }
