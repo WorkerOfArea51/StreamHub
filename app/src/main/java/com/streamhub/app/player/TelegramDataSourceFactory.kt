@@ -241,11 +241,15 @@ class TdLibStreamingDataSource : DataSource {
         else throw IOException("RAF read returned 0 at position $currentPosition")
     }
 
+    private var lastFetchPosition: Long = -1L
+
     /**
      * Ensure TDLib has an active DownloadFile request for the current read position.
      */
     private fun ensureFetchRunning(fId: Int, position: Long) {
-        if (fetchJob?.isActive == true) return
+        if (fetchJob?.isActive == true && kotlin.math.abs(lastFetchPosition - position) < 512 * 1024L) return
+        fetchJob?.cancel()
+        lastFetchPosition = position
         fetchJob = fetchScope.launch {
             try {
                 TdLibManager.send(
@@ -267,6 +271,7 @@ class TdLibStreamingDataSource : DataSource {
         file = null
         openedUri = null
         bytesRemaining = 0L
+        lastFetchPosition = -1L
         fetchJob?.cancel()
         fetchJob = null
     }

@@ -900,12 +900,13 @@ class StreamPlayerViewModel : ViewModel() {
                                               episodesList.size <= 1
                                 val epIdx = _uiState.value.currentEpisodeIndex
                                 val ep = episodesList.getOrNull(epIdx)
+                                val effectiveDur = if (totalDuration > 0L) totalDuration else _uiState.value.durationMs
                                 viewModelScope.launch(Dispatchers.IO) {
                                     WatchHistoryManager.saveProgress(
                                         mediaId = media.id,
                                         episodeNumber = if (isMovie) 0 else epIdx,
                                         positionMs = currentPos,
-                                        durationMs = totalDuration,
+                                        durationMs = effectiveDur,
                                         title = media.title,
                                         posterUrl = media.posterUrl,
                                         backdropUrl = media.bannerUrl,
@@ -1031,11 +1032,12 @@ class StreamPlayerViewModel : ViewModel() {
                               episodesList.size <= 1
                 val epIdx = _uiState.value.currentEpisodeIndex
                 val ep = episodesList.getOrNull(epIdx)
+                val effectiveDur = if (player.duration > 0L) player.duration else _uiState.value.durationMs
                 WatchHistoryManager.saveProgress(
                     mediaId = media.id,
                     episodeNumber = if (isMovie) 0 else epIdx,
-                    positionMs = player.currentPosition,
-                    durationMs = player.duration.coerceAtLeast(0L),
+                    positionMs = player.currentPosition.coerceAtLeast(0L),
+                    durationMs = effectiveDur,
                     title = media.title,
                     posterUrl = media.posterUrl,
                     backdropUrl = media.bannerUrl,

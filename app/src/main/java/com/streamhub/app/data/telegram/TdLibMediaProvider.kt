@@ -357,6 +357,8 @@ object TdLibMediaProvider {
         return null
     }
 
+    private val knownJoinedInviteLinks = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     /**
      * Join a channel/supergroup via username, numeric ID, or private invite link.
      *
@@ -370,10 +372,29 @@ object TdLibMediaProvider {
         // 1. Private Invite Link (Pass FULL URL to TDLib)
         if (clean.contains("t.me/") && (clean.contains("+") || clean.contains("joinchat"))) {
             val inviteLink = if (clean.startsWith("http")) clean else "https://$clean"
+            if (knownJoinedInviteLinks.contains(inviteLink)) {
+                val checkRes = TdLibManager.send(TdApi.CheckChatInviteLink(inviteLink))
+                if (checkRes is TdApi.ChatInviteLinkInfo && checkRes.chatId != 0L) {
+                    val chat = getChat(checkRes.chatId.toString())
+                    if (chat != null) return chat
+                }
+            }
             val joinLink = TdLibManager.send(TdApi.JoinChatByInviteLink(inviteLink))
-            if (joinLink is TdApi.Chat) return joinLink
+            if (joinLink is TdApi.Chat) {
+                knownJoinedInviteLinks.add(inviteLink)
+                return joinLink
+            }
             if (joinLink is TdApi.Error) {
-                Log.e(TAG, "JoinChatByInviteLink failed for $inviteLink: ${joinLink.message}")
+                if (joinLink.message.contains("USER_ALREADY_PARTICIPANT", ignoreCase = true)) {
+                    knownJoinedInviteLinks.add(inviteLink)
+                    val checkRes = TdLibManager.send(TdApi.CheckChatInviteLink(inviteLink))
+                    if (checkRes is TdApi.ChatInviteLinkInfo && checkRes.chatId != 0L) {
+                        val chat = getChat(checkRes.chatId.toString())
+                        if (chat != null) return chat
+                    }
+                } else {
+                    Log.w(TAG, "JoinChatByInviteLink failed for $inviteLink: ${joinLink.message}")
+                }
             }
         }
 

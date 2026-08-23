@@ -55,6 +55,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -346,12 +347,15 @@ fun PlayerScreen(
     }
     var scrubberThumbnailBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
 
-    LaunchedEffect(isScrubbing, scrubbingPositionMs, uiState.resolvedStreamUrl) {
+    LaunchedEffect(isScrubbing, scrubbingPositionMs / 3000L, uiState.resolvedStreamUrl) {
         if (isScrubbing && uiState.resolvedStreamUrl.isNotBlank()) {
-            scrubberThumbnailBitmap = VideoThumbnailHelper.getThumbnail(
+            val bmp = VideoThumbnailHelper.getThumbnail(
                 sourceUrl = uiState.resolvedStreamUrl,
                 positionMs = scrubbingPositionMs
             )
+            if (bmp != null && !bmp.isRecycled) {
+                scrubberThumbnailBitmap = bmp
+            }
         }
     }
 
@@ -1536,12 +1540,6 @@ fun PlayerScreen(
                                             isScrubbing = true
 
                                             var finalTarget = scrubbingPositionMs
-                                            var lastSeekUpdateMs = 0L
-
-                                            // FIX: Long-press detection — if user holds finger still for >400ms,
-                                            // enter "live preview" mode: seek every 100ms to scrub through frames.
-                                            var isLongPress = false
-                                            val longPressDeadlineMs = down.uptimeMillis + 400L
 
                                             while (true) {
                                                 val event = awaitPointerEvent()
@@ -1551,31 +1549,12 @@ fun PlayerScreen(
                                                     Log.i("SEEKBAR_TOUCH", "Seekbar released -> seekTo($finalTarget) of duration $currentDuration")
                                                     viewModel.seekTo(finalTarget)
                                                     isScrubbing = false
-                                                    // Reset playback speed if we were in preview mode
-                                                    if (isLongPress) {
-                                                        viewModel.setPlaybackSpeed(speedBeforeHold)
-                                                    }
                                                     break
                                                 }
                                                 change.consume()
                                                 val currentFraction = (change.position.x / width).coerceIn(0f, 1f)
                                                 finalTarget = (currentFraction.toDouble() * duration).toLong()
                                                 scrubbingPositionMs = finalTarget
-
-                                                // FIX: Live-preview seek — if finger is moving, seek every 100ms
-                                                // so the user sees the frame under their finger.
-                                                val now = System.currentTimeMillis()
-                                                if (now - lastSeekUpdateMs > 100L) {
-                                                    lastSeekUpdateMs = now
-                                                    viewModel.seekTo(finalTarget)
-                                                }
-
-                                                // Detect long-press for 2x preview mode
-                                                if (!isLongPress && now >= longPressDeadlineMs) {
-                                                    isLongPress = true
-                                                    speedBeforeHold = uiState.playbackSpeed
-                                                    viewModel.setPlaybackSpeed(2.0f)
-                                                }
                                             }
                                         }
                                     },
@@ -1592,6 +1571,7 @@ fun PlayerScreen(
                                     val thumbOffset = (totalWidth * progressFraction - cardWidth / 2).coerceIn(0.dp, (totalWidth - cardWidth).coerceAtLeast(0.dp))
                                     val deltaMs = scrubbingPositionMs - uiState.currentPositionMs
                                     val deltaText = if (deltaMs >= 0) "+${formatTime(deltaMs)}" else "-${formatTime(-deltaMs)}"
+                                    val previewFallbackUrl = mediaItem.bannerUrl.ifEmpty { mediaItem.posterUrl.ifEmpty { uiState.posterUrl } }
 
                                     Box(
                                         modifier = Modifier
@@ -1623,9 +1603,9 @@ fun PlayerScreen(
                                                             contentScale = ContentScale.Crop,
                                                             modifier = Modifier.fillMaxSize()
                                                         )
-                                                    } else if (uiState.posterUrl.isNotBlank()) {
+                                                    } else if (previewFallbackUrl.isNotBlank()) {
                                                         AsyncImage(
-                                                            model = uiState.posterUrl,
+                                                            model = previewFallbackUrl,
                                                             contentDescription = "Poster Preview",
                                                             contentScale = ContentScale.Crop,
                                                             modifier = Modifier.fillMaxSize()
@@ -1801,33 +1781,52 @@ fun PlayerScreen(
                     )
                 }
 
-                // More Settings Sheet
+                // More Settings Sheet (In-Layout Fullscreen Modal Overlay)
                 if (showMoreSheet) {
-                    ModalBottomSheet(
-                        onDismissRequest = { showMoreSheet = false },
-                        containerColor = Color(0xF212121A),
-                        dragHandle = {
-                            Box(
-                                modifier = Modifier
-                                    .padding(top = 10.dp, bottom = 6.dp)
-                                    .size(width = 36.dp, height = 4.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(Color(0x44FFFFFF))
-                            )
-                        }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0x99000000))
+                            .clickable(
+                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                indication = null
+                            ) { showMoreSheet = false }
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)),
+                        contentAlignment = Alignment.BottomCenter
                     ) {
-                        Column(
+                        Surface(
+                            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                            color = Color(0xF212121A),
+                            border = BorderStroke(1.dp, Color(0x33FFFFFF)),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .verticalScroll(rememberScrollState())
-                                .padding(horizontal = 24.dp, vertical = 12.dp)
+                                .heightIn(max = 500.dp)
+                                .clickable(
+                                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                    indication = null
+                                ) {}
                         ) {
-                            Text(
-                                text = "Playback Settings",
-                                color = Color.White,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(horizontal = 24.dp, vertical = 12.dp)
+                            ) {
+                                // Drag Handle
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.CenterHorizontally)
+                                        .padding(top = 4.dp, bottom = 12.dp)
+                                        .size(width = 36.dp, height = 4.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(Color(0x44FFFFFF))
+                                )
+                                Text(
+                                    text = "Playback Settings",
+                                    color = Color.White,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                             Spacer(modifier = Modifier.height(16.dp))
 
                             // Playback Speed Row
@@ -2101,6 +2100,7 @@ fun PlayerScreen(
                     }
                 }
             }
+        }
         }
 
         // Floating Unlock Button when Screen is Locked

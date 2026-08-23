@@ -136,9 +136,16 @@ fun HomeScreen(
         val catalogMap = catalog.associateBy { it.id }
         watchHistoryMap.values
             .sortedByDescending { it.lastUpdated }
-            .mapNotNull { progress ->
-                val media = catalogMap[progress.mediaId]
-                if (media != null) Pair(media, progress) else null
+            .map { progress ->
+                val media = catalogMap[progress.mediaId] ?: MediaItem(
+                    id = progress.mediaId,
+                    title = progress.title.ifEmpty { "Video" },
+                    posterUrl = progress.posterUrl,
+                    bannerUrl = progress.backdropUrl,
+                    category = progress.mediaType.ifEmpty { "Movie" },
+                    type = progress.mediaType.ifEmpty { "Movie" }
+                )
+                Pair(media, progress)
             }
     }
 

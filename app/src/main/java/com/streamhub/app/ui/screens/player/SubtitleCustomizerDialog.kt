@@ -52,10 +52,17 @@ import com.streamhub.app.data.SubtitleConfig
 import com.streamhub.app.data.SubtitleSettingsManager
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 
 private data class SubtitleColorPreset(val color: Color, val argb: Long)
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubtitleCustomizerDrawer(
     availableTracks: List<String>,
@@ -81,25 +88,35 @@ fun SubtitleCustomizerDrawer(
         )
     }
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = Color(0xF212121A),
-        dragHandle = {
-            Box(
-                modifier = Modifier
-                    .padding(top = 10.dp, bottom = 6.dp)
-                    .size(width = 36.dp, height = 4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0x44FFFFFF))
-            )
-        }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0x99000000))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onDismiss() }
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)),
+        contentAlignment = Alignment.BottomCenter
     ) {
-        Column(
+        Surface(
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            color = Color(0xF212121A),
+            border = BorderStroke(1.dp, Color(0x33FFFFFF)),
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(scrollState)
-                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .heightIn(max = 480.dp)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {}
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 24.dp, vertical = 8.dp)
+            ) {
             // Top Bar
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -273,4 +290,5 @@ fun SubtitleCustomizerDrawer(
             Spacer(modifier = Modifier.height(20.dp))
         }
     }
+}
 }

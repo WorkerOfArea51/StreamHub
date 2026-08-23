@@ -92,16 +92,22 @@ object WatchHistoryManager {
             Log.w(TAG, "saveProgress called before init — no-op")
             return
         }
-        if (mediaId.isEmpty() || durationMs <= 0) return
+        if (mediaId.isBlank()) return
 
         val existing = _historyFlow.value[mediaId]
-        val isCompleted = if (durationMs > 0) (positionMs.toFloat() / durationMs.toFloat()) >= 0.92f else false
+        val effectiveDuration = when {
+            durationMs > 0L -> durationMs
+            (existing?.durationMs ?: 0L) > 0L -> existing!!.durationMs
+            positionMs > 0L -> positionMs
+            else -> 1L
+        }
+        val isCompleted = if (effectiveDuration > 0) (positionMs.toFloat() / effectiveDuration.toFloat()) >= 0.92f else false
 
         val progress = PlaybackProgress(
             mediaId = mediaId,
             episodeNumber = episodeNumber,
             positionMs = positionMs,
-            durationMs = durationMs,
+            durationMs = effectiveDuration,
             lastUpdated = System.currentTimeMillis(),
             title = title.ifEmpty { existing?.title ?: "" },
             posterUrl = posterUrl.ifEmpty { existing?.posterUrl ?: "" },
