@@ -757,15 +757,21 @@ class StreamPlayerViewModel : ViewModel() {
     fun seekForward(offsetMs: Long = 10000L) {
         val player = exoPlayer ?: return
         val duration = player.duration.coerceAtLeast(0L)
+        // FIX: Use the ACTUAL current player position, not the stale currentPositionMs.
+        // pendingSeekTargetMs is only set during an in-flight seek — if it's null, the
+        // previous seek completed, so use the real player position.
         val current = pendingSeekTargetMs ?: player.currentPosition.coerceAtLeast(0L)
         val target = if (duration > 0L) (current + offsetMs).coerceAtMost(duration) else current + offsetMs
+        Log.i("StreamPlayerViewModel", "seekForward: from $current + $offsetMs -> $target (pending=$pendingSeekTargetMs)")
         seekTo(target)
     }
 
     fun seekBackward(offsetMs: Long = 10000L) {
         val player = exoPlayer ?: return
+        // FIX: Same as seekForward — use actual player position.
         val current = pendingSeekTargetMs ?: player.currentPosition.coerceAtLeast(0L)
         val target = (current - offsetMs).coerceAtLeast(0L)
+        Log.i("StreamPlayerViewModel", "seekBackward: from $current - $offsetMs -> $target (pending=$pendingSeekTargetMs)")
         seekTo(target)
     }
 
