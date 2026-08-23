@@ -74,7 +74,10 @@ data class PlayerUiState(
     val bufferHealthSeconds: Long = 0L,      // (buffered - current) / 1000
     val isLowQuality: Boolean = false,       // True if adaptive bitrate dropped quality
     val subtitleOffsetMs: Long = 0L,         // Negative = subs earlier, positive = subs later
-    val isBackgroundAudioEnabled: Boolean = false
+    val isBackgroundAudioEnabled: Boolean = false,
+    val abLoopA: Long? = null,
+    val abLoopB: Long? = null,
+    val isABLoopExpanded: Boolean = false
 )
 
 @OptIn(UnstableApi::class)
@@ -791,6 +794,29 @@ class StreamPlayerViewModel : ViewModel() {
         _uiState.update { it.copy(showEpisodeDrawer = !it.showEpisodeDrawer) }
     }
 
+    fun toggleABLoopExpanded() {
+        _uiState.update { it.copy(isABLoopExpanded = !it.isABLoopExpanded) }
+    }
+
+    fun setLoopA() {
+        val current = _uiState.value.currentPositionMs
+        _uiState.update { it.copy(abLoopA = current) }
+    }
+
+    fun setLoopB() {
+        val current = _uiState.value.currentPositionMs
+        val loopA = _uiState.value.abLoopA
+        if (loopA != null && current > loopA) {
+            _uiState.update { it.copy(abLoopB = current) }
+        } else {
+            _uiState.update { it.copy(abLoopB = current) }
+        }
+    }
+
+    fun clearABLoop() {
+        _uiState.update { it.copy(abLoopA = null, abLoopB = null) }
+    }
+
     fun toggleControlsVisibility() {
         if (!_uiState.value.isLocked) {
             _uiState.update { it.copy(isControlsVisible = !it.isControlsVisible) }
@@ -809,6 +835,16 @@ class StreamPlayerViewModel : ViewModel() {
                     val isBuffering = player.playbackState == Player.STATE_BUFFERING
 
                     val currentPos = pendingSeekTargetMs ?: playerPos
+
+                    // A-B Repeat Loop Boundary Enforcement
+                    val loopA = _uiState.value.abLoopA
+                    val loopB = _uiState.value.abLoopB
+                    if (loopA != null && loopB != null && loopB > loopA) {
+                        if (playerPos >= loopB) {
+                            seekTo(loopA)
+                        }
+                    }
+
                     val bufferHealthSec = ((buffered - currentPos).coerceAtLeast(0L) / 1000L)
 
                     // Estimate network speed from total bytes downloaded (ExoPlayer doesn't expose this directly,

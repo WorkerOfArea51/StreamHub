@@ -11,9 +11,13 @@ import android.util.Rational
 import android.view.WindowManager
 import android.widget.Toast
 import kotlin.OptIn
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -105,6 +109,13 @@ import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FitScreen
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.ZoomOutMap
+import androidx.compose.material.icons.outlined.Autorenew
+import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -203,6 +214,22 @@ fun PlayerScreen(
     val uiState by viewModel.uiState.collectAsState()
     val playerSettings by PlayerSettingsManager.settingsFlow.collectAsState()
     val subConfig by SubtitleSettingsManager.subtitleConfig.collectAsState()
+
+    var isPipMode by remember { mutableStateOf(activity?.isInPictureInPictureMode == true) }
+    DisposableEffect(activity) {
+        val act = activity as? androidx.activity.ComponentActivity
+        if (act != null) {
+            val listener = androidx.core.util.Consumer<androidx.core.app.PictureInPictureModeChangedInfo> { info ->
+                isPipMode = info.isInPictureInPictureMode
+            }
+            act.addOnPictureInPictureModeChangedListener(listener)
+            onDispose {
+                act.removeOnPictureInPictureModeChangedListener(listener)
+            }
+        } else {
+            onDispose {}
+        }
+    }
 
     // ──────────────────────────────────────────────────────────────
     // 1. True Immersive Fullscreen (Hide Status & Navigation Bars)
@@ -658,9 +685,11 @@ fun PlayerScreen(
         }
 
         // ──────────────────────────────────────────────────────────────
-        // Gesture Zones (Left 35%, Center 30%, Right 35%)
+        // All Gestures, Controls, Overlays & Dialogs (Hidden in PiP Mode)
         // ──────────────────────────────────────────────────────────────
-        if (!uiState.isLocked) {
+        if (!isPipMode) {
+            // Gesture Zones (Left 35%, Center 30%, Right 35%)
+            if (!uiState.isLocked) {
             Row(modifier = Modifier.fillMaxSize()) {
                 // Left Zone: Brightness Drag & Double-tap Seek Backward + Long Press 2X Speed
                 Box(
@@ -1235,7 +1264,8 @@ fun PlayerScreen(
                                     },
                                     size = 40.dp,
                                     iconSize = 18.dp,
-                                    color = if (uiState.isBackgroundAudioEnabled) Color(0xFFD0BCFF) else Color.White
+                                    color = if (uiState.isBackgroundAudioEnabled) Color(0xFFD0BCFF) else Color.White,
+                                    title = "Background Audio"
                                 )
 
                                 // Screen Lock
@@ -1243,7 +1273,8 @@ fun PlayerScreen(
                                     icon = Icons.Default.Lock,
                                     onClick = { viewModel.toggleLock() },
                                     size = 40.dp,
-                                    iconSize = 18.dp
+                                    iconSize = 18.dp,
+                                    title = "Lock Controls"
                                 )
 
                                 // Rotation / Orientation Toggle
@@ -1259,21 +1290,54 @@ fun PlayerScreen(
                                         }
                                     },
                                     size = 40.dp,
-                                    iconSize = 18.dp
+                                    iconSize = 18.dp,
+                                    title = "Rotate Screen"
                                 )
 
-                                // Playback Speed
-                                ControlsButton(
-                                    icon = Icons.Default.FastForward,
-                                    onClick = { showSpeedSheet = true },
-                                    onLongClick = {
-                                        viewModel.setPlaybackSpeed(1.0f)
-                                        Toast.makeText(context, "Speed reset: 1.0x", Toast.LENGTH_SHORT).show()
-                                    },
-                                    size = 40.dp,
-                                    iconSize = 18.dp,
-                                    badgeText = "${uiState.playbackSpeed}x"
-                                )
+                                // Playback Speed (Expands to Pill when != 1.0x)
+                                AnimatedContent(
+                                    targetState = (uiState.playbackSpeed != 1.0f),
+                                    transitionSpec = { fadeIn() + expandHorizontally() togetherWith fadeOut() + shrinkHorizontally() },
+                                    label = "speed_pill"
+                                ) { isNonOne ->
+                                    if (isNonOne) {
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = Color(0x661A1A24),
+                                            border = BorderStroke(1.dp, Color(0xFFD0BCFF)),
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(50))
+                                                .clickable { showSpeedSheet = true }
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                            ) {
+                                                Icon(Icons.Default.Speed, contentDescription = null, tint = Color(0xFFD0BCFF), modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "${uiState.playbackSpeed}x",
+                                                    color = Color.White,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        ControlsButton(
+                                            icon = Icons.Default.Speed,
+                                            onClick = { showSpeedSheet = true },
+                                            onLongClick = {
+                                                viewModel.setPlaybackSpeed(1.0f)
+                                                Toast.makeText(context, "Speed reset: 1.0x", Toast.LENGTH_SHORT).show()
+                                            },
+                                            size = 40.dp,
+                                            iconSize = 18.dp,
+                                            title = "Playback Speed"
+                                        )
+                                    }
+                                }
 
                                 // Repeat / Loop Mode
                                 ControlsButton(
@@ -1284,17 +1348,26 @@ fun PlayerScreen(
                                     },
                                     size = 40.dp,
                                     iconSize = 18.dp,
-                                    color = if (uiState.isRepeatMode) Color(0xFFD0BCFF) else Color.White
+                                    color = if (uiState.isRepeatMode) Color(0xFFD0BCFF) else Color.White,
+                                    title = "Repeat"
                                 )
 
-                                // Aspect Ratio: Click to quick-cycle, Long-press to open Aspect Ratio sheet
+                                // Aspect Ratio (Single button: Click cycles, Long-press opens sheet)
+                                val aspectIcon = when (selectedRatioOption.id) {
+                                    "FIT" -> Icons.Default.AspectRatio
+                                    "FILL", "STRETCH" -> Icons.Default.ZoomOutMap
+                                    else -> Icons.Default.FitScreen
+                                }
                                 ControlsButton(
-                                    icon = Icons.Default.AspectRatio,
+                                    icon = aspectIcon,
                                     onClick = {
                                         val currentIndex = DefaultAspectPresets.indexOfFirst { it.id == selectedRatioOption.id }
                                         val nextIndex = (currentIndex + 1) % DefaultAspectPresets.size
                                         val nextPreset = DefaultAspectPresets[nextIndex]
                                         selectedRatioOption = nextPreset
+                                        if (playerSettings.rememberAspectRatio) {
+                                            PlayerSettingsManager.updateDefaultAspectRatio(nextPreset.id)
+                                        }
                                         aspectToastText = "Aspect: ${nextPreset.label}"
                                         showAspectToast = true
                                         scope.launch {
@@ -1305,35 +1378,104 @@ fun PlayerScreen(
                                     onLongClick = { showAspectRatioSheet = true },
                                     size = 40.dp,
                                     iconSize = 18.dp,
-                                    badgeText = selectedRatioOption.label
+                                    title = "Aspect Ratio"
                                 )
 
-                                // A-B Repeat Loop
-                                ControlsTextBadgeButton(
-                                    text = if (abLoopStartMs == null) "AB" else if (abLoopEndMs == null) "A-" else "A-B",
-                                    onClick = {
-                                        if (abLoopStartMs == null) {
-                                            abLoopStartMs = uiState.currentPositionMs
-                                            Toast.makeText(context, "Loop Point A set at ${formatMpvTime(uiState.currentPositionMs)}", Toast.LENGTH_SHORT).show()
-                                        } else if (abLoopEndMs == null) {
-                                            if (uiState.currentPositionMs > abLoopStartMs!!) {
-                                                abLoopEndMs = uiState.currentPositionMs
-                                                Toast.makeText(context, "Loop Point B set! Repeating A-B segment.", Toast.LENGTH_SHORT).show()
-                                            } else {
-                                                Toast.makeText(context, "Point B must be after Point A", Toast.LENGTH_SHORT).show()
+                                // A-B Repeat Loop Pill (mpvEx Parity)
+                                var isABLoopExpanded by remember { mutableStateOf(false) }
+                                AnimatedContent(
+                                    targetState = (isABLoopExpanded || abLoopStartMs != null || abLoopEndMs != null),
+                                    transitionSpec = { fadeIn() + expandHorizontally() togetherWith fadeOut() + shrinkHorizontally() },
+                                    label = "ab_loop_pill"
+                                ) { isExpanded ->
+                                    if (isExpanded) {
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = Color(0x991E1E2C),
+                                            border = BorderStroke(1.dp, Color(0xFFD0BCFF)),
+                                            modifier = Modifier.height(40.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(horizontal = 4.dp)
+                                            ) {
+                                                // Button A
+                                                Surface(
+                                                    shape = RoundedCornerShape(50),
+                                                    color = if (abLoopStartMs != null) Color(0xFF6750A4) else Color.Transparent,
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(50))
+                                                        .clickable {
+                                                            abLoopStartMs = uiState.currentPositionMs
+                                                            viewModel.setLoopA()
+                                                            Toast.makeText(context, "Point A: ${formatMpvTime(uiState.currentPositionMs)}", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                ) {
+                                                    Text(
+                                                        text = if (abLoopStartMs != null) formatMpvTime(abLoopStartMs!!) else "A",
+                                                        color = Color.White,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                                    )
+                                                }
+
+                                                // Clear Button (X)
+                                                IconButton(
+                                                    onClick = {
+                                                        abLoopStartMs = null
+                                                        abLoopEndMs = null
+                                                        isABLoopExpanded = false
+                                                        viewModel.clearABLoop()
+                                                        Toast.makeText(context, "A-B Loop cleared", Toast.LENGTH_SHORT).show()
+                                                    },
+                                                    modifier = Modifier.size(28.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color.White, modifier = Modifier.size(14.dp))
+                                                }
+
+                                                // Button B
+                                                Surface(
+                                                    shape = RoundedCornerShape(50),
+                                                    color = if (abLoopEndMs != null) Color(0xFF6750A4) else Color.Transparent,
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(50))
+                                                        .clickable {
+                                                            val cur = uiState.currentPositionMs
+                                                            if (abLoopStartMs != null && cur > abLoopStartMs!!) {
+                                                                abLoopEndMs = cur
+                                                                viewModel.setLoopB()
+                                                                Toast.makeText(context, "Point B: ${formatMpvTime(cur)}", Toast.LENGTH_SHORT).show()
+                                                            } else {
+                                                                Toast.makeText(context, "Point B must be after Point A", Toast.LENGTH_SHORT).show()
+                                                            }
+                                                        }
+                                                ) {
+                                                    Text(
+                                                        text = if (abLoopEndMs != null) formatMpvTime(abLoopEndMs!!) else "B",
+                                                        color = Color.White,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                                    )
+                                                }
                                             }
-                                        } else {
-                                            abLoopStartMs = null
-                                            abLoopEndMs = null
-                                            Toast.makeText(context, "A-B Loop cleared", Toast.LENGTH_SHORT).show()
                                         }
-                                    },
-                                    isActive = abLoopStartMs != null,
-                                    height = 40.dp
-                                )
+                                    } else {
+                                        ControlsButton(
+                                            icon = Icons.Outlined.Autorenew,
+                                            onClick = { isABLoopExpanded = true },
+                                            size = 40.dp,
+                                            iconSize = 20.dp,
+                                            title = "A-B Repeat"
+                                        )
+                                    }
+                                }
                             }
 
-                            // Right Actions Group: Frame Navigation Capsule, Zoom, PiP, Fullscreen
+                            // Right Actions Group: Frame Nav, Zoom Pill, PiP, Night Shield
                             ControlsGroup(spacing = 6.dp) {
                                 // Frame Navigation Capsule (Expandable Step & Snapshot)
                                 FrameNavigationCapsule(
@@ -1403,20 +1545,52 @@ fun PlayerScreen(
                                     buttonSize = 40.dp
                                 )
 
-                                // Video Zoom / Pan
-                                ControlsButton(
-                                    icon = Icons.Default.ZoomIn,
-                                    onClick = { showZoomSheet = true },
-                                    onLongClick = {
-                                        videoZoomScale = 1.0f
-                                        videoZoomOffsetX = 0f
-                                        videoZoomOffsetY = 0f
-                                        Toast.makeText(context, "Zoom reset: 100%", Toast.LENGTH_SHORT).show()
-                                    },
-                                    size = 40.dp,
-                                    iconSize = 18.dp,
-                                    badgeText = if (videoZoomScale != 1.0f) String.format("%.1fx", videoZoomScale) else null
-                                )
+                                // Video Zoom / Pan (Expands to Pill when >100%)
+                                AnimatedContent(
+                                    targetState = (videoZoomScale > 1.05f),
+                                    transitionSpec = { fadeIn() + expandHorizontally() togetherWith fadeOut() + shrinkHorizontally() },
+                                    label = "zoom_pill"
+                                ) { isZoomed ->
+                                    if (isZoomed) {
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = Color(0x661A1A24),
+                                            border = BorderStroke(1.dp, Color(0xFFD0BCFF)),
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(50))
+                                                .clickable { showZoomSheet = true }
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                            ) {
+                                                Icon(Icons.Default.ZoomIn, contentDescription = null, tint = Color(0xFFD0BCFF), modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "${(videoZoomScale * 100).toInt()}%",
+                                                    color = Color.White,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        ControlsButton(
+                                            icon = Icons.Default.ZoomIn,
+                                            onClick = { showZoomSheet = true },
+                                            onLongClick = {
+                                                videoZoomScale = 1.0f
+                                                videoZoomOffsetX = 0f
+                                                videoZoomOffsetY = 0f
+                                                Toast.makeText(context, "Zoom reset: 100%", Toast.LENGTH_SHORT).show()
+                                            },
+                                            size = 40.dp,
+                                            iconSize = 18.dp,
+                                            title = "Zoom & Pan"
+                                        )
+                                    }
+                                }
 
                                 // Picture-in-Picture
                                 ControlsButton(
@@ -1431,27 +1605,21 @@ fun PlayerScreen(
                                         }
                                     },
                                     size = 40.dp,
-                                    iconSize = 18.dp
+                                    iconSize = 18.dp,
+                                    title = "Picture-in-Picture"
                                 )
 
-                                // Fullscreen / Aspect Ratio direct toggle
+                                // Night Shield Filter Toggle
                                 ControlsButton(
-                                    icon = Icons.Default.Fullscreen,
+                                    icon = if (isNightShield) Icons.Filled.Shield else Icons.Outlined.Shield,
                                     onClick = {
-                                        val currentIndex = DefaultAspectPresets.indexOfFirst { it.id == selectedRatioOption.id }
-                                        val nextIndex = (currentIndex + 1) % DefaultAspectPresets.size
-                                        val nextOption = DefaultAspectPresets[nextIndex]
-                                        selectedRatioOption = nextOption
-                                        if (playerSettings.rememberAspectRatio) {
-                                            PlayerSettingsManager.updateDefaultAspectRatio(nextOption.id)
-                                        }
-                                        aspectToastText = "Aspect: ${nextOption.label}"
-                                        showAspectToast = true
-                                        scope.launch { delay(1200); showAspectToast = false }
+                                        isNightShield = !isNightShield
+                                        Toast.makeText(context, if (isNightShield) "🌙 Night Shield ON (Amber Filter)" else "Night Shield OFF", Toast.LENGTH_SHORT).show()
                                     },
-                                    onLongClick = { showAspectRatioSheet = true },
                                     size = 40.dp,
-                                    iconSize = 18.dp
+                                    iconSize = 18.dp,
+                                    color = if (isNightShield) Color(0xFFFFB74D) else Color.White,
+                                    title = "Night Shield"
                                 )
                             }
                         }
@@ -1741,3 +1909,6 @@ fun PlayerScreen(
         }
     }
 }
+}
+
+
