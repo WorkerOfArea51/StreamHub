@@ -6,6 +6,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import com.streamhub.app.ui.screens.player.controls.MpvPlayerSheet
+import com.streamhub.app.ui.screens.player.controls.MpvDraggablePanel
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -80,34 +82,27 @@ fun MpvSubtitleTracksSheet(
         if (uri != null) onAddExternalSubtitle(uri)
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0x99000000))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onDismiss() }
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)),
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        Surface(
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            color = Color(0xF212121A),
-            border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+    MpvPlayerSheet(onDismissRequest = onDismiss) {
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 480.dp)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) {}
+                .padding(horizontal = 24.dp, vertical = 10.dp)
         ) {
-            Column(
+            // Drag Handle
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 14.dp)
+                    .padding(bottom = 8.dp),
+                contentAlignment = Alignment.Center
             ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 38.dp, height = 4.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x44FFFFFF))
+                )
+            }
+
                 // Header Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -245,7 +240,6 @@ fun MpvSubtitleTracksSheet(
 
                 Spacer(modifier = Modifier.height(10.dp))
             }
-        }
     }
 }
 
@@ -255,63 +249,43 @@ fun MpvSubtitleSettingsDrawer(
     onUpdateConfig: (SubtitleConfig) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val scrollState = rememberScrollState()
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0x99000000))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onDismiss() },
-        contentAlignment = Alignment.CenterEnd
-    ) {
-        Surface(
-            shape = RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp),
-            color = Color(0xF212121A),
-            border = BorderStroke(1.dp, Color(0x33FFFFFF)),
-            modifier = Modifier
-                .width(360.dp)
-                .fillMaxHeight()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) {}
-        ) {
-            Column(
+    MpvDraggablePanel(
+        header = {
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(scrollState)
-                    .padding(20.dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                Text(
+                    text = "Subtitle Settings",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x22FFFFFF))
                 ) {
-                    Text(
-                        text = "Subtitles settings",
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close",
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
                     )
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x22FFFFFF))
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
                 }
+            }
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+        ) {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -479,9 +453,113 @@ fun MpvSubtitleSettingsDrawer(
                     )
                 }
 
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Colors Customizer Section (Matching mpvEx SubtitleSettingsColorsCard)
+                Text(
+                    text = "Subtitle Colors",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Text Color Swatches
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Text:", color = TextSecondary, fontSize = 12.sp, modifier = Modifier.width(44.dp))
+                    listOf(
+                        0xFFFFFFFF to "White",
+                        0xFFFFEB3B to "Yellow",
+                        0xFF00E5FF to "Cyan",
+                        0xFF69F0AE to "Green",
+                        0xFFFF5252 to "Red"
+                    ).forEach { (colorVal, _) ->
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(colorVal),
+                            border = if (config.textColorArgb == colorVal) BorderStroke(2.dp, Color(0xFFD0BCFF)) else BorderStroke(1.dp, Color(0x33FFFFFF)),
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .clickable { onUpdateConfig(config.copy(textColorArgb = colorVal)) }
+                        ) {}
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Background Color Swatches
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Box:", color = TextSecondary, fontSize = 12.sp, modifier = Modifier.width(44.dp))
+                    listOf(
+                        0x00000000L to "None",
+                        0x80000000L to "Semi",
+                        0xCC000000L to "Dark",
+                        0xFF000000L to "Solid",
+                        0x801E1E28L to "Obsidian"
+                    ).forEach { (colorVal, label) ->
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (colorVal == 0x00000000L) Color.Transparent else Color(colorVal),
+                            border = if (config.backgroundColorArgb == colorVal) BorderStroke(2.dp, Color(0xFFD0BCFF)) else BorderStroke(1.dp, Color(0x33FFFFFF)),
+                            modifier = Modifier
+                                .height(28.dp)
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { onUpdateConfig(config.copy(backgroundColorArgb = colorVal)) }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = label,
+                                    color = if (colorVal == 0x00000000L) Color(0x88FFFFFF) else Color.White,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Live Preview Card
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF0A0A0F),
+                    border = BorderStroke(1.dp, Color(0x22FFFFFF)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(config.backgroundColorArgb)
+                        ) {
+                            Text(
+                                text = "Sample Subtitle Preview",
+                                color = Color(config.textColorArgb),
+                                fontSize = config.fontSizeSp.sp,
+                                fontWeight = if (config.bold) FontWeight.Bold else FontWeight.Normal,
+                                fontStyle = if (config.italic) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(20.dp))
             }
-        }
     }
 }
 

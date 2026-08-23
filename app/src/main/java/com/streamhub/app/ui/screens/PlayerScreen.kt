@@ -31,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -157,6 +158,9 @@ import com.streamhub.app.ui.screens.player.controls.BrightnessSliderCard
 import com.streamhub.app.ui.screens.player.controls.ControlsButton
 import com.streamhub.app.ui.screens.player.controls.ControlsGroup
 import com.streamhub.app.ui.screens.player.controls.ControlsTextBadgeButton
+import com.streamhub.app.ui.screens.player.controls.DoubleTapSeekRippleOverlay
+import com.streamhub.app.ui.screens.player.controls.FrameNavigationCapsule
+import com.streamhub.app.ui.screens.player.controls.FrameNavigationSheet
 import com.streamhub.app.ui.screens.player.controls.MpvSeekbar
 import com.streamhub.app.ui.screens.player.controls.SlideToUnlock
 import com.streamhub.app.ui.screens.player.controls.VolumeSliderCard
@@ -164,13 +168,18 @@ import com.streamhub.app.ui.screens.player.controls.formatMpvTime
 import com.streamhub.app.ui.screens.player.sheets.DefaultAspectPresets
 import com.streamhub.app.ui.screens.player.sheets.MpvAspectRatioItem
 import com.streamhub.app.ui.screens.player.sheets.MpvAspectRatioSheet
+import com.streamhub.app.ui.screens.player.sheets.MpvAudioDelaySheet
 import com.streamhub.app.ui.screens.player.sheets.MpvAudioTracksSheet
 import com.streamhub.app.ui.screens.player.sheets.MpvMoreSheet
+import com.streamhub.app.ui.screens.player.sheets.MpvOnlineSubtitleSearchSheet
 import com.streamhub.app.ui.screens.player.sheets.MpvPlaybackSpeedSheet
 import com.streamhub.app.ui.screens.player.sheets.MpvPlaylistSheet
+import com.streamhub.app.ui.screens.player.sheets.MpvSubtitleDelaySheet
 import com.streamhub.app.ui.screens.player.sheets.MpvSubtitleSettingsDrawer
 import com.streamhub.app.ui.screens.player.sheets.MpvSubtitleTracksSheet
+import com.streamhub.app.ui.screens.player.sheets.MpvVideoFiltersSheet
 import com.streamhub.app.ui.screens.player.sheets.MpvVideoZoomSheet
+import com.streamhub.app.ui.screens.player.sheets.VideoFilterConfig
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.TextSecondary
@@ -284,11 +293,23 @@ fun PlayerScreen(
                          showSubtitleSettingsDrawer || showMoreSheet || showStatsForNerds ||
                          uiState.showAudioDialog || uiState.showSubtitleDialog || uiState.playerErrorInfo != null
 
+    var showFrameNavSheet by remember { mutableStateOf(false) }
+    var showAudioDelaySheet by remember { mutableStateOf(false) }
+    var showSubtitleDelaySheet by remember { mutableStateOf(false) }
+    var showVideoFiltersSheet by remember { mutableStateOf(false) }
+    var showOnlineSubSearchSheet by remember { mutableStateOf(false) }
+    var videoFilterConfig by remember { mutableStateOf(VideoFilterConfig()) }
+    var isFrameNavExpanded by remember { mutableStateOf(false) }
+    var isSnapshotLoading by remember { mutableStateOf(false) }
+    var audioDelayMs by remember { mutableLongStateOf(0L) }
+
     // Intercept back when a dialog/sheet is open — close the sheet first, don't pop the nav stack.
     androidx.activity.compose.BackHandler(
         enabled = showAspectRatioSheet || showSpeedSheet || showZoomSheet ||
                   showPlaylistSheet || showAudioSheet || showSubtitleSheet ||
-                  showSubtitleSettingsDrawer || showMoreSheet || showStatsForNerds
+                  showSubtitleSettingsDrawer || showMoreSheet || showStatsForNerds ||
+                  showFrameNavSheet || showAudioDelaySheet || showSubtitleDelaySheet ||
+                  showVideoFiltersSheet || showOnlineSubSearchSheet
     ) {
         showAspectRatioSheet = false
         showSpeedSheet = false
@@ -299,6 +320,11 @@ fun PlayerScreen(
         showSubtitleSettingsDrawer = false
         showMoreSheet = false
         showStatsForNerds = false
+        showFrameNavSheet = false
+        showAudioDelaySheet = false
+        showSubtitleDelaySheet = false
+        showVideoFiltersSheet = false
+        showOnlineSubSearchSheet = false
     }
 
     // Pro Feature States
@@ -309,6 +335,7 @@ fun PlayerScreen(
     // Gesture Animation States
     var doubleTapRippleText by remember { mutableStateOf("") }
     var doubleTapAlignment by remember { mutableStateOf(Alignment.Center) }
+    var isDoubleTapForward by remember { mutableStateOf(true) }
     var showDoubleTapRipple by remember { mutableStateOf(false) }
     var doubleTapRippleJob by remember { mutableStateOf<Job?>(null) }
     var cumulativeSeekSeconds by remember { mutableIntStateOf(0) }
@@ -323,6 +350,7 @@ fun PlayerScreen(
     var isScrubbing by remember { mutableStateOf(false) }
     var scrubbingPositionMs by remember { mutableLongStateOf(0L) }
     var is2xSpeedHolding by remember { mutableStateOf(false) }
+    var dynamicHoldSpeed by remember { mutableFloatStateOf(2.0f) }
     var speedBeforeHold by remember { mutableFloatStateOf(1.0f) }
 
     // System Brightness & Volume Gestures
@@ -438,14 +466,15 @@ fun PlayerScreen(
             cumulativeSeekSeconds = 10
             lastSeekDirection = direction
         }
+        isDoubleTapForward = isForward
 
         if (isForward) {
             viewModel.seekForward(10000L)
-            doubleTapRippleText = "${cumulativeSeekSeconds}s ▶▶"
+            doubleTapRippleText = "+${cumulativeSeekSeconds}s"
             doubleTapAlignment = Alignment.CenterEnd
         } else {
             viewModel.seekBackward(10000L)
-            doubleTapRippleText = "◀◀ ${cumulativeSeekSeconds}s"
+            doubleTapRippleText = "-${cumulativeSeekSeconds}s"
             doubleTapAlignment = Alignment.CenterStart
         }
 
@@ -744,6 +773,29 @@ fun PlayerScreen(
                                 }
                             )
                         }
+                        // mpvEx Fullscreen Horizontal Drag Seeking Gesture
+                        .pointerInput(uiState.durationMs) {
+                            detectHorizontalDragGestures(
+                                onDragStart = {
+                                    scrubbingPositionMs = uiState.currentPositionMs
+                                    isScrubbing = true
+                                },
+                                onDragEnd = {
+                                    viewModel.seekTo(scrubbingPositionMs)
+                                    scope.launch {
+                                        delay(300)
+                                        isScrubbing = false
+                                    }
+                                },
+                                onDragCancel = {
+                                    isScrubbing = false
+                                }
+                            ) { change, dragAmount ->
+                                change.consume()
+                                val deltaMs = (dragAmount * 150f).toLong()
+                                scrubbingPositionMs = (scrubbingPositionMs + deltaMs).coerceIn(0L, uiState.durationMs.coerceAtLeast(1L))
+                            }
+                        }
                 )
 
                 // Right Zone: Volume Drag & Double-tap Seek Forward + Long Press 2X Speed
@@ -814,7 +866,7 @@ fun PlayerScreen(
             }
         }
 
-        // Release 2X Speed HUD when finger leaves screen
+        // Release Dynamic Speed HUD when finger leaves screen
         if (is2xSpeedHolding) {
             Box(
                 modifier = Modifier
@@ -825,6 +877,7 @@ fun PlayerScreen(
                                 tryAwaitRelease()
                                 viewModel.setPlaybackSpeed(speedBeforeHold)
                                 is2xSpeedHolding = false
+                                dynamicHoldSpeed = 2.0f
                             }
                         )
                     },
@@ -842,7 +895,13 @@ fun PlayerScreen(
                     ) {
                         Icon(Icons.Default.FastForward, contentDescription = null, tint = Color(0xFFD0BCFF), modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("2X Speed ▶▶", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "Dynamic Speed ${String.format("%.2f", dynamicHoldSpeed)}x ▶▶",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        )
                     }
                 }
             }
@@ -887,8 +946,68 @@ fun PlayerScreen(
                 modifier = Modifier.padding(horizontal = 24.dp)
             )
         }
-        DoubleTapSeekOverlay(visible = showDoubleTapRipple, seekText = doubleTapRippleText, alignment = doubleTapAlignment)
+        // mpvEx Concave Oval Double-Tap Seeking Overlay
+        DoubleTapSeekRippleOverlay(
+            visible = showDoubleTapRipple,
+            isForward = isDoubleTapForward,
+            seekSecondsText = doubleTapRippleText
+        )
         AspectRatioToast(visible = showAspectToast, text = aspectToastText)
+
+        // mpvEx Horizontal Swipe Scrubbing HUD Card
+        if (isScrubbing) {
+            val deltaMs = scrubbingPositionMs - uiState.currentPositionMs
+            val deltaText = if (deltaMs >= 0) "+${formatMpvTime(deltaMs)}" else "-${formatMpvTime(-deltaMs)}"
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xF212121A),
+                border = BorderStroke(1.dp, Color(0xFFD0BCFF)),
+                shadowElevation = 12.dp,
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                ) {
+                    if (scrubberThumbnailBitmap != null && !scrubberThumbnailBitmap!!.isRecycled) {
+                        Image(
+                            bitmap = scrubberThumbnailBitmap!!.asImageBitmap(),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(width = 160.dp, height = 90.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFF1E1E28))
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = formatMpvTime(scrubbingPositionMs),
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "[$deltaText]",
+                            color = if (deltaMs >= 0) Color(0xFF81C784) else Color(0xFFFF8A80),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "/ ${formatMpvTime(uiState.durationMs)}",
+                            color = TextSecondary,
+                            fontSize = 13.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+        }
 
         // ──────────────────────────────────────────────────────────────
         // Main Player Controls Overlay (mpvEx Complete UI/UX Layout)
@@ -993,6 +1112,7 @@ fun PlayerScreen(
                             ControlsButton(
                                 icon = Icons.Default.Audiotrack,
                                 onClick = { showAudioSheet = true },
+                                onLongClick = { showAudioDelaySheet = true },
                                 title = "Audio Tracks",
                                 size = 45.dp,
                                 color = if (uiState.selectedAudioTrack.isNotBlank()) Color(0xFFD0BCFF) else Color.White
@@ -1004,6 +1124,7 @@ fun PlayerScreen(
                             ControlsButton(
                                 icon = Icons.Default.Subtitles,
                                 onClick = { showSubtitleSheet = true },
+                                onLongClick = { showSubtitleSettingsDrawer = true },
                                 title = "Subtitles",
                                 size = 45.dp,
                                 color = if (hasSubsOn) Color(0xFFD0BCFF) else Color.White
@@ -1145,6 +1266,10 @@ fun PlayerScreen(
                                 ControlsButton(
                                     icon = Icons.Default.FastForward,
                                     onClick = { showSpeedSheet = true },
+                                    onLongClick = {
+                                        viewModel.setPlaybackSpeed(1.0f)
+                                        Toast.makeText(context, "Speed reset: 1.0x", Toast.LENGTH_SHORT).show()
+                                    },
                                     size = 40.dp,
                                     iconSize = 18.dp,
                                     badgeText = "${uiState.playbackSpeed}x"
@@ -1162,10 +1287,22 @@ fun PlayerScreen(
                                     color = if (uiState.isRepeatMode) Color(0xFFD0BCFF) else Color.White
                                 )
 
-                                // Aspect Ratio
+                                // Aspect Ratio: Click to quick-cycle, Long-press to open Aspect Ratio sheet
                                 ControlsButton(
                                     icon = Icons.Default.AspectRatio,
-                                    onClick = { showAspectRatioSheet = true },
+                                    onClick = {
+                                        val currentIndex = DefaultAspectPresets.indexOfFirst { it.id == selectedRatioOption.id }
+                                        val nextIndex = (currentIndex + 1) % DefaultAspectPresets.size
+                                        val nextPreset = DefaultAspectPresets[nextIndex]
+                                        selectedRatioOption = nextPreset
+                                        aspectToastText = "Aspect: ${nextPreset.label}"
+                                        showAspectToast = true
+                                        scope.launch {
+                                            delay(1500)
+                                            showAspectToast = false
+                                        }
+                                    },
+                                    onLongClick = { showAspectRatioSheet = true },
                                     size = 40.dp,
                                     iconSize = 18.dp,
                                     badgeText = selectedRatioOption.label
@@ -1196,75 +1333,86 @@ fun PlayerScreen(
                                 )
                             }
 
-                            // Right Actions Group: Screenshot, Zoom, PiP, Fullscreen
+                            // Right Actions Group: Frame Navigation Capsule, Zoom, PiP, Fullscreen
                             ControlsGroup(spacing = 6.dp) {
-                                // Screenshot
-                                ControlsButton(
-                                    icon = Icons.Default.CameraAlt,
-                                    onClick = {
+                                // Frame Navigation Capsule (Expandable Step & Snapshot)
+                                FrameNavigationCapsule(
+                                    isExpanded = isFrameNavExpanded,
+                                    isSnapshotLoading = isSnapshotLoading,
+                                    onToggleExpand = { isFrameNavExpanded = !isFrameNavExpanded },
+                                    onStepBackward = { viewModel.seekBackward(100L) },
+                                    onStepForward = { viewModel.seekForward(100L) },
+                                    onTakeSnapshot = {
                                         val pv = rememberPlayerViewRef
                                         val act = activity
-                                        if (pv == null || act == null) {
-                                            Toast.makeText(context, "Cannot capture — player not ready", Toast.LENGTH_SHORT).show()
-                                            return@ControlsButton
-                                        }
-                                        try {
-                                            val screenshotDir = com.streamhub.app.data.DownloadManager.getEffectiveScreenshotDir(context)
-                                            val screenshotFile = java.io.File(screenshotDir, "StreamHub_${System.currentTimeMillis()}.png")
+                                        if (pv != null && act != null) {
+                                            isSnapshotLoading = true
+                                            try {
+                                                val screenshotDir = com.streamhub.app.data.DownloadManager.getEffectiveScreenshotDir(context)
+                                                val screenshotFile = java.io.File(screenshotDir, "StreamHub_${System.currentTimeMillis()}.png")
 
-                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                                val viewWidth = pv.width.coerceAtLeast(1)
-                                                val viewHeight = pv.height.coerceAtLeast(1)
-                                                val bitmap = android.graphics.Bitmap.createBitmap(
-                                                    viewWidth, viewHeight, android.graphics.Bitmap.Config.ARGB_8888
-                                                )
-                                                val location = IntArray(2)
-                                                pv.getLocationInWindow(location)
-                                                val srcRect = android.graphics.Rect(
-                                                    location[0], location[1],
-                                                    location[0] + viewWidth, location[1] + viewHeight
-                                                )
-                                                android.view.PixelCopy.request(
-                                                    act.window,
-                                                    srcRect,
-                                                    bitmap,
-                                                    { copyResult ->
-                                                        if (copyResult == android.view.PixelCopy.SUCCESS) {
-                                                            try {
-                                                                java.io.FileOutputStream(screenshotFile).use { out ->
-                                                                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                    val viewWidth = pv.width.coerceAtLeast(1)
+                                                    val viewHeight = pv.height.coerceAtLeast(1)
+                                                    val bitmap = android.graphics.Bitmap.createBitmap(
+                                                        viewWidth, viewHeight, android.graphics.Bitmap.Config.ARGB_8888
+                                                    )
+                                                    val location = IntArray(2)
+                                                    pv.getLocationInWindow(location)
+                                                    val srcRect = android.graphics.Rect(
+                                                        location[0], location[1],
+                                                        location[0] + viewWidth, location[1] + viewHeight
+                                                    )
+                                                    android.view.PixelCopy.request(
+                                                        act.window,
+                                                        srcRect,
+                                                        bitmap,
+                                                        { copyResult ->
+                                                            isSnapshotLoading = false
+                                                            if (copyResult == android.view.PixelCopy.SUCCESS) {
+                                                                try {
+                                                                    java.io.FileOutputStream(screenshotFile).use { out ->
+                                                                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                                                                    }
+                                                                    act.runOnUiThread {
+                                                                        Toast.makeText(
+                                                                            context,
+                                                                            "📸 Snapshot saved to ${screenshotDir.name}",
+                                                                            Toast.LENGTH_SHORT
+                                                                        ).show()
+                                                                    }
+                                                                } catch (e: Exception) {
+                                                                    Log.w("PlayerScreen", "Saving screenshot failed", e)
+                                                                } finally {
+                                                                    bitmap.recycle()
                                                                 }
-                                                                act.runOnUiThread {
-                                                                    Toast.makeText(
-                                                                        context,
-                                                                        "📸 Screenshot saved to ${screenshotDir.name}",
-                                                                        Toast.LENGTH_SHORT
-                                                                    ).show()
-                                                                }
-                                                            } catch (e: Exception) {
-                                                                Log.w("PlayerScreen", "Saving screenshot failed", e)
-                                                            } finally {
+                                                            } else {
                                                                 bitmap.recycle()
                                                             }
-                                                        } else {
-                                                            bitmap.recycle()
-                                                        }
-                                                    },
-                                                    android.os.Handler(android.os.Looper.getMainLooper())
-                                                )
+                                                        },
+                                                        android.os.Handler(android.os.Looper.getMainLooper())
+                                                    )
+                                                }
+                                            } catch (e: Exception) {
+                                                isSnapshotLoading = false
+                                                Log.w("PlayerScreen", "Screenshot failed: ${e.message}")
                                             }
-                                        } catch (e: Exception) {
-                                            Log.w("PlayerScreen", "Screenshot failed: ${e.message}")
                                         }
                                     },
-                                    size = 40.dp,
-                                    iconSize = 18.dp
+                                    onOpenSheet = { showFrameNavSheet = true },
+                                    buttonSize = 40.dp
                                 )
 
                                 // Video Zoom / Pan
                                 ControlsButton(
                                     icon = Icons.Default.ZoomIn,
                                     onClick = { showZoomSheet = true },
+                                    onLongClick = {
+                                        videoZoomScale = 1.0f
+                                        videoZoomOffsetX = 0f
+                                        videoZoomOffsetY = 0f
+                                        Toast.makeText(context, "Zoom reset: 100%", Toast.LENGTH_SHORT).show()
+                                    },
                                     size = 40.dp,
                                     iconSize = 18.dp,
                                     badgeText = if (videoZoomScale != 1.0f) String.format("%.1fx", videoZoomScale) else null
@@ -1301,6 +1449,7 @@ fun PlayerScreen(
                                         showAspectToast = true
                                         scope.launch { delay(1200); showAspectToast = false }
                                     },
+                                    onLongClick = { showAspectRatioSheet = true },
                                     size = 40.dp,
                                     iconSize = 18.dp
                                 )
@@ -1421,7 +1570,8 @@ fun PlayerScreen(
                     showSubtitleSettingsDrawer = true
                 },
                 onOpenSearch = {
-                    Toast.makeText(context, "Searching subtitles for ${mediaItem.title}...", Toast.LENGTH_SHORT).show()
+                    showSubtitleSheet = false
+                    showOnlineSubSearchSheet = true
                 },
                 onDismiss = { showSubtitleSheet = false }
             )
@@ -1441,13 +1591,134 @@ fun PlayerScreen(
             MpvMoreSheet(
                 showStatsForNerds = showStatsForNerds,
                 onToggleStatsForNerds = { showStatsForNerds = it },
-                audioDelayMs = 0L,
-                onAudioDelayChange = { /* Audio delay offset */ },
+                audioDelayMs = audioDelayMs,
+                onAudioDelayChange = { audioDelayMs = it },
                 subtitleDelayMs = uiState.subtitleOffsetMs,
                 onSubtitleDelayChange = { viewModel.setSubtitleOffset(it) },
                 sleepTimerMinutes = uiState.sleepTimerMinutesRemaining ?: 0,
                 onSetSleepTimer = { viewModel.setSleepTimer(it) },
+                onOpenAudioDelaySheet = {
+                    showMoreSheet = false
+                    showAudioDelaySheet = true
+                },
+                onOpenSubtitleDelaySheet = {
+                    showMoreSheet = false
+                    showSubtitleDelaySheet = true
+                },
+                onOpenVideoFiltersSheet = {
+                    showMoreSheet = false
+                    showVideoFiltersSheet = true
+                },
                 onDismiss = { showMoreSheet = false }
+            )
+        }
+
+        // 9. Frame Navigation Modal Sheet
+        if (showFrameNavSheet) {
+            FrameNavigationSheet(
+                currentPositionMs = uiState.currentPositionMs,
+                durationMs = uiState.durationMs,
+                onSeekTo = { viewModel.seekTo(it) },
+                onStepBackward = { viewModel.seekBackward(it) },
+                onStepForward = { viewModel.seekForward(it) },
+                onTakeSnapshot = {
+                    val pv = rememberPlayerViewRef
+                    val act = activity
+                    if (pv != null && act != null) {
+                        isSnapshotLoading = true
+                        try {
+                            val screenshotDir = com.streamhub.app.data.DownloadManager.getEffectiveScreenshotDir(context)
+                            val screenshotFile = java.io.File(screenshotDir, "StreamHub_${System.currentTimeMillis()}.png")
+
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                val viewWidth = pv.width.coerceAtLeast(1)
+                                val viewHeight = pv.height.coerceAtLeast(1)
+                                val bitmap = android.graphics.Bitmap.createBitmap(
+                                    viewWidth, viewHeight, android.graphics.Bitmap.Config.ARGB_8888
+                                )
+                                val location = IntArray(2)
+                                pv.getLocationInWindow(location)
+                                val srcRect = android.graphics.Rect(
+                                    location[0], location[1],
+                                    location[0] + viewWidth, location[1] + viewHeight
+                                )
+                                android.view.PixelCopy.request(
+                                    act.window,
+                                    srcRect,
+                                    bitmap,
+                                    { copyResult ->
+                                        isSnapshotLoading = false
+                                        if (copyResult == android.view.PixelCopy.SUCCESS) {
+                                            try {
+                                                java.io.FileOutputStream(screenshotFile).use { out ->
+                                                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                                                }
+                                                act.runOnUiThread {
+                                                    Toast.makeText(
+                                                        context,
+                                                        "📸 Snapshot saved to ${screenshotDir.name}",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            } catch (e: Exception) {
+                                                Log.w("PlayerScreen", "Saving snapshot failed", e)
+                                            } finally {
+                                                bitmap.recycle()
+                                            }
+                                        } else {
+                                            bitmap.recycle()
+                                        }
+                                    },
+                                    android.os.Handler(android.os.Looper.getMainLooper())
+                                )
+                            }
+                        } catch (e: Exception) {
+                            isSnapshotLoading = false
+                            Log.w("PlayerScreen", "Snapshot failed: ${e.message}")
+                        }
+                    }
+                },
+                isSnapshotLoading = isSnapshotLoading,
+                onDismissRequest = { showFrameNavSheet = false }
+            )
+        }
+
+        // 10. Audio Delay Modal Sheet
+        if (showAudioDelaySheet) {
+            MpvAudioDelaySheet(
+                audioOffsetMs = audioDelayMs,
+                onUpdateOffset = { audioDelayMs = it },
+                onDismissRequest = { showAudioDelaySheet = false }
+            )
+        }
+
+        // 11. Subtitle Delay Modal Sheet
+        if (showSubtitleDelaySheet) {
+            MpvSubtitleDelaySheet(
+                subtitleOffsetMs = uiState.subtitleOffsetMs,
+                onUpdateOffset = { viewModel.setSubtitleOffset(it) },
+                onDismissRequest = { showSubtitleDelaySheet = false }
+            )
+        }
+
+        // 12. Video Color Filters & Presets Modal Sheet
+        if (showVideoFiltersSheet) {
+            MpvVideoFiltersSheet(
+                filterConfig = videoFilterConfig,
+                onUpdateConfig = { videoFilterConfig = it },
+                onDismiss = { showVideoFiltersSheet = false }
+            )
+        }
+
+        // 13. Online Subtitle Search Modal Sheet
+        if (showOnlineSubSearchSheet) {
+            MpvOnlineSubtitleSearchSheet(
+                initialQuery = mediaItem.title,
+                onSelectSubtitle = { sub ->
+                    Toast.makeText(context, "Loaded online subtitle: ${sub.title}", Toast.LENGTH_SHORT).show()
+                    showOnlineSubSearchSheet = false
+                },
+                onDismiss = { showOnlineSubSearchSheet = false }
             )
         }
 

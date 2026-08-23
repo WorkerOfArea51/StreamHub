@@ -3,6 +3,7 @@ package com.streamhub.app.ui.screens.player.sheets
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import com.streamhub.app.ui.screens.player.controls.MpvPlayerSheet
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,40 +70,36 @@ fun MpvMoreSheet(
     onSubtitleDelayChange: (Long) -> Unit,
     sleepTimerMinutes: Int,
     onSetSleepTimer: (Int) -> Unit,
+    onOpenAudioDelaySheet: () -> Unit = {},
+    onOpenSubtitleDelaySheet: () -> Unit = {},
+    onOpenVideoFiltersSheet: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val scrollState = rememberScrollState()
     val sleepPresets = listOf(0, 15, 30, 45, 60, 90)
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0x99000000))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onDismiss() }
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)),
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        Surface(
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            color = Color(0xF212121A),
-            border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+    MpvPlayerSheet(onDismissRequest = onDismiss) {
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 520.dp)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) {}
+                .verticalScroll(scrollState)
+                .padding(horizontal = 24.dp, vertical = 10.dp)
         ) {
-            Column(
+            // Drag Handle
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(scrollState)
-                    .padding(horizontal = 24.dp, vertical = 14.dp)
+                    .padding(bottom = 8.dp),
+                contentAlignment = Alignment.Center
             ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 38.dp, height = 4.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x44FFFFFF))
+                )
+            }
+
                 // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -132,6 +129,47 @@ fun MpvMoreSheet(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
+
+                // Video Color Filters & Presets Card
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0x18FFFFFF),
+                    border = BorderStroke(1.dp, Color(0x22FFFFFF)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { onOpenVideoFiltersSheet() }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Sync,
+                                contentDescription = null,
+                                tint = Color(0xFFD0BCFF),
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Video Color Filters & Presets", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                Text("12 cinematic presets, brightness, saturation, contrast", color = TextSecondary, fontSize = 10.sp)
+                            }
+                        }
+                        Text(
+                            text = "Configure ▸",
+                            color = Color(0xFFD0BCFF),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Stats for Nerds Card
                 Row(
@@ -215,12 +253,26 @@ fun MpvMoreSheet(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("Audio Delay Sync", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        text = "${audioDelayMs}ms",
-                        color = Color(0xFFD0BCFF),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "${audioDelayMs}ms",
+                            color = Color(0xFFD0BCFF),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Advanced Steppers ▸",
+                            color = Color(0xFFD0BCFF),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0x22FFFFFF))
+                                .clickable { onOpenAudioDelaySheet() }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
                 Slider(
                     value = audioDelayMs.toFloat(),
@@ -243,12 +295,26 @@ fun MpvMoreSheet(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("Subtitle Delay Sync", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        text = "${subtitleDelayMs}ms",
-                        color = Color(0xFFD0BCFF),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "${subtitleDelayMs}ms",
+                            color = Color(0xFFD0BCFF),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Advanced Steppers ▸",
+                            color = Color(0xFFD0BCFF),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0x22FFFFFF))
+                                .clickable { onOpenSubtitleDelaySheet() }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
                 Slider(
                     value = subtitleDelayMs.toFloat(),
@@ -264,6 +330,5 @@ fun MpvMoreSheet(
 
                 Spacer(modifier = Modifier.height(16.dp))
             }
-        }
     }
 }

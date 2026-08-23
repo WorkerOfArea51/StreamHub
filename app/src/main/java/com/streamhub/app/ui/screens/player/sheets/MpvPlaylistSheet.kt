@@ -3,6 +3,7 @@ package com.streamhub.app.ui.screens.player.sheets
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import com.streamhub.app.ui.screens.player.controls.MpvPlayerSheet
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -63,34 +64,27 @@ fun MpvPlaylistSheet(
 ) {
     var isGridView by remember { mutableStateOf(false) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0x99000000))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onDismiss() }
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)),
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        Surface(
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            color = Color(0xF212121A),
-            border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+    MpvPlayerSheet(onDismissRequest = onDismiss) {
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 520.dp)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) {}
+                .padding(horizontal = 20.dp, vertical = 10.dp)
         ) {
-            Column(
+            // Drag Handle
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 14.dp)
+                    .padding(bottom = 8.dp),
+                contentAlignment = Alignment.Center
             ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 38.dp, height = 4.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x44FFFFFF))
+                )
+            }
+
                 // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -404,7 +398,6 @@ fun MpvPlaylistSheet(
                     }
                 }
             }
-        }
     }
 }
 

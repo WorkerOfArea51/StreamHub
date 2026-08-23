@@ -26,12 +26,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeDown
+import androidx.compose.material.icons.automirrored.filled.VolumeMute
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.BrightnessLow
 import androidx.compose.material.icons.filled.BrightnessMedium
 import androidx.compose.material.icons.filled.BrightnessHigh
-import androidx.compose.material.icons.filled.VolumeDown
-import androidx.compose.material.icons.filled.VolumeMute
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -76,9 +76,9 @@ fun VolumeIndicator(
     val alignment = if (volumeOnRight) Alignment.CenterEnd else Alignment.CenterStart
     val isBoost = volumePercent > 100f
     val icon: ImageVector = when {
-        volumePercent <= 0f -> Icons.Default.VolumeMute
-        volumePercent < 50f -> Icons.Default.VolumeDown
-        else -> Icons.Default.VolumeUp
+        volumePercent <= 0f -> Icons.AutoMirrored.Filled.VolumeMute
+        volumePercent < 50f -> Icons.AutoMirrored.Filled.VolumeDown
+        else -> Icons.AutoMirrored.Filled.VolumeUp
     }
 
     Box(
