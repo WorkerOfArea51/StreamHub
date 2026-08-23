@@ -52,20 +52,31 @@ object VideoThumbnailHelper {
                         val newRetriever = MediaMetadataRetriever()
                         val cleanPath = sourceUrl.removePrefix("file://")
                         val file = File(cleanPath)
-                        // FIX: Removed the !cleanPath.contains("/temp/") filter — it was
-                        // rejecting TDLib temp file paths, preventing thumbnails from being
-                        // generated for ALL streaming videos. TDLib temp files are valid
-                        // video files and MediaMetadataRetriever can read them fine.
-                        if (file.exists() && file.length() > 1024L) {
+
+                        // FIX: Check if the file is complete (not being actively downloaded).
+                        // MediaMetadataRetriever fails on partial files because the moov atom
+                        // (video metadata) is written last. If the file is still growing,
+                        // return null and let the UI show the poster fallback.
+                        if (!file.exists() || file.length() < 1024L) {
+                            return@withLock null
+                        }
+
+                        // FIX: Check if file is still being written by TDLib.
+                        // If file size changed in the last 500ms, it's still downloading.
+                        val size1 = file.length()
+                        kotlinx.coroutines.delay(500L)
+                        val size2 = file.length()
+                        if (size1 != size2) {
+                            // File is still being downloaded — can't extract frames
+                            return@withLock null
+                        }
+
+                        try {
                             newRetriever.setDataSource(cleanPath)
-                        } else if (sourceUrl.startsWith("http://") || sourceUrl.startsWith("https://")) {
-                            // Fallback for HTTP URLs (won't work for TDLib paths but kept for safety)
-                            try {
-                                newRetriever.setDataSource(sourceUrl, HashMap())
-                            } catch (_: Exception) {
-                                return@withLock null
-                            }
-                        } else {
+                        } catch (e: Exception) {
+                            // setDataSource fails on partial/corrupt files — return null
+                            // so the UI shows the poster fallback instead of crashing.
+                            Log.d(TAG, "setDataSource failed (file may be partial): ${e.message}")
                             return@withLock null
                         }
                         retriever = newRetriever
@@ -73,10 +84,8 @@ object VideoThumbnailHelper {
                     }
 
                     val timeUs = bucketMs * 1000L
-                    // FIX: Use OPTION_CLOSEST (not OPTION_CLOSEST_SYNC) for accurate frame
-                    // extraction. OPTION_CLOSEST_SYNC returns the nearest keyframe, which
-                    // for many Telegram-encoded videos is the first frame (sparse keyframes).
-                    // OPTION_CLOSEST decodes to the exact requested timestamp.
+                    // FIX: Try OPTION_CLOSEST first (exact timestamp), then fall back to
+                    // OPTION_CLOSEST_SYNC (nearest keyframe) for compatibility.
                     val frame = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
                         retriever?.getScaledFrameAtTime(
                             timeUs,

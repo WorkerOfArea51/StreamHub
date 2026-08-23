@@ -1001,18 +1001,52 @@ fun PlayerScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
                 ) {
-                    if (scrubberThumbnailBitmap != null && !scrubberThumbnailBitmap!!.isRecycled) {
-                        Image(
-                            bitmap = scrubberThumbnailBitmap!!.asImageBitmap(),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(width = 160.dp, height = 90.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFF1E1E28))
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
+                    // FIX: Show thumbnail if available, otherwise show poster as fallback.
+                    // MediaMetadataRetriever can't extract frames from partially-downloaded
+                    // TDLib files, so the poster is the fallback during streaming.
+                    Box(
+                        modifier = Modifier
+                            .size(width = 160.dp, height = 90.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF1E1E28))
+                    ) {
+                        if (scrubberThumbnailBitmap != null && !scrubberThumbnailBitmap!!.isRecycled) {
+                            Image(
+                                bitmap = scrubberThumbnailBitmap!!.asImageBitmap(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else if (uiState.posterUrl.isNotBlank()) {
+                            // Fallback: show poster image with a timestamp overlay
+                            AsyncImage(
+                                model = uiState.posterUrl,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            // Dark overlay to indicate it's a preview position
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.4f))
+                            )
+                        } else {
+                            // No poster — show a placeholder with timestamp
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = formatMpvTime(scrubbingPositionMs),
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = formatMpvTime(scrubbingPositionMs),
