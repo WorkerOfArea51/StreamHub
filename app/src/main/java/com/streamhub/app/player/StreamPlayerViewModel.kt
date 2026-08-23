@@ -269,8 +269,16 @@ class StreamPlayerViewModel : ViewModel() {
                             playerErrorInfo = errorInfo
                         )
                     }
-                    // Auto-retry network errors up to 2 times with exponential backoff
-                    if (errorInfo.type == PlayerErrorType.NETWORK && errorInfo.canRetry) {
+                    // FIX: Only auto-retry on INITIAL LOAD errors — NOT mid-playback errors.
+                    // If the user was already playing (currentPositionMs > 5000), a retry
+                    // would call setMediaItem() which resets the player and restarts from 0.
+                    // Mid-playback errors should show the error overlay and let the user
+                    // manually tap Retry instead of auto-restarting.
+                    val isMidPlayback = _uiState.value.currentPositionMs > 5_000L
+                    if (errorInfo.type == PlayerErrorType.NETWORK &&
+                        errorInfo.canRetry &&
+                        !isMidPlayback &&
+                        autoRetryCount < 2) {
                         scheduleAutoRetry()
                     }
                 }
@@ -532,7 +540,12 @@ class StreamPlayerViewModel : ViewModel() {
     fun retryCurrentEpisode() {
         val snapshot = _uiState.value
         _uiState.update { it.copy(playerError = null, playerErrorInfo = null, isBuffering = true) }
-        playEpisode(snapshot.currentEpisodeIndex, snapshot.currentPositionMs)
+        // FIX: Use the pending seek target if available — prevents restart from 0 when
+        // retry fires after a seek error. The position tracker's currentPositionMs might
+        // be stale (the old position before the seek), causing the retry to seek to the
+        // wrong position and restart from 0.
+        val retryPositionMs = pendingSeekTargetMs ?: snapshot.currentPositionMs
+        playEpisode(snapshot.currentEpisodeIndex, retryPositionMs)
     }
 
     fun skipIntro(seconds: Int = 90) {

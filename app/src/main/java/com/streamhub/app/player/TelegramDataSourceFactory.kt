@@ -116,7 +116,7 @@ class TdLibStreamingDataSource : DataSource {
     companion object {
         private const val TAG = "TdLibStreamingDS"
         private const val CHUNK_POLL_INTERVAL_MS = 50L
-        private const val MAX_WAIT_FOR_CHUNK_MS = 30_000L // 30s hard ceiling per read
+        private const val MAX_WAIT_FOR_CHUNK_MS = 120_000L // 120s — Telegram rate limits can cause long waits
         private const val DOWNLOAD_CHUNK_PRIORITY = 32
         private const val DOWNLOAD_CHUNK_SIZE = 0L // 0L = TDLib default (1 MB)
     }
@@ -219,10 +219,11 @@ class TdLibStreamingDataSource : DataSource {
                 if (currentPosition >= totalFileSize) return C.RESULT_END_OF_INPUT
                 val partialAvailable = (currentFileLen - currentPosition).coerceAtLeast(0L).toInt()
                 if (partialAvailable > 0) break
-                try { Thread.sleep(200) } catch (_: Exception) {}
-                currentFileLen = f.length()
-                if (currentPosition < currentFileLen) break
-                throw IOException("Waiting for stream buffer at position $currentPosition")
+                // FIX: Return 0 instead of throwing IOException. Returning 0 tells ExoPlayer
+                // "no data right now, try again" — ExoPlayer will retry the read after a short
+                // backoff. Throwing IOException causes ExoPlayer to fire onPlayerError, which
+                // triggers the auto-retry → setMediaItem → restart-from-0 bug.
+                return 0
             }
 
             synchronized(TdLibMediaProvider.fileUpdateNotifier) {
