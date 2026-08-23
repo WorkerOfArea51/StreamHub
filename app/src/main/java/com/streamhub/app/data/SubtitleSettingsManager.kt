@@ -14,14 +14,20 @@ data class SubtitleConfig(
     val fontSizeSp: Float = 18f,
     val textColorArgb: Long = 0xFFFFE066L, // Vibrant Yellow
     val backgroundColorArgb: Long = 0xAA000000L, // Semi-transparent black
-    val edgeType: Int = CaptionStyleCompat.EDGE_TYPE_OUTLINE
+    val edgeType: Int = CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+    val bold: Boolean = false,
+    val italic: Boolean = false,
+    val alignment: String = "CENTER",
+    val outlineWidth: Float = 2f,
+    val shadowOffset: Float = 2f,
+    val scaleByWindow: Boolean = true
 )
 
 /**
  * Production Media3 Subtitle Appearance Manager:
  * - Configures closed caption font size (Small 14sp, Medium 18sp, Large 24sp, XL 30sp)
  * - Configures text color (Yellow, White, Cyan, Green)
- * - Configures background box contrast
+ * - Configures typography styles (Bold, Italic, Alignment, Outlines)
  * - Persists preferences in SharedPreferences (streamhub_subtitle_prefs)
  */
 @OptIn(UnstableApi::class)
@@ -32,6 +38,12 @@ object SubtitleSettingsManager {
     private const val KEY_TEXT_COLOR = "text_color_argb"
     private const val KEY_BG_COLOR = "bg_color_argb"
     private const val KEY_EDGE_TYPE = "edge_type"
+    private const val KEY_BOLD = "bold"
+    private const val KEY_ITALIC = "italic"
+    private const val KEY_ALIGNMENT = "alignment"
+    private const val KEY_OUTLINE_WIDTH = "outline_width"
+    private const val KEY_SHADOW_OFFSET = "shadow_offset"
+    private const val KEY_SCALE_BY_WINDOW = "scale_by_window"
 
     private var prefs: SharedPreferences? = null
 
@@ -51,7 +63,13 @@ object SubtitleSettingsManager {
                 fontSizeSp = p.getFloat(KEY_FONT_SIZE, 18f),
                 textColorArgb = p.getLong(KEY_TEXT_COLOR, 0xFFFFE066L),
                 backgroundColorArgb = p.getLong(KEY_BG_COLOR, 0xAA000000L),
-                edgeType = p.getInt(KEY_EDGE_TYPE, CaptionStyleCompat.EDGE_TYPE_OUTLINE)
+                edgeType = p.getInt(KEY_EDGE_TYPE, CaptionStyleCompat.EDGE_TYPE_OUTLINE),
+                bold = p.getBoolean(KEY_BOLD, false),
+                italic = p.getBoolean(KEY_ITALIC, false),
+                alignment = p.getString(KEY_ALIGNMENT, "CENTER") ?: "CENTER",
+                outlineWidth = p.getFloat(KEY_OUTLINE_WIDTH, 2f),
+                shadowOffset = p.getFloat(KEY_SHADOW_OFFSET, 2f),
+                scaleByWindow = p.getBoolean(KEY_SCALE_BY_WINDOW, true)
             )
         } catch (e: Exception) {
             p.edit().clear().apply()
@@ -66,7 +84,14 @@ object SubtitleSettingsManager {
             putLong(KEY_TEXT_COLOR, newConfig.textColorArgb)
             putLong(KEY_BG_COLOR, newConfig.backgroundColorArgb)
             putInt(KEY_EDGE_TYPE, newConfig.edgeType)
+            putBoolean(KEY_BOLD, newConfig.bold)
+            putBoolean(KEY_ITALIC, newConfig.italic)
+            putString(KEY_ALIGNMENT, newConfig.alignment)
+            putFloat(KEY_OUTLINE_WIDTH, newConfig.outlineWidth)
+            putFloat(KEY_SHADOW_OFFSET, newConfig.shadowOffset)
+            putBoolean(KEY_SCALE_BY_WINDOW, newConfig.scaleByWindow)
             apply()
         }
     }
 }
+
