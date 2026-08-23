@@ -670,6 +670,7 @@ object DownloadManager {
                 val partialBytes = if (partialFile.exists()) partialFile.length() else 0L
                 mutableList[index] = mutableList[index].copy(
                     isPaused = true,
+                    downloadId = -1L,
                     resumeFromBytes = partialBytes
                 )
             }
