@@ -53,6 +53,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.repository.CatalogState
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.player.StreamPlayerViewModel
@@ -574,12 +575,37 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                 val episodeIndex = backStackEntry.arguments?.getInt("episodeIndex") ?: 0
                 val catalogState by repository.catalogState.collectAsState()
                 val catalog by repository.mediaCatalog.collectAsState()
+
+                // FIX: Handle offline playback — if mediaId starts with "offline:", construct
+                // a MediaItem from the DownloadManager instead of looking up the catalog.
+                // This allows playing downloaded files without internet (true offline mode).
                 val mediaItem = remember(mediaId, catalog) {
-                    catalog.firstOrNull { it.id == mediaId }
+                    if (mediaId.startsWith("offline:")) {
+                        // Format: offline:{mediaId}:{episodeIndex}
+                        val parts = mediaId.removePrefix("offline:").split(":")
+                        val realMediaId = parts.getOrNull(0) ?: ""
+                        val epIdx = parts.getOrNull(1)?.toIntOrNull() ?: 0
+                        com.streamhub.app.data.DownloadManager.downloads.value
+                            .firstOrNull { it.mediaId == realMediaId && it.episodeIndex == epIdx }
+                            ?.let { downloadItem ->
+                                val localEpisode = com.streamhub.app.data.models.Episode(
+                                    title = downloadItem.episodeTitle,
+                                    streamUrl = downloadItem.localFilePath
+                                )
+                                MediaItem(
+                                    id = realMediaId,
+                                    title = downloadItem.mediaTitle,
+                                    posterUrl = downloadItem.posterUrl,
+                                    episodes = listOf(localEpisode)
+                                )
+                            }
+                    } else {
+                        catalog.firstOrNull { it.id == mediaId }
+                    }
                 }
 
                 when {
-                    catalogState is CatalogState.Loading && mediaItem == null -> {
+                    catalogState is CatalogState.Loading && mediaItem == null && !mediaId.startsWith("offline:") -> {
                         PlayerLoadingScreen()
                     }
                     mediaItem == null -> {

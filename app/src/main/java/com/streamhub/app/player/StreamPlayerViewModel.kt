@@ -476,7 +476,13 @@ class StreamPlayerViewModel : ViewModel() {
 
         resolutionJob?.cancel()
         resolutionJob = viewModelScope.launch {
-            val resolvedUrl = resolveStreamUrl(rawUrl)
+            // FIX: If rawUrl is already a local file path, bypass URL resolution entirely.
+            // This makes offline playback instant — no network calls, no TelegramLinkResolver.
+            val resolvedUrl = if (rawUrl.startsWith("/") || rawUrl.startsWith("file://")) {
+                rawUrl.removePrefix("file://")
+            } else {
+                resolveStreamUrl(rawUrl)
+            }
             if (resolvedUrl.isBlank()) {
                 val isTg = TelegramLinkResolver.isTelegramLink(rawUrl)
                 val isTgReady = com.streamhub.app.data.telegram.TdLibManager.isReady()

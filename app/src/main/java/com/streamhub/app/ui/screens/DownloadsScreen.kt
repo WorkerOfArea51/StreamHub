@@ -246,12 +246,15 @@ fun DownloadsScreen(
                     DownloadedEpisodeCard(
                         item = downloadItem,
                         onPlay = {
+                            // FIX: Navigate with a special "offline" prefix so the Player
+                            // route knows to use the local file path, not the catalog stream URL.
+                            val offlineMediaId = "offline:${downloadItem.mediaId}:${downloadItem.episodeIndex}"
                             val localEpisode = com.streamhub.app.data.models.Episode(
                                 title = downloadItem.episodeTitle,
                                 streamUrl = downloadItem.localFilePath
                             )
                             val offlineMedia = MediaItem(
-                                id = downloadItem.mediaId,
+                                id = offlineMediaId,
                                 title = downloadItem.mediaTitle,
                                 posterUrl = downloadItem.posterUrl,
                                 episodes = listOf(localEpisode)

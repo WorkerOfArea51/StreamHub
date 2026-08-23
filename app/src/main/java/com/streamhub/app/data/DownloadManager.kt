@@ -834,8 +834,26 @@ object DownloadManager {
                     DownloadNotificationHelper.cancel(ctx, item.downloadId)
                 }
             }
+            // FIX: Delete the primary downloaded file AND any associated temp files.
             val file = File(item.localFilePath)
-            if (file.exists()) file.delete()
+            if (file.exists()) {
+                file.delete()
+                Log.i(TAG, "Deleted downloaded file: ${item.localFilePath}")
+            }
+            // FIX: Also try to delete the TDLib temp file if the localFilePath was a TDLib path.
+            // Some downloads store the file in the TDlib directory before copying to the target.
+            if (item.localFilePath.contains("tdlib")) {
+                val tdlibFile = File(item.localFilePath)
+                if (tdlibFile.exists()) tdlibFile.delete()
+            }
+            // FIX: Also delete any .part or .temp partial files with the same base name.
+            val parentDir = file.parentFile
+            val baseName = file.nameWithoutExtension
+            parentDir?.listFiles()?.forEach { sibling ->
+                if (sibling.name.startsWith(baseName) && (sibling.name.endsWith(".part") || sibling.name.endsWith(".temp"))) {
+                    sibling.delete()
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error deleting download file", e)
         }
