@@ -69,6 +69,7 @@ fun MpvSeekbar(
     onSeek: (Long) -> Unit,
     modifier: Modifier = Modifier,
     thumbnailBitmap: Bitmap? = null,
+    sourceUrl: String? = null,
     fallbackPosterUrl: String? = null,
     abLoopStartMs: Long? = null,
     abLoopEndMs: Long? = null
@@ -77,6 +78,22 @@ fun MpvSeekbar(
     var isUserInteracting by remember { mutableStateOf(false) }
     var userPositionMs by remember { mutableLongStateOf(currentPositionMs) }
     var invertRemainingTime by remember { mutableStateOf(false) }
+    var activeThumbnail by remember { mutableStateOf<Bitmap?>(thumbnailBitmap) }
+
+    LaunchedEffect(thumbnailBitmap) {
+        if (thumbnailBitmap != null) {
+            activeThumbnail = thumbnailBitmap
+        }
+    }
+
+    LaunchedEffect(isUserInteracting, userPositionMs / 3000L, sourceUrl) {
+        if (isUserInteracting && !sourceUrl.isNullOrBlank()) {
+            val bmp = com.streamhub.app.player.VideoThumbnailHelper.getThumbnail(sourceUrl, userPositionMs)
+            if (bmp != null && !bmp.isRecycled) {
+                activeThumbnail = bmp
+            }
+        }
+    }
 
     val animatedProgress = remember { Animatable((currentPositionMs.toFloat() / totalDuration.toFloat()).coerceIn(0f, 1f)) }
     val scope = rememberCoroutineScope()
@@ -157,9 +174,9 @@ fun MpvSeekbar(
                                     .background(Color(0xFF1E1E28)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                if (thumbnailBitmap != null && !thumbnailBitmap.isRecycled) {
+                                if (activeThumbnail != null && !activeThumbnail!!.isRecycled) {
                                     Image(
-                                        bitmap = thumbnailBitmap.asImageBitmap(),
+                                        bitmap = activeThumbnail!!.asImageBitmap(),
                                         contentDescription = "Thumbnail Preview",
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.fillMaxSize()

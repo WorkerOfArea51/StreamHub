@@ -1633,6 +1633,7 @@ fun PlayerScreen(
                             bufferedPositionMs = uiState.bufferedPositionMs,
                             onSeek = { viewModel.seekTo(it) },
                             thumbnailBitmap = scrubberThumbnailBitmap,
+                            sourceUrl = uiState.resolvedStreamUrl,
                             fallbackPosterUrl = mediaItem.posterUrl,
                             abLoopStartMs = abLoopStartMs,
                             abLoopEndMs = abLoopEndMs
