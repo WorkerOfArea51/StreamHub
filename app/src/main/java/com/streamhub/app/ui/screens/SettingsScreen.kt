@@ -121,12 +121,6 @@ fun SettingsScreen(
             item(key = "cat_storage") {
                 SettingsCategoryHeader(title = "STORAGE & DOWNLOADS", accentColor = currentAccent.color)
             }
-            item(key = "settings_storage_mgmt") {
-                com.streamhub.app.ui.screens.settings.StorageSettingsEntryCard(
-                    currentAccent = currentAccent,
-                    onNavigateToStorage = onNavigateToStorage
-                )
-            }
             item(key = "settings_download_path") { DownloadPathCard(currentAccent = currentAccent) }
             item(key = "settings_screenshot_path") { ScreenshotPathCard(currentAccent = currentAccent) }
 
