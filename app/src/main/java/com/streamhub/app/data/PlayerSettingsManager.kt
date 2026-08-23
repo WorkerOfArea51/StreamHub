@@ -12,7 +12,9 @@ data class PlayerSettings(
     val skipIntroSeconds: Int = 90,
     val nextEpisodeThresholdSeconds: Int = 45, // 65s, 45s, 40s, 30s, 0 (Disabled)
     val autoPlayNextEpisode: Boolean = true,
-    val volumeOnRight: Boolean = true // Volume on right (Anim on left) vs Volume on left (Anim on right)
+    val volumeOnRight: Boolean = true, // Volume on right (Anim on left) vs Volume on left (Anim on right)
+    val defaultAspectRatioId: String = "FIT",
+    val rememberAspectRatio: Boolean = true
 )
 
 /**
@@ -30,6 +32,8 @@ object PlayerSettingsManager {
     const val KEY_NEXT_EPISODE_THRESHOLD = "next_ep_threshold_sec"
     private const val KEY_AUTO_PLAY = "auto_play_next"
     private const val KEY_VOLUME_ON_RIGHT = "volume_on_right"
+    private const val KEY_DEFAULT_ASPECT_RATIO = "default_aspect_ratio_id"
+    private const val KEY_REMEMBER_ASPECT_RATIO = "remember_aspect_ratio"
 
     private lateinit var appContext: Context
 
@@ -49,7 +53,9 @@ object PlayerSettingsManager {
                 skipIntroSeconds = prefs.getInt(KEY_SKIP_INTRO, 90),
                 nextEpisodeThresholdSeconds = prefs.getInt(KEY_NEXT_EPISODE_THRESHOLD, 45),
                 autoPlayNextEpisode = prefs.getBoolean(KEY_AUTO_PLAY, true),
-                volumeOnRight = prefs.getBoolean(KEY_VOLUME_ON_RIGHT, true)
+                volumeOnRight = prefs.getBoolean(KEY_VOLUME_ON_RIGHT, true),
+                defaultAspectRatioId = prefs.getString(KEY_DEFAULT_ASPECT_RATIO, "FIT") ?: "FIT",
+                rememberAspectRatio = prefs.getBoolean(KEY_REMEMBER_ASPECT_RATIO, true)
             )
         } catch (e: Exception) {
             prefs.edit().clear().apply()
@@ -97,6 +103,26 @@ object PlayerSettingsManager {
         }
         _settingsFlow.update { it.copy(volumeOnRight = volumeOnRight) }
         getPrefs().edit().putBoolean(KEY_VOLUME_ON_RIGHT, volumeOnRight).apply()
+    }
+
+    @Synchronized
+    fun updateDefaultAspectRatio(aspectRatioId: String) {
+        if (!::appContext.isInitialized) {
+            Log.w(TAG, "updateDefaultAspectRatio called before init — no-op")
+            return
+        }
+        _settingsFlow.update { it.copy(defaultAspectRatioId = aspectRatioId) }
+        getPrefs().edit().putString(KEY_DEFAULT_ASPECT_RATIO, aspectRatioId).apply()
+    }
+
+    @Synchronized
+    fun updateRememberAspectRatio(remember: Boolean) {
+        if (!::appContext.isInitialized) {
+            Log.w(TAG, "updateRememberAspectRatio called before init — no-op")
+            return
+        }
+        _settingsFlow.update { it.copy(rememberAspectRatio = remember) }
+        getPrefs().edit().putBoolean(KEY_REMEMBER_ASPECT_RATIO, remember).apply()
     }
 
     private fun getPrefs(): SharedPreferences {

@@ -39,8 +39,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import com.streamhub.app.data.PlayerSettingsManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -91,6 +96,7 @@ fun AspectRatioDrawer(
     onDismiss: () -> Unit
 ) {
     val scrollState = rememberScrollState()
+    val playerSettings by PlayerSettingsManager.settingsFlow.collectAsState()
 
     Box(
         modifier = Modifier
@@ -109,7 +115,7 @@ fun AspectRatioDrawer(
             border = BorderStroke(1.dp, Color(0x33FFFFFF)),
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 480.dp)
+                .heightIn(max = 520.dp)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null
@@ -149,7 +155,45 @@ fun AspectRatioDrawer(
                 )
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Remember for all videos switch
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0x18FFFFFF))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Remember Aspect Ratio",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Apply selected ratio automatically to all future videos",
+                        color = TextSecondary,
+                        fontSize = 10.sp
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Switch(
+                    checked = playerSettings.rememberAspectRatio,
+                    onCheckedChange = { PlayerSettingsManager.updateRememberAspectRatio(it) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = Color(0xFF4CAF50),
+                        uncheckedThumbColor = Color.LightGray,
+                        uncheckedTrackColor = Color(0x33FFFFFF)
+                    )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // 1. Screen Group
             Text("Screen", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)

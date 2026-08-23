@@ -247,7 +247,15 @@ fun PlayerScreen(
 
     // Modal Sheet States
     var showAspectRatioDrawer by remember { mutableStateOf(false) }
-    var selectedRatioOption by remember { mutableStateOf(AllAspectRatioOptions.first()) }
+    var selectedRatioOption by remember(playerSettings.defaultAspectRatioId) {
+        mutableStateOf(
+            if (playerSettings.rememberAspectRatio) {
+                AllAspectRatioOptions.find { it.id == playerSettings.defaultAspectRatioId } ?: AllAspectRatioOptions.first()
+            } else {
+                AllAspectRatioOptions.first()
+            }
+        )
+    }
 
     var showSubtitleCustomizer by remember { mutableStateOf(false) }
     var showEpisodeDrawer by remember { mutableStateOf(false) }
@@ -1525,18 +1533,14 @@ fun PlayerScreen(
                                     .weight(1f)
                                     .height(48.dp)
                                     .padding(horizontal = 8.dp)
-                                    .onGloballyPositioned { coordinates ->
-                                        val bounds = coordinates.boundsInWindow()
-                                        Log.i("SEEKBAR_BOUNDS", "Seekbar bounds: left=${bounds.left}, top=${bounds.top}, right=${bounds.right}, bottom=${bounds.bottom}")
-                                    }
-                                    .pointerInput(Unit) {
+                                    .pointerInput(totalDuration) {
                                         awaitEachGesture {
                                             val down = awaitFirstDown(requireUnconsumed = false)
                                             down.consume()
                                             val width = size.width.toFloat().coerceAtLeast(1f)
-                                            val duration = currentDuration
+                                            val effectiveDuration = if (totalDuration > 1L) totalDuration else (if (uiState.durationMs > 0L) uiState.durationMs else 1L)
                                             val fraction = (down.position.x / width).coerceIn(0f, 1f)
-                                            scrubbingPositionMs = (fraction.toDouble() * duration).toLong()
+                                            scrubbingPositionMs = (fraction.toDouble() * effectiveDuration).toLong()
                                             isScrubbing = true
 
                                             var finalTarget = scrubbingPositionMs
@@ -1546,14 +1550,13 @@ fun PlayerScreen(
                                                 val change = event.changes.firstOrNull { it.id == down.id } ?: event.changes.firstOrNull()
                                                 if (change == null || !change.pressed) {
                                                     change?.consume()
-                                                    Log.i("SEEKBAR_TOUCH", "Seekbar released -> seekTo($finalTarget) of duration $currentDuration")
                                                     viewModel.seekTo(finalTarget)
                                                     isScrubbing = false
                                                     break
                                                 }
                                                 change.consume()
                                                 val currentFraction = (change.position.x / width).coerceIn(0f, 1f)
-                                                finalTarget = (currentFraction.toDouble() * duration).toLong()
+                                                finalTarget = (currentFraction.toDouble() * effectiveDuration).toLong()
                                                 scrubbingPositionMs = finalTarget
                                             }
                                         }
@@ -1707,6 +1710,9 @@ fun PlayerScreen(
                         selectedId = selectedRatioOption.id,
                         onSelect = { opt ->
                             selectedRatioOption = opt
+                            if (playerSettings.rememberAspectRatio) {
+                                com.streamhub.app.data.PlayerSettingsManager.updateDefaultAspectRatio(opt.id)
+                            }
                             // FIX: Reset zoom when user picks a non-zoomed aspect ratio.
                             videoZoomScale = 1.0f
                             videoZoomOffsetX = 0f
