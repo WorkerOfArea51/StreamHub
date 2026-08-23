@@ -183,7 +183,12 @@ class StreamPlayerViewModel : ViewModel() {
                     .setAudioAttributes(audioAttributes, true)
                     .setHandleAudioBecomingNoisy(true)
                     .setLoadControl(loadControl)
-                    .setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
+                    // FIX: Use EXACT seeking, not CLOSEST_SYNC. CLOSEST_SYNC jumps to the
+                    // nearest keyframe — for Telegram videos with sparse keyframes (every 30-60s),
+                    // this often jumps BACK to 0 instead of the requested position.
+                    // EXACT decodes from the exact requested timestamp (slightly more CPU but
+                    // correct seeking behavior matching YouTube/Netflix).
+                    .setSeekParameters(androidx.media3.exoplayer.SeekParameters.EXACT)
                     .setMediaSourceFactory(
                         androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
                     )
