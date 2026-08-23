@@ -132,32 +132,26 @@ fun MpvSubtitleTracksSheet(
                 }
 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
                         onClick = onOpenSearch,
                         modifier = Modifier.size(36.dp)
                     ) {
-                        Icon(Icons.Default.Search, contentDescription = "Search", tint = Color.White, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Search, contentDescription = "Search Online Subtitles", tint = Color.White, modifier = Modifier.size(20.dp))
                     }
                     IconButton(
                         onClick = onOpenSubtitleSettings,
                         modifier = Modifier.size(36.dp)
                     ) {
-                        Icon(Icons.Default.Palette, contentDescription = "Settings", tint = Color(0xFFD0BCFF), modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Palette, contentDescription = "Subtitle Style & Colors", tint = Color(0xFFD0BCFF), modifier = Modifier.size(20.dp))
                     }
                     IconButton(
                         onClick = onOpenSubtitleDelay,
                         modifier = Modifier.size(36.dp)
                     ) {
-                        Icon(Icons.Default.MoreTime, contentDescription = "Delay", tint = Color.White, modifier = Modifier.size(20.dp))
-                    }
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.MoreTime, contentDescription = "Sync Delay (+/- ms)", tint = Color.White, modifier = Modifier.size(20.dp))
                     }
                 }
             }

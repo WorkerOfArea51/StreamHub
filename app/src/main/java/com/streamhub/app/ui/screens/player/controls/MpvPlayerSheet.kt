@@ -185,14 +185,10 @@ fun MpvPlayerSheet(
             }
         )
 
-        LaunchedEffect(true) {
+        LaunchedEffect(Unit) {
             backgroundAlpha = 0.6f
-        }
-
-        LaunchedEffect(anchoredDraggableState) {
-            scope.launch { anchoredDraggableState.animateTo(0) }
-            snapshotFlow { anchoredDraggableState.currentValue }
-                .drop(1)
+            anchoredDraggableState.animateTo(0)
+            snapshotFlow { anchoredDraggableState.settledValue }
                 .filter { it == 1 }
                 .collectLatest { latestOnDismissRequest() }
         }

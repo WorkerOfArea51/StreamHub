@@ -12,13 +12,21 @@ import com.streamhub.app.R
 
 /**
  * Background Download Notification Manager:
- * - Shows ongoing progress notifications in the Android notification drawer.
+ * - Shows ongoing progress notifications with Pause, Resume, and Cancel actions in the notification drawer.
  * - Displays active download percentage, remaining MB, and completion alerts.
  */
 object DownloadNotificationHelper {
 
     private const val CHANNEL_ID = "streamhub_downloads_channel"
     private const val CHANNEL_NAME = "Offline Downloads"
+
+    const val ACTION_PAUSE_DOWNLOAD = "com.streamhub.app.ACTION_PAUSE_DOWNLOAD"
+    const val ACTION_RESUME_DOWNLOAD = "com.streamhub.app.ACTION_RESUME_DOWNLOAD"
+    const val ACTION_CANCEL_DOWNLOAD = "com.streamhub.app.ACTION_CANCEL_DOWNLOAD"
+
+    const val EXTRA_MEDIA_ID = "extra_media_id"
+    const val EXTRA_EPISODE_INDEX = "extra_episode_index"
+    const val EXTRA_DOWNLOAD_ID = "extra_download_id"
 
     fun initChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -38,6 +46,8 @@ object DownloadNotificationHelper {
     fun showProgress(
         context: Context,
         downloadId: Long,
+        mediaId: String = "",
+        episodeIndex: Int = 0,
         mediaTitle: String,
         episodeTitle: String,
         progressPercent: Int,
@@ -57,6 +67,34 @@ object DownloadNotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // Pause PendingIntent
+        val pauseIntent = Intent(context, DownloadActionReceiver::class.java).apply {
+            action = ACTION_PAUSE_DOWNLOAD
+            putExtra(EXTRA_MEDIA_ID, mediaId)
+            putExtra(EXTRA_EPISODE_INDEX, episodeIndex)
+            putExtra(EXTRA_DOWNLOAD_ID, downloadId)
+        }
+        val pausePendingIntent = PendingIntent.getBroadcast(
+            context,
+            (downloadId.toInt() * 10) + 1,
+            pauseIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Cancel PendingIntent
+        val cancelIntent = Intent(context, DownloadActionReceiver::class.java).apply {
+            action = ACTION_CANCEL_DOWNLOAD
+            putExtra(EXTRA_MEDIA_ID, mediaId)
+            putExtra(EXTRA_EPISODE_INDEX, episodeIndex)
+            putExtra(EXTRA_DOWNLOAD_ID, downloadId)
+        }
+        val cancelPendingIntent = PendingIntent.getBroadcast(
+            context,
+            (downloadId.toInt() * 10) + 2,
+            cancelIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val sizeInfo = if (totalMb > 0) {
             " • %.1f / %.1f MB".format(downloadedMb, totalMb)
         } else ""
@@ -70,6 +108,75 @@ object DownloadNotificationHelper {
             .setOnlyAlertOnce(true)
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(android.R.drawable.ic_media_pause, "Pause", pausePendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", cancelPendingIntent)
+
+        try {
+            nm.notify(downloadId.toInt(), builder.build())
+        } catch (_: SecurityException) {}
+    }
+
+    fun showPaused(
+        context: Context,
+        downloadId: Long,
+        mediaId: String = "",
+        episodeIndex: Int = 0,
+        mediaTitle: String,
+        episodeTitle: String,
+        progressPercent: Int
+    ) {
+        initChannel(context)
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            downloadId.toInt(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Resume PendingIntent
+        val resumeIntent = Intent(context, DownloadActionReceiver::class.java).apply {
+            action = ACTION_RESUME_DOWNLOAD
+            putExtra(EXTRA_MEDIA_ID, mediaId)
+            putExtra(EXTRA_EPISODE_INDEX, episodeIndex)
+            putExtra(EXTRA_DOWNLOAD_ID, downloadId)
+        }
+        val resumePendingIntent = PendingIntent.getBroadcast(
+            context,
+            (downloadId.toInt() * 10) + 3,
+            resumeIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Cancel PendingIntent
+        val cancelIntent = Intent(context, DownloadActionReceiver::class.java).apply {
+            action = ACTION_CANCEL_DOWNLOAD
+            putExtra(EXTRA_MEDIA_ID, mediaId)
+            putExtra(EXTRA_EPISODE_INDEX, episodeIndex)
+            putExtra(EXTRA_DOWNLOAD_ID, downloadId)
+        }
+        val cancelPendingIntent = PendingIntent.getBroadcast(
+            context,
+            (downloadId.toInt() * 10) + 2,
+            cancelIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle("Paused: $mediaTitle")
+            .setContentText("$episodeTitle (Paused • $progressPercent%)")
+            .setProgress(100, progressPercent.coerceIn(0, 100), false)
+            .setOngoing(false)
+            .setAutoCancel(false)
+            .setContentIntent(pendingIntent)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .addAction(android.R.drawable.ic_media_play, "Resume", resumePendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", cancelPendingIntent)
 
         try {
             nm.notify(downloadId.toInt(), builder.build())

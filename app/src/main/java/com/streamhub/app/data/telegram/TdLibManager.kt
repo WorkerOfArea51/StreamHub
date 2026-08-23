@@ -96,6 +96,8 @@ object TdLibManager {
     @Volatile
     private var databaseDirectory: String = ""
 
+    fun getDatabaseDirectory(): String = databaseDirectory
+
     // ──────────────────────────────────────────────────────────────
     // Auth State
     // ──────────────────────────────────────────────────────────────

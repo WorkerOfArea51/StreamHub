@@ -9,6 +9,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -226,49 +227,42 @@ fun MpvSeekbar(
                 }
             }
 
-            // 2. Invisible Expanded Touch Hit-Box (64.dp)
+            // 2. High-Precision Expanded Touch Hit-Box (64.dp)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp)
                     .pointerInput(totalDuration) {
-                        detectTapGestures(
-                            onTap = { offset ->
-                                val fraction = (offset.x / size.width).coerceIn(0f, 1f)
-                                val targetMs = (fraction.toDouble() * totalDuration).toLong()
+                        awaitPointerEventScope {
+                            while (true) {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val width = size.width.toFloat().coerceAtLeast(1f)
+                                var currentFrac = (down.position.x / width).coerceIn(0f, 1f)
+                                userPositionMs = (currentFrac.toDouble() * totalDuration).toLong()
                                 isUserInteracting = true
-                                userPositionMs = targetMs
-                                onSeek(targetMs)
-                                scope.launch {
-                                    animatedProgress.snapTo(fraction)
-                                    delay(50)
-                                    isUserInteracting = false
+
+                                val pointerId = down.id
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == pointerId } ?: break
+                                    if (change.pressed) {
+                                        currentFrac = (change.position.x / width).coerceIn(0f, 1f)
+                                        userPositionMs = (currentFrac.toDouble() * totalDuration).toLong()
+                                        change.consume()
+                                    } else {
+                                        // Pointer released (tap or drag release)
+                                        change.consume()
+                                        val target = userPositionMs
+                                        onSeek(target)
+                                        scope.launch {
+                                            animatedProgress.snapTo(currentFrac)
+                                            delay(100)
+                                            isUserInteracting = false
+                                        }
+                                        break
+                                    }
                                 }
                             }
-                        )
-                    }
-                    .pointerInput(totalDuration) {
-                        detectDragGestures(
-                            onDragStart = { offset ->
-                                isUserInteracting = true
-                                val fraction = (offset.x / size.width).coerceIn(0f, 1f)
-                                userPositionMs = (fraction.toDouble() * totalDuration).toLong()
-                            },
-                            onDragEnd = {
-                                val target = userPositionMs
-                                onSeek(target)
-                                scope.launch {
-                                    delay(60)
-                                    isUserInteracting = false
-                                }
-                            },
-                            onDragCancel = {
-                                isUserInteracting = false
-                            }
-                        ) { change, _ ->
-                            change.consume()
-                            val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
-                            userPositionMs = (fraction.toDouble() * totalDuration).toLong()
                         }
                     }
             )

@@ -186,8 +186,25 @@ object TdLibMediaProvider {
     private val filePathToFileId = java.util.concurrent.ConcurrentHashMap<String, Int>()
     private val filePathToTotalSize = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
-    fun getFileIdForPath(path: String): Int? = filePathToFileId[path]
-    fun getTotalSizeForPath(path: String): Long? = filePathToTotalSize[path]
+    fun getFileIdForPath(path: String): Int? {
+        val direct = filePathToFileId[path]
+        if (direct != null) return direct
+        val canonical = try { File(path).canonicalPath } catch (_: Exception) { path }
+        val fromCanonical = filePathToFileId[canonical]
+        if (fromCanonical != null) return fromCanonical
+        val fileName = File(path).name
+        return filePathToFileId.entries.firstOrNull { File(it.key).name == fileName }?.value
+    }
+
+    fun getTotalSizeForPath(path: String): Long? {
+        val direct = filePathToTotalSize[path]
+        if (direct != null) return direct
+        val canonical = try { File(path).canonicalPath } catch (_: Exception) { path }
+        val fromCanonical = filePathToTotalSize[canonical]
+        if (fromCanonical != null) return fromCanonical
+        val fileName = File(path).name
+        return filePathToTotalSize.entries.firstOrNull { File(it.key).name == fileName }?.value
+    }
 
     /**
      * Process an extracted video file for streaming (cached or downloading).
@@ -239,36 +256,83 @@ object TdLibMediaProvider {
 
         Log.i(TAG, "Starting download: fileId=$fileId, size=${file.size}, remoteId=${file.remote.id}")
 
-        // Request TDLib to download the file with priority 32 (maximum high-speed priority)
+        // 1. Check if already fully downloaded
+        if (file.local.isDownloadingCompleted && file.local.path.isNotBlank()) {
+            val p = file.local.path
+            filePathToFileId[p] = fileId
+            filePathToTotalSize[p] = file.size
+            synchronized(resolvedFiles) { resolvedFiles.put(messageId, p) }
+            return TelegramStreamResult.LocalFile(p, file.size)
+        }
+
+        // 2. Start high-priority TDLib streaming download
         val result = TdLibManager.send(TdApi.DownloadFile(fileId, 32, 0, 0, false))
         if (result is TdApi.Error) {
             return TelegramStreamResult.Failed("Download failed: ${result.message}")
         }
 
-        // Wait for the file to become available
-        val waitResult = waitForFileReady(fileId)
+        // TDLib stores actively downloading partial files at files/temp/<fileId>
+        val baseDir = TdLibManager.getDatabaseDirectory()
+        val tempFilePath = if (baseDir.isNotBlank()) "$baseDir/files/temp/$fileId" else ""
 
-        return if (waitResult != null) {
-            Log.i(TAG, "File ready for streaming: $waitResult")
-            filePathToFileId[waitResult] = fileId
-            filePathToTotalSize[waitResult] = file.size
-            synchronized(resolvedFiles) { resolvedFiles.put(messageId, waitResult) }
-            TelegramStreamResult.LocalFile(waitResult, file.size)
-        } else {
-            val partialPath = getLocalFilePath(fileId)
-            if (partialPath.isNotBlank()) {
-                filePathToFileId[partialPath] = fileId
-                filePathToTotalSize[partialPath] = file.size
-                TelegramStreamResult.Downloading(
-                    partialPath = partialPath,
-                    downloadedBytes = file.local.downloadedSize,
-                    totalBytes = file.size,
-                    progress = if (file.size > 0) file.local.downloadedSize.toFloat() / file.size else 0f
-                )
-            } else {
-                TelegramStreamResult.Failed("File download timed out after ${FILE_DOWNLOAD_TIMEOUT_MS}ms")
-            }
+        if (tempFilePath.isNotBlank()) {
+            filePathToFileId[tempFilePath] = fileId
+            filePathToTotalSize[tempFilePath] = file.size
         }
+
+        // 3. Wait for initial header buffer (>= 512KB) or completion so ExoPlayer can detect format
+        var waited = 0L
+        val tempFile = if (tempFilePath.isNotBlank()) File(tempFilePath) else null
+        while (waited < 15_000L) {
+            if (tempFile != null && tempFile.exists() && tempFile.length() >= 512 * 1024L) {
+                Log.i(TAG, "Initial stream buffer ready: $tempFilePath (${tempFile.length()} bytes)")
+                return TelegramStreamResult.Downloading(
+                    partialPath = tempFilePath,
+                    downloadedBytes = tempFile.length(),
+                    totalBytes = file.size,
+                    progress = if (file.size > 0) tempFile.length().toFloat() / file.size else 0f
+                )
+            }
+
+            val check = TdLibManager.send(TdApi.GetFile(fileId))
+            if (check is TdApi.File) {
+                if (check.local.isDownloadingCompleted && check.local.path.isNotBlank()) {
+                    val compPath = check.local.path
+                    filePathToFileId[compPath] = fileId
+                    filePathToTotalSize[compPath] = check.size
+                    synchronized(resolvedFiles) { resolvedFiles.put(messageId, compPath) }
+                    return TelegramStreamResult.LocalFile(compPath, check.size)
+                }
+                if (check.local.path.isNotBlank()) {
+                    val p = check.local.path
+                    val f = File(p)
+                    if (f.exists() && f.length() >= 512 * 1024L) {
+                        filePathToFileId[p] = fileId
+                        filePathToTotalSize[p] = check.size
+                        return TelegramStreamResult.Downloading(
+                            partialPath = p,
+                            downloadedBytes = f.length(),
+                            totalBytes = check.size,
+                            progress = if (check.size > 0) f.length().toFloat() / check.size else 0f
+                        )
+                    }
+                }
+            }
+            delay(150L)
+            waited += 150L
+        }
+
+        // If after wait we have any bytes at all in temp file, proceed with streaming
+        if (tempFile != null && tempFile.exists() && tempFile.length() > 0L) {
+            return TelegramStreamResult.Downloading(
+                partialPath = tempFilePath,
+                downloadedBytes = tempFile.length(),
+                totalBytes = file.size,
+                progress = if (file.size > 0) tempFile.length().toFloat() / file.size else 0f
+            )
+        }
+
+        return TelegramStreamResult.Failed("Stream buffer timeout for file $fileId")
     }
 
     /**
@@ -743,13 +807,20 @@ object TdLibMediaProvider {
     // File Update Handling
     // ──────────────────────────────────────────────────────────────
 
+    val fileUpdateNotifier = java.lang.Object()
+
     private fun handleFileUpdate(file: TdApi.File) {
         // Update download progress
-        if (file.local.isDownloadingActive && file.size > 0) {
+        if (file.size > 0) {
             val progress = file.local.downloadedSize.toFloat() / file.size
             _downloadProgress.update { currentMap ->
                 currentMap.toMutableMap().apply { this[file.id] = progress }
             }
+        }
+
+        // Notify streaming threads that new bytes are available
+        synchronized(fileUpdateNotifier) {
+            fileUpdateNotifier.notifyAll()
         }
 
         // Remove from progress map when done
@@ -759,6 +830,11 @@ object TdLibMediaProvider {
             }
             Log.i(TAG, "File download completed: ${file.local.path} (${file.size} bytes)")
         }
+    }
+
+    fun getDownloadProgressForPath(path: String): Float? {
+        val fileId = filePathToFileId[path] ?: return null
+        return _downloadProgress.value[fileId]
     }
 
     /**

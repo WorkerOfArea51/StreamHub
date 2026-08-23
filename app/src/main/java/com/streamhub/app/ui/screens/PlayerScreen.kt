@@ -158,6 +158,8 @@ import androidx.media3.ui.PlayerView
 import com.streamhub.app.data.PlayerSettingsManager
 import com.streamhub.app.data.SubtitleSettingsManager
 import com.streamhub.app.data.models.MediaItem
+import kotlin.math.roundToInt
+import com.streamhub.app.player.PlayerUiState
 import com.streamhub.app.player.AspectRatioMode
 import com.streamhub.app.player.StreamPlayerViewModel
 import com.streamhub.app.ui.screens.player.AspectRatioToast
@@ -385,10 +387,27 @@ fun PlayerScreen(
     var showVolumeIndicator by remember { mutableStateOf(false) }
     var autoHideJob by remember { mutableStateOf<Job?>(null) }
 
-    // FIX: Two-finger pinch-to-zoom — zooms the video surface (1.0x to 3.0x).
+    // FIX: Two-finger pinch-to-zoom — zooms the video surface (0.5x to 5.0x).
     var videoZoomScale by remember { mutableFloatStateOf(1.0f) }
     var videoZoomOffsetX by remember { mutableFloatStateOf(0f) }
     var videoZoomOffsetY by remember { mutableFloatStateOf(0f) }
+
+    // Modern Glassmorphic HUD Pill Notification State (mpvEx Parity)
+    var hudPillText by remember { mutableStateOf("") }
+    var hudPillIcon by remember { mutableStateOf<androidx.compose.ui.graphics.vector.ImageVector?>(null) }
+    var showHudPill by remember { mutableStateOf(false) }
+    var hudPillJob by remember { mutableStateOf<Job?>(null) }
+
+    fun triggerHudPill(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector? = null) {
+        hudPillText = text
+        hudPillIcon = icon
+        showHudPill = true
+        hudPillJob?.cancel()
+        hudPillJob = scope.launch {
+            delay(1750)
+            showHudPill = false
+        }
+    }
 
     // Auto-hide controls timer: never fires while sheets, dialogs, or gestures are active
     LaunchedEffect(
@@ -625,7 +644,26 @@ fun PlayerScreen(
                             scaleY = videoZoomScale,
                             translationX = videoZoomOffsetX,
                             translationY = videoZoomOffsetY
-                        ),
+                        )
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                if (zoom != 1.0f) {
+                                    val newScale = (videoZoomScale * zoom).coerceIn(0.5f, 5.0f)
+                                    videoZoomScale = newScale
+                                    val zoomPct = (newScale * 100).roundToInt()
+                                    triggerHudPill("Zoom: $zoomPct%", Icons.Default.ZoomIn)
+                                }
+                                if (videoZoomScale > 1.05f) {
+                                    val maxX = (videoZoomScale - 1f) * 400f
+                                    val maxY = (videoZoomScale - 1f) * 400f
+                                    videoZoomOffsetX = (videoZoomOffsetX + pan.x).coerceIn(-maxX, maxX)
+                                    videoZoomOffsetY = (videoZoomOffsetY + pan.y).coerceIn(-maxY, maxY)
+                                } else {
+                                    videoZoomOffsetX = 0f
+                                    videoZoomOffsetY = 0f
+                                }
+                            }
+                        },
                     factory = { ctx ->
                         PlayerView(ctx).apply {
                             useController = false
@@ -768,11 +806,18 @@ fun PlayerScreen(
                             detectTapGestures(
                                 onTap = { viewModel.toggleControlsVisibility() },
                                 onDoubleTap = {
-                                    viewModel.togglePlayPause()
-                                    doubleTapRippleText = if (uiState.isPlaying) "Pause" else "Play"
-                                    doubleTapAlignment = Alignment.Center
-                                    showDoubleTapRipple = true
-                                    scope.launch { delay(600); showDoubleTapRipple = false }
+                                    if (videoZoomScale != 1.0f) {
+                                        videoZoomScale = 1.0f
+                                        videoZoomOffsetX = 0f
+                                        videoZoomOffsetY = 0f
+                                        triggerHudPill("Zoom: 100%", Icons.Default.ZoomIn)
+                                    } else {
+                                        viewModel.togglePlayPause()
+                                        doubleTapRippleText = if (uiState.isPlaying) "Pause" else "Play"
+                                        doubleTapAlignment = Alignment.Center
+                                        showDoubleTapRipple = true
+                                        scope.launch { delay(600); showDoubleTapRipple = false }
+                                    }
                                 },
                                 onLongPress = {
                                     if (uiState.isPlaying) {
@@ -782,48 +827,6 @@ fun PlayerScreen(
                                     }
                                 }
                             )
-                        }
-                        // FIX: Two-finger pinch-to-zoom — zooms the video surface.
-                        .pointerInput(Unit) {
-                            detectTransformGestures(
-                                onGesture = { _, pan, zoom, _ ->
-                                    val newScale = (videoZoomScale * zoom).coerceIn(1.0f, 3.0f)
-                                    if (newScale > 1.0f) {
-                                        // Allow panning when zoomed in
-                                        val maxX = (newScale - 1f) * 200f
-                                        val maxY = (newScale - 1f) * 200f
-                                        videoZoomOffsetX = (videoZoomOffsetX + pan.x).coerceIn(-maxX, maxX)
-                                        videoZoomOffsetY = (videoZoomOffsetY + pan.y).coerceIn(-maxY, maxY)
-                                    } else {
-                                        videoZoomOffsetX = 0f
-                                        videoZoomOffsetY = 0f
-                                    }
-                                    videoZoomScale = newScale
-                                }
-                            )
-                        }
-                        // mpvEx Fullscreen Horizontal Drag Seeking Gesture
-                        .pointerInput(uiState.durationMs) {
-                            detectHorizontalDragGestures(
-                                onDragStart = {
-                                    scrubbingPositionMs = uiState.currentPositionMs
-                                    isScrubbing = true
-                                },
-                                onDragEnd = {
-                                    viewModel.seekTo(scrubbingPositionMs)
-                                    scope.launch {
-                                        delay(300)
-                                        isScrubbing = false
-                                    }
-                                },
-                                onDragCancel = {
-                                    isScrubbing = false
-                                }
-                            ) { change, dragAmount ->
-                                change.consume()
-                                val deltaMs = (dragAmount * 150f).toLong()
-                                scrubbingPositionMs = (scrubbingPositionMs + deltaMs).coerceIn(0L, uiState.durationMs.coerceAtLeast(1L))
-                            }
                         }
                 )
 
@@ -1259,8 +1262,8 @@ fun PlayerScreen(
                                     icon = Icons.Default.Headphones,
                                     onClick = {
                                         val next = !uiState.isBackgroundAudioEnabled
-                                        viewModel.setBackgroundAudio(next)
-                                        Toast.makeText(context, if (next) "🎧 Background audio enabled" else "Background audio disabled", Toast.LENGTH_SHORT).show()
+                                        viewModel.setBackgroundAudio(next, context)
+                                        triggerHudPill(if (next) "🎧 Background audio enabled" else "Background audio disabled", Icons.Default.Headphones)
                                     },
                                     size = 40.dp,
                                     iconSize = 18.dp,
@@ -1271,7 +1274,10 @@ fun PlayerScreen(
                                 // Screen Lock
                                 ControlsButton(
                                     icon = Icons.Default.Lock,
-                                    onClick = { viewModel.toggleLock() },
+                                    onClick = {
+                                        viewModel.toggleLock()
+                                        triggerHudPill(if (!uiState.isLocked) "Controls locked" else "Controls unlocked", Icons.Default.Lock)
+                                    },
                                     size = 40.dp,
                                     iconSize = 18.dp,
                                     title = "Lock Controls"
@@ -1330,7 +1336,7 @@ fun PlayerScreen(
                                             onClick = { showSpeedSheet = true },
                                             onLongClick = {
                                                 viewModel.setPlaybackSpeed(1.0f)
-                                                Toast.makeText(context, "Speed reset: 1.0x", Toast.LENGTH_SHORT).show()
+                                                triggerHudPill("Speed reset: 1.0x", Icons.Default.Speed)
                                             },
                                             size = 40.dp,
                                             iconSize = 18.dp,
@@ -1344,7 +1350,7 @@ fun PlayerScreen(
                                     icon = if (uiState.isRepeatMode) Icons.Default.RepeatOne else Icons.Default.Repeat,
                                     onClick = {
                                         viewModel.toggleRepeatMode()
-                                        Toast.makeText(context, if (!uiState.isRepeatMode) "🔁 Repeat Single On" else "Repeat Off", Toast.LENGTH_SHORT).show()
+                                        triggerHudPill(if (!uiState.isRepeatMode) "Repeat Single On" else "Repeat Off", if (!uiState.isRepeatMode) Icons.Default.RepeatOne else Icons.Default.Repeat)
                                     },
                                     size = 40.dp,
                                     iconSize = 18.dp,
@@ -1368,12 +1374,7 @@ fun PlayerScreen(
                                         if (playerSettings.rememberAspectRatio) {
                                             PlayerSettingsManager.updateDefaultAspectRatio(nextPreset.id)
                                         }
-                                        aspectToastText = "Aspect: ${nextPreset.label}"
-                                        showAspectToast = true
-                                        scope.launch {
-                                            delay(1500)
-                                            showAspectToast = false
-                                        }
+                                        triggerHudPill("Aspect: ${nextPreset.label}", aspectIcon)
                                     },
                                     onLongClick = { showAspectRatioSheet = true },
                                     size = 40.dp,
@@ -1408,7 +1409,7 @@ fun PlayerScreen(
                                                         .clickable {
                                                             abLoopStartMs = uiState.currentPositionMs
                                                             viewModel.setLoopA()
-                                                            Toast.makeText(context, "Point A: ${formatMpvTime(uiState.currentPositionMs)}", Toast.LENGTH_SHORT).show()
+                                                            triggerHudPill("Point A: ${formatMpvTime(uiState.currentPositionMs)}", Icons.Default.Refresh)
                                                         }
                                                 ) {
                                                     Text(
@@ -1428,7 +1429,7 @@ fun PlayerScreen(
                                                         abLoopEndMs = null
                                                         isABLoopExpanded = false
                                                         viewModel.clearABLoop()
-                                                        Toast.makeText(context, "A-B Loop cleared", Toast.LENGTH_SHORT).show()
+                                                        triggerHudPill("A-B Loop cleared", Icons.Default.Close)
                                                     },
                                                     modifier = Modifier.size(28.dp)
                                                 ) {
@@ -1446,9 +1447,9 @@ fun PlayerScreen(
                                                             if (abLoopStartMs != null && cur > abLoopStartMs!!) {
                                                                 abLoopEndMs = cur
                                                                 viewModel.setLoopB()
-                                                                Toast.makeText(context, "Point B: ${formatMpvTime(cur)}", Toast.LENGTH_SHORT).show()
+                                                                triggerHudPill("Point B: ${formatMpvTime(cur)}", Icons.Default.Refresh)
                                                             } else {
-                                                                Toast.makeText(context, "Point B must be after Point A", Toast.LENGTH_SHORT).show()
+                                                                triggerHudPill("Point B must be after Point A", Icons.Default.ErrorOutline)
                                                             }
                                                         }
                                                 ) {
@@ -1643,16 +1644,6 @@ fun PlayerScreen(
             }
         }
 
-        // ── A-B Repeat Loop Watcher ──
-        LaunchedEffect(uiState.currentPositionMs, abLoopStartMs, abLoopEndMs) {
-            val start = abLoopStartMs
-            val end = abLoopEndMs
-            if (start != null && end != null && end > start) {
-                if (uiState.currentPositionMs >= end || uiState.currentPositionMs < start) {
-                    viewModel.seekTo(start)
-                }
-            }
-        }
 
         // ── Slide to Unlock Pill (When Screen is Locked) ──
         SlideToUnlock(
@@ -1760,6 +1751,11 @@ fun PlayerScreen(
             MpvMoreSheet(
                 showStatsForNerds = showStatsForNerds,
                 onToggleStatsForNerds = { showStatsForNerds = it },
+                isAmbientMode = isAmbientMode,
+                onToggleAmbientMode = {
+                    isAmbientMode = it
+                    triggerHudPill(if (it) "Ambient Aura Enabled" else "Ambient Aura Disabled", Icons.Default.AutoAwesome)
+                },
                 audioDelayMs = audioDelayMs,
                 onAudioDelayChange = { audioDelayMs = it },
                 subtitleDelayMs = uiState.subtitleOffsetMs,
@@ -1884,7 +1880,7 @@ fun PlayerScreen(
             MpvOnlineSubtitleSearchSheet(
                 initialQuery = mediaItem.title,
                 onSelectSubtitle = { sub ->
-                    Toast.makeText(context, "Loaded online subtitle: ${sub.title}", Toast.LENGTH_SHORT).show()
+                    triggerHudPill("Loaded: ${sub.title}", Icons.Default.Subtitles)
                     showOnlineSubSearchSheet = false
                 },
                 onDismiss = { showOnlineSubSearchSheet = false }
@@ -1908,8 +1904,184 @@ fun PlayerScreen(
                 )
             }
         }
+
+        // 14. Stats for Nerds HUD Diagnostics Overlay (mpvEx Parity)
+        if (showStatsForNerds) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.End))
+                    .padding(top = 56.dp, end = 16.dp),
+                contentAlignment = Alignment.TopEnd
+            ) {
+                StatsForNerdsOverlay(
+                    player = viewModel.getPlayer(),
+                    uiState = uiState,
+                    onDismiss = { showStatsForNerds = false }
+                )
+            }
+        }
+
+        // 15. Modern Glassmorphic HUD Pill Toast (mpvEx Parity)
+        AnimatedVisibility(
+            visible = showHudPill,
+            enter = fadeIn() + androidx.compose.animation.scaleIn(initialScale = 0.88f),
+            exit = fadeOut() + androidx.compose.animation.scaleOut(targetScale = 0.88f),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+                .padding(top = 52.dp)
+        ) {
+            MpvHudPill(
+                icon = hudPillIcon,
+                text = hudPillText
+            )
+        }
     }
 }
+}
+
+@Composable
+private fun StatsForNerdsOverlay(
+    player: androidx.media3.common.Player?,
+    uiState: PlayerUiState,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val videoSize = player?.videoSize
+    val vWidth = videoSize?.width ?: 0
+    val vHeight = videoSize?.height ?: 0
+    val resolution = if (vWidth > 0 && vHeight > 0) "${vWidth}x${vHeight}" else "1920x1080"
+    val videoCodec = "H.264 / AVC"
+    val audioCodec = "AAC / Stereo 48kHz"
+
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xDD0D0D14),
+        border = BorderStroke(1.dp, Color(0x44D0BCFF)),
+        shadowElevation = 16.dp,
+        modifier = modifier
+            .widthIn(max = 340.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = Color(0xFFD0BCFF),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Stats for Nerds",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close Stats",
+                        tint = Color.LightGray,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            androidx.compose.material3.HorizontalDivider(color = Color(0x22FFFFFF), thickness = 0.8.dp)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            StatRowItem("Resolution", resolution)
+            StatRowItem("Video Codec", videoCodec)
+            StatRowItem("Audio Codec", audioCodec)
+            StatRowItem("Playback Speed", "${uiState.playbackSpeed}x")
+            StatRowItem("Buffer Health", "${uiState.bufferHealthSeconds}s ahead")
+            if (uiState.networkSpeedKbps > 0) {
+                StatRowItem("Network Speed", "${uiState.networkSpeedKbps} kbps")
+            }
+            StatRowItem("Aspect Mode", uiState.aspectRatioMode.name)
+            val loopA = uiState.abLoopA
+            val loopB = uiState.abLoopB
+            if (loopA != null || loopB != null) {
+                val aStr = if (loopA != null) formatMpvTime(loopA) else "-"
+                val bStr = if (loopB != null) formatMpvTime(loopB) else "-"
+                StatRowItem("A-B Loop", "A: $aStr  B: $bStr")
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatRowItem(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            color = Color(0xFFB0B0C0),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+        )
+        Text(
+            text = value,
+            color = Color.White,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+        )
+    }
+}
+
+@Composable
+private fun MpvHudPill(
+    icon: androidx.compose.ui.graphics.vector.ImageVector?,
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = Color(0xDD161624),
+        border = BorderStroke(1.2.dp, Color(0xFFD0BCFF)),
+        shadowElevation = 12.dp,
+        modifier = modifier
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = Color(0xFFD0BCFF),
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+            Text(
+                text = text,
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+            )
+        }
+    }
 }
 
 

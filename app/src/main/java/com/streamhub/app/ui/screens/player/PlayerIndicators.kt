@@ -356,7 +356,7 @@ fun PlayerErrorOverlay(
     }
     val subtitle = when (errorInfo.type) {
         PlayerErrorType.NETWORK -> "Check your internet connection and try again."
-        PlayerErrorType.STREAM_RESOLVE -> "The Telegram link couldn't be resolved. It may have expired."
+        PlayerErrorType.STREAM_RESOLVE -> errorInfo.message
         PlayerErrorType.DECODER -> "Your device can't decode this video. Try a different quality or source."
         PlayerErrorType.SOURCE_NOT_FOUND -> "This video has been removed from the source."
         PlayerErrorType.UNKNOWN -> errorInfo.message

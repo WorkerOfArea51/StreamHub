@@ -56,6 +56,17 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- BroadcastReceiver for download notifications (Pause, Resume, Cancel) -->
+        <receiver
+            android:name=".data.DownloadActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.streamhub.app.ACTION_PAUSE_DOWNLOAD" />
+                <action android:name="com.streamhub.app.ACTION_RESUME_DOWNLOAD" />
+                <action android:name="com.streamhub.app.ACTION_CANCEL_DOWNLOAD" />
+            </intent-filter>
+        </receiver>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

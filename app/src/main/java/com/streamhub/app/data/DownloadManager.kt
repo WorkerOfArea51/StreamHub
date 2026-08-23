@@ -65,6 +65,15 @@ object DownloadManager {
     private var progressPollJob: Job? = null
     private var completionReceiver: BroadcastReceiver? = null
 
+    private val activeTdLibJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
+    private val activeTdLibFileIds = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+    fun getDownloadKey(mediaId: String, episodeIndex: Int): String = "${mediaId}_${episodeIndex}"
+
+    fun getNotificationId(mediaId: String, episodeIndex: Int): Long {
+        return ((mediaId.hashCode().toLong() and 0x3FFFFFFFL) * 100L) + episodeIndex
+    }
+
     private val _downloads = MutableStateFlow<List<DownloadedItem>>(emptyList())
     val downloads: StateFlow<List<DownloadedItem>> = _downloads.asStateFlow()
 
@@ -229,6 +238,8 @@ object DownloadManager {
                             DownloadNotificationHelper.showProgress(
                                 context = ctx,
                                 downloadId = item.downloadId,
+                                mediaId = item.mediaId,
+                                episodeIndex = item.episodeIndex,
                                 mediaTitle = item.mediaTitle,
                                 episodeTitle = item.episodeTitle,
                                 progressPercent = progress,
@@ -419,6 +430,7 @@ object DownloadManager {
                     }
                     val effectiveFile = if (targetFile.exists()) targetFile else sourceFile
                     val sizeMb = effectiveFile.length() / (1024.0 * 1024.0)
+                    val notifId = getNotificationId(mediaItem.id, episodeIndex)
                     val newItem = DownloadedItem(
                         mediaId = mediaItem.id,
                         mediaTitle = mediaItem.title,
@@ -427,9 +439,10 @@ object DownloadManager {
                         episodeTitle = epTitle,
                         localFilePath = effectiveFile.absolutePath,
                         fileSizeMb = sizeMb,
-                        downloadId = -1L,
+                        downloadId = notifId,
                         progressPercent = 100,
                         isCompleted = true,
+                        isPaused = false,
                         streamUrl = rawUrl
                     )
                     _downloads.update { currentList ->
@@ -443,6 +456,9 @@ object DownloadManager {
                     return@launch
                 } else if (fileId != null) {
                     // TDLib partial file — trigger full download and stream progress updates until 100% complete
+                    val notifId = getNotificationId(mediaItem.id, episodeIndex)
+                    val key = getDownloadKey(mediaItem.id, episodeIndex)
+
                     val initialDlBytes = if (sourceFile.exists()) sourceFile.length() else 0L
                     val initialPct = if (tdlibTotalSize > 0L) (initialDlBytes * 100 / tdlibTotalSize).toInt().coerceIn(0, 99) else 0
                     val initialMb = initialDlBytes / (1024.0 * 1024.0)
@@ -455,9 +471,10 @@ object DownloadManager {
                         episodeTitle = epTitle,
                         localFilePath = targetFile.absolutePath,
                         fileSizeMb = initialMb,
-                        downloadId = -1L,
+                        downloadId = notifId,
                         progressPercent = initialPct,
                         isCompleted = false,
+                        isPaused = false,
                         streamUrl = rawUrl
                     )
                     _downloads.update { currentList ->
@@ -468,14 +485,18 @@ object DownloadManager {
                     }
                     saveToDisk()
 
+                    // Cancel previous job and track fileId
+                    activeTdLibJobs.remove(key)?.cancel()
+                    activeTdLibFileIds[key] = fileId
+
                     // Request TDLib full download with maximum high priority (32)
-                    scope.launch(Dispatchers.IO) {
+                    val job = scope.launch(Dispatchers.IO) {
                         try {
                             com.streamhub.app.data.telegram.TdLibManager.send(
                                 org.drinkless.tdlib.TdApi.DownloadFile(fileId, 32, 0L, 0L, false)
                             )
                             while (isActive) {
-                                delay(600L)
+                                delay(500L)
                                 val fRes = com.streamhub.app.data.telegram.TdLibManager.send(
                                     org.drinkless.tdlib.TdApi.GetFile(fileId)
                                 )
@@ -491,17 +512,34 @@ object DownloadManager {
                                                 item.copy(
                                                     progressPercent = pct,
                                                     fileSizeMb = mb,
-                                                    isCompleted = fRes.local.isDownloadingCompleted
+                                                    isCompleted = fRes.local.isDownloadingCompleted,
+                                                    isPaused = false
                                                 )
                                             } else item
                                         }
+                                    }
+
+                                    appContext?.let { ctx ->
+                                        DownloadNotificationHelper.showProgress(
+                                            context = ctx,
+                                            downloadId = notifId,
+                                            mediaId = mediaItem.id,
+                                            episodeIndex = episodeIndex,
+                                            mediaTitle = mediaItem.title,
+                                            episodeTitle = if (mediaItem.category.equals("Movie", true)) "Movie" else "Episode ${episodeIndex + 1}",
+                                            progressPercent = pct,
+                                            downloadedMb = mb,
+                                            totalMb = totBytes / (1024.0 * 1024.0)
+                                        )
                                     }
 
                                     if (fRes.local.isDownloadingCompleted) {
                                         val completedSrc = File(fRes.local.path)
                                         if (completedSrc.exists()) {
                                             try {
-                                                completedSrc.copyTo(targetFile, overwrite = true)
+                                                if (completedSrc.absolutePath != targetFile.absolutePath) {
+                                                    completedSrc.copyTo(targetFile, overwrite = true)
+                                                }
                                             } catch (e: Exception) {
                                                 Log.e(TAG, "Error copying completed TDLib file to target: ${targetFile.absolutePath}", e)
                                             }
@@ -513,12 +551,23 @@ object DownloadManager {
                                                             localFilePath = finalFile.absolutePath,
                                                             fileSizeMb = finalFile.length() / (1024.0 * 1024.0),
                                                             progressPercent = 100,
-                                                            isCompleted = true
+                                                            isCompleted = true,
+                                                            isPaused = false
                                                         )
                                                     } else item
                                                 }
                                             }
                                             saveToDisk()
+                                            activeTdLibJobs.remove(key)
+                                            activeTdLibFileIds.remove(key)
+                                            appContext?.let { ctx ->
+                                                DownloadNotificationHelper.showCompleted(
+                                                    context = ctx,
+                                                    downloadId = notifId,
+                                                    mediaTitle = mediaItem.title,
+                                                    episodeTitle = if (mediaItem.category.equals("Movie", true)) "Movie" else "Episode ${episodeIndex + 1}"
+                                                )
+                                            }
                                             Log.i(TAG, "Full TDLib download finished for ${mediaItem.title}: ${finalFile.absolutePath} (${finalFile.length() / (1024 * 1024)} MB)")
                                         }
                                         break
@@ -527,8 +576,11 @@ object DownloadManager {
                             }
                         } catch (e: Exception) {
                             Log.w(TAG, "TDLib background full download failed: ${e.message}")
+                        } finally {
+                            activeTdLibJobs.remove(key)
                         }
                     }
+                    activeTdLibJobs[key] = job
                     return@launch
                 }
             }
@@ -566,6 +618,7 @@ object DownloadManager {
                 downloadId = sysDownloadId,
                 progressPercent = 0,
                 isCompleted = false,
+                isPaused = false,
                 streamUrl = resolvedUrl
             )
 
@@ -581,6 +634,8 @@ object DownloadManager {
                 DownloadNotificationHelper.showProgress(
                     context = context,
                     downloadId = sysDownloadId,
+                    mediaId = mediaItem.id,
+                    episodeIndex = episodeIndex,
                     mediaTitle = mediaItem.title,
                     episodeTitle = epTitle,
                     progressPercent = 0
@@ -591,48 +646,81 @@ object DownloadManager {
     }
 
     fun pauseDownload(item: DownloadedItem) {
-        if (item.downloadId != -1L) {
-            systemDownloadManager?.remove(item.downloadId)
-            appContext?.let { DownloadNotificationHelper.cancel(it, item.downloadId) }
+        val key = getDownloadKey(item.mediaId, item.episodeIndex)
+        activeTdLibJobs.remove(key)?.cancel()
+        val fileId = activeTdLibFileIds.remove(key)
+        if (fileId != null) {
+            scope.launch {
+                try {
+                    com.streamhub.app.data.telegram.TdLibMediaProvider.cancelDownload(fileId)
+                } catch (_: Exception) {}
+            }
         }
+        if (item.downloadId != -1L && !item.streamUrl.contains("t.me")) {
+            systemDownloadManager?.remove(item.downloadId)
+        }
+
+        val notifId = if (item.downloadId != -1L) item.downloadId else getNotificationId(item.mediaId, item.episodeIndex)
 
         _downloads.update { currentList ->
             val mutableList = currentList.toMutableList()
             val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
             if (index != -1) {
-                // FIX: Capture the partial-file size so resume can send an HTTP Range header.
                 val partialFile = File(mutableList[index].localFilePath)
                 val partialBytes = if (partialFile.exists()) partialFile.length() else 0L
                 mutableList[index] = mutableList[index].copy(
                     isPaused = true,
-                    downloadId = -1L,
                     resumeFromBytes = partialBytes
                 )
             }
             mutableList
         }
         saveToDisk()
+
+        appContext?.let { ctx ->
+            DownloadNotificationHelper.showPaused(
+                context = ctx,
+                downloadId = notifId,
+                mediaId = item.mediaId,
+                episodeIndex = item.episodeIndex,
+                mediaTitle = item.mediaTitle,
+                episodeTitle = item.episodeTitle,
+                progressPercent = item.progressPercent
+            )
+        }
     }
 
     /**
-     * FIX: Real resume — keeps the partial file, sends an HTTP Range header via
-     * `addRequestHeader("Range", "bytes=N-")`. The system DownloadManager will APPEND
-     * to the existing file instead of truncating.
-     *
-     * Note: if the server doesn't honor Range, the file is truncated and re-downloaded
-     * from scratch — same behavior as before, no regression.
+     * Resumes an existing download (supports Telegram and HTTP streams).
      */
     fun resumeDownload(item: DownloadedItem, context: Context? = null) {
         if (item.isCompleted) return
+        val ctx = context ?: appContext ?: return
+
+        // For Telegram / t.me links, restart download pipeline (TDLib resumes from local cache)
+        if (TelegramLinkResolver.isTelegramLink(item.streamUrl) || item.streamUrl.contains("t.me")) {
+            val mediaItem = MediaItem(
+                id = item.mediaId,
+                title = item.mediaTitle,
+                posterUrl = item.posterUrl,
+                episodes = listOf(
+                    Episode(
+                        episodeNumber = item.episodeIndex + 1,
+                        title = item.episodeTitle,
+                        streamUrl = item.streamUrl
+                    )
+                )
+            )
+            startDownload(ctx, mediaItem, item.episodeIndex)
+            return
+        }
 
         val url = item.streamUrl
-        val ctx = context ?: appContext
-        if (url.isBlank() || !url.startsWith("http") || ctx == null) {
+        if (url.isBlank() || !url.startsWith("http")) {
             markAsPaused(item)
             return
         }
 
-        val downloadsDir = getEffectiveDownloadDir(ctx)
         val targetFile = File(item.localFilePath)
 
         try {
@@ -644,14 +732,11 @@ object DownloadManager {
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(true)
 
-            // FIX: If a partial file exists with bytes already downloaded, send a Range header.
-            // The system DownloadManager honors this via the underlying HTTP stack.
             val partialBytes = if (targetFile.exists()) targetFile.length() else 0L
             if (partialBytes > 0L) {
                 requestBuilder.addRequestHeader("Range", "bytes=$partialBytes-")
                 Log.i(TAG, "Resuming ${item.mediaTitle} from byte $partialBytes (Range header set)")
             } else {
-                // No partial file — start fresh, set destination as usual.
                 requestBuilder.setDestinationUri(Uri.fromFile(targetFile))
             }
 
@@ -696,7 +781,6 @@ object DownloadManager {
         val cleanPath = if (path.startsWith("content://")) "" else path
         if (cleanPath.isNotBlank()) {
             val file = File(cleanPath)
-            // FIX: Reject paths that aren't writable AND check SD card mount state.
             if (!file.exists() && !file.mkdirs()) {
                 Log.w(TAG, "Cannot create directory: $cleanPath — using default")
                 return
@@ -726,10 +810,28 @@ object DownloadManager {
     }
 
     fun deleteDownload(item: DownloadedItem) {
+        val key = getDownloadKey(item.mediaId, item.episodeIndex)
+        activeTdLibJobs.remove(key)?.cancel()
+        val fileId = activeTdLibFileIds.remove(key)
+        if (fileId != null) {
+            scope.launch {
+                try {
+                    com.streamhub.app.data.telegram.TdLibMediaProvider.cancelDownload(fileId)
+                } catch (_: Exception) {}
+            }
+        }
+
+        val notifId = if (item.downloadId != -1L) item.downloadId else getNotificationId(item.mediaId, item.episodeIndex)
+
         try {
-            if (item.downloadId != -1L) {
+            if (item.downloadId != -1L && !item.streamUrl.contains("t.me")) {
                 systemDownloadManager?.remove(item.downloadId)
-                appContext?.let { DownloadNotificationHelper.cancel(it, item.downloadId) }
+            }
+            appContext?.let { ctx ->
+                DownloadNotificationHelper.cancel(ctx, notifId)
+                if (item.downloadId != -1L && item.downloadId != notifId) {
+                    DownloadNotificationHelper.cancel(ctx, item.downloadId)
+                }
             }
             val file = File(item.localFilePath)
             if (file.exists()) file.delete()
@@ -743,6 +845,30 @@ object DownloadManager {
             mutableList
         }
         saveToDisk()
+    }
+
+    fun pauseDownloadByKeys(mediaId: String, episodeIndex: Int) {
+        val item = _downloads.value.firstOrNull { it.mediaId == mediaId && it.episodeIndex == episodeIndex }
+        if (item != null) {
+            pauseDownload(item)
+        }
+    }
+
+    fun resumeDownloadByKeys(mediaId: String, episodeIndex: Int, context: Context? = null) {
+        val item = _downloads.value.firstOrNull { it.mediaId == mediaId && it.episodeIndex == episodeIndex }
+        if (item != null) {
+            resumeDownload(item, context)
+        }
+    }
+
+    fun cancelDownloadByKeys(mediaId: String, episodeIndex: Int) {
+        val item = _downloads.value.firstOrNull { it.mediaId == mediaId && it.episodeIndex == episodeIndex }
+        if (item != null) {
+            deleteDownload(item)
+        } else {
+            val notifId = getNotificationId(mediaId, episodeIndex)
+            appContext?.let { DownloadNotificationHelper.cancel(it, notifId) }
+        }
     }
 
     fun isDownloaded(mediaId: String, episodeIndex: Int): Boolean {

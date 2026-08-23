@@ -1,6 +1,7 @@
 package com.streamhub.app.player
 
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.lifecycle.ViewModel
@@ -469,12 +470,20 @@ class StreamPlayerViewModel : ViewModel() {
         resolutionJob = viewModelScope.launch {
             val resolvedUrl = resolveStreamUrl(rawUrl)
             if (resolvedUrl.isBlank()) {
+                val isTg = TelegramLinkResolver.isTelegramLink(rawUrl)
+                val isTgReady = com.streamhub.app.data.telegram.TdLibManager.isReady()
+                val errorMsg = if (isTg && !isTgReady) {
+                    "Telegram login required. Please log in from the Profile tab to stream this video."
+                } else {
+                    "Couldn't resolve the stream link. It may have expired or is unavailable."
+                }
                 _uiState.update {
                     it.copy(
-                        playerError = "Failed to resolve stream link",
+                        isBuffering = false,
+                        playerError = errorMsg,
                         playerErrorInfo = PlayerErrorInfo(
                             PlayerErrorType.STREAM_RESOLVE,
-                            "Couldn't resolve the Telegram stream link. It may have expired.",
+                            errorMsg,
                             canRetry = true
                         )
                     )
@@ -487,7 +496,8 @@ class StreamPlayerViewModel : ViewModel() {
                     posterUrl = currentMediaItem?.posterUrl ?: ""
                 )
             }
-            val mediaItem = ExoMediaItem.fromUri(resolvedUrl)
+            val uri = if (resolvedUrl.startsWith("/")) android.net.Uri.fromFile(java.io.File(resolvedUrl)) else android.net.Uri.parse(resolvedUrl)
+            val mediaItem = ExoMediaItem.fromUri(uri)
 
             exoPlayer?.apply {
                 setMediaItem(mediaItem)
@@ -751,6 +761,28 @@ class StreamPlayerViewModel : ViewModel() {
         _uiState.update { it.copy(aspectRatioMode = nextMode) }
     }
 
+    fun setBackgroundAudio(enabled: Boolean, context: Context? = null) {
+        _uiState.update { it.copy(isBackgroundAudioEnabled = enabled) }
+        val ctx = context ?: appContext
+        if (ctx != null) {
+            val intent = Intent(ctx, StreamMediaService::class.java)
+            if (enabled) {
+                PlayerHolder.setPlayer(exoPlayer)
+                try {
+                    androidx.core.content.ContextCompat.startForegroundService(ctx, intent)
+                } catch (e: Exception) {
+                    Log.e("StreamPlayerViewModel", "Failed to start StreamMediaService", e)
+                }
+            } else {
+                try {
+                    ctx.stopService(intent)
+                } catch (e: Exception) {
+                    Log.e("StreamPlayerViewModel", "Failed to stop StreamMediaService", e)
+                }
+            }
+        }
+    }
+
     fun toggleLock() {
         _uiState.update { it.copy(isLocked = !it.isLocked) }
     }
@@ -845,17 +877,25 @@ class StreamPlayerViewModel : ViewModel() {
                         }
                     }
 
-                    val bufferHealthSec = ((buffered - currentPos).coerceAtLeast(0L) / 1000L)
+                    val resolvedUrl = _uiState.value.resolvedStreamUrl
+                    val tdlibProgress = if (resolvedUrl.isNotBlank()) com.streamhub.app.data.telegram.TdLibMediaProvider.getDownloadProgressForPath(resolvedUrl) else null
+                    val effectiveBuffered = if (tdlibProgress != null && tdlibProgress > 0f && totalDuration > 0L) {
+                        maxOf(buffered, (tdlibProgress * totalDuration).toLong())
+                    } else {
+                        buffered
+                    }
+
+                    val bufferHealthSec = ((effectiveBuffered - currentPos).coerceAtLeast(0L) / 1000L)
 
                     // Estimate network speed from total bytes downloaded (ExoPlayer doesn't expose this directly,
                     // so we approximate from buffered-position delta over time)
-                    val speedKbps = estimateNetworkSpeedKbps(buffered)
+                    val speedKbps = estimateNetworkSpeedKbps(effectiveBuffered)
 
                     _uiState.update {
                         it.copy(
                             currentPositionMs = currentPos,
                             durationMs = if (totalDuration > 0) totalDuration else it.durationMs,
-                            bufferedPositionMs = buffered,
+                            bufferedPositionMs = effectiveBuffered,
                             isBuffering = isBuffering,
                             bufferHealthSeconds = bufferHealthSec,
                             networkSpeedKbps = speedKbps

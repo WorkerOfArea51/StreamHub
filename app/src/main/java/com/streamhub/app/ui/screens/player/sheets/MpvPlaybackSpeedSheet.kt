@@ -65,7 +65,7 @@ fun MpvPlaybackSpeedSheet(
     onDismiss: () -> Unit
 ) {
     val scrollState = rememberScrollState()
-    val speedPresets = listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f)
+    val speedPresets = listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
     var pitchCorrection by remember { mutableStateOf(true) }
 
     MpvPlayerSheet(onDismissRequest = onDismiss) {
@@ -149,7 +149,7 @@ fun MpvPlaybackSpeedSheet(
                             .clip(CircleShape)
                             .clickable {
                                 val next = ((currentSpeed - 0.05f) * 20).roundToInt() / 20f
-                                onSpeedChange(next.coerceIn(0.25f, 3.0f))
+                                onSpeedChange(next.coerceIn(0.25f, 2.0f))
                             }
                     ) {
                         Box(contentAlignment = Alignment.Center) {
@@ -163,12 +163,12 @@ fun MpvPlaybackSpeedSheet(
                     }
 
                     Slider(
-                        value = currentSpeed,
+                        value = currentSpeed.coerceIn(0.25f, 2.0f),
                         onValueChange = {
                             val snapped = (it * 20).roundToInt() / 20f
-                            onSpeedChange(snapped.coerceIn(0.25f, 3.0f))
+                            onSpeedChange(snapped.coerceIn(0.25f, 2.0f))
                         },
-                        valueRange = 0.25f..3.0f,
+                        valueRange = 0.25f..2.0f,
                         colors = SliderDefaults.colors(
                             thumbColor = Color.White,
                             activeTrackColor = Color(0xFFD0BCFF),
@@ -185,7 +185,7 @@ fun MpvPlaybackSpeedSheet(
                             .clip(CircleShape)
                             .clickable {
                                 val next = ((currentSpeed + 0.05f) * 20).roundToInt() / 20f
-                                onSpeedChange(next.coerceIn(0.25f, 3.0f))
+                                onSpeedChange(next.coerceIn(0.25f, 2.0f))
                             }
                     ) {
                         Box(contentAlignment = Alignment.Center) {

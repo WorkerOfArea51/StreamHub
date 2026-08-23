@@ -26,12 +26,47 @@ class StreamMediaService : MediaSessionService() {
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "streamhub_media_playback"
         private const val WAKELOCK_TIMEOUT_MS = 30 * 60 * 1000L // 30 minutes
+        const val ACTION_PLAY_PAUSE = "com.streamhub.app.ACTION_PLAY_PAUSE"
+        const val ACTION_REWIND = "com.streamhub.app.ACTION_REWIND"
+        const val ACTION_FORWARD = "com.streamhub.app.ACTION_FORWARD"
+        const val ACTION_STOP = "com.streamhub.app.ACTION_STOP"
     }
 
     private var mediaSession: MediaSession? = null
     private var wakeLock: android.os.PowerManager.WakeLock? = null
     private var fallbackPlayer: ExoPlayer? = null
     private var playerListener: Player.Listener? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_PLAY_PAUSE -> {
+                mediaSession?.player?.let { p ->
+                    if (p.isPlaying) p.pause() else p.play()
+                }
+            }
+            ACTION_REWIND -> {
+                mediaSession?.player?.let { p ->
+                    val cur = p.currentPosition.coerceAtLeast(0L)
+                    p.seekTo((cur - 10000L).coerceAtLeast(0L))
+                }
+            }
+            ACTION_FORWARD -> {
+                mediaSession?.player?.let { p ->
+                    val cur = p.currentPosition.coerceAtLeast(0L)
+                    val dur = p.duration.coerceAtLeast(0L)
+                    val target = if (dur > 0) (cur + 10000L).coerceAtMost(dur) else cur + 10000L
+                    p.seekTo(target)
+                }
+            }
+            ACTION_STOP -> {
+                mediaSession?.player?.pause()
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+        }
+        updateForegroundNotification()
+        return super.onStartCommand(intent, flags, startId)
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -91,7 +126,7 @@ class StreamMediaService : MediaSessionService() {
         val player = mediaSession?.player
         val title = player?.currentMediaItem?.mediaMetadata?.title?.toString()
             ?.ifBlank { "StreamHub" } ?: "StreamHub"
-        val subtitle = if (player?.isPlaying == true) "Playing media" else "Paused"
+        val subtitle = if (player?.isPlaying == true) "Playing in background" else "Paused"
         val notification = buildPlaybackNotification(title, subtitle)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
@@ -109,7 +144,7 @@ class StreamMediaService : MediaSessionService() {
         val title = player.currentMediaItem?.mediaMetadata?.title?.toString()
             ?.ifBlank { "StreamHub" } ?: "StreamHub"
         val subtitle = when {
-            player.isPlaying -> "Playing media"
+            player.isPlaying -> "Playing in background"
             player.playbackState == Player.STATE_BUFFERING -> "Buffering…"
             player.playbackState == Player.STATE_ENDED -> "Playback ended"
             else -> "Paused"
@@ -130,14 +165,49 @@ class StreamMediaService : MediaSessionService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val player = mediaSession?.player
+        val isPlaying = player?.isPlaying == true
+
+        val playPauseIntent = PendingIntent.getService(
+            this, 1,
+            Intent(this, StreamMediaService::class.java).apply { action = ACTION_PLAY_PAUSE },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val rewIntent = PendingIntent.getService(
+            this, 2,
+            Intent(this, StreamMediaService::class.java).apply { action = ACTION_REWIND },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val fwdIntent = PendingIntent.getService(
+            this, 3,
+            Intent(this, StreamMediaService::class.java).apply { action = ACTION_FORWARD },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val stopIntent = PendingIntent.getService(
+            this, 4,
+            Intent(this, StreamMediaService::class.java).apply { action = ACTION_STOP },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val playPauseIcon = if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(subtitle)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
-            .setOngoing(true)
+            .setOngoing(isPlaying)
             .setShowWhen(false)
-            .build()
+            .addAction(android.R.drawable.ic_media_rew, "Rewind 10s", rewIntent)
+            .addAction(playPauseIcon, if (isPlaying) "Pause" else "Play", playPauseIntent)
+            .addAction(android.R.drawable.ic_media_ff, "Forward 10s", fwdIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Close", stopIntent)
+
+        mediaSession?.let { session ->
+            builder.setStyle(androidx.media3.session.MediaStyleNotificationHelper.MediaStyle(session))
+        }
+
+        return builder.build()
     }
 
     private fun createNotificationChannel() {

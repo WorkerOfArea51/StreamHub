@@ -32,7 +32,6 @@ object VideoThumbnailHelper {
 
     suspend fun getThumbnail(sourceUrl: String, positionMs: Long): Bitmap? {
         if (sourceUrl.isBlank()) return null
-        if (released) return null
 
         val bucketMs = (positionMs / 3000L) * 3000L
         val cacheKey = "${sourceUrl}_$bucketMs"
@@ -44,20 +43,19 @@ object VideoThumbnailHelper {
 
         return withContext(Dispatchers.IO) {
             retrieverMutex.withLock {
-                if (released) return@withLock null
-
                 try {
-                    if (currentSourceUrl != sourceUrl || retriever == null) {
+                    if (currentSourceUrl != sourceUrl || retriever == null || released) {
                         try { retriever?.release() } catch (_: Exception) {}
                         retriever = null
+                        released = false
 
                         val newRetriever = MediaMetadataRetriever()
-                        val file = File(sourceUrl)
-                        when {
-                            file.exists() -> newRetriever.setDataSource(sourceUrl)
-                            sourceUrl.startsWith("http://") || sourceUrl.startsWith("https://") ->
-                                newRetriever.setDataSource(sourceUrl, HashMap())
-                            else -> return@withLock null
+                        val cleanPath = sourceUrl.removePrefix("file://")
+                        val file = File(cleanPath)
+                        if (file.exists() && file.length() > 1024L && !cleanPath.contains("/temp/")) {
+                            newRetriever.setDataSource(cleanPath)
+                        } else {
+                            return@withLock null
                         }
                         retriever = newRetriever
                         currentSourceUrl = sourceUrl
@@ -70,9 +68,15 @@ object VideoThumbnailHelper {
                             MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
                             240,
                             135
+                        ) ?: retriever?.getScaledFrameAtTime(
+                            timeUs,
+                            MediaMetadataRetriever.OPTION_PREVIOUS_SYNC,
+                            240,
+                            135
                         )
                     } else {
                         val fullFrame = retriever?.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                            ?: retriever?.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_PREVIOUS_SYNC)
                         fullFrame?.let { Bitmap.createScaledBitmap(it, 240, 135, true) }
                     } ?: retriever?.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
 

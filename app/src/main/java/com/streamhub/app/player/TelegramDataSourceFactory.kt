@@ -152,9 +152,10 @@ class TdLibStreamingDataSource : DataSource {
         currentPosition = position
 
         val fId = fileId
-        // FIX: When opening/seeking, request TDLib download continuously from that offset (limit=0L).
+        Log.e(TAG, "OPEN: path=$path, pos=$position, diskLen=${f.length()}, totalSize=$totalFileSize, fId=$fId")
+
+        // When opening/seeking, request TDLib download continuously from that offset without cancelling.
         if (fId != null && position < totalFileSize) {
-            Log.i(TAG, "Opening TDLib stream at offset $position (disk: ${f.length()}, total: $totalFileSize)")
             try {
                 fetchScope.launch {
                     TdLibManager.send(
@@ -162,7 +163,7 @@ class TdLibStreamingDataSource : DataSource {
                     )
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Error requesting TDLib offset stream: ${e.message}")
+                Log.e(TAG, "Error requesting TDLib offset stream: ${e.message}")
             }
         }
 
@@ -175,7 +176,7 @@ class TdLibStreamingDataSource : DataSource {
             try {
                 randomAccessFile!!.seek(position)
             } catch (e: Exception) {
-                Log.w(TAG, "Initial seek to $position: ${e.message}")
+                Log.e(TAG, "Initial seek to $position: ${e.message}")
             }
         }
 
@@ -193,39 +194,51 @@ class TdLibStreamingDataSource : DataSource {
         if (bytesRemaining <= 0L) return C.RESULT_END_OF_INPUT
         val raf = randomAccessFile ?: throw IOException("DataSource not open")
         val f = file ?: throw IOException("File reference lost")
+        val filePath = f.absolutePath
+        var fId = fileId ?: TdLibMediaProvider.getFileIdForPath(filePath)
+        if (fId != null) fileId = fId
 
         val toRead = kotlin.math.min(length.toLong(), bytesRemaining).toInt()
-        val fId = fileId
         var currentFileLen = f.length()
         val waitDeadlineMs = System.currentTimeMillis() + MAX_WAIT_FOR_CHUNK_MS
 
         while (currentPosition + toRead > currentFileLen && currentPosition < totalFileSize) {
-            if (fId == null) break
-            val remainingWait = waitDeadlineMs - System.currentTimeMillis()
-            if (remainingWait <= 0L) {
-                Log.w(TAG, "Chunk wait exceeded ${MAX_WAIT_FOR_CHUNK_MS}ms at position $currentPosition — aborting read")
-                throw IOException("TDLib chunk wait timed out at position $currentPosition")
+            if (fId == null) {
+                fId = TdLibMediaProvider.getFileIdForPath(filePath)
+                if (fId != null) fileId = fId
+            }
+            if (fId != null) {
+                ensureFetchRunning(fId, currentPosition)
             }
 
-            // Kick off an async fetch to keep downloading forward from currentPosition
-            ensureFetchRunning(fId, currentPosition)
+            val remainingWait = waitDeadlineMs - System.currentTimeMillis()
+            if (remainingWait <= 0L) {
+                Log.w(TAG, "Chunk wait timeout at position $currentPosition (disk: $currentFileLen, total: $totalFileSize)")
+                currentFileLen = f.length()
+                if (currentPosition < currentFileLen) break
+                if (currentPosition >= totalFileSize) return C.RESULT_END_OF_INPUT
+                val partialAvailable = (currentFileLen - currentPosition).coerceAtLeast(0L).toInt()
+                if (partialAvailable > 0) break
+                try { Thread.sleep(200) } catch (_: Exception) {}
+                currentFileLen = f.length()
+                if (currentPosition < currentFileLen) break
+                throw IOException("Waiting for stream buffer at position $currentPosition")
+            }
 
-            synchronized(monitorLock) {
-                val smallWait = kotlin.math.min(remainingWait, 100L)
-                (monitorLock as java.lang.Object).wait(smallWait)
+            synchronized(TdLibMediaProvider.fileUpdateNotifier) {
+                val smallWait = kotlin.math.min(remainingWait, 200L)
+                (TdLibMediaProvider.fileUpdateNotifier as java.lang.Object).wait(smallWait)
             }
             currentFileLen = f.length()
         }
 
-        if (currentPosition >= currentFileLen) {
-            return if (currentPosition >= totalFileSize) C.RESULT_END_OF_INPUT
-            else throw IOException("Unexpected end of downloaded chunk at $currentPosition")
+        if (currentPosition >= totalFileSize) {
+            return C.RESULT_END_OF_INPUT
         }
 
         val available = (currentFileLen - currentPosition).coerceAtLeast(0L).toInt()
         if (available <= 0) {
-            return if (currentPosition >= totalFileSize) C.RESULT_END_OF_INPUT
-            else throw IOException("No bytes available at position $currentPosition")
+            return if (currentPosition >= totalFileSize) C.RESULT_END_OF_INPUT else 0
         }
 
         val actualReadSize = kotlin.math.min(toRead, available)
@@ -237,8 +250,7 @@ class TdLibStreamingDataSource : DataSource {
             return bytesRead
         }
 
-        return if (currentPosition >= totalFileSize) C.RESULT_END_OF_INPUT
-        else throw IOException("RAF read returned 0 at position $currentPosition")
+        return if (currentPosition >= totalFileSize) C.RESULT_END_OF_INPUT else 0
     }
 
     private var lastFetchPosition: Long = -1L
@@ -247,7 +259,7 @@ class TdLibStreamingDataSource : DataSource {
      * Ensure TDLib has an active DownloadFile request for the current read position.
      */
     private fun ensureFetchRunning(fId: Int, position: Long) {
-        if (fetchJob?.isActive == true && kotlin.math.abs(lastFetchPosition - position) < 512 * 1024L) return
+        if (fetchJob?.isActive == true && kotlin.math.abs(lastFetchPosition - position) < 2 * 1024 * 1024L) return
         fetchJob?.cancel()
         lastFetchPosition = position
         fetchJob = fetchScope.launch {

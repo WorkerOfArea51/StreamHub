@@ -147,8 +147,8 @@ object TelegramLinkResolver {
 
         // Check if TDLib is ready
         if (!TdLibMediaProviderReady()) {
-            Log.w(TAG, "TDLib not ready — returning original URL as fallback: $url")
-            return url
+            Log.w(TAG, "TDLib not ready — cannot resolve Telegram link: $url")
+            return ""
         }
 
         return when (val result = TdLibMediaProvider.resolveStreamUrl(url, autoJoin = true)) {
