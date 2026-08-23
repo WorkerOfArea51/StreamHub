@@ -1598,11 +1598,22 @@ fun PlayerScreen(
                                     icon = Icons.Default.PictureInPicture,
                                     onClick = {
                                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                            val aspectRatio = Rational(16, 9)
-                                            val pipParams = PictureInPictureParams.Builder()
-                                                .setAspectRatio(aspectRatio)
-                                                .build()
-                                            activity?.enterPictureInPictureMode(pipParams)
+                                            // FIX: Use the same buildPipParams() as auto-PiP — includes
+                                            // custom play/pause/next/prev RemoteActions.
+                                            try {
+                                                val act = activity
+                                                if (act is com.streamhub.app.MainActivity) {
+                                                    val params = act.buildPipParams()
+                                                    act.enterPictureInPictureMode(params)
+                                                } else {
+                                                    val pipParams = PictureInPictureParams.Builder()
+                                                        .setAspectRatio(Rational(16, 9))
+                                                        .build()
+                                                    activity?.enterPictureInPictureMode(pipParams)
+                                                }
+                                            } catch (e: Exception) {
+                                                Log.w("PlayerScreen", "PiP failed: ${e.message}")
+                                            }
                                         }
                                     },
                                     size = 40.dp,

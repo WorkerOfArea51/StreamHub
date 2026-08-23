@@ -1,8 +1,14 @@
 package com.streamhub.app
 
+import android.app.PendingIntent
 import android.app.PictureInPictureParams
+import android.app.RemoteAction
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.res.Configuration
+import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -11,6 +17,7 @@ import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -74,6 +81,63 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val TAG = "MainActivity"
         private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 101
+        // FIX: PiP action broadcast IDs
+        const val ACTION_PIP_PLAY_PAUSE = "com.streamhub.app.PIP_PLAY_PAUSE"
+        const val ACTION_PIP_NEXT = "com.streamhub.app.PIP_NEXT"
+        const val ACTION_PIP_PREV = "com.streamhub.app.PIP_PREV"
+    }
+
+    // FIX: BroadcastReceiver to handle PiP media button actions
+    private var pipActionReceiver: BroadcastReceiver? = null
+
+    private fun registerPipActionReceiver() {
+        if (pipActionReceiver != null) return
+        pipActionReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    ACTION_PIP_PLAY_PAUSE -> {
+                        val player = StreamPlayerViewModel.currentPlayer
+                        player?.let { if (it.isPlaying) it.pause() else it.play() }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isInPictureInPictureMode) {
+                            try {
+                                setPictureInPictureParams(buildPipParams())
+                            } catch (_: Exception) {}
+                        }
+                    }
+                    ACTION_PIP_NEXT -> {
+                        val player = StreamPlayerViewModel.currentPlayer
+                        player?.seekToNextMediaItem()
+                    }
+                    ACTION_PIP_PREV -> {
+                        val player = StreamPlayerViewModel.currentPlayer
+                        player?.seekToPreviousMediaItem()
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(ACTION_PIP_PLAY_PAUSE)
+            addAction(ACTION_PIP_NEXT)
+            addAction(ACTION_PIP_PREV)
+        }
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        } else {
+            0
+        }
+        ContextCompat.registerReceiver(
+            this,
+            pipActionReceiver!!,
+            filter,
+            flags
+        )
+    }
+
+    private fun unregisterPipActionReceiver() {
+        pipActionReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: Exception) {}
+        }
+        pipActionReceiver = null
     }
 
     /**
@@ -92,6 +156,7 @@ class MainActivity : ComponentActivity() {
             savedInstanceState.getString("deep_link_media_id")?.let { deepLinkMediaId.value = it }
         }
         handleDeepLink(intent)
+        registerPipActionReceiver()
 
         setContent {
             StreamHubTheme {
@@ -104,6 +169,11 @@ class MainActivity : ComponentActivity() {
         window.decorView.post {
             requestNotificationPermissionIfNeeded()
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterPipActionReceiver()
     }
 
     /**
@@ -162,29 +232,92 @@ class MainActivity : ComponentActivity() {
         super.onUserLeaveHint()
         if (!shouldAutoEnterPip || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         try {
-            val player = StreamPlayerViewModel.currentPlayer
-            val videoSize = player?.videoSize
-            val ratio = if (videoSize != null && videoSize.width > 0 && videoSize.height > 0) {
-                // FIX: Validate the RATIO is within Android's allowed range (≤ 2.39:1, ≥ 0.42:1),
-                // not the dimensions. Rational simplifies internally so 1920x1080 becomes 16/9.
-                val w = videoSize.width
-                val h = videoSize.height
-                val r = w.toFloat() / h.toFloat()
-                when {
-                    r > 2.39f -> Rational(239, 100)
-                    r < 0.42f -> Rational(42, 100)
-                    else -> Rational(w, h)
-                }
-            } else {
-                Rational(16, 9)
-            }
-            val params = PictureInPictureParams.Builder()
-                .setAspectRatio(ratio)
-                .build()
+            val params = buildPipParams()
             enterPictureInPictureMode(params)
         } catch (e: Exception) {
             Log.w(TAG, "PiP entry failed: ${e.message}")
         }
+    }
+
+    /**
+     * FIX: Build PiP params with custom RemoteActions for play/pause, next, prev.
+     * These appear as buttons in the PiP window — matching YouTube/Netflix behavior.
+     */
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
+    fun buildPipParams(): PictureInPictureParams {
+        val player = StreamPlayerViewModel.currentPlayer
+        val videoSize = player?.videoSize
+        val ratio = if (videoSize != null && videoSize.width > 0 && videoSize.height > 0) {
+            val w = videoSize.width
+            val h = videoSize.height
+            val r = w.toFloat() / h.toFloat()
+            when {
+                r > 2.39f -> Rational(239, 100)
+                r < 0.42f -> Rational(42, 100)
+                else -> Rational(w, h)
+            }
+        } else {
+            Rational(16, 9)
+        }
+
+        val builder = PictureInPictureParams.Builder()
+            .setAspectRatio(ratio)
+
+        // FIX: Add custom RemoteActions for play/pause, next, prev
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val actions = mutableListOf<RemoteAction>()
+
+            // Previous button
+            val prevIntent = PendingIntent.getBroadcast(
+                this, 1,
+                Intent(ACTION_PIP_PREV).setPackage(packageName),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            actions.add(
+                RemoteAction(
+                    Icon.createWithResource(this, android.R.drawable.ic_media_previous),
+                    "Previous",
+                    "Previous episode",
+                    prevIntent
+                )
+            )
+
+            // Play/Pause button — icon depends on current state
+            val isPlaying = player?.isPlaying == true
+            val playPauseDrawable = if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+            val playPauseIntent = PendingIntent.getBroadcast(
+                this, 2,
+                Intent(ACTION_PIP_PLAY_PAUSE).setPackage(packageName),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            actions.add(
+                RemoteAction(
+                    Icon.createWithResource(this, playPauseDrawable),
+                    if (isPlaying) "Pause" else "Play",
+                    "Play or pause",
+                    playPauseIntent
+                )
+            )
+
+            // Next button
+            val nextIntent = PendingIntent.getBroadcast(
+                this, 3,
+                Intent(ACTION_PIP_NEXT).setPackage(packageName),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            actions.add(
+                RemoteAction(
+                    Icon.createWithResource(this, android.R.drawable.ic_media_next),
+                    "Next",
+                    "Next episode",
+                    nextIntent
+                )
+            )
+
+            builder.setActions(actions)
+        }
+
+        return builder.build()
     }
 
     @androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
