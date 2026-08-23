@@ -52,8 +52,19 @@ object VideoThumbnailHelper {
                         val newRetriever = MediaMetadataRetriever()
                         val cleanPath = sourceUrl.removePrefix("file://")
                         val file = File(cleanPath)
-                        if (file.exists() && file.length() > 1024L && !cleanPath.contains("/temp/")) {
+                        // FIX: Removed the !cleanPath.contains("/temp/") filter — it was
+                        // rejecting TDLib temp file paths, preventing thumbnails from being
+                        // generated for ALL streaming videos. TDLib temp files are valid
+                        // video files and MediaMetadataRetriever can read them fine.
+                        if (file.exists() && file.length() > 1024L) {
                             newRetriever.setDataSource(cleanPath)
+                        } else if (sourceUrl.startsWith("http://") || sourceUrl.startsWith("https://")) {
+                            // Fallback for HTTP URLs (won't work for TDLib paths but kept for safety)
+                            try {
+                                newRetriever.setDataSource(sourceUrl, HashMap())
+                            } catch (_: Exception) {
+                                return@withLock null
+                            }
                         } else {
                             return@withLock null
                         }
@@ -62,8 +73,17 @@ object VideoThumbnailHelper {
                     }
 
                     val timeUs = bucketMs * 1000L
+                    // FIX: Use OPTION_CLOSEST (not OPTION_CLOSEST_SYNC) for accurate frame
+                    // extraction. OPTION_CLOSEST_SYNC returns the nearest keyframe, which
+                    // for many Telegram-encoded videos is the first frame (sparse keyframes).
+                    // OPTION_CLOSEST decodes to the exact requested timestamp.
                     val frame = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
                         retriever?.getScaledFrameAtTime(
+                            timeUs,
+                            MediaMetadataRetriever.OPTION_CLOSEST,
+                            240,
+                            135
+                        ) ?: retriever?.getScaledFrameAtTime(
                             timeUs,
                             MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
                             240,
@@ -75,10 +95,11 @@ object VideoThumbnailHelper {
                             135
                         )
                     } else {
-                        val fullFrame = retriever?.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        val fullFrame = retriever?.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                            ?: retriever?.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                             ?: retriever?.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_PREVIOUS_SYNC)
                         fullFrame?.let { Bitmap.createScaledBitmap(it, 240, 135, true) }
-                    } ?: retriever?.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    }
 
                     if (frame != null) {
                         memoryCache.put(cacheKey, frame)
