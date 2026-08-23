@@ -1923,8 +1923,10 @@ fun PlayerScreen(
         }
 
         // 15. Modern Glassmorphic HUD Pill Toast (mpvEx Parity)
+        // FIX: Only show HUD pill when there's actual text content — prevents
+        // empty/stale icons from floating at the top center of the screen.
         AnimatedVisibility(
-            visible = showHudPill,
+            visible = showHudPill && hudPillText.isNotBlank(),
             enter = fadeIn() + androidx.compose.animation.scaleIn(initialScale = 0.88f),
             exit = fadeOut() + androidx.compose.animation.scaleOut(targetScale = 0.88f),
             modifier = Modifier
