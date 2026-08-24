@@ -37,7 +37,22 @@ class FirebaseRepository private constructor() {
 
     companion object {
         private const val TAG = "FirebaseRepository"
-        private const val COLLECTION_NAME = "media_content"
+        const val COLLECTION_MOVIES = "movies"
+        const val COLLECTION_ANIMES = "animes"
+        const val COLLECTION_SERIES = "web_series"
+        const val COLLECTION_LEGACY = "media_content"
+
+        val ALL_COLLECTIONS = listOf(COLLECTION_MOVIES, COLLECTION_ANIMES, COLLECTION_SERIES, COLLECTION_LEGACY)
+
+        fun getCollectionForCategory(category: String, type: String = ""): String {
+            val cat = category.trim().lowercase()
+            val typ = type.trim().lowercase()
+            return when {
+                cat.contains("anime") || typ.contains("anime") -> COLLECTION_ANIMES
+                cat.contains("series") || cat.contains("tv") || cat.contains("show") || typ.contains("series") || typ.contains("tv") -> COLLECTION_SERIES
+                else -> COLLECTION_MOVIES
+            }
+        }
 
         @Volatile
         private var INSTANCE: FirebaseRepository? = null
@@ -70,7 +85,8 @@ class FirebaseRepository private constructor() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private var listenerRegistration: ListenerRegistration? = null
+    private val activeListeners = mutableListOf<ListenerRegistration>()
+    private val collectionMap = java.util.concurrent.ConcurrentHashMap<String, List<MediaItem>>()
 
     private val _mediaCatalog = MutableStateFlow<List<MediaItem>>(emptyList())
     val mediaCatalog: StateFlow<List<MediaItem>> = _mediaCatalog.asStateFlow()
@@ -109,7 +125,7 @@ class FirebaseRepository private constructor() {
     }
 
     fun cleanup() {
-        removeFirestoreListener()
+        removeFirestoreListeners()
     }
 
     private fun attachFirestoreListener() {
@@ -121,52 +137,61 @@ class FirebaseRepository private constructor() {
         }
 
         try {
-            listenerRegistration?.remove()
-            listenerRegistration = db.collection(COLLECTION_NAME)
-                .addSnapshotListener { snapshot, error ->
+            removeFirestoreListeners()
+            for (col in ALL_COLLECTIONS) {
+                val reg = db.collection(col).addSnapshotListener { snapshot, error ->
                     if (error != null) {
-                        Log.e(TAG, "Firestore snapshot listener error", error)
-                        _catalogState.value = CatalogState.Error(error.message ?: "Firestore error")
+                        Log.w(TAG, "Firestore listener error on collection $col: ${error.message}")
                         return@addSnapshotListener
                     }
 
-                    if (snapshot == null || snapshot.isEmpty) {
-                        _mediaCatalog.value = emptyList()
-                        _catalogState.value = CatalogState.Ready
-                        Log.d(TAG, "Firestore catalog updated: 0 items (empty)")
-                        return@addSnapshotListener
-                    }
-
-                    scope.launch(Dispatchers.IO) {
-                        val remoteItems = snapshot.documents.mapNotNull { doc ->
-                            try {
-                                doc.toObject(MediaItem::class.java)?.let { item ->
-                                    if (item.id.isBlank()) item.copy(id = doc.id) else item
+                    val items = snapshot?.documents?.mapNotNull { doc ->
+                        try {
+                            doc.toObject(MediaItem::class.java)?.let { item ->
+                                val finalCategory = if (item.category.isNotBlank()) item.category else when (col) {
+                                    COLLECTION_ANIMES -> "Anime"
+                                    COLLECTION_SERIES -> "Series"
+                                    else -> "Movies"
                                 }
-                            } catch (e: Exception) {
-                                Log.w(TAG, "Failed to parse document ${doc.id}", e)
-                                null
+                                val finalType = if (item.type.isNotBlank()) item.type else when (col) {
+                                    COLLECTION_ANIMES -> "Anime"
+                                    COLLECTION_SERIES -> "Series"
+                                    else -> "Movie"
+                                }
+                                (if (item.id.isBlank()) item.copy(id = doc.id) else item).copy(
+                                    category = finalCategory,
+                                    type = finalType
+                                )
                             }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to parse document ${doc.id} from $col", e)
+                            null
                         }
+                    } ?: emptyList()
 
-                        _mediaCatalog.value = remoteItems
-                        _catalogState.value = CatalogState.Ready
-                        Log.d(TAG, "Firestore real-time catalog synced: ${remoteItems.size} items")
-                    }
+                    collectionMap[col] = items
+
+                    // Merge all collections together, deduplicating by ID
+                    val merged = collectionMap.values.flatten().distinctBy { it.id }
+                    _mediaCatalog.value = merged
+                    _catalogState.value = CatalogState.Ready
+                    Log.d(TAG, "Firestore synced collection '$col' (${items.size} items), total merged = ${merged.size}")
                 }
+                activeListeners.add(reg)
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to attach Firestore listener", e)
+            Log.e(TAG, "Failed to attach Firestore listeners", e)
             _catalogState.value = CatalogState.Error("Failed to attach Firestore listener: ${e.message}")
         }
     }
 
-    private fun removeFirestoreListener() {
-        listenerRegistration?.remove()
-        listenerRegistration = null
+    private fun removeFirestoreListeners() {
+        activeListeners.forEach { it.remove() }
+        activeListeners.clear()
     }
 
     /**
-     * Save or update a media item in catalog.
+     * Save or update a media item in its respective Firestore collection (movies, animes, web_series).
      */
     fun saveMediaItem(item: MediaItem) {
         _adminOperationState.value = AdminOperationState.Loading
@@ -177,9 +202,10 @@ class FirebaseRepository private constructor() {
             return
         }
 
+        val targetCollection = getCollectionForCategory(item.category, item.type)
         val docMap = mediaItemToMap(item)
-        Log.d(TAG, "Writing media item ${item.id} to Firestore collection '$COLLECTION_NAME'...")
-        db.collection(COLLECTION_NAME)
+        Log.d(TAG, "Writing media item ${item.id} to Firestore collection '$targetCollection'...")
+        db.collection(targetCollection)
             .document(item.id)
             .set(docMap)
             .addOnSuccessListener {
@@ -191,16 +217,16 @@ class FirebaseRepository private constructor() {
                 }
                 _catalogState.value = CatalogState.Ready
                 _adminOperationState.value = AdminOperationState.Success()
-                Log.d(TAG, "Successfully synced media item to Firestore: ${item.id}")
+                Log.d(TAG, "Successfully synced media item to Firestore collection '$targetCollection': ${item.id}")
             }
             .addOnFailureListener { e ->
-                Log.e(TAG, "Failed to sync media item to Firestore: ${item.id}", e)
+                Log.e(TAG, "Failed to sync media item to Firestore collection '$targetCollection': ${item.id}", e)
                 _adminOperationState.value = AdminOperationState.Error(e.message ?: "Failed to save to Firestore")
             }
     }
 
     /**
-     * Delete a media item from catalog.
+     * Delete a media item from all collections.
      */
     fun deleteMediaItem(itemId: String) {
         _adminOperationState.value = AdminOperationState.Loading
@@ -210,18 +236,14 @@ class FirebaseRepository private constructor() {
             _adminOperationState.value = AdminOperationState.Success()
             return
         }
-        db.collection(COLLECTION_NAME)
-            .document(itemId)
-            .delete()
-            .addOnSuccessListener {
-                Log.d(TAG, "Successfully deleted media item from Firestore: $itemId")
-                _mediaCatalog.update { current -> current.filterNot { it.id == itemId } }
-                _adminOperationState.value = AdminOperationState.Success()
-            }
-            .addOnFailureListener { e ->
-                Log.e(TAG, "Failed to delete media item from Firestore: $itemId", e)
-                _adminOperationState.value = AdminOperationState.Error(e.message ?: "Delete failed")
-            }
+
+        for (col in ALL_COLLECTIONS) {
+            db.collection(col).document(itemId).delete()
+        }
+
+        _mediaCatalog.update { current -> current.filterNot { it.id == itemId } }
+        _adminOperationState.value = AdminOperationState.Success()
+        Log.d(TAG, "Successfully deleted media item $itemId across all collections")
     }
 
     private fun loadInitialCatalog() {

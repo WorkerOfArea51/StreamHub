@@ -1040,8 +1040,7 @@ fun AdminEditorDialog(
 
                                     val generatedId = generateReadableMediaId(
                                         title = title,
-                                        releaseYear = premiered.take(4),
-                                        type = if (category.isNotBlank()) category else type
+                                        releaseYear = premiered.take(4)
                                     )
 
                                     val finalFranchiseId = franchiseId.ifBlank {
@@ -1182,18 +1181,14 @@ private fun MetadataRow(
     }
 }
 
-private fun generateReadableMediaId(title: String, releaseYear: String, type: String): String {
+private fun generateReadableMediaId(title: String, releaseYear: String): String {
     val cleanSlug = title.lowercase()
         .replace("&", "and")
         .replace(Regex("[^a-z0-9]+"), "_")
         .trim('_')
-        .take(40)
+        .take(45)
     val year = releaseYear.trim().take(4)
-    val typePrefix = type.lowercase().trim()
     return buildString {
-        if (typePrefix.isNotBlank()) {
-            append("${typePrefix}_")
-        }
         append(cleanSlug.ifBlank { "item_${System.currentTimeMillis()}" })
         if (year.isNotBlank() && !cleanSlug.endsWith(year)) {
             append("_$year")
