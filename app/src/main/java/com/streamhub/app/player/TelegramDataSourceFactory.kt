@@ -13,6 +13,7 @@ import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.cache.CacheDataSource
 import com.streamhub.app.data.telegram.TdLibManager
 import com.streamhub.app.data.telegram.TdLibMediaProvider
+import com.streamhub.app.data.telegram.StreamingProxyServer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -216,18 +217,22 @@ class TdLibStreamingDataSource : DataSource {
                 ensureFetchRunning(fId, currentPosition)
             }
 
+            val cachedFile = fId?.let { StreamingProxyServer.getCachedFile(it) }
+            val isCompleted = cachedFile?.local?.isDownloadingCompleted == true
+            val prefixSize = cachedFile?.local?.downloadedPrefixSize?.toLong() ?: 0L
+
+            if (isCompleted || prefixSize >= currentPosition + toRead) {
+                break
+            }
+
             val remainingWait = waitDeadlineMs - System.currentTimeMillis()
             if (remainingWait <= 0L) {
-                Log.w(TAG, "Chunk wait timeout at position $currentPosition (disk: $currentFileLen, total: $totalFileSize)")
+                Log.w(TAG, "Chunk wait timeout at position $currentPosition (disk: $currentFileLen, total: $totalFileSize, prefix: $prefixSize)")
                 currentFileLen = f.length()
-                if (currentPosition < currentFileLen) break
+                if (currentPosition < currentFileLen && (isCompleted || prefixSize >= currentPosition + toRead)) break
                 if (currentPosition >= totalFileSize) return C.RESULT_END_OF_INPUT
                 val partialAvailable = (currentFileLen - currentPosition).coerceAtLeast(0L).toInt()
-                if (partialAvailable > 0) break
-                // FIX: Return 0 instead of throwing IOException. Returning 0 tells ExoPlayer
-                // "no data right now, try again" — ExoPlayer will retry the read after a short
-                // backoff. Throwing IOException causes ExoPlayer to fire onPlayerError, which
-                // triggers the auto-retry → setMediaItem → restart-from-0 bug.
+                if (partialAvailable > 0 && (isCompleted || prefixSize > currentPosition)) break
                 return 0
             }
 

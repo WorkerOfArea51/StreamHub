@@ -47,6 +47,7 @@ object StreamingProxyServer {
 
     private const val TAG = "StreamingProxyServer"
     private const val CHUNK_SIZE = 128 * 1024 // 128 KB chunk pipeline
+    private const val PART_SIZE = 524288L // 512 KB TDLib part boundary
     private const val FORWARD_THRESHOLD = 3 * 1024 * 1024L // 3 MB read-ahead threshold
     private const val LOOKBEHIND_GRACE_BUFFER = 1 * 1024 * 1024L // 1 MB lookbehind buffer
 
@@ -116,7 +117,7 @@ object StreamingProxyServer {
                         try {
                             val clientSocket = ss.accept()
                             clientSocket.tcpNoDelay = true
-                            clientSocket.soTimeout = 30_000 // 30s socket timeout
+                            clientSocket.soTimeout = 45_000 // 45s socket timeout
                             launch(Dispatchers.IO) {
                                 handleClientSocket(clientSocket)
                             }
@@ -132,6 +133,20 @@ object StreamingProxyServer {
                 Log.e(TAG, "Failed to start Local HTTP Streaming Proxy Server", e)
             }
         }
+    }
+
+    /**
+     * Ensures the server is started and returns a guaranteed valid port (> 0).
+     */
+    suspend fun ensureStarted(): Int = withContext(Dispatchers.IO) {
+        if (port > 0 && serverSocket != null && serverJob?.isActive == true) return@withContext port
+        start()
+        var attempts = 0
+        while (port <= 0 && attempts < 50 && isActive) {
+            delay(50L)
+            attempts++
+        }
+        port
     }
 
     /**
@@ -162,11 +177,25 @@ object StreamingProxyServer {
         return url.startsWith("http://127.0.0.1:") || url.startsWith("http://localhost:")
     }
 
-    fun getProxyUrl(fileId: Int, fileName: String? = null): String {
-        val currentPort = port
+    /**
+     * Suspending proxy URL generator that guarantees a non-zero port.
+     */
+    suspend fun getProxyUrl(fileId: Int, fileName: String? = null): String {
+        val validPort = ensureStarted()
+        val encodedName = if (!fileName.isNullOrBlank()) {
+            "&name=" + java.net.URLEncoder.encode(fileName, "UTF-8")
+        } else ""
+        return "http://127.0.0.1:$validPort/stream?fileId=$fileId&token=$authToken$encodedName"
+    }
+
+    /**
+     * Synchronous fallback for callers where suspend is not available.
+     */
+    fun getProxyUrlSync(fileId: Int, fileName: String? = null): String {
+        var currentPort = port
         if (currentPort <= 0) {
-            // Trigger background start if not started yet
-            scope.launch { start() }
+            kotlinx.coroutines.runBlocking(Dispatchers.IO) { ensureStarted() }
+            currentPort = port
         }
         val encodedName = if (!fileName.isNullOrBlank()) {
             "&name=" + java.net.URLEncoder.encode(fileName, "UTF-8")
@@ -197,14 +226,17 @@ object StreamingProxyServer {
         if (file.local.isDownloadingCompleted) return true
 
         val prefixSize = file.local.downloadedPrefixSize.toLong()
-        if (end < prefixSize) return true
+        if (end <= prefixSize) return true
 
         val activeOffset = activeDownloadOffsets[fileId] ?: 0L
-        val baseDownloaded = downloadedSizeAtOffsets[fileId] ?: 0L
-        val downloadedDelta = (file.local.downloadedSize.toLong() - baseDownloaded).coerceIn(0L, file.size)
-        val activeRangeEnd = activeOffset + downloadedDelta
+        if (activeOffset > 0L && start >= activeOffset) {
+            val baseDownloaded = downloadedSizeAtOffsets[fileId] ?: 0L
+            val downloadedDelta = (file.local.downloadedSize.toLong() - baseDownloaded).coerceIn(0L, file.size)
+            val activeRangeEnd = activeOffset + downloadedDelta
+            return end <= activeRangeEnd
+        }
 
-        return start >= activeOffset && end <= activeRangeEnd
+        return false
     }
 
     fun abortActiveRequests(fileId: Int) {
@@ -352,27 +384,31 @@ object StreamingProxyServer {
                     (noActiveDownload || isBeforeActiveWindow || isFarAfterActiveWindow)
 
             if (shouldShift) {
-                val shiftOffset = (start - LOOKBEHIND_GRACE_BUFFER).coerceIn(0L, totalSize)
+                // Align to 512KB part boundary for maximum TDLib throughput
+                val alignedStart = ((start - LOOKBEHIND_GRACE_BUFFER).coerceAtLeast(0L) / PART_SIZE) * PART_SIZE
+                val shiftOffset = alignedStart.coerceIn(0L, totalSize)
                 Log.i(TAG, "Proxy auto-shifting TDLib download offset for fileId=$fileId to $shiftOffset " +
                         "(requested: $start-$end, prefix: $prefixSize, activeRange: $activeOffset..$activeRangeEnd)")
                 setDownloadOffset(fileId, shiftOffset, tdFile.local.downloadedSize.toLong())
                 TdLibManager.send(TdApi.DownloadFile(fileId, 32, shiftOffset, 0L, false))
+            } else if (!isCompleted && !tdFile.local.isDownloadingActive) {
+                // Ensure initial download is active
+                TdLibManager.send(TdApi.DownloadFile(fileId, 32, start, 0L, false))
             }
 
-            // Resolve file path on disk
+            // Resolve file path on disk — wait up to 30 seconds with notifier
             var filePath = tdFile.local.path
-            if (filePath.isBlank() || !File(filePath).exists()) {
-                val baseDir = TdLibManager.getDatabaseDirectory()
-                val tempPath = if (baseDir.isNotBlank()) "$baseDir/files/temp/$fileId" else ""
-                if (tempPath.isNotBlank() && File(tempPath).exists()) {
-                    filePath = tempPath
-                }
-            }
-
-            // Wait up to 10 seconds for TDLib to allocate file on disk if necessary
             var waitAttempts = 0
-            while ((filePath.isBlank() || !File(filePath).exists()) && waitAttempts < 50 && isActive) {
-                delay(200L)
+            while ((filePath.isBlank() || !File(filePath).exists()) && waitAttempts < 60 && isActive) {
+                // Ensure download is requested periodically
+                if (waitAttempts % 4 == 0) {
+                    TdLibManager.send(TdApi.DownloadFile(fileId, 32, start, 0L, false))
+                }
+                synchronized(TdLibMediaProvider.fileUpdateNotifier) {
+                    try {
+                        (TdLibMediaProvider.fileUpdateNotifier as java.lang.Object).wait(500L)
+                    } catch (_: Exception) {}
+                }
                 val check = TdLibManager.send(TdApi.GetFile(fileId))
                 if (check is TdApi.File) {
                     tdFile = check
@@ -384,7 +420,8 @@ object StreamingProxyServer {
 
             val diskFile = if (filePath.isNotBlank()) File(filePath) else null
             if (diskFile == null || !diskFile.exists()) {
-                sendSimpleResponse(socket.getOutputStream(), 404, "Local File Not Ready")
+                Log.e(TAG, "Local file not ready for fileId=$fileId after 30s wait (path='$filePath')")
+                sendSimpleResponse(socket.getOutputStream(), 503, "Local File Initializing")
                 return@withContext
             }
 
@@ -439,20 +476,23 @@ object StreamingProxyServer {
                     if (latestFile.local.isDownloadingCompleted) {
                         isAvailable = true
                     } else if (latestFile.local.downloadedPrefixSize.toLong() >= targetEndOffset) {
+                        // Gap-free prefix available from start
                         isAvailable = true
                     } else {
                         val activeOff = activeDownloadOffsets[fileId] ?: 0L
-                        val baseDown = downloadedSizeAtOffsets[fileId] ?: 0L
-                        val delta = (latestFile.local.downloadedSize.toLong() - baseDown).coerceIn(0L, totalSize)
-                        val availEnd = activeOff + delta
-                        if (currentOffset >= activeOff && targetEndOffset <= availEnd) {
-                            isAvailable = true
+                        if (activeOff > 0L && currentOffset >= activeOff) {
+                            val baseDown = downloadedSizeAtOffsets[fileId] ?: 0L
+                            val delta = (latestFile.local.downloadedSize.toLong() - baseDown).coerceIn(0L, totalSize)
+                            val availEnd = activeOff + delta
+                            if (targetEndOffset <= availEnd) {
+                                isAvailable = true
+                            }
                         }
                     }
 
                     if (!isAvailable) {
                         // Wait on file update notifier for incoming TDLib chunk
-                        var waitDeadline = System.currentTimeMillis() + 20_000L // 20s timeout
+                        val waitDeadline = System.currentTimeMillis() + 25_000L // 25s timeout
                         while (!isAvailable && System.currentTimeMillis() < waitDeadline && isActive) {
                             synchronized(TdLibMediaProvider.fileUpdateNotifier) {
                                 try {
@@ -467,10 +507,12 @@ object StreamingProxyServer {
                                 isAvailable = true
                             } else {
                                 val activeOff = activeDownloadOffsets[fileId] ?: 0L
-                                val baseDown = downloadedSizeAtOffsets[fileId] ?: 0L
-                                val delta = (checkFile.local.downloadedSize.toLong() - baseDown).coerceIn(0L, totalSize)
-                                if (currentOffset >= activeOff && targetEndOffset <= (activeOff + delta)) {
-                                    isAvailable = true
+                                if (activeOff > 0L && currentOffset >= activeOff) {
+                                    val baseDown = downloadedSizeAtOffsets[fileId] ?: 0L
+                                    val delta = (checkFile.local.downloadedSize.toLong() - baseDown).coerceIn(0L, totalSize)
+                                    if (targetEndOffset <= (activeOff + delta)) {
+                                        isAvailable = true
+                                    }
                                 }
                             }
                         }
@@ -478,10 +520,12 @@ object StreamingProxyServer {
                         if (!isAvailable) {
                             // Re-trigger download at current offset if stalled
                             Log.w(TAG, "Proxy waiting for chunks at $currentOffset timed out — re-triggering TDLib download")
-                            val off = (currentOffset - LOOKBEHIND_GRACE_BUFFER).coerceIn(0L, totalSize)
+                            val off = ((currentOffset - LOOKBEHIND_GRACE_BUFFER).coerceAtLeast(0L) / PART_SIZE) * PART_SIZE
                             setDownloadOffset(fileId, off, latestFile.local.downloadedSize.toLong())
                             TdLibManager.send(TdApi.DownloadFile(fileId, 32, off, 0L, false))
-                            delay(500L)
+                            // Do not read corrupted/unwritten bytes; retry availability loop
+                            delay(100L)
+                            continue
                         }
                     }
 
