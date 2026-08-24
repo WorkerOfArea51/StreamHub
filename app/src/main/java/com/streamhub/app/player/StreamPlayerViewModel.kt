@@ -272,25 +272,28 @@ class StreamPlayerViewModel : ViewModel() {
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                     Log.e("StreamPlayerViewModel", "ExoPlayer error", error)
                     val errorInfo = classifyError(error)
-                    _uiState.update {
-                        it.copy(
-                            isBuffering = false,
-                            isPlaying = false,
-                            playerError = errorInfo.message,
-                            playerErrorInfo = errorInfo
-                        )
-                    }
-                    // FIX: Only auto-retry on INITIAL LOAD errors — NOT mid-playback errors.
-                    // If the user was already playing (currentPositionMs > 5000), a retry
-                    // would call setMediaItem() which resets the player and restarts from 0.
-                    // Mid-playback errors should show the error overlay and let the user
-                    // manually tap Retry instead of auto-restarting.
                     val isMidPlayback = _uiState.value.currentPositionMs > 5_000L
-                    if (errorInfo.type == PlayerErrorType.NETWORK &&
-                        errorInfo.canRetry &&
-                        !isMidPlayback &&
-                        autoRetryCount < 2) {
+
+                    // On initial playback startup, auto-retry seamlessly up to 3 times without flashing error dialog
+                    if (errorInfo.canRetry && !isMidPlayback && autoRetryCount < 3) {
+                        _uiState.update {
+                            it.copy(
+                                isBuffering = true,
+                                isPlaying = false,
+                                playerError = null,
+                                playerErrorInfo = null
+                            )
+                        }
                         scheduleAutoRetry()
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                isBuffering = false,
+                                isPlaying = false,
+                                playerError = errorInfo.message,
+                                playerErrorInfo = errorInfo
+                            )
+                        }
                     }
                 }
 
@@ -1051,21 +1054,17 @@ class StreamPlayerViewModel : ViewModel() {
     private var autoRetryJob: Job? = null
 
     private fun scheduleAutoRetry() {
-        if (autoRetryCount >= 2) {
+        if (autoRetryCount >= 3) {
             Log.w("StreamPlayerViewModel", "Auto-retry exhausted ($autoRetryCount attempts) — giving up")
             return
         }
         autoRetryCount++
-        val backoffMs = (1500L * autoRetryCount) // 1.5s, then 3s
+        val backoffMs = if (autoRetryCount == 1) 500L else 1200L
         Log.i("StreamPlayerViewModel", "Scheduling auto-retry #$autoRetryCount in ${backoffMs}ms")
         autoRetryJob?.cancel()
         autoRetryJob = viewModelScope.launch {
             delay(backoffMs)
-            // FIX: Don't clear the error info — keep it visible so the user knows what failed.
-            // Just set isBuffering = true to show the spinner alongside the error overlay.
-            // The error overlay will be dismissed automatically when STATE_READY fires
-            // (via resetRetryCounter → which we should also use to clear error state).
-            _uiState.update { it.copy(isBuffering = true) }
+            _uiState.update { it.copy(isBuffering = true, playerError = null, playerErrorInfo = null) }
             retryCurrentEpisode()
         }
     }

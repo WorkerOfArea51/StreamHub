@@ -119,13 +119,20 @@ object StorageCacheManager {
                         val path = file.absolutePath.lowercase()
                         val rawLen = file.length()
                         
-                        // If file is an active TDLib file, use actual downloaded size rather than pre-allocated sparse size
-                        val fileId = TdLibMediaProvider.getFileIdForPath(file.absolutePath)
-                        val cachedTdFile = fileId?.let { StreamingProxyServer.getCachedFile(it) }
-                        val effectiveLen = if (cachedTdFile != null && !cachedTdFile.local.isDownloadingCompleted) {
-                            cachedTdFile.local.downloadedSize.toLong().coerceIn(0L, rawLen)
-                        } else {
-                            rawLen
+                        // Use Linux native filesystem block allocation (stat.st_blocks * 512) to measure REAL allocated disk bytes
+                        // This guarantees 100% exact cache size for TDLib sparse/pre-allocated files without fake container sizes
+                        val effectiveLen = try {
+                            val stat = android.system.Os.stat(file.absolutePath)
+                            val allocatedBytes = stat.st_blocks * 512L
+                            minOf(allocatedBytes, rawLen).coerceAtLeast(0L)
+                        } catch (_: Exception) {
+                            val fileId = TdLibMediaProvider.getFileIdForPath(file.absolutePath)
+                            val cachedTdFile = fileId?.let { StreamingProxyServer.getCachedFile(it) }
+                            if (cachedTdFile != null && !cachedTdFile.local.isDownloadingCompleted) {
+                                cachedTdFile.local.downloadedSize.toLong().coerceIn(0L, rawLen)
+                            } else {
+                                rawLen
+                            }
                         }
 
                         when {
@@ -200,11 +207,18 @@ object StorageCacheManager {
                     )
                 }
 
-                // 2. Delete unreferenced / orphaned files from tdlib video directory
+                // 2. Delete unreferenced / orphaned files from tdlib video, document, and temp directories
                 val tdlibDir = File(appContext.filesDir, "tdlib")
-                val videosDir = File(tdlibDir, "videos")
-                if (videosDir.exists()) {
-                    videosDir.listFiles()?.forEach { f -> runCatching { f.delete() } }
+                val targetDirs = listOf("videos", "documents", "animations", "temp")
+                for (dirName in targetDirs) {
+                    val dir = File(tdlibDir, dirName)
+                    if (dir.exists()) {
+                        dir.walkTopDown().forEach { f ->
+                            if (f.isFile && !f.name.endsWith(".binlog") && !f.name.endsWith(".db")) {
+                                runCatching { f.delete() }
+                            }
+                        }
+                    }
                 }
 
                 // 3. Ask ExoPlayer's StreamCacheManager to release + clear
