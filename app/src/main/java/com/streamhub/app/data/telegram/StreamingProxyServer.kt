@@ -512,27 +512,35 @@ object StreamingProxyServer {
                     val deliverable = (availableEndOffset - currentOffset).coerceIn(0L, remainingInResponse)
                     val bytesToRead = minOf(CHUNK_SIZE.toLong(), deliverable).toInt()
 
+                    var readBytes = 0
                     if (bytesToRead > 0) {
-                        // Immediately deliver available bytes to client socket with zero wait
-                        raf.seek(currentOffset)
-                        val readBytes = raf.read(buffer, 0, bytesToRead)
-                        if (readBytes > 0) {
-                            out.write(buffer, 0, readBytes)
-                            out.flush()
-                            sentBytes += readBytes
-                            currentOffset += readBytes
-                            continue
+                        try {
+                            raf.seek(currentOffset)
+                            readBytes = raf.read(buffer, 0, bytesToRead)
+                        } catch (e: Exception) {
+                            readBytes = 0
                         }
                     }
 
-                    // We are at the leading edge of downloaded bytes — wait on file update notifier
+                    if (readBytes > 0) {
+                        // Immediately deliver available bytes to client socket with zero wait
+                        out.write(buffer, 0, readBytes)
+                        out.flush()
+                        sentBytes += readBytes
+                        currentOffset += readBytes
+                        requestLastActive[fileId]?.put(reqId, System.currentTimeMillis())
+                        continue
+                    }
+
+                    // We are waiting for TDLib to download / flush bytes to disk
                     var newlyAvailable = false
                     val waitDeadline = System.currentTimeMillis() + 25_000L // 25s timeout
+                    val startWaitDown = latestFile.local.downloadedSize.toLong()
 
                     while (!newlyAvailable && System.currentTimeMillis() < waitDeadline && isActive) {
                         synchronized(TdLibMediaProvider.fileUpdateNotifier) {
                             try {
-                                (TdLibMediaProvider.fileUpdateNotifier as java.lang.Object).wait(200L)
+                                (TdLibMediaProvider.fileUpdateNotifier as java.lang.Object).wait(250L)
                             } catch (_: Exception) {}
                         }
 
@@ -554,7 +562,7 @@ object StreamingProxyServer {
                                 else -> chkPrefix
                             }
 
-                            if (chkAvailEnd > currentOffset) {
+                            if (chkDown > startWaitDown || chkAvailEnd > currentOffset) {
                                 newlyAvailable = true
                             }
                         }
@@ -566,7 +574,7 @@ object StreamingProxyServer {
                         val off = ((currentOffset - LOOKBEHIND_GRACE_BUFFER).coerceAtLeast(0L) / PART_SIZE) * PART_SIZE
                         setDownloadOffset(fileId, off, latestFile.local.downloadedSize.toLong())
                         TdLibManager.send(TdApi.DownloadFile(fileId, 32, off, 0L, false))
-                        delay(100L)
+                        delay(150L)
                     }
                     requestLastActive[fileId]?.put(reqId, System.currentTimeMillis())
                 }
