@@ -427,7 +427,7 @@ object StreamingProxyServer {
 
             // Determine Content-Type
             val queryName = queryParams["name"] ?: diskFile.name
-            val contentType = guessContentType(queryName)
+            val contentType = guessContentType(queryName, diskFile)
             val responseLength = (end - start + 1L).coerceIn(0L, totalSize)
             val statusCode = if (rangeHeader != null) 206 else 200
             val statusMessage = if (rangeHeader != null) "Partial Content" else "OK"
@@ -577,9 +577,9 @@ object StreamingProxyServer {
         return map
     }
 
-    private fun guessContentType(name: String): String {
+    private fun guessContentType(name: String, file: File? = null): String {
         val lower = name.lowercase()
-        return when {
+        val fromExt = when {
             lower.endsWith(".mkv") -> "video/x-matroska"
             lower.endsWith(".webm") -> "video/webm"
             lower.endsWith(".avi") -> "video/x-msvideo"
@@ -588,8 +588,43 @@ object StreamingProxyServer {
             lower.endsWith(".3gp") -> "video/3gpp"
             lower.endsWith(".m4v") -> "video/x-m4v"
             lower.endsWith(".ts") -> "video/mp2t"
-            else -> "video/mp4"
+            lower.endsWith(".mp4") -> "video/mp4"
+            else -> null
         }
+        if (fromExt != null) return fromExt
+
+        // Sniff container magic bytes if extension not present in name (e.g. temp/5)
+        if (file != null && file.exists() && file.length() >= 8) {
+            try {
+                RandomAccessFile(file, "r").use { r ->
+                    val header = ByteArray(16)
+                    val read = r.read(header)
+                    if (read >= 4) {
+                        // Matroska / WebM EBML Header: 0x1A 0x45 0xDF 0xA3
+                        if (header[0] == 0x1A.toByte() && header[1] == 0x45.toByte() &&
+                            header[2] == 0xDF.toByte() && header[3] == 0xA3.toByte()
+                        ) {
+                            return "video/x-matroska"
+                        }
+                        // FLV: "FLV"
+                        if (header[0] == 0x46.toByte() && header[1] == 0x4C.toByte() && header[2] == 0x56.toByte()) {
+                            return "video/x-flv"
+                        }
+                        // MPEG-TS: 0x47
+                        if (header[0] == 0x47.toByte()) {
+                            return "video/mp2t"
+                        }
+                        // MP4: 'ftyp' atom at offset 4
+                        if (read >= 8 && header[4] == 0x66.toByte() && header[5] == 0x74.toByte() &&
+                            header[6] == 0x79.toByte() && header[7] == 0x70.toByte()
+                        ) {
+                            return "video/mp4"
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        return "video/mp4"
     }
 
     private fun sendSimpleResponse(out: OutputStream, statusCode: Int, message: String) {

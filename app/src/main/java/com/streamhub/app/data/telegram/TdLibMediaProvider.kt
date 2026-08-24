@@ -140,7 +140,8 @@ object TdLibMediaProvider {
             if (msg != null) {
                 val file = extractVideoFile(msg)
                 if (file != null) {
-                    return processFileForStreaming(file, msg.id)
+                    val name = extractVideoFileName(msg)
+                    return processFileForStreaming(file, msg.id, name)
                 }
             }
         }
@@ -180,7 +181,8 @@ object TdLibMediaProvider {
             return TelegramStreamResult.Failed("Message $messageId does not contain a video file.")
         }
 
-        return processFileForStreaming(file, message.id)
+        val name = extractVideoFileName(message)
+        return processFileForStreaming(file, message.id, name)
     }
 
     private val filePathToFileId = java.util.concurrent.ConcurrentHashMap<String, Int>()
@@ -209,7 +211,7 @@ object TdLibMediaProvider {
     /**
      * Process an extracted video file for streaming (cached or downloading).
      */
-    private suspend fun processFileForStreaming(file: TdApi.File, messageId: Long): TelegramStreamResult {
+    private suspend fun processFileForStreaming(file: TdApi.File, messageId: Long, fileName: String? = null): TelegramStreamResult {
         val localPath = file.local.path
         if (localPath.isNotBlank()) {
             filePathToFileId[localPath] = file.id
@@ -230,7 +232,7 @@ object TdLibMediaProvider {
 
         // Route streaming through Local HTTP Streaming Proxy (TelStream architecture)
         StreamingProxyServer.start()
-        val proxyUrl = StreamingProxyServer.getProxyUrl(file.id)
+        val proxyUrl = StreamingProxyServer.getProxyUrl(file.id, fileName)
 
         // Ensure download is active in TDLib
         if (!file.local.isDownloadingCompleted) {
@@ -246,7 +248,7 @@ object TdLibMediaProvider {
      * Download a TDLib file and wait for it to be ready for streaming.
      */
     private suspend fun downloadFileForStreaming(file: TdApi.File, messageId: Long): TelegramStreamResult {
-        return processFileForStreaming(file, messageId)
+        return processFileForStreaming(file, messageId, null)
     }
 
     /**
@@ -499,6 +501,15 @@ object TdLibMediaProvider {
                 Log.w(TAG, "Message ${message.id} has unsupported content type: ${content::class.simpleName}")
                 null
             }
+        }
+    }
+
+    private fun extractVideoFileName(message: TdApi.Message): String? {
+        return when (val content = message.content) {
+            is TdApi.MessageVideo -> content.video.fileName.takeIf { it.isNotBlank() }
+            is TdApi.MessageDocument -> content.document.fileName.takeIf { it.isNotBlank() }
+            is TdApi.MessageAnimation -> content.animation.fileName.takeIf { it.isNotBlank() }
+            else -> null
         }
     }
 

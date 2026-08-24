@@ -29,4 +29,10 @@
             <certificates src="system" />
         </trust-anchors>
     </domain-config>
+
+    <!-- Local loopback streaming proxy (TelStream architecture) -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">localhost</domain>
+    </domain-config>
 </network-security-config>
