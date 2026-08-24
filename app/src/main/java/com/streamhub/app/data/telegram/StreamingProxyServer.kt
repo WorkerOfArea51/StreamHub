@@ -488,92 +488,87 @@ object StreamingProxyServer {
                 val buffer = ByteArray(CHUNK_SIZE)
 
                 while (sentBytes < responseLength && isActive) {
-                    val chunkNeeded = (responseLength - sentBytes).coerceAtMost(CHUNK_SIZE.toLong()).toInt()
-                    if (chunkNeeded <= 0) break
+                    val remainingInResponse = responseLength - sentBytes
+                    if (remainingInResponse <= 0) break
 
-                    val targetEndOffset = currentOffset + chunkNeeded
-
-                    // Check availability of this chunk
-                    var isAvailable = false
+                    // Calculate available bytes on disk right now
                     val latestFile: TdApi.File = fileStates[fileId] ?: initialTdFile
+                    val isCompleted = latestFile.local.isDownloadingCompleted
+                    val prefix = latestFile.local.downloadedPrefixSize.toLong()
+                    val currentDown = latestFile.local.downloadedSize.toLong()
+                    val activeOff = activeDownloadOffsets[fileId] ?: 0L
 
-                    if (latestFile.local.isDownloadingCompleted) {
-                        isAvailable = true
-                    } else {
-                        val prefix = latestFile.local.downloadedPrefixSize.toLong()
-                        val currentDown = latestFile.local.downloadedSize.toLong()
-                        val activeOff = activeDownloadOffsets[fileId] ?: 0L
-
-                        if (targetEndOffset <= prefix) {
-                            isAvailable = true
-                        } else if (activeOff == 0L && targetEndOffset <= currentDown) {
-                            isAvailable = true
-                        } else if (activeOff > 0L && currentOffset >= activeOff) {
+                    val availableEndOffset = when {
+                        isCompleted -> totalSize
+                        activeOff == 0L -> maxOf(prefix, currentDown)
+                        currentOffset >= activeOff -> {
                             val baseDown = downloadedSizeAtOffsets[fileId] ?: 0L
                             val delta = (currentDown - baseDown).coerceIn(0L, totalSize)
-                            val availEnd = activeOff + delta
-                            if (targetEndOffset <= availEnd) {
-                                isAvailable = true
-                            }
+                            maxOf(prefix, activeOff + delta)
                         }
+                        else -> prefix
                     }
 
-                    if (!isAvailable) {
-                        // Wait on file update notifier for incoming TDLib chunk
-                        val waitDeadline = System.currentTimeMillis() + 25_000L // 25s timeout
-                        while (!isAvailable && System.currentTimeMillis() < waitDeadline && isActive) {
-                            synchronized(TdLibMediaProvider.fileUpdateNotifier) {
-                                try {
-                                    (TdLibMediaProvider.fileUpdateNotifier as java.lang.Object).wait(250L)
-                                } catch (_: Exception) {}
-                            }
+                    val deliverable = (availableEndOffset - currentOffset).coerceIn(0L, remainingInResponse)
+                    val bytesToRead = minOf(CHUNK_SIZE.toLong(), deliverable).toInt()
 
-                            val checkFile: TdApi.File = fileStates[fileId] ?: latestFile
-                            if (checkFile.local.isDownloadingCompleted) {
-                                isAvailable = true
-                            } else {
-                                val prefix = checkFile.local.downloadedPrefixSize.toLong()
-                                val currentDown = checkFile.local.downloadedSize.toLong()
-                                val activeOff = activeDownloadOffsets[fileId] ?: 0L
-
-                                if (targetEndOffset <= prefix) {
-                                    isAvailable = true
-                                } else if (activeOff == 0L && targetEndOffset <= currentDown) {
-                                    isAvailable = true
-                                } else if (activeOff > 0L && currentOffset >= activeOff) {
-                                    val baseDown = downloadedSizeAtOffsets[fileId] ?: 0L
-                                    val delta = (currentDown - baseDown).coerceIn(0L, totalSize)
-                                    val availEnd = activeOff + delta
-                                    if (targetEndOffset <= availEnd) {
-                                        isAvailable = true
-                                    }
-                                }
-                            }
-                        }
-
-                        if (!isAvailable) {
-                            // Re-trigger download at current offset if stalled
-                            Log.w(TAG, "Proxy waiting for chunks at $currentOffset timed out — re-triggering TDLib download")
-                            val off = ((currentOffset - LOOKBEHIND_GRACE_BUFFER).coerceAtLeast(0L) / PART_SIZE) * PART_SIZE
-                            setDownloadOffset(fileId, off, latestFile.local.downloadedSize.toLong())
-                            TdLibManager.send(TdApi.DownloadFile(fileId, 32, off, 0L, false))
-                            // Do not read corrupted/unwritten bytes; retry availability loop
-                            delay(100L)
+                    if (bytesToRead > 0) {
+                        // Immediately deliver available bytes to client socket with zero wait
+                        raf.seek(currentOffset)
+                        val readBytes = raf.read(buffer, 0, bytesToRead)
+                        if (readBytes > 0) {
+                            out.write(buffer, 0, readBytes)
+                            out.flush()
+                            sentBytes += readBytes
+                            currentOffset += readBytes
                             continue
                         }
                     }
 
-                    raf.seek(currentOffset)
-                    val readBytes = raf.read(buffer, 0, chunkNeeded)
-                    if (readBytes > 0) {
-                        out.write(buffer, 0, readBytes)
-                        out.flush()
-                        sentBytes += readBytes
-                        currentOffset += readBytes
-                        requestLastActive[fileId]?.put(reqId, System.currentTimeMillis())
-                    } else {
-                        delay(50L)
+                    // We are at the leading edge of downloaded bytes — wait on file update notifier
+                    var newlyAvailable = false
+                    val waitDeadline = System.currentTimeMillis() + 25_000L // 25s timeout
+
+                    while (!newlyAvailable && System.currentTimeMillis() < waitDeadline && isActive) {
+                        synchronized(TdLibMediaProvider.fileUpdateNotifier) {
+                            try {
+                                (TdLibMediaProvider.fileUpdateNotifier as java.lang.Object).wait(200L)
+                            } catch (_: Exception) {}
+                        }
+
+                        val checkFile: TdApi.File = fileStates[fileId] ?: latestFile
+                        if (checkFile.local.isDownloadingCompleted) {
+                            newlyAvailable = true
+                        } else {
+                            val chkPrefix = checkFile.local.downloadedPrefixSize.toLong()
+                            val chkDown = checkFile.local.downloadedSize.toLong()
+                            val chkActiveOff = activeDownloadOffsets[fileId] ?: 0L
+
+                            val chkAvailEnd = when {
+                                chkActiveOff == 0L -> maxOf(chkPrefix, chkDown)
+                                currentOffset >= chkActiveOff -> {
+                                    val baseDown = downloadedSizeAtOffsets[fileId] ?: 0L
+                                    val delta = (chkDown - baseDown).coerceIn(0L, totalSize)
+                                    maxOf(chkPrefix, chkActiveOff + delta)
+                                }
+                                else -> chkPrefix
+                            }
+
+                            if (chkAvailEnd > currentOffset) {
+                                newlyAvailable = true
+                            }
+                        }
                     }
+
+                    if (!newlyAvailable) {
+                        // Stalled timeout — re-request download at current offset
+                        Log.w(TAG, "Proxy waiting for bytes at $currentOffset timed out — re-triggering TDLib download")
+                        val off = ((currentOffset - LOOKBEHIND_GRACE_BUFFER).coerceAtLeast(0L) / PART_SIZE) * PART_SIZE
+                        setDownloadOffset(fileId, off, latestFile.local.downloadedSize.toLong())
+                        TdLibManager.send(TdApi.DownloadFile(fileId, 32, off, 0L, false))
+                        delay(100L)
+                    }
+                    requestLastActive[fileId]?.put(reqId, System.currentTimeMillis())
                 }
             } catch (e: SocketException) {
                 // Client closed socket (normal during seek / cancel)

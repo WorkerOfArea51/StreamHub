@@ -174,16 +174,13 @@ class StreamPlayerViewModel : ViewModel() {
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)
                     .build()
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
-                    // FIX: Sane, memory-safe buffer durations.
-                    // 5-min forward (300s) + 3-min back (180s) buffer with prioritizeTimeOverSizeThresholds=true
-                    // consumed 300MB+ of JVM heap on HD streams, causing Dalvik OOM crash.
-                    // 25s forward + 15s back with 32MB target buffer bytes provides ultra-smooth,
-                    // zero-lag playback while using less than 10% of heap.
+                    // Progressive low-latency startup: start playback as soon as initial keyframes arrive (250ms),
+                    // while buffering up to 35s ahead in background for flawless continuous playback.
                     .setBufferDurationsMs(
                         15_000, // minBufferMs
                         35_000, // maxBufferMs
-                        1_000,  // bufferForPlaybackMs
-                        2_000   // bufferForPlaybackAfterRebufferMs
+                        250,    // bufferForPlaybackMs (instant startup)
+                        1_000   // bufferForPlaybackAfterRebufferMs
                     )
                     .setBackBuffer(15_000, true)
                     .setPrioritizeTimeOverSizeThresholds(false)
