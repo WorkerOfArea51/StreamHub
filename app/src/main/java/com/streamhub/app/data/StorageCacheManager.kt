@@ -7,6 +7,8 @@ import android.os.StatFs
 import android.util.Log
 import coil.Coil
 import com.streamhub.app.data.telegram.TdLibManager
+import com.streamhub.app.data.telegram.TdLibMediaProvider
+import com.streamhub.app.data.telegram.StreamingProxyServer
 import com.streamhub.app.player.StreamCacheManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -115,17 +117,27 @@ object StorageCacheManager {
                     tdlibDir.walkTopDown().forEach { file ->
                         if (!file.isFile) return@forEach
                         val path = file.absolutePath.lowercase()
-                        val len = file.length()
+                        val rawLen = file.length()
+                        
+                        // If file is an active TDLib file, use actual downloaded size rather than pre-allocated sparse size
+                        val fileId = TdLibMediaProvider.getFileIdForPath(file.absolutePath)
+                        val cachedTdFile = fileId?.let { StreamingProxyServer.getCachedFile(it) }
+                        val effectiveLen = if (cachedTdFile != null && !cachedTdFile.local.isDownloadingCompleted) {
+                            cachedTdFile.local.downloadedSize.toLong().coerceIn(0L, rawLen)
+                        } else {
+                            rawLen
+                        }
+
                         when {
                             path.contains("videos") || path.contains("documents") ||
-                            (path.contains("temp") && len > LARGE_FILE_THRESHOLD_BYTES) -> {
-                                videoBytes += len
+                            (path.contains("temp") && effectiveLen > LARGE_FILE_THRESHOLD_BYTES) -> {
+                                videoBytes += effectiveLen
                             }
                             path.contains("photos") || path.contains("thumbnails") -> {
-                                imageBytes += len
+                                imageBytes += effectiveLen
                             }
                             else -> {
-                                appDataBytes += len
+                                appDataBytes += effectiveLen
                             }
                         }
                     }
@@ -172,35 +184,31 @@ object StorageCacheManager {
     }
 
     /**
-     * FIX: Acquire mutex + ask TDLib to optimize storage (atomic from TDLib's perspective)
-     * instead of walking the file tree and calling file.delete() on files that may be open.
-     *
-     * FIX (regression): Return false if StreamCacheManager.clearCache deferred the clear
-     * (active readers). Previously this function returned true unconditionally, so the UI
-     * showed "Cache cleared" even though the cache was still full.
+     * Clear Video Stream Cache.
      */
     suspend fun clearVideoCache(): Boolean = withContext(Dispatchers.IO) {
         clearMutex.withLock {
             try {
-                // 1. Ask TDLib to optimize storage — size=1L means delete all files of specified types.
+                // 1. Ask TDLib to optimize storage — size=0L means delete all files of specified types.
                 runCatching {
                     TdLibManager.send(
                         TdApi.OptimizeStorage(
-                            1L, 0, 0, 0,
+                            0L, 0, 0, 0,
                             arrayOf(TdApi.FileTypeVideo(), TdApi.FileTypeDocument(), TdApi.FileTypeAnimation()),
                             null, null, false, 0
                         )
                     )
                 }
 
-                // 2. Ask ExoPlayer's StreamCacheManager to release + clear (defers if readers active).
-                val cacheCleared = StreamCacheManager.clearCache(appContext)
-                if (!cacheCleared) {
-                    Log.w(TAG, "ExoPlayer cache clear deferred — video is currently playing")
-                    // Signal to the UI that the clear was deferred.
-                    calculateStorageUsage()
-                    return@withLock false
+                // 2. Delete unreferenced / orphaned files from tdlib video directory
+                val tdlibDir = File(appContext.filesDir, "tdlib")
+                val videosDir = File(tdlibDir, "videos")
+                if (videosDir.exists()) {
+                    videosDir.listFiles()?.forEach { f -> runCatching { f.delete() } }
                 }
+
+                // 3. Ask ExoPlayer's StreamCacheManager to release + clear
+                StreamCacheManager.clearCache(appContext)
 
                 calculateStorageUsage()
                 true
