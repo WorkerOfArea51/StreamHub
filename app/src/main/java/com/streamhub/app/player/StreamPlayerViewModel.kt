@@ -174,17 +174,20 @@ class StreamPlayerViewModel : ViewModel() {
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)
                     .build()
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
-                    // Progressive low-latency startup: start playback as soon as initial keyframes arrive (250ms),
-                    // while buffering up to 35s ahead in background for flawless continuous playback.
+                    // TelStream aggressive progressive buffering:
+                    // - Instant start in 250ms on first keyframe arrival.
+                    // - Aggressively buffers up to 5 minutes (300,000ms) ahead on network.
+                    // - 60s retained back-buffer for instant rewind.
+                    // - Prioritizes buffer time ahead of playhead for continuous stutter-free playback.
                     .setBufferDurationsMs(
-                        15_000, // minBufferMs
-                        35_000, // maxBufferMs
-                        250,    // bufferForPlaybackMs (instant startup)
-                        1_000   // bufferForPlaybackAfterRebufferMs
+                        60_000,  // minBufferMs (60s minimum buffer)
+                        300_000, // maxBufferMs (up to 5 minutes buffer ahead)
+                        250,     // bufferForPlaybackMs (instant start in 250ms)
+                        1_000    // bufferForPlaybackAfterRebufferMs (1s on rebuffer)
                     )
-                    .setBackBuffer(15_000, true)
-                    .setPrioritizeTimeOverSizeThresholds(false)
-                    .setTargetBufferBytes(32 * 1024 * 1024) // 32 MB cap
+                    .setBackBuffer(60_000, true) // 60s retained back-buffer
+                    .setPrioritizeTimeOverSizeThresholds(true)
+                    .setTargetBufferBytes(128 * 1024 * 1024) // 128 MB target buffer pool
                     .build()
                 ExoPlayer.Builder(context)
                     .setTrackSelector(trackSelector!!)
