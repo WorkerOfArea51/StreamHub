@@ -221,12 +221,14 @@ object TdLibMediaProvider {
         StreamingProxyServer.cacheFileState(file.id, file)
 
         // Check if file is already downloaded and exists on disk
-        if (file.local.isDownloadingCompleted && localPath.isNotBlank()) {
+        if (localPath.isNotBlank()) {
             val f = File(localPath)
             if (f.exists() && f.length() > 0L) {
-                Log.i(TAG, "File already fully cached: $localPath (${file.size} bytes)")
-                synchronized(resolvedFiles) { resolvedFiles.put(messageId, localPath) }
-                return TelegramStreamResult.LocalFile(localPath, file.size)
+                if (file.local.isDownloadingCompleted || (file.size > 0L && f.length() >= file.size)) {
+                    Log.i(TAG, "File already fully cached: $localPath (${file.size} bytes)")
+                    synchronized(resolvedFiles) { resolvedFiles.put(messageId, localPath) }
+                    return TelegramStreamResult.LocalFile(localPath, file.size)
+                }
             }
         }
 

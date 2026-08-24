@@ -77,7 +77,7 @@ fun FrameNavigationCapsule(
     onTakeSnapshot: () -> Unit,
     onOpenSheet: () -> Unit,
     modifier: Modifier = Modifier,
-    buttonSize: Dp = 45.dp
+    buttonSize: Dp = 40.dp
 ) {
     AnimatedContent(
         targetState = isExpanded,
@@ -115,7 +115,7 @@ fun FrameNavigationCapsule(
                                 imageVector = Icons.Default.FastRewind,
                                 contentDescription = "Previous Frame",
                                 tint = Color.White,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
@@ -152,7 +152,7 @@ fun FrameNavigationCapsule(
                                     imageVector = Icons.Default.CameraAlt,
                                     contentDescription = "Take Snapshot",
                                     tint = Color(0xFFD0BCFF),
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
@@ -172,7 +172,7 @@ fun FrameNavigationCapsule(
                                 imageVector = Icons.Default.FastForward,
                                 contentDescription = "Next Frame",
                                 tint = Color.White,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
@@ -198,13 +198,14 @@ fun FrameNavigationCapsule(
                 }
             }
         } else {
-            // Collapsed Camera Button
+            // Collapsed Camera Button matching other 40.dp controls exactly
             ControlsButton(
                 icon = Icons.Default.CameraAlt,
                 onClick = onToggleExpand,
                 onLongClick = onOpenSheet,
                 title = "Frame Controls",
                 size = buttonSize,
+                iconSize = 18.dp,
                 color = Color.White
             )
         }

@@ -228,12 +228,17 @@ object StreamingProxyServer {
         if (file.local.isDownloadingCompleted) return true
 
         val prefixSize = file.local.downloadedPrefixSize.toLong()
-        if (end <= prefixSize) return true
-
+        val totalDown = file.local.downloadedSize.toLong()
         val activeOffset = activeDownloadOffsets[fileId] ?: 0L
+
+        // Contiguous from offset 0
+        val effectivePrefix = if (activeOffset == 0L) maxOf(prefixSize, totalDown) else prefixSize
+        if (end <= effectivePrefix) return true
+
+        // Active download window
         if (activeOffset > 0L && start >= activeOffset) {
             val baseDownloaded = downloadedSizeAtOffsets[fileId] ?: 0L
-            val downloadedDelta = (file.local.downloadedSize.toLong() - baseDownloaded).coerceIn(0L, file.size)
+            val downloadedDelta = (totalDown - baseDownloaded).coerceIn(0L, file.size)
             val activeRangeEnd = activeOffset + downloadedDelta
             return end <= activeRangeEnd
         }
@@ -375,7 +380,7 @@ object StreamingProxyServer {
             val downloadedDelta = (tdFile.local.downloadedSize.toLong() - baseDownloaded).coerceIn(0L, totalSize)
             val activeRangeEnd = activeOffset + downloadedDelta
 
-            val isWithinPrefix = start < prefixSize
+            val isWithinPrefix = start < prefixSize || (activeOffset == 0L && start < tdFile.local.downloadedSize.toLong())
             val isWithinActiveRange = start in activeOffset..(activeRangeEnd + FORWARD_THRESHOLD)
 
             // Tail probe check (e.g. MP4 moov atom probe near end of file)
@@ -494,14 +499,18 @@ object StreamingProxyServer {
 
                     if (latestFile.local.isDownloadingCompleted) {
                         isAvailable = true
-                    } else if (latestFile.local.downloadedPrefixSize.toLong() >= targetEndOffset) {
-                        // Gap-free prefix available from start
-                        isAvailable = true
                     } else {
+                        val prefix = latestFile.local.downloadedPrefixSize.toLong()
+                        val currentDown = latestFile.local.downloadedSize.toLong()
                         val activeOff = activeDownloadOffsets[fileId] ?: 0L
-                        if (activeOff > 0L && currentOffset >= activeOff) {
+
+                        if (targetEndOffset <= prefix) {
+                            isAvailable = true
+                        } else if (activeOff == 0L && targetEndOffset <= currentDown) {
+                            isAvailable = true
+                        } else if (activeOff > 0L && currentOffset >= activeOff) {
                             val baseDown = downloadedSizeAtOffsets[fileId] ?: 0L
-                            val delta = (latestFile.local.downloadedSize.toLong() - baseDown).coerceIn(0L, totalSize)
+                            val delta = (currentDown - baseDown).coerceIn(0L, totalSize)
                             val availEnd = activeOff + delta
                             if (targetEndOffset <= availEnd) {
                                 isAvailable = true
@@ -520,16 +529,22 @@ object StreamingProxyServer {
                             }
 
                             val checkFile: TdApi.File = fileStates[fileId] ?: latestFile
-                            if (checkFile.local.isDownloadingCompleted ||
-                                checkFile.local.downloadedPrefixSize.toLong() >= targetEndOffset
-                            ) {
+                            if (checkFile.local.isDownloadingCompleted) {
                                 isAvailable = true
                             } else {
+                                val prefix = checkFile.local.downloadedPrefixSize.toLong()
+                                val currentDown = checkFile.local.downloadedSize.toLong()
                                 val activeOff = activeDownloadOffsets[fileId] ?: 0L
-                                if (activeOff > 0L && currentOffset >= activeOff) {
+
+                                if (targetEndOffset <= prefix) {
+                                    isAvailable = true
+                                } else if (activeOff == 0L && targetEndOffset <= currentDown) {
+                                    isAvailable = true
+                                } else if (activeOff > 0L && currentOffset >= activeOff) {
                                     val baseDown = downloadedSizeAtOffsets[fileId] ?: 0L
-                                    val delta = (checkFile.local.downloadedSize.toLong() - baseDown).coerceIn(0L, totalSize)
-                                    if (targetEndOffset <= (activeOff + delta)) {
+                                    val delta = (currentDown - baseDown).coerceIn(0L, totalSize)
+                                    val availEnd = activeOff + delta
+                                    if (targetEndOffset <= availEnd) {
                                         isAvailable = true
                                     }
                                 }

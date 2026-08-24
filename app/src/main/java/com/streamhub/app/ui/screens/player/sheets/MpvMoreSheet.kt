@@ -131,46 +131,6 @@ fun MpvMoreSheet(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Video Color Filter Card (Navigate to full filters sheet)
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0x18FFFFFF),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { onOpenVideoFiltersSheet() }
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Sync,
-                            contentDescription = null,
-                            tint = Color(0xFFD0BCFF),
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Video Color Filters & Presets", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            Text("12 cinematic presets, brightness, saturation, contrast", color = TextSecondary, fontSize = 10.sp)
-                        }
-                    }
-                    Text(
-                        text = "Configure ▸",
-                        color = Color(0xFFD0BCFF),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
             // Stats for Nerds Card
             Surface(
                 shape = RoundedCornerShape(12.dp),
