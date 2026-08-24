@@ -360,7 +360,7 @@ fun AdminEditorDialog(
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = if (isFeatured) "⭐ Featured Hero" else "Feature Show",
+                                        text = if (isFeatured) "Featured Hero" else "Feature Show",
                                         color = if (isFeatured) Color(0xFFFFD700) else TextSecondary,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold
@@ -389,7 +389,7 @@ fun AdminEditorDialog(
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = if (isTrending) "🔥 Trending Now" else "Set Trending",
+                                        text = if (isTrending) "Trending Now" else "Set Trending",
                                         color = if (isTrending) PrimaryRed else TextSecondary,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold
@@ -479,7 +479,7 @@ fun AdminEditorDialog(
                             } else {
                                 Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("✨ Auto-Fetch Metadata by Title", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Auto-Fetch Metadata by Title", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
 
@@ -635,7 +635,7 @@ fun AdminEditorDialog(
                                     } else {
                                         Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Text("⚡ Attach & Auto-Fetch Specs", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text("Attach & Auto-Fetch Specs", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
 
@@ -778,7 +778,7 @@ fun AdminEditorDialog(
                                 ) {
                                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("⚡ Index Episode Range", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("Index Episode Range", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
 
                                 if (startBatchLink.isNotBlank() || endBatchLink.isNotBlank() || generatedEpisodesText.isNotBlank()) {

@@ -41,7 +41,6 @@ import com.streamhub.app.ui.screens.settings.NotificationAlertCard
 import com.streamhub.app.ui.screens.settings.ProxySettingsEntryCard
 import com.streamhub.app.ui.screens.settings.ScreenshotPathCard
 import com.streamhub.app.ui.screens.settings.SpeedTestCard
-import com.streamhub.app.ui.screens.settings.SubtitleAppearanceCard
 import com.streamhub.app.ui.screens.settings.ThemeAccentCard
 import com.streamhub.app.ui.screens.settings.VideoSettingsEntryCard
 import com.streamhub.app.ui.theme.BackgroundDark

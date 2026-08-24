@@ -1,6 +1,7 @@
 package com.streamhub.app.ui.screens
 
 import android.widget.Toast
+import com.streamhub.app.ui.components.ToastManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -185,7 +186,7 @@ fun StorageManagementScreen(
                                     ok -> "Video stream cache cleared"
                                     else -> "Cache will clear automatically when playback ends"
                                 }
-                                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                ToastManager.showToast(message, if (ok) Icons.Default.CloudDone else Icons.Default.Refresh)
                             }
                         }
                     )
@@ -206,11 +207,10 @@ fun StorageManagementScreen(
                         onAction = {
                             scope.launch {
                                 val ok = StorageCacheManager.clearImageCache()
-                                Toast.makeText(
-                                    context,
+                                ToastManager.showToast(
                                     if (ok) "Image & poster cache cleared" else "Failed to clear image cache",
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                                    if (ok) Icons.Default.CloudDone else Icons.Default.Refresh
+                                )
                             }
                         }
                     )
@@ -467,11 +467,10 @@ fun StorageManagementScreen(
                             scope.launch {
                                 val ok = StorageCacheManager.compactAndOptimizeDatabase()
                                 isOptimizingDb = false
-                                Toast.makeText(
-                                    context,
+                                ToastManager.showToast(
                                     if (ok) "Database compacted & optimized successfully" else "Optimization completed",
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                                    if (ok) Icons.Default.CloudDone else Icons.Default.Speed
+                                )
                             }
                         },
                         enabled = !isOptimizingDb,
@@ -510,7 +509,7 @@ fun StorageManagementScreen(
                     onClick = {
                         scope.launch {
                             StorageCacheManager.clearAllCache()
-                            Toast.makeText(context, "All app cache cleared", Toast.LENGTH_SHORT).show()
+                            ToastManager.showToast("All app cache cleared", Icons.Default.CleaningServices)
                         }
                         showClearAllConfirmDialog = false
                     }

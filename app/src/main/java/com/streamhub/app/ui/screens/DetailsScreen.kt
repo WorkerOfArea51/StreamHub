@@ -2,6 +2,7 @@ package com.streamhub.app.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import com.streamhub.app.ui.components.ToastManager
 import android.util.Log
 import android.view.View
 import android.webkit.WebChromeClient
@@ -841,7 +842,7 @@ fun DetailsScreen(
                             isDownloaded = isDownloaded,
                             onPlay = { onPlayEpisode(mediaItem, originalIndex) },
                             onDownload = { 
-                                android.widget.Toast.makeText(context, "Starting download...", android.widget.Toast.LENGTH_SHORT).show()
+                                ToastManager.showToast("Starting download...", Icons.Default.Download)
                                 DownloadManager.startDownload(context, mediaItem, originalIndex) 
                             }
                         )

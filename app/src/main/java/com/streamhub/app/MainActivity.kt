@@ -71,6 +71,7 @@ import com.streamhub.app.ui.screens.SearchScreen
 import com.streamhub.app.ui.screens.SettingsScreen
 import com.streamhub.app.ui.screens.SplashScreen
 import com.streamhub.app.ui.screens.StorageManagementScreen
+import com.streamhub.app.ui.components.StreamHubToastHost
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.StreamHubTheme
@@ -396,8 +397,9 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
 
     val showBottomBar = bottomBarScreens.any { it.route == currentRoute }
 
-    Scaffold(
-        bottomBar = {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            bottomBar = {
             if (showBottomBar) {
                 NavigationBar(
                     containerColor = SurfaceDark,
@@ -646,6 +648,8 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                 }
             }
         }
+        }
+        StreamHubToastHost()
     }
 }
 

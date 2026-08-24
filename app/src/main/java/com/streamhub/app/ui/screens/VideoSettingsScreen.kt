@@ -38,7 +38,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamhub.app.data.PlayerSettingsManager
-import com.streamhub.app.ui.screens.settings.SubtitleAppearanceCard
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
@@ -86,7 +85,7 @@ fun VideoSettingsScreen(
                 )
             }
             Text(
-                text = "Video & Subtitle Settings",
+                text = "Video Player Settings",
                 color = TextPrimary,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
@@ -99,11 +98,6 @@ fun VideoSettingsScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Subtitle Styling & Appearance
-            item {
-                SubtitleAppearanceCard(currentAccent = currentAccent)
-            }
-
             // Vertical Drag Gesture Controls
             item {
                 Card(

@@ -121,7 +121,7 @@ fun UpdateBanner(
 
             Button(
                 onClick = {
-                    Toast.makeText(context, "Downloading latest APK update...", Toast.LENGTH_SHORT).show()
+                    ToastManager.showToast("Downloading latest APK update...", Icons.Default.Download)
                     AppUpdateManager.startDownload(context)
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
@@ -131,7 +131,7 @@ fun UpdateBanner(
                 Icon(Icons.Default.Download, contentDescription = "Download APK", tint = Color.White)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Download & Install APK 🚀",
+                    text = "Download & Install APK",
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp

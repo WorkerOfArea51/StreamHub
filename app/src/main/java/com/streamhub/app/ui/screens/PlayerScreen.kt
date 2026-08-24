@@ -1308,7 +1308,7 @@ fun PlayerScreen(
                                     onClick = {
                                         val next = !uiState.isBackgroundAudioEnabled
                                         viewModel.setBackgroundAudio(next, context)
-                                        triggerHudPill(if (next) "🎧 Background audio enabled" else "Background audio disabled", Icons.Default.Headphones)
+                                        triggerHudPill(if (next) "Background audio enabled" else "Background audio disabled", Icons.Default.Headphones)
                                     },
                                     size = 40.dp,
                                     iconSize = 18.dp,
@@ -2110,6 +2110,12 @@ private fun MpvHudPill(
     text: String,
     modifier: Modifier = Modifier
 ) {
+    val cleanText = if (icon != null) {
+        val emojiRegex = Regex("^[\\p{So}\\p{Sk}\\p{Sm}\\uD83C-\\uDBFF\\uDC00-\\uDFFF\\u2600-\\u27BF\\uFE0F\\u200D]+\\s*")
+        val stripped = text.replace(emojiRegex, "").trim()
+        if (stripped.isBlank()) text else stripped
+    } else text
+
     Surface(
         shape = RoundedCornerShape(50),
         color = Color(0xDD161624),
@@ -2132,7 +2138,7 @@ private fun MpvHudPill(
                 Spacer(modifier = Modifier.width(8.dp))
             }
             Text(
-                text = text,
+                text = cleanText,
                 color = Color.White,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,

@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Environment
 import android.provider.DocumentsContract
 import android.widget.Toast
+import com.streamhub.app.ui.components.ToastManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -91,12 +92,12 @@ fun DownloadPathCard(currentAccent: AppThemeAccent) {
             val resolved = resolvePathFromTreeUri(uri)
             if (resolved != null) {
                 DownloadManager.setCustomDownloadPath(resolved)
-                Toast.makeText(context, "Download directory set to:\n$resolved", Toast.LENGTH_LONG).show()
+                ToastManager.showToast("Download directory set to:\n$resolved", Icons.Default.Folder)
             } else {
                 val treePath = uri.lastPathSegment?.substringAfter(":") ?: uri.path.orEmpty()
                 val finalPath = "${Environment.getExternalStorageDirectory().absolutePath}/$treePath".removeSuffix("/")
                 DownloadManager.setCustomDownloadPath(finalPath)
-                Toast.makeText(context, "Download directory set to:\n$finalPath", Toast.LENGTH_LONG).show()
+                ToastManager.showToast("Download directory set to:\n$finalPath", Icons.Default.Folder)
             }
         }
     }
@@ -191,7 +192,7 @@ fun DownloadPathCard(currentAccent: AppThemeAccent) {
                     Button(
                         onClick = {
                             DownloadManager.setCustomDownloadPath("")
-                            Toast.makeText(context, "Reset to default download directory", Toast.LENGTH_SHORT).show()
+                            ToastManager.showToast("Reset to default download directory", Icons.Default.Refresh)
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E1E2D)),
                         shape = RoundedCornerShape(8.dp),
@@ -227,12 +228,12 @@ fun ScreenshotPathCard(currentAccent: AppThemeAccent) {
             val resolved = resolvePathFromTreeUri(uri)
             if (resolved != null) {
                 DownloadManager.setCustomScreenshotPath(resolved)
-                Toast.makeText(context, "Screenshot directory set to:\n$resolved", Toast.LENGTH_LONG).show()
+                ToastManager.showToast("Screenshot directory set to:\n$resolved", Icons.Default.CameraAlt)
             } else {
                 val treePath = uri.lastPathSegment?.substringAfter(":") ?: uri.path.orEmpty()
                 val finalPath = "${Environment.getExternalStorageDirectory().absolutePath}/$treePath".removeSuffix("/")
                 DownloadManager.setCustomScreenshotPath(finalPath)
-                Toast.makeText(context, "Screenshot directory set to:\n$finalPath", Toast.LENGTH_LONG).show()
+                ToastManager.showToast("Screenshot directory set to:\n$finalPath", Icons.Default.CameraAlt)
             }
         }
     }
@@ -327,7 +328,7 @@ fun ScreenshotPathCard(currentAccent: AppThemeAccent) {
                     Button(
                         onClick = {
                             DownloadManager.setCustomScreenshotPath("")
-                            Toast.makeText(context, "Reset to default screenshot directory", Toast.LENGTH_SHORT).show()
+                            ToastManager.showToast("Reset to default screenshot directory", Icons.Default.Refresh)
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E1E2D)),
                         shape = RoundedCornerShape(8.dp),

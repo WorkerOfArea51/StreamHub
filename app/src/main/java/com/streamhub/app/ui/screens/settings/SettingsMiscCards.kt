@@ -302,8 +302,8 @@ fun VideoSettingsEntryCard(currentAccent: AppThemeAccent, onNavigateToVideoSetti
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
-                    Text("Video & Subtitle Player Settings 🎬", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text("Gestures, subtitles, skip intro, auto-play next episode", color = TextSecondary, fontSize = 11.sp)
+                    Text("Video Player Settings", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Gestures, skip intro, auto-play next episode", color = TextSecondary, fontSize = 11.sp)
                 }
             }
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open", tint = TextSecondary)
@@ -343,7 +343,7 @@ fun ProxySettingsEntryCard(currentAccent: AppThemeAccent, onClick: () -> Unit) {
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
-                    Text("MTProto & Censorship Bypass Proxy 🛡️", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("MTProto & Censorship Bypass Proxy", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text("Configure MTProto/SOCKS5 server to bypass ISP blocks", color = TextSecondary, fontSize = 11.sp)
                 }
             }
