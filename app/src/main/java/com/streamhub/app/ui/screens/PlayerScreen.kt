@@ -167,6 +167,7 @@ import com.streamhub.app.ui.screens.player.BufferingHud
 import com.streamhub.app.ui.screens.player.DoubleTapSeekOverlay
 import com.streamhub.app.ui.screens.player.PlayerErrorOverlay
 import com.streamhub.app.ui.screens.player.SmartResumePill
+import com.streamhub.app.ui.screens.player.controls.AmbientDiscoIcon
 import com.streamhub.app.ui.screens.player.controls.BrightnessSliderCard
 import com.streamhub.app.ui.screens.player.controls.ControlsButton
 import com.streamhub.app.ui.screens.player.controls.ControlsGroup
@@ -1217,6 +1218,22 @@ fun PlayerScreen(
                                 )
                             }
 
+                            // Ambient Mode (Disco Aura Button - Photo 3 Parity)
+                            ControlsButton(
+                                customIcon = {
+                                    AmbientDiscoIcon(tint = if (isAmbientMode) Color(0xFFD0BCFF) else Color.White)
+                                },
+                                onClick = {
+                                    isAmbientMode = !isAmbientMode
+                                    triggerHudPill(if (isAmbientMode) "Ambience Mode: ON" else "Ambience Mode: OFF", Icons.Default.AutoAwesome)
+                                },
+                                title = "Ambience Mode",
+                                size = 45.dp,
+                                color = if (isAmbientMode) Color(0xFFD0BCFF) else Color.White,
+                                backgroundColor = if (isAmbientMode) Color(0x33D0BCFF) else Color(0x661A1A24),
+                                borderColor = if (isAmbientMode) Color(0xFFD0BCFF) else Color(0x33FFFFFF)
+                            )
+
                             // More Options
                             ControlsButton(
                                 icon = Icons.Default.MoreVert,
@@ -1278,6 +1295,31 @@ fun PlayerScreen(
                     }
                 }
 
+                // ── Floating Screen Lock Button (Left Middle Edge) ──
+                if (errorInfo == null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .align(Alignment.CenterStart)
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start))
+                            .padding(start = 16.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        ControlsButton(
+                            icon = Icons.Default.LockOpen,
+                            onClick = {
+                                viewModel.toggleLock()
+                                triggerHudPill("Controls locked", Icons.Default.Lock)
+                            },
+                            size = 48.dp,
+                            iconSize = 22.dp,
+                            title = "Lock Controls",
+                            backgroundColor = Color(0x991E1E2C),
+                            borderColor = Color(0xFFD0BCFF)
+                        )
+                    }
+                }
+
                 // ── 3. Bottom Controls (Actions Row + MpvSeekbar) ──
                 if (errorInfo == null) {
                     Column(
@@ -1300,7 +1342,7 @@ fun PlayerScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Left Actions Group: BG Audio, Lock, Orientation, Speed, Repeat, Aspect, A-B Repeat
+                            // Left Actions Group: BG Audio, Skip Intro, Orientation, Speed, Repeat, Aspect, A-B Repeat
                             ControlsGroup(spacing = 6.dp) {
                                 // Background Audio (Headphones)
                                 ControlsButton(
@@ -1316,16 +1358,17 @@ fun PlayerScreen(
                                     title = "Background Audio"
                                 )
 
-                                // Screen Lock
+                                // Dedicated Skip Intro Button
+                                val skipIntroSec = playerSettings.skipIntroSeconds
                                 ControlsButton(
-                                    icon = Icons.Default.Lock,
+                                    icon = Icons.Default.FastForward,
                                     onClick = {
-                                        viewModel.toggleLock()
-                                        triggerHudPill(if (!uiState.isLocked) "Controls locked" else "Controls unlocked", Icons.Default.Lock)
+                                        viewModel.skipIntro(skipIntroSec)
+                                        triggerHudPill("Intro Skipped +${skipIntroSec}s", Icons.Default.FastForward)
                                     },
                                     size = 40.dp,
                                     iconSize = 18.dp,
-                                    title = "Lock Controls"
+                                    title = "Skip Intro (+${skipIntroSec}s)"
                                 )
 
                                 // Rotation / Orientation Toggle
@@ -1521,76 +1564,8 @@ fun PlayerScreen(
                                 }
                             }
 
-                            // Right Actions Group: Frame Nav, Zoom Pill, PiP, Night Shield
+                            // Right Actions Group: Zoom Pill, PiP, Frame Nav Capsule (Camera), Night Shield
                             ControlsGroup(spacing = 6.dp) {
-                                // Frame Navigation Capsule (Expandable Step & Snapshot)
-                                FrameNavigationCapsule(
-                                    isExpanded = isFrameNavExpanded,
-                                    isSnapshotLoading = isSnapshotLoading,
-                                    onToggleExpand = { isFrameNavExpanded = !isFrameNavExpanded },
-                                    onStepBackward = { viewModel.seekBackward(100L) },
-                                    onStepForward = { viewModel.seekForward(100L) },
-                                    onTakeSnapshot = {
-                                        val pv = rememberPlayerViewRef
-                                        val act = activity
-                                        if (pv != null && act != null) {
-                                            isSnapshotLoading = true
-                                            try {
-                                                val screenshotDir = com.streamhub.app.data.DownloadManager.getEffectiveScreenshotDir(context)
-                                                val screenshotFile = java.io.File(screenshotDir, "StreamHub_${System.currentTimeMillis()}.png")
-
-                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                                    val viewWidth = pv.width.coerceAtLeast(1)
-                                                    val viewHeight = pv.height.coerceAtLeast(1)
-                                                    val bitmap = android.graphics.Bitmap.createBitmap(
-                                                        viewWidth, viewHeight, android.graphics.Bitmap.Config.ARGB_8888
-                                                    )
-                                                    val location = IntArray(2)
-                                                    pv.getLocationInWindow(location)
-                                                    val srcRect = android.graphics.Rect(
-                                                        location[0], location[1],
-                                                        location[0] + viewWidth, location[1] + viewHeight
-                                                    )
-                                                    android.view.PixelCopy.request(
-                                                        act.window,
-                                                        srcRect,
-                                                        bitmap,
-                                                        { copyResult ->
-                                                            isSnapshotLoading = false
-                                                            if (copyResult == android.view.PixelCopy.SUCCESS) {
-                                                                try {
-                                                                    java.io.FileOutputStream(screenshotFile).use { out ->
-                                                                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
-                                                                    }
-                                                                    act.runOnUiThread {
-                                                                        Toast.makeText(
-                                                                            context,
-                                                                            "📸 Snapshot saved to ${screenshotDir.name}",
-                                                                            Toast.LENGTH_SHORT
-                                                                        ).show()
-                                                                    }
-                                                                } catch (e: Exception) {
-                                                                    Log.w("PlayerScreen", "Saving screenshot failed", e)
-                                                                } finally {
-                                                                    bitmap.recycle()
-                                                                }
-                                                            } else {
-                                                                bitmap.recycle()
-                                                            }
-                                                        },
-                                                        android.os.Handler(android.os.Looper.getMainLooper())
-                                                    )
-                                                }
-                                            } catch (e: Exception) {
-                                                isSnapshotLoading = false
-                                                Log.w("PlayerScreen", "Screenshot failed: ${e.message}")
-                                            }
-                                        }
-                                    },
-                                    onOpenSheet = { showFrameNavSheet = true },
-                                    buttonSize = 40.dp
-                                )
-
                                 // Video Zoom / Pan (Expands to Pill when >100%)
                                 AnimatedContent(
                                     targetState = (videoZoomScale > 1.05f),
@@ -1664,6 +1639,74 @@ fun PlayerScreen(
                                     size = 40.dp,
                                     iconSize = 18.dp,
                                     title = "Picture-in-Picture"
+                                )
+
+                                // Frame Navigation Capsule (Expandable Step & Snapshot)
+                                FrameNavigationCapsule(
+                                    isExpanded = isFrameNavExpanded,
+                                    isSnapshotLoading = isSnapshotLoading,
+                                    onToggleExpand = { isFrameNavExpanded = !isFrameNavExpanded },
+                                    onStepBackward = { viewModel.seekBackward(100L) },
+                                    onStepForward = { viewModel.seekForward(100L) },
+                                    onTakeSnapshot = {
+                                        val pv = rememberPlayerViewRef
+                                        val act = activity
+                                        if (pv != null && act != null) {
+                                            isSnapshotLoading = true
+                                            try {
+                                                val screenshotDir = com.streamhub.app.data.DownloadManager.getEffectiveScreenshotDir(context)
+                                                val screenshotFile = java.io.File(screenshotDir, "StreamHub_${System.currentTimeMillis()}.png")
+
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                    val viewWidth = pv.width.coerceAtLeast(1)
+                                                    val viewHeight = pv.height.coerceAtLeast(1)
+                                                    val bitmap = android.graphics.Bitmap.createBitmap(
+                                                        viewWidth, viewHeight, android.graphics.Bitmap.Config.ARGB_8888
+                                                    )
+                                                    val location = IntArray(2)
+                                                    pv.getLocationInWindow(location)
+                                                    val srcRect = android.graphics.Rect(
+                                                        location[0], location[1],
+                                                        location[0] + viewWidth, location[1] + viewHeight
+                                                    )
+                                                    android.view.PixelCopy.request(
+                                                        act.window,
+                                                        srcRect,
+                                                        bitmap,
+                                                        { copyResult ->
+                                                            isSnapshotLoading = false
+                                                            if (copyResult == android.view.PixelCopy.SUCCESS) {
+                                                                try {
+                                                                    java.io.FileOutputStream(screenshotFile).use { out ->
+                                                                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                                                                    }
+                                                                    act.runOnUiThread {
+                                                                        Toast.makeText(
+                                                                            context,
+                                                                            "📸 Snapshot saved to ${screenshotDir.name}",
+                                                                            Toast.LENGTH_SHORT
+                                                                        ).show()
+                                                                    }
+                                                                } catch (e: Exception) {
+                                                                    Log.w("PlayerScreen", "Saving screenshot failed", e)
+                                                                } finally {
+                                                                    bitmap.recycle()
+                                                                }
+                                                            } else {
+                                                                bitmap.recycle()
+                                                            }
+                                                        },
+                                                        android.os.Handler(android.os.Looper.getMainLooper())
+                                                    )
+                                                }
+                                            } catch (e: Exception) {
+                                                isSnapshotLoading = false
+                                                Log.w("PlayerScreen", "Screenshot failed: ${e.message}")
+                                            }
+                                        }
+                                    },
+                                    onOpenSheet = { showFrameNavSheet = true },
+                                    buttonSize = 40.dp
                                 )
 
                                 // Night Shield Filter Toggle
@@ -1807,11 +1850,6 @@ fun PlayerScreen(
             MpvMoreSheet(
                 showStatsForNerds = showStatsForNerds,
                 onToggleStatsForNerds = { showStatsForNerds = it },
-                isAmbientMode = isAmbientMode,
-                onToggleAmbientMode = {
-                    isAmbientMode = it
-                    triggerHudPill(if (it) "Ambient Aura Enabled" else "Ambient Aura Disabled", Icons.Default.AutoAwesome)
-                },
                 audioDelayMs = audioDelayMs,
                 onAudioDelayChange = { audioDelayMs = it },
                 subtitleDelayMs = uiState.subtitleOffsetMs,

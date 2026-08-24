@@ -79,32 +79,17 @@ fun MpvSeekbar(
     var isUserInteracting by remember { mutableStateOf(false) }
     var userPositionMs by remember { mutableLongStateOf(currentPositionMs) }
     var invertRemainingTime by remember { mutableStateOf(false) }
-    var activeThumbnail by remember { mutableStateOf<Bitmap?>(thumbnailBitmap) }
-
-    LaunchedEffect(thumbnailBitmap) {
-        if (thumbnailBitmap != null) {
-            activeThumbnail = thumbnailBitmap
-        }
-    }
-
-    LaunchedEffect(isUserInteracting, userPositionMs / 3000L, sourceUrl) {
-        if (isUserInteracting && !sourceUrl.isNullOrBlank()) {
-            val bmp = com.streamhub.app.player.VideoThumbnailHelper.getThumbnail(sourceUrl, userPositionMs)
-            if (bmp != null && !bmp.isRecycled) {
-                activeThumbnail = bmp
-            }
-        }
-    }
 
     val animatedProgress = remember { Animatable((currentPositionMs.toFloat() / totalDuration.toFloat()).coerceIn(0f, 1f)) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(currentPositionMs, totalDuration, isUserInteracting) {
+    LaunchedEffect(currentPositionMs, isUserInteracting) {
         if (!isUserInteracting) {
-            val targetFraction = (currentPositionMs.toFloat() / totalDuration.toFloat()).coerceIn(0f, 1f)
+            userPositionMs = currentPositionMs
+            val targetFrac = (currentPositionMs.toFloat() / totalDuration.toFloat()).coerceIn(0f, 1f)
             animatedProgress.animateTo(
-                targetValue = targetFraction,
-                animationSpec = tween(durationMillis = 150, easing = LinearEasing)
+                targetValue = targetFrac,
+                animationSpec = tween(durationMillis = 200, easing = LinearEasing)
             )
         }
     }
@@ -145,133 +130,69 @@ fun MpvSeekbar(
         ) {
             val trackWidth = maxWidth
 
-            // 1. Floating Video Thumbnail Card during Scrubbing
-            if (isUserInteracting) {
-                val cardWidth = 148.dp
-                val cardHeight = 94.dp
-                val thumbOffset = (trackWidth * effectiveFraction - cardWidth / 2).coerceIn(0.dp, (trackWidth - cardWidth).coerceAtLeast(0.dp))
-                val deltaMs = userPositionMs - currentPositionMs
-                val deltaText = if (deltaMs >= 0) "+${formatMpvTime(deltaMs)}" else "-${formatMpvTime(-deltaMs)}"
-
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = thumbOffset, bottom = 44.dp)
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color(0xF212121A),
-                        border = BorderStroke(1.5.dp, Color(0xFFD0BCFF)),
-                        shadowElevation = 12.dp
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(4.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(width = cardWidth - 8.dp, height = cardHeight - 26.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFF1E1E28)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (activeThumbnail != null && !activeThumbnail!!.isRecycled) {
-                                    Image(
-                                        bitmap = activeThumbnail!!.asImageBitmap(),
-                                        contentDescription = "Thumbnail Preview",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                } else if (!fallbackPosterUrl.isNullOrBlank()) {
-                                    AsyncImage(
-                                        model = fallbackPosterUrl,
-                                        contentDescription = "Poster Fallback",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                } else {
-                                    Text(
-                                        text = formatMpvTime(userPositionMs),
-                                        color = Color.White,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                            }
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = formatMpvTime(userPositionMs),
-                                    color = Color.White,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                                Text(
-                                    text = deltaText,
-                                    color = if (deltaMs >= 0) Color(0xFF81C784) else Color(0xFFFF8A80),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 2. High-Precision Expanded Touch Hit-Box (64.dp)
+            // 1. High-Precision Expanded Touch Hit-Box (64.dp)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp)
                     .pointerInput(totalDuration) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val down = awaitFirstDown(requireUnconsumed = false)
+                        detectTapGestures(
+                            onPress = { offset ->
                                 val width = size.width.toFloat().coerceAtLeast(1f)
-                                var currentFrac = (down.position.x / width).coerceIn(0f, 1f)
-                                userPositionMs = (currentFrac.toDouble() * totalDuration).toLong()
+                                val frac = (offset.x / width).coerceIn(0f, 1f)
+                                userPositionMs = (frac.toDouble() * totalDuration).toLong()
                                 isUserInteracting = true
-
-                                val pointerId = down.id
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    val change = event.changes.firstOrNull { it.id == pointerId } ?: break
-                                    if (change.pressed) {
-                                        currentFrac = (change.position.x / width).coerceIn(0f, 1f)
-                                        userPositionMs = (currentFrac.toDouble() * totalDuration).toLong()
-                                        change.consume()
-                                    } else {
-                                        // Pointer released (tap or drag release)
-                                        change.consume()
-                                        val target = userPositionMs
-                                        onSeek(target)
-                                        scope.launch {
-                                            animatedProgress.snapTo(currentFrac)
-                                            delay(100)
-                                            isUserInteracting = false
-                                        }
-                                        break
+                                val released = tryAwaitRelease()
+                                if (released) {
+                                    val target = userPositionMs
+                                    onSeek(target)
+                                    scope.launch {
+                                        animatedProgress.snapTo(frac)
+                                        delay(100)
+                                        isUserInteracting = false
                                     }
+                                } else {
+                                    isUserInteracting = false
                                 }
                             }
-                        }
+                        )
+                    }
+                    .pointerInput(totalDuration) {
+                        detectDragGestures(
+                            onDragStart = { offset ->
+                                isUserInteracting = true
+                                val width = size.width.toFloat().coerceAtLeast(1f)
+                                val frac = (offset.x / width).coerceIn(0f, 1f)
+                                userPositionMs = (frac.toDouble() * totalDuration).toLong()
+                            },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                val width = size.width.toFloat().coerceAtLeast(1f)
+                                val frac = (change.position.x / width).coerceIn(0f, 1f)
+                                userPositionMs = (frac.toDouble() * totalDuration).toLong()
+                            },
+                            onDragEnd = {
+                                val target = userPositionMs
+                                val frac = (userPositionMs.toFloat() / totalDuration.toFloat()).coerceIn(0f, 1f)
+                                onSeek(target)
+                                scope.launch {
+                                    animatedProgress.snapTo(frac)
+                                    delay(100)
+                                    isUserInteracting = false
+                                }
+                            },
+                            onDragCancel = {
+                                isUserInteracting = false
+                            }
+                        )
                     }
             )
 
             // 3. Canvas Track Rendering (mpvEx Parity)
             val primaryPurple = Color(0xFFD0BCFF)
             val deepPurple = Color(0xFF6750A4)
-            val unplayedColor = Color(0x33FFFFFF)
-            val bufferColor = Color(0x55FFFFFF)
+            val unplayedColor = Color(0x2EFFFFFF)
+            val bufferColor = Color(0x99FFFFFF)
             val loopAmber = Color(0xFFFFB300)
 
             Canvas(

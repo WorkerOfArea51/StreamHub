@@ -404,10 +404,15 @@ object DownloadManager {
             val isMovie = mediaItem.category.equals("Movie", ignoreCase = true) ||
                           mediaItem.category.equals("Movies", ignoreCase = true) ||
                           mediaItem.type.equals("Movie", ignoreCase = true)
+            val fileExt = extractFileExtension(resolvedUrl, rawUrl, mediaItem.title)
+            val cleanTitle = mediaItem.title
+                .removeSuffix(".mkv").removeSuffix(".mp4").removeSuffix(".webm").removeSuffix(".avi")
+                .removeSuffix(".MKV").removeSuffix(".MP4").removeSuffix(".WEBM").removeSuffix(".AVI")
+                .replace(FILENAME_SANITIZE_REGEX, "_")
             val fileName = if (isMovie) {
-                "${mediaItem.title.replace(FILENAME_SANITIZE_REGEX, "_")}.mp4"
+                "$cleanTitle.$fileExt"
             } else {
-                "${mediaItem.title.replace(FILENAME_SANITIZE_REGEX, "_")}_Ep${episodeIndex + 1}.mp4"
+                "${cleanTitle}_Ep${episodeIndex + 1}.$fileExt"
             }
             val targetFile = File(downloadsDir, fileName)
             val epTitle = if (isMovie) mediaItem.title else (episode.title.ifEmpty { "Episode ${episodeIndex + 1}" })
@@ -421,14 +426,17 @@ object DownloadManager {
                 val isAlreadyComplete = tdlibTotalSize > 0L && sourceFile.exists() && sourceFile.length() >= tdlibTotalSize
 
                 if (isAlreadyComplete) {
+                    val actualExt = sourceFile.extension.ifBlank { fileExt }
+                    val finalTargetName = if (isMovie) "$cleanTitle.$actualExt" else "${cleanTitle}_Ep${episodeIndex + 1}.$actualExt"
+                    val finalTarget = File(downloadsDir, finalTargetName)
                     try {
-                        if (sourceFile.absolutePath != targetFile.absolutePath) {
-                            sourceFile.copyTo(targetFile, overwrite = true)
+                        if (sourceFile.absolutePath != finalTarget.absolutePath) {
+                            sourceFile.copyTo(finalTarget, overwrite = true)
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Failed copying completed local file to target: ${targetFile.absolutePath}", e)
+                        Log.e(TAG, "Failed copying completed local file to target: ${finalTarget.absolutePath}", e)
                     }
-                    val effectiveFile = if (targetFile.exists()) targetFile else sourceFile
+                    val effectiveFile = if (finalTarget.exists()) finalTarget else sourceFile
                     val sizeMb = effectiveFile.length() / (1024.0 * 1024.0)
                     val notifId = getNotificationId(mediaItem.id, episodeIndex)
                     val newItem = DownloadedItem(
@@ -534,32 +542,35 @@ object DownloadManager {
                                     }
 
                                     if (fRes.local.isDownloadingCompleted) {
-                                        val completedSrc = File(fRes.local.path)
-                                        if (completedSrc.exists()) {
-                                            try {
-                                                if (completedSrc.absolutePath != targetFile.absolutePath) {
-                                                    completedSrc.copyTo(targetFile, overwrite = true)
-                                                }
-                                            } catch (e: Exception) {
-                                                Log.e(TAG, "Error copying completed TDLib file to target: ${targetFile.absolutePath}", e)
-                                            }
-                                            val finalFile = if (targetFile.exists()) targetFile else completedSrc
-                                            _downloads.update { list ->
-                                                list.map { item ->
-                                                    if (item.mediaId == mediaItem.id && item.episodeIndex == episodeIndex) {
-                                                        item.copy(
-                                                            localFilePath = finalFile.absolutePath,
-                                                            fileSizeMb = finalFile.length() / (1024.0 * 1024.0),
-                                                            progressPercent = 100,
-                                                            isCompleted = true,
-                                                            isPaused = false
-                                                        )
-                                                    } else item
-                                                }
-                                            }
-                                            saveToDisk()
-                                            activeTdLibJobs.remove(key)
-                                            activeTdLibFileIds.remove(key)
+                                         val completedSrc = File(fRes.local.path)
+                                         if (completedSrc.exists()) {
+                                             val actualExt = completedSrc.extension.ifBlank { fileExt }
+                                             val finalTargetName = if (isMovie) "$cleanTitle.$actualExt" else "${cleanTitle}_Ep${episodeIndex + 1}.$actualExt"
+                                             val finalTargetFile = File(downloadsDir, finalTargetName)
+                                             try {
+                                                 if (completedSrc.absolutePath != finalTargetFile.absolutePath) {
+                                                     completedSrc.copyTo(finalTargetFile, overwrite = true)
+                                                 }
+                                             } catch (e: Exception) {
+                                                 Log.e(TAG, "Error copying completed TDLib file to target: ${finalTargetFile.absolutePath}", e)
+                                             }
+                                             val finalFile = if (finalTargetFile.exists()) finalTargetFile else completedSrc
+                                             _downloads.update { list ->
+                                                 list.map { item ->
+                                                     if (item.mediaId == mediaItem.id && item.episodeIndex == episodeIndex) {
+                                                         item.copy(
+                                                             localFilePath = finalFile.absolutePath,
+                                                             fileSizeMb = finalFile.length() / (1024.0 * 1024.0),
+                                                             progressPercent = 100,
+                                                             isCompleted = true,
+                                                             isPaused = false
+                                                         )
+                                                     } else item
+                                                 }
+                                             }
+                                             saveToDisk()
+                                             activeTdLibJobs.remove(key)
+                                             activeTdLibFileIds.remove(key)
                                             appContext?.let { ctx ->
                                                 DownloadNotificationHelper.showCompleted(
                                                     context = ctx,
@@ -892,6 +903,77 @@ object DownloadManager {
 
     fun isDownloaded(mediaId: String, episodeIndex: Int): Boolean {
         return _downloads.value.any { it.mediaId == mediaId && it.episodeIndex == episodeIndex && it.isCompleted }
+    }
+
+    /**
+     * Accurately extracts the real container file extension (.mkv, .mp4, .webm, .avi, etc.)
+     * from proxy query params, TDLib file state, local paths, or stream URLs.
+     */
+    fun extractFileExtension(
+        resolvedUrl: String?,
+        rawUrl: String?,
+        mediaTitle: String? = null,
+        fallback: String = "mkv"
+    ): String {
+        val candidates = listOfNotNull(resolvedUrl, rawUrl)
+
+        // 1. Check &name=... or &filename=... query parameters
+        for (url in candidates) {
+            try {
+                val uri = Uri.parse(url)
+                val nameParam = uri.getQueryParameter("name") ?: uri.getQueryParameter("filename")
+                if (!nameParam.isNullOrBlank()) {
+                    val ext = File(nameParam).extension.trim().lowercase()
+                    if (ext.isNotBlank() && ext.length in 2..5) return ext
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 2. Check TDLib fileId cached state local path
+        for (url in candidates) {
+            try {
+                val fileId = com.streamhub.app.data.telegram.TdLibMediaProvider.getFileIdForPath(url)
+                    ?: (try { Uri.parse(url).getQueryParameter("fileId")?.toIntOrNull() } catch (_: Exception) { null })
+                if (fileId != null) {
+                    val cachedFile = com.streamhub.app.data.telegram.StreamingProxyServer.getCachedFile(fileId)
+                    val localPath = cachedFile?.local?.path
+                    if (!localPath.isNullOrBlank()) {
+                        val ext = File(localPath).extension.trim().lowercase()
+                        if (ext.isNotBlank() && ext.length in 2..5) return ext
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 3. Direct local file path
+        for (url in candidates) {
+            try {
+                if (url.startsWith("/") || File(url).exists()) {
+                    val ext = File(url).extension.trim().lowercase()
+                    if (ext.isNotBlank() && ext.length in 2..5) return ext
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 4. URL path segment
+        for (url in candidates) {
+            try {
+                val uri = Uri.parse(url)
+                val path = uri.path
+                if (!path.isNullOrBlank()) {
+                    val ext = File(path).extension.trim().lowercase()
+                    if (ext.isNotBlank() && ext != "stream" && ext.length in 2..5) return ext
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 5. Media Title ending with extension
+        if (!mediaTitle.isNullOrBlank()) {
+            val ext = File(mediaTitle).extension.trim().lowercase()
+            if (ext.isNotBlank() && ext.length in 2..5) return ext
+        }
+
+        return fallback
     }
 
     /**

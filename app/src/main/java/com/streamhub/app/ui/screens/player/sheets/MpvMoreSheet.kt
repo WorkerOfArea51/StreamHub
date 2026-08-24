@@ -65,8 +65,6 @@ import kotlin.math.roundToInt
 fun MpvMoreSheet(
     showStatsForNerds: Boolean,
     onToggleStatsForNerds: (Boolean) -> Unit,
-    isAmbientMode: Boolean = true,
-    onToggleAmbientMode: (Boolean) -> Unit = {},
     audioDelayMs: Long,
     onAudioDelayChange: (Long) -> Unit,
     subtitleDelayMs: Long,
@@ -132,53 +130,6 @@ fun MpvMoreSheet(
             }
 
             Spacer(modifier = Modifier.height(14.dp))
-
-            // Ambient Lighting Mode Card
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0x18FFFFFF),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { onToggleAmbientMode(!isAmbientMode) }
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = "Ambient Lighting",
-                            tint = Color(0xFFD0BCFF),
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Ambient Lighting Mode", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Dynamic breathing cinema aura around video edges", color = TextSecondary, fontSize = 10.sp)
-                        }
-                    }
-                    Switch(
-                        checked = isAmbientMode,
-                        onCheckedChange = onToggleAmbientMode,
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = Color(0xFF6750A4),
-                            uncheckedThumbColor = Color.LightGray,
-                            uncheckedTrackColor = Color(0x33FFFFFF)
-                        )
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
 
             // Video Color Filter Card (Navigate to full filters sheet)
             Surface(

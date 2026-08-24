@@ -194,12 +194,7 @@ class StreamPlayerViewModel : ViewModel() {
                     .setAudioAttributes(audioAttributes, true)
                     .setHandleAudioBecomingNoisy(true)
                     .setLoadControl(loadControl)
-                    // FIX: Use EXACT seeking, not CLOSEST_SYNC. CLOSEST_SYNC jumps to the
-                    // nearest keyframe — for Telegram videos with sparse keyframes (every 30-60s),
-                    // this often jumps BACK to 0 instead of the requested position.
-                    // EXACT decodes from the exact requested timestamp (slightly more CPU but
-                    // correct seeking behavior matching YouTube/Netflix).
-                    .setSeekParameters(androidx.media3.exoplayer.SeekParameters.EXACT)
+                    .setSeekParameters(androidx.media3.exoplayer.SeekParameters.DEFAULT)
                     .setMediaSourceFactory(
                         androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
                     )
@@ -919,17 +914,29 @@ class StreamPlayerViewModel : ViewModel() {
                     }
 
                     val resolvedUrl = _uiState.value.resolvedStreamUrl
-                    val tdlibProgress = if (resolvedUrl.isNotBlank()) com.streamhub.app.data.telegram.TdLibMediaProvider.getDownloadProgressForPath(resolvedUrl) else null
-                    val effectiveBuffered = if (tdlibProgress != null && tdlibProgress > 0f && totalDuration > 0L) {
-                        maxOf(buffered, (tdlibProgress * totalDuration).toLong())
+                    val fileIdFromUrl = if (resolvedUrl.contains("fileId=")) {
+                        resolvedUrl.substringAfter("fileId=").substringBefore("&").toIntOrNull()
                     } else {
-                        buffered
+                        com.streamhub.app.data.telegram.TdLibMediaProvider.getFileIdForPath(resolvedUrl)
                     }
 
+                    val cachedFile = fileIdFromUrl?.let { com.streamhub.app.data.telegram.StreamingProxyServer.getCachedFile(it) }
+                    val tdlibBufferedMs = if (cachedFile != null && cachedFile.size > 0L && totalDuration > 0L) {
+                        val prefixSize = cachedFile.local.downloadedPrefixSize.toLong()
+                        val isCompleted = cachedFile.local.isDownloadingCompleted
+                        if (isCompleted) {
+                            totalDuration
+                        } else {
+                            ((prefixSize.toDouble() / cachedFile.size.toDouble()) * totalDuration).toLong().coerceIn(0L, totalDuration)
+                        }
+                    } else {
+                        0L
+                    }
+
+                    val effectiveBuffered = maxOf(buffered, tdlibBufferedMs)
                     val bufferHealthSec = ((effectiveBuffered - currentPos).coerceAtLeast(0L) / 1000L)
 
-                    // Estimate network speed from total bytes downloaded (ExoPlayer doesn't expose this directly,
-                    // so we approximate from buffered-position delta over time)
+                    // Estimate network speed from total bytes downloaded
                     val speedKbps = estimateNetworkSpeedKbps(effectiveBuffered)
 
                     _uiState.update {

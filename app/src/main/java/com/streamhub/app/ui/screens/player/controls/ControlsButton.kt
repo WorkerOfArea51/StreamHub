@@ -1,6 +1,7 @@
 package com.streamhub.app.ui.screens.player.controls
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -12,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -21,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -32,7 +36,7 @@ import com.streamhub.app.ui.theme.TextPrimary
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ControlsButton(
-    icon: ImageVector,
+    icon: ImageVector = Icons.Default.Circle,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     onLongClick: () -> Unit = {},
@@ -42,7 +46,8 @@ fun ControlsButton(
     borderColor: Color = Color(0x33FFFFFF),
     size: Dp = 45.dp,
     iconSize: Dp = 20.dp,
-    badgeText: String? = null
+    badgeText: String? = null,
+    customIcon: (@Composable () -> Unit)? = null
 ) {
     val interactionSource = remember { MutableInteractionSource() }
 
@@ -67,12 +72,16 @@ fun ControlsButton(
             contentAlignment = Alignment.Center,
             modifier = Modifier.size(size)
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = title,
-                tint = color,
-                modifier = Modifier.size(iconSize)
-            )
+            if (customIcon != null) {
+                customIcon()
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = color,
+                    modifier = Modifier.size(iconSize)
+                )
+            }
 
             if (!badgeText.isNullOrBlank()) {
                 Surface(
@@ -90,6 +99,32 @@ fun ControlsButton(
                         modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 3x3 Dot-Matrix Disco / Ambience Icon
+ */
+@Composable
+fun AmbientDiscoIcon(
+    tint: Color = Color.White,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier.size(18.dp)) {
+        val rows = 3
+        val cols = 3
+        val dotRadius = 1.6f.dp.toPx()
+        val stepX = size.width / (cols + 1).toFloat()
+        val stepY = size.height / (rows + 1).toFloat()
+        for (r in 1..rows) {
+            for (c in 1..cols) {
+                drawCircle(
+                    color = tint,
+                    radius = dotRadius,
+                    center = Offset(c.toFloat() * stepX, r.toFloat() * stepY)
+                )
             }
         }
     }
