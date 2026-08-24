@@ -23,6 +23,7 @@
     <application
         android:name=".StreamHubApplication"
         android:allowBackup="true"
+        android:largeHeap="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
         tools:replace="android:allowBackup"

@@ -14,8 +14,8 @@ object VideoThumbnailHelper {
 
     private const val TAG = "VideoThumbnailHelper"
 
-    // FIX: Sized to 8MB (was 16MB) — based on runtime memory class.
-    private val memoryCache: LruCache<String, Bitmap> = object : LruCache<String, Bitmap>(8 * 1024) {
+    // FIX: Sized to 4MB max — safe for all Android memory classes.
+    private val memoryCache: LruCache<String, Bitmap> = object : LruCache<String, Bitmap>(4 * 1024) {
         override fun sizeOf(key: String, bitmap: Bitmap): Int {
             return bitmap.byteCount / 1024
         }

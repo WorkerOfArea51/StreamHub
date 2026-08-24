@@ -19,6 +19,7 @@ import com.streamhub.app.data.telegram.TdLibManager
 import com.streamhub.app.data.telegram.TelegramProxyManager
 import com.streamhub.app.player.StreamCacheManager
 import com.streamhub.app.player.StreamDownloadManager
+import com.streamhub.app.player.VideoThumbnailHelper
 import com.streamhub.app.ui.theme.ThemeManager
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -84,6 +85,16 @@ class StreamHubApplication : Application() {
                 runCatching { StreamDownloadManager.pauseDownloads() }
             }
         })
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_RUNNING_LOW) {
+            Log.w(TAG, "Low memory detected (level=$level) — evicting thumbnail & image caches")
+            runCatching { VideoThumbnailHelper.release() }
+            runCatching { coil.Coil.imageLoader(this).memoryCache?.clear() }
+            System.gc()
+        }
     }
 
     /**
