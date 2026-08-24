@@ -17,6 +17,8 @@ import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -158,6 +160,10 @@ class MainActivity : ComponentActivity() {
         }
         handleDeepLink(intent)
         registerPipActionReceiver()
+
+        lifecycleScope.launch {
+            com.streamhub.app.data.telegram.StreamingProxyServer.start()
+        }
 
         setContent {
             StreamHubTheme {

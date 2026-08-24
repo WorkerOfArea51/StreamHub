@@ -216,6 +216,8 @@ object TdLibMediaProvider {
             filePathToTotalSize[localPath] = file.size
         }
 
+        StreamingProxyServer.cacheFileState(file.id, file)
+
         // Check if file is already downloaded and exists on disk
         if (file.local.isDownloadingCompleted && localPath.isNotBlank()) {
             val f = File(localPath)
@@ -226,113 +228,25 @@ object TdLibMediaProvider {
             }
         }
 
-        // If file has partial data on disk or is downloading, ensure download continues and return local stream path
-        if (localPath.isNotBlank()) {
-            val f = File(localPath)
-            if (f.exists() && f.length() >= 500_000L) {
-                TdLibManager.send(TdApi.DownloadFile(file.id, 32, 0, 0, false))
-                Log.i(TAG, "Resuming existing cached/downloading stream: $localPath (disk: ${f.length()}/${file.size})")
-                synchronized(resolvedFiles) { resolvedFiles.put(messageId, localPath) }
-                return TelegramStreamResult.LocalFile(localPath, file.size)
-            }
+        // Route streaming through Local HTTP Streaming Proxy (TelStream architecture)
+        StreamingProxyServer.start()
+        val proxyUrl = StreamingProxyServer.getProxyUrl(file.id)
+
+        // Ensure download is active in TDLib
+        if (!file.local.isDownloadingCompleted) {
+            TdLibManager.send(TdApi.DownloadFile(file.id, 32, 0L, 0L, false))
         }
 
-        // Start downloading the file
-        return downloadFileForStreaming(file, messageId)
+        Log.i(TAG, "Routing TDLib stream via local proxy: $proxyUrl for fileId=${file.id} (${file.size} bytes)")
+        synchronized(resolvedFiles) { resolvedFiles.put(messageId, proxyUrl) }
+        return TelegramStreamResult.HttpUrl(proxyUrl)
     }
 
     /**
      * Download a TDLib file and wait for it to be ready for streaming.
-     *
-     * TDLib downloads files asynchronously and notifies us via UpdateFile.
-     * We start the download with high priority and wait for the local file
-     * to become available.
-     *
-     * For streaming, we only need the first few chunks — ExoPlayer can start
-     * playback while TDLib continues downloading in the background.
      */
     private suspend fun downloadFileForStreaming(file: TdApi.File, messageId: Long): TelegramStreamResult {
-        val fileId = file.id
-
-        Log.i(TAG, "Starting download: fileId=$fileId, size=${file.size}, remoteId=${file.remote.id}")
-
-        // 1. Check if already fully downloaded
-        if (file.local.isDownloadingCompleted && file.local.path.isNotBlank()) {
-            val p = file.local.path
-            filePathToFileId[p] = fileId
-            filePathToTotalSize[p] = file.size
-            synchronized(resolvedFiles) { resolvedFiles.put(messageId, p) }
-            return TelegramStreamResult.LocalFile(p, file.size)
-        }
-
-        // 2. Start high-priority TDLib streaming download
-        val result = TdLibManager.send(TdApi.DownloadFile(fileId, 32, 0, 0, false))
-        if (result is TdApi.Error) {
-            return TelegramStreamResult.Failed("Download failed: ${result.message}")
-        }
-
-        // TDLib stores actively downloading partial files at files/temp/<fileId>
-        val baseDir = TdLibManager.getDatabaseDirectory()
-        val tempFilePath = if (baseDir.isNotBlank()) "$baseDir/files/temp/$fileId" else ""
-
-        if (tempFilePath.isNotBlank()) {
-            filePathToFileId[tempFilePath] = fileId
-            filePathToTotalSize[tempFilePath] = file.size
-        }
-
-        // 3. Wait for initial header buffer (>= 512KB) or completion so ExoPlayer can detect format
-        var waited = 0L
-        val tempFile = if (tempFilePath.isNotBlank()) File(tempFilePath) else null
-        while (waited < 15_000L) {
-            if (tempFile != null && tempFile.exists() && tempFile.length() >= 512 * 1024L) {
-                Log.i(TAG, "Initial stream buffer ready: $tempFilePath (${tempFile.length()} bytes)")
-                return TelegramStreamResult.Downloading(
-                    partialPath = tempFilePath,
-                    downloadedBytes = tempFile.length(),
-                    totalBytes = file.size,
-                    progress = if (file.size > 0) tempFile.length().toFloat() / file.size else 0f
-                )
-            }
-
-            val check = TdLibManager.send(TdApi.GetFile(fileId))
-            if (check is TdApi.File) {
-                if (check.local.isDownloadingCompleted && check.local.path.isNotBlank()) {
-                    val compPath = check.local.path
-                    filePathToFileId[compPath] = fileId
-                    filePathToTotalSize[compPath] = check.size
-                    synchronized(resolvedFiles) { resolvedFiles.put(messageId, compPath) }
-                    return TelegramStreamResult.LocalFile(compPath, check.size)
-                }
-                if (check.local.path.isNotBlank()) {
-                    val p = check.local.path
-                    val f = File(p)
-                    if (f.exists() && f.length() >= 512 * 1024L) {
-                        filePathToFileId[p] = fileId
-                        filePathToTotalSize[p] = check.size
-                        return TelegramStreamResult.Downloading(
-                            partialPath = p,
-                            downloadedBytes = f.length(),
-                            totalBytes = check.size,
-                            progress = if (check.size > 0) f.length().toFloat() / check.size else 0f
-                        )
-                    }
-                }
-            }
-            delay(150L)
-            waited += 150L
-        }
-
-        // If after wait we have any bytes at all in temp file, proceed with streaming
-        if (tempFile != null && tempFile.exists() && tempFile.length() > 0L) {
-            return TelegramStreamResult.Downloading(
-                partialPath = tempFilePath,
-                downloadedBytes = tempFile.length(),
-                totalBytes = file.size,
-                progress = if (file.size > 0) tempFile.length().toFloat() / file.size else 0f
-            )
-        }
-
-        return TelegramStreamResult.Failed("Stream buffer timeout for file $fileId")
+        return processFileForStreaming(file, messageId)
     }
 
     /**

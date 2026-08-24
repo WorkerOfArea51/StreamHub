@@ -50,34 +50,29 @@ object VideoThumbnailHelper {
                         released = false
 
                         val newRetriever = MediaMetadataRetriever()
-                        val cleanPath = sourceUrl.removePrefix("file://")
-                        val file = File(cleanPath)
+                        val isHttp = sourceUrl.startsWith("http://") || sourceUrl.startsWith("https://")
 
-                        // FIX: Check if the file is complete (not being actively downloaded).
-                        // MediaMetadataRetriever fails on partial files because the moov atom
-                        // (video metadata) is written last. If the file is still growing,
-                        // return null and let the UI show the poster fallback.
-                        if (!file.exists() || file.length() < 1024L) {
-                            return@withLock null
-                        }
+                        if (isHttp) {
+                            try {
+                                newRetriever.setDataSource(sourceUrl, HashMap())
+                            } catch (e: Exception) {
+                                Log.d(TAG, "setDataSource for HTTP URL failed: ${e.message}")
+                                return@withLock null
+                            }
+                        } else {
+                            val cleanPath = sourceUrl.removePrefix("file://")
+                            val file = File(cleanPath)
 
-                        // FIX: Check if file is still being written by TDLib.
-                        // If file size changed in the last 500ms, it's still downloading.
-                        val size1 = file.length()
-                        kotlinx.coroutines.delay(500L)
-                        val size2 = file.length()
-                        if (size1 != size2) {
-                            // File is still being downloaded — can't extract frames
-                            return@withLock null
-                        }
+                            if (!file.exists() || file.length() < 1024L) {
+                                return@withLock null
+                            }
 
-                        try {
-                            newRetriever.setDataSource(cleanPath)
-                        } catch (e: Exception) {
-                            // setDataSource fails on partial/corrupt files — return null
-                            // so the UI shows the poster fallback instead of crashing.
-                            Log.d(TAG, "setDataSource failed (file may be partial): ${e.message}")
-                            return@withLock null
+                            try {
+                                newRetriever.setDataSource(cleanPath)
+                            } catch (e: Exception) {
+                                Log.d(TAG, "setDataSource failed for local file: ${e.message}")
+                                return@withLock null
+                            }
                         }
                         retriever = newRetriever
                         currentSourceUrl = sourceUrl

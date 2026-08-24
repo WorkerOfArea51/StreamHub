@@ -57,7 +57,8 @@ class TelegramDataSourceFactory(
     }
 
     override fun createDataSource(): DataSource {
-        val httpSource = cacheDataSourceFactory.createDataSource()
+        val cachedHttpSource = cacheDataSourceFactory.createDataSource()
+        val directHttpSource = httpDataSourceFactory.createDataSource()
         val tdlibSource = TdLibStreamingDataSource()
 
         return object : DataSource {
@@ -66,7 +67,8 @@ class TelegramDataSourceFactory(
 
             override fun addTransferListener(transferListener: TransferListener) {
                 this.transferListener = transferListener
-                httpSource.addTransferListener(transferListener)
+                cachedHttpSource.addTransferListener(transferListener)
+                directHttpSource.addTransferListener(transferListener)
                 tdlibSource.addTransferListener(transferListener)
             }
 
@@ -74,13 +76,16 @@ class TelegramDataSourceFactory(
                 try { currentSource?.close() } catch (_: Exception) {}
                 val uri = dataSpec.uri
                 val scheme = uri.scheme?.lowercase()
+                val host = uri.host?.lowercase()
 
-                // FIX: Use scheme-based routing instead of path-prefix check.
-                // HTTP URLs like https://host/path.mp4 have path "/path.mp4" which starts with "/",
-                // which previously misrouted them to the TDLib local-file source.
-                val isLocal = scheme == LOCAL_FILE_SCHEME || scheme == null
+                val isLocalFile = scheme == LOCAL_FILE_SCHEME || scheme == null
+                val isLocalProxy = (scheme == "http" || scheme == "https") && (host == "127.0.0.1" || host == "localhost")
 
-                currentSource = if (isLocal) tdlibSource else httpSource
+                currentSource = when {
+                    isLocalFile -> tdlibSource
+                    isLocalProxy -> directHttpSource
+                    else -> cachedHttpSource
+                }
                 transferListener?.let { currentSource?.addTransferListener(it) }
                 return currentSource!!.open(dataSpec)
             }
