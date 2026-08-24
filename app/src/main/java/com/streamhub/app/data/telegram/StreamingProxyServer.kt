@@ -177,6 +177,8 @@ object StreamingProxyServer {
         return url.startsWith("http://127.0.0.1:") || url.startsWith("http://localhost:")
     }
 
+    fun getBaseDownloadedSize(fileId: Int): Long? = downloadedSizeAtOffsets[fileId]
+
     /**
      * Suspending proxy URL generator that guarantees a non-zero port.
      */
@@ -376,24 +378,41 @@ object StreamingProxyServer {
             val isWithinPrefix = start < prefixSize
             val isWithinActiveRange = start in activeOffset..(activeRangeEnd + FORWARD_THRESHOLD)
 
-            val noActiveDownload = activeOffset == 0L && baseDownloaded == 0L && prefixSize == 0L
-            val isBeforeActiveWindow = start < activeOffset
-            val isFarAfterActiveWindow = start > (activeRangeEnd + FORWARD_THRESHOLD)
+            // Tail probe check (e.g. MP4 moov atom probe near end of file)
+            val isTailProbe = (totalSize - start) < 5 * 1024 * 1024L && (end - start + 1L) < 2 * 1024 * 1024L
 
-            val shouldShift = !isCompleted && !isWithinPrefix && !isWithinActiveRange &&
-                    (noActiveDownload || isBeforeActiveWindow || isFarAfterActiveWindow)
+            // Genuine user seek outside current cached/active windows
+            val isGenuineSeekAhead = start > (activeRangeEnd + FORWARD_THRESHOLD) && start >= 2 * 1024 * 1024L
+            val isGenuineSeekBehind = start < activeOffset && !isWithinPrefix
 
-            if (shouldShift) {
+            val shouldShift = !isCompleted && !isWithinPrefix && !isWithinActiveRange && !isTailProbe &&
+                    (isGenuineSeekAhead || isGenuineSeekBehind)
+
+            if (isTailProbe && !isCompleted) {
+                // Fetch tail metadata without cancelling the main progressive download
+                Log.d(TAG, "Fetching tail metadata for fileId=$fileId at $start (len=${end - start + 1L})")
+                TdLibManager.send(TdApi.DownloadFile(fileId, 32, start, (end - start + 1L), false))
+            } else if (shouldShift) {
                 // Align to 512KB part boundary for maximum TDLib throughput
                 val alignedStart = ((start - LOOKBEHIND_GRACE_BUFFER).coerceAtLeast(0L) / PART_SIZE) * PART_SIZE
                 val shiftOffset = alignedStart.coerceIn(0L, totalSize)
                 Log.i(TAG, "Proxy auto-shifting TDLib download offset for fileId=$fileId to $shiftOffset " +
                         "(requested: $start-$end, prefix: $prefixSize, activeRange: $activeOffset..$activeRangeEnd)")
                 setDownloadOffset(fileId, shiftOffset, tdFile.local.downloadedSize.toLong())
-                TdLibManager.send(TdApi.DownloadFile(fileId, 32, shiftOffset, 0L, false))
+                val res = TdLibManager.send(TdApi.DownloadFile(fileId, 32, shiftOffset, 0L, false))
+                if (res is TdApi.File) {
+                    tdFile = res
+                    cacheFileState(fileId, res)
+                    downloadedSizeAtOffsets[fileId] = res.local.downloadedSize.toLong()
+                }
             } else if (!isCompleted && !tdFile.local.isDownloadingActive) {
-                // Ensure initial download is active
-                TdLibManager.send(TdApi.DownloadFile(fileId, 32, start, 0L, false))
+                // Ensure sequential download from activeOffset/prefix is running
+                val resumeOff = if (isWithinPrefix) prefixSize else activeOffset
+                val res = TdLibManager.send(TdApi.DownloadFile(fileId, 32, resumeOff, 0L, false))
+                if (res is TdApi.File) {
+                    tdFile = res
+                    cacheFileState(fileId, res)
+                }
             }
 
             // Resolve file path on disk — wait up to 30 seconds with notifier

@@ -221,7 +221,8 @@ class TdLibStreamingDataSource : DataSource {
             val isCompleted = cachedFile?.local?.isDownloadingCompleted == true
             val prefixSize = cachedFile?.local?.downloadedPrefixSize?.toLong() ?: 0L
 
-            if (isCompleted || prefixSize >= currentPosition + toRead) {
+            val isAvail = fId?.let { StreamingProxyServer.isRangeDownloaded(it, currentPosition, currentPosition + toRead) } ?: (isCompleted || prefixSize >= currentPosition + toRead)
+            if (isAvail) {
                 break
             }
 
