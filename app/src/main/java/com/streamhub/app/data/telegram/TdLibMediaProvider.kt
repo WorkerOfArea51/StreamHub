@@ -233,9 +233,12 @@ object TdLibMediaProvider {
         StreamingProxyServer.start()
         val proxyUrl = StreamingProxyServer.getProxyUrl(file.id, fileName)
 
-        // Ensure download is active in TDLib
+        // Ensure download is active in TDLib with high priority (32)
         if (!file.local.isDownloadingCompleted) {
-            TdLibManager.send(TdApi.DownloadFile(file.id, 32, 0L, 0L, false))
+            val downloadRes = TdLibManager.send(TdApi.DownloadFile(file.id, 32, 0L, 0L, false))
+            if (downloadRes is TdApi.File) {
+                StreamingProxyServer.cacheFileState(downloadRes.id, downloadRes)
+            }
         }
 
         Log.i(TAG, "Routing TDLib stream via local proxy: $proxyUrl for fileId=${file.id} (${file.size} bytes)")

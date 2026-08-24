@@ -169,6 +169,7 @@ import com.streamhub.app.ui.screens.player.PlayerErrorOverlay
 import com.streamhub.app.ui.screens.player.SmartResumePill
 import com.streamhub.app.ui.screens.player.controls.AmbientDiscoIcon
 import com.streamhub.app.ui.screens.player.controls.BrightnessSliderCard
+import com.streamhub.app.ui.screens.player.controls.CenterPlayPauseRippleOverlay
 import com.streamhub.app.ui.screens.player.controls.ControlsButton
 import com.streamhub.app.ui.screens.player.controls.ControlsGroup
 import com.streamhub.app.ui.screens.player.controls.ControlsTextBadgeButton
@@ -382,6 +383,20 @@ fun PlayerScreen(
     var cumulativeSeekSeconds by remember { mutableIntStateOf(0) }
     var lastSeekDirection by remember { mutableStateOf("") }
     var resetCumulativeJob by remember { mutableStateOf<Job?>(null) }
+
+    var showCenterPlayPauseRipple by remember { mutableStateOf(false) }
+    var centerPlayPauseIsPlaying by remember { mutableStateOf(false) }
+    var centerPlayPauseJob by remember { mutableStateOf<Job?>(null) }
+
+    fun triggerCenterPlayPause(nowPlaying: Boolean) {
+        centerPlayPauseIsPlaying = nowPlaying
+        showCenterPlayPauseRipple = true
+        centerPlayPauseJob?.cancel()
+        centerPlayPauseJob = scope.launch {
+            delay(650)
+            showCenterPlayPauseRipple = false
+        }
+    }
 
     var showAspectToast by remember { mutableStateOf(false) }
     var aspectToastText by remember { mutableStateOf("") }
@@ -818,18 +833,9 @@ fun PlayerScreen(
                             detectTapGestures(
                                 onTap = { viewModel.toggleControlsVisibility() },
                                 onDoubleTap = {
-                                    if (videoZoomScale != 1.0f) {
-                                        videoZoomScale = 1.0f
-                                        videoZoomOffsetX = 0f
-                                        videoZoomOffsetY = 0f
-                                        triggerHudPill("Zoom: 100%", Icons.Default.ZoomIn)
-                                    } else {
-                                        viewModel.togglePlayPause()
-                                        doubleTapRippleText = if (uiState.isPlaying) "Pause" else "Play"
-                                        doubleTapAlignment = Alignment.Center
-                                        showDoubleTapRipple = true
-                                        scope.launch { delay(600); showDoubleTapRipple = false }
-                                    }
+                                    val nowPlaying = !uiState.isPlaying
+                                    viewModel.togglePlayPause()
+                                    triggerCenterPlayPause(nowPlaying)
                                 },
                                 onLongPress = {
                                     if (uiState.isPlaying) {
@@ -995,6 +1001,11 @@ fun PlayerScreen(
             visible = showDoubleTapRipple,
             isForward = isDoubleTapForward,
             seekSecondsText = doubleTapRippleText
+        )
+        // Center Double-Tap Play/Pause Ripple Overlay
+        CenterPlayPauseRippleOverlay(
+            visible = showCenterPlayPauseRipple,
+            isPlaying = centerPlayPauseIsPlaying
         )
         AspectRatioToast(visible = showAspectToast, text = aspectToastText)
 
