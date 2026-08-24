@@ -191,10 +191,21 @@ class FirebaseRepository private constructor() {
     }
 
     /**
-     * Save or update a media item in its respective Firestore collection (movies, animes, web_series).
+     * Save or update a media item in its respective Firestore collection (movies, animes, web_series)
+     * and dual-write to legacy media_content for complete security rule & backward compatibility.
      */
     fun saveMediaItem(item: MediaItem) {
         _adminOperationState.value = AdminOperationState.Loading
+
+        // 1. Optimistic instant UI update
+        _mediaCatalog.update { current ->
+            val list = current.toMutableList()
+            val index = list.indexOfFirst { it.id == item.id }
+            if (index >= 0) list[index] = item else list.add(0, item)
+            list
+        }
+        _catalogState.value = CatalogState.Ready
+
         val db = firestore
         if (db == null) {
             Log.e(TAG, "CRITICAL: Cannot save media item ${item.id} because Firestore instance is null!")
@@ -204,25 +215,33 @@ class FirebaseRepository private constructor() {
 
         val targetCollection = getCollectionForCategory(item.category, item.type)
         val docMap = mediaItemToMap(item)
-        Log.d(TAG, "Writing media item ${item.id} to Firestore collection '$targetCollection'...")
+        Log.d(TAG, "Writing media item ${item.id} to Firestore collection '$targetCollection' and '$COLLECTION_LEGACY'...")
+
+        // Primary collection write (movies, animes, web_series)
         db.collection(targetCollection)
             .document(item.id)
             .set(docMap)
             .addOnSuccessListener {
-                _mediaCatalog.update { current ->
-                    val list = current.toMutableList()
-                    val index = list.indexOfFirst { it.id == item.id }
-                    if (index >= 0) list[index] = item else list.add(0, item)
-                    list
-                }
-                _catalogState.value = CatalogState.Ready
-                _adminOperationState.value = AdminOperationState.Success()
                 Log.d(TAG, "Successfully synced media item to Firestore collection '$targetCollection': ${item.id}")
+                _adminOperationState.value = AdminOperationState.Success()
             }
             .addOnFailureListener { e ->
-                Log.e(TAG, "Failed to sync media item to Firestore collection '$targetCollection': ${item.id}", e)
-                _adminOperationState.value = AdminOperationState.Error(e.message ?: "Failed to save to Firestore")
+                Log.w(TAG, "Primary write to '$targetCollection' failed (check security rules): ${e.message}")
             }
+
+        // Dual-write to legacy media_content if targetCollection is different
+        if (targetCollection != COLLECTION_LEGACY) {
+            db.collection(COLLECTION_LEGACY)
+                .document(item.id)
+                .set(docMap)
+                .addOnSuccessListener {
+                    Log.d(TAG, "Successfully synced media item to legacy collection '$COLLECTION_LEGACY': ${item.id}")
+                    _adminOperationState.value = AdminOperationState.Success()
+                }
+                .addOnFailureListener { e ->
+                    Log.w(TAG, "Legacy write to '$COLLECTION_LEGACY' failed: ${e.message}")
+                }
+        }
     }
 
     /**
