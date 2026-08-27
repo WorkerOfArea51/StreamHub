@@ -20,15 +20,6 @@ object Secrets {
     /** MyAnimeList v2 client secret. Empty for public clients (PKCE flow). */
     val MAL_CLIENT_SECRET: String get() = BuildConfig.MAL_CLIENT_SECRET
 
-    /** Telegram App API credentials for TDLib client authentication. */
-    val TELEGRAM_API_ID: String get() = BuildConfig.TELEGRAM_API_ID
-    val TELEGRAM_API_HASH: String get() = BuildConfig.TELEGRAM_API_HASH
-
-    /** Telegram Private Channels (Auto-joined upon TDLib user login). */
-    val TELEGRAM_ANIME_CHANNEL: String get() = BuildConfig.TELEGRAM_ANIME_CHANNEL
-    val TELEGRAM_MOVIES_CHANNEL: String get() = BuildConfig.TELEGRAM_MOVIES_CHANNEL
-    val TELEGRAM_SERIES_CHANNEL: String get() = BuildConfig.TELEGRAM_SERIES_CHANNEL
-
     /** Master Admin password for Creator Studio unlock. */
     val ADMIN_MASTER_PASSWORD: String get() = BuildConfig.ADMIN_MASTER_PASSWORD
 

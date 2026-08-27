@@ -56,13 +56,7 @@ android {
         buildConfigField("String", "TMDB_API_KEY", "\"${secret("streamhub.tmdb_api_key")}\"")
         buildConfigField("String", "MAL_CLIENT_ID", "\"${secret("streamhub.mal_client_id")}\"")
         buildConfigField("String", "MAL_CLIENT_SECRET", "\"${secret("streamhub.mal_client_secret")}\"")
-        buildConfigField("String", "TELEGRAM_API_ID", "\"${secret("streamhub.telegram_api_id")}\"")
-        buildConfigField("String", "TELEGRAM_API_HASH", "\"${secret("streamhub.telegram_api_hash")}\"")
-        buildConfigField("String", "TELEGRAM_ANIME_CHANNEL", "\"${secret("streamhub.telegram_anime_channel", "")}\"")
-        buildConfigField("String", "TELEGRAM_MOVIES_CHANNEL", "\"${secret("streamhub.telegram_movies_channel", "")}\"")
-        buildConfigField("String", "TELEGRAM_SERIES_CHANNEL", "\"${secret("streamhub.telegram_series_channel", "")}\"")
         buildConfigField("boolean", "DEBUG_LOGGING", "false")
-        buildConfigField("String", "OWNER_USERNAMES", "\"${secret("streamhub.owner_usernames", "")}\"")
         buildConfigField("String", "ADMIN_MASTER_PASSWORD", "\"${secret("streamhub.admin_master_password", "7860")}\"")
     }
 
