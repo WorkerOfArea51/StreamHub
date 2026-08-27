@@ -311,46 +311,7 @@ fun VideoSettingsEntryCard(currentAccent: AppThemeAccent, onNavigateToVideoSetti
     }
 }
 
-@Composable
-fun ProxySettingsEntryCard(currentAccent: AppThemeAccent, onClick: () -> Unit) {
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
-            .clickable { onClick() }
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(currentAccent.color.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Security, contentDescription = "Proxy", tint = currentAccent.color, modifier = Modifier.size(20.dp))
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text("MTProto & Censorship Bypass Proxy", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text("Configure MTProto/SOCKS5 server to bypass ISP blocks", color = TextSecondary, fontSize = 11.sp)
-                }
-            }
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open", tint = TextSecondary)
-        }
-    }
-}
+
 
 @Composable
 fun AppUpdateCard() {

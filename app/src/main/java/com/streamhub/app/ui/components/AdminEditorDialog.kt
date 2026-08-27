@@ -590,53 +590,20 @@ fun AdminEditorDialog(
                                     onClick = {
                                         batchError = null
                                         if (startBatchLink.isBlank()) {
-                                            batchError = "Movie link is required"
+                                            batchError = "Stream link is required"
                                             return@Button
                                         }
                                         val link = startBatchLink.trim()
                                         generatedEpisodesText = link
-                                        isFetchingMeta = true
-                                        scope.launch {
-                                            try {
-                                                val meta = com.streamhub.app.data.telegram.TdLibMediaProvider.fetchMessageMetadata(link)
-                                                if (meta != null) {
-                                                    if (fileSize.isBlank() && meta.fileSizeFormatted.isNotBlank()) {
-                                                        fileSize = meta.fileSizeFormatted
-                                                    }
-                                                    if (duration.isBlank() && meta.durationFormatted.isNotBlank()) {
-                                                        duration = meta.durationFormatted
-                                                    }
-                                                    if (resolution.isBlank() && meta.resolution.isNotBlank()) {
-                                                        resolution = meta.resolution
-                                                    }
-                                                    if (meta.fileName.isNotBlank()) {
-                                                        fetchedFileName = meta.fileName
-                                                    }
-                                                    if (meta.durationSeconds > 0) {
-                                                        fetchedDurationMs = meta.durationSeconds * 1000L
-                                                    }
-                                                }
-                                            } catch (e: Exception) {
-                                                android.util.Log.w("AdminEditorDialog", "Failed to auto-fetch metadata: ${e.message}")
-                                            } finally {
-                                                isFetchingMeta = false
-                                            }
-                                        }
                                     },
                                     enabled = startBatchLink.isNotBlank(),
                                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
                                     shape = RoundedCornerShape(12.dp),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    if (isFetchingMeta) {
-                                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Auto-Fetching Specs...", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    } else {
-                                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Attach & Auto-Fetch Specs", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
+                                    Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Set Direct Stream Link", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
 
                                 if (startBatchLink.isNotBlank() || generatedEpisodesText.isNotBlank()) {

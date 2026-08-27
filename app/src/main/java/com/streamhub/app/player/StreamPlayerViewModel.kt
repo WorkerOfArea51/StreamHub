@@ -154,7 +154,7 @@ class StreamPlayerViewModel : ViewModel() {
 
         if (exoPlayer == null) {
             val createResult = runCatching {
-                val dataSourceFactory = TelegramDataSourceFactory(context)
+                val dataSourceFactory = StreamDataSourceFactory(context)
                 trackSelector = DefaultTrackSelector(context).apply {
                     parameters = buildUponParameters()
                         .setMinVideoBitrate(200_000)
@@ -498,13 +498,7 @@ class StreamPlayerViewModel : ViewModel() {
                 resolveStreamUrl(rawUrl)
             }
             if (resolvedUrl.isBlank()) {
-                val isTg = TelegramLinkResolver.isTelegramLink(rawUrl)
-                val isTgReady = com.streamhub.app.data.telegram.TdLibManager.isReady()
-                val errorMsg = if (isTg && !isTgReady) {
-                    "Telegram login required. Please log in from the Profile tab to stream this video."
-                } else {
-                    "Couldn't resolve the stream link. It may have expired or is unavailable."
-                }
+                val errorMsg = "Couldn't resolve the stream link. It may have expired or is unavailable."
                 _uiState.update {
                     it.copy(
                         isBuffering = false,
@@ -916,27 +910,7 @@ class StreamPlayerViewModel : ViewModel() {
                         }
                     }
 
-                    val resolvedUrl = _uiState.value.resolvedStreamUrl
-                    val fileIdFromUrl = if (resolvedUrl.contains("fileId=")) {
-                        resolvedUrl.substringAfter("fileId=").substringBefore("&").toIntOrNull()
-                    } else {
-                        com.streamhub.app.data.telegram.TdLibMediaProvider.getFileIdForPath(resolvedUrl)
-                    }
-
-                    val cachedFile = fileIdFromUrl?.let { com.streamhub.app.data.telegram.StreamingProxyServer.getCachedFile(it) }
-                    val tdlibBufferedMs = if (cachedFile != null && cachedFile.size > 0L && totalDuration > 0L) {
-                        val prefixSize = cachedFile.local.downloadedPrefixSize.toLong()
-                        val isCompleted = cachedFile.local.isDownloadingCompleted
-                        if (isCompleted) {
-                            totalDuration
-                        } else {
-                            ((prefixSize.toDouble() / cachedFile.size.toDouble()) * totalDuration).toLong().coerceIn(0L, totalDuration)
-                        }
-                    } else {
-                        0L
-                    }
-
-                    val effectiveBuffered = maxOf(buffered, tdlibBufferedMs)
+                    val effectiveBuffered = buffered
                     val bufferHealthSec = ((effectiveBuffered - currentPos).coerceAtLeast(0L) / 1000L)
 
                     // Estimate network speed from total bytes downloaded

@@ -162,10 +162,6 @@ class MainActivity : ComponentActivity() {
         handleDeepLink(intent)
         registerPipActionReceiver()
 
-        lifecycleScope.launch {
-            com.streamhub.app.data.telegram.StreamingProxyServer.start()
-        }
-
         setContent {
             StreamHubTheme {
                 StreamHubApp(deepLinkMediaId = deepLinkMediaId)

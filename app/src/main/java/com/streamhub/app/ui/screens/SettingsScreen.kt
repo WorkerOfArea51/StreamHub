@@ -32,13 +32,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.streamhub.app.ui.components.ProxySettingsDialog
 import com.streamhub.app.ui.screens.settings.AboutCard
 import com.streamhub.app.ui.screens.settings.AppUpdateCard
 import com.streamhub.app.ui.screens.settings.DownloadPathCard
 import com.streamhub.app.ui.screens.settings.HomeLayoutCard
 import com.streamhub.app.ui.screens.settings.NotificationAlertCard
-import com.streamhub.app.ui.screens.settings.ProxySettingsEntryCard
 import com.streamhub.app.ui.screens.settings.ScreenshotPathCard
 import com.streamhub.app.ui.screens.settings.SpeedTestCard
 import com.streamhub.app.ui.screens.settings.ThemeAccentCard
@@ -56,7 +54,6 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val currentAccent by ThemeManager.currentAccent.collectAsState()
-    var showProxyDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = BackgroundDark,
@@ -111,9 +108,8 @@ fun SettingsScreen(
 
             // --- CATEGORY 3: NETWORK & CONNECTION ---
             item(key = "cat_network") {
-                SettingsCategoryHeader(title = "NETWORK & PROXY", accentColor = currentAccent.color)
+                SettingsCategoryHeader(title = "NETWORK & SPEED", accentColor = currentAccent.color)
             }
-            item(key = "settings_proxy_entry") { ProxySettingsEntryCard(currentAccent = currentAccent, onClick = { showProxyDialog = true }) }
             item(key = "settings_speed_test") { SpeedTestCard(currentAccent = currentAccent) }
 
             // --- CATEGORY 4: STORAGE & DOWNLOADS ---
@@ -140,12 +136,6 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(24.dp))
             }
         }
-    }
-
-    if (showProxyDialog) {
-        ProxySettingsDialog(
-            onDismiss = { showProxyDialog = false }
-        )
     }
 }
 

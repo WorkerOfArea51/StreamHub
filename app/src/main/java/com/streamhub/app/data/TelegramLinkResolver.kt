@@ -1,45 +1,28 @@
 package com.streamhub.app.data
 
-import android.os.Looper
 import android.util.Log
 import com.streamhub.app.data.models.Episode
-import com.streamhub.app.data.telegram.TdLibMediaProvider
-import com.streamhub.app.data.telegram.TelegramStreamResult
-import kotlinx.coroutines.runBlocking
 
 /**
- * Telegram Link Resolver — resolves t.me links to playable stream URLs.
+ * Direct Stream Link Resolver & Batch URL Generator.
  *
- * This object bridges the admin editor's batch link generation and the
- * ExoPlayer streaming pipeline. It handles two distinct responsibilities:
- *
- * 1. **Batch link generation** (admin editor): Generates ranges of t.me links
- *    from start/end URLs and parses them into Episode objects.
- *
- * 2. **Link resolution** (streaming): Resolves t.me links to actual video
- *    file paths or HTTP URLs that ExoPlayer can play. This requires TDLib
- *    to be authenticated and the user to be a member of the target channel.
- *
- * Resolution is asynchronous (uses TdLibMediaProvider under the hood).
- * For synchronous callers (like Episode.streamUrl), use [resolveSync].
- * For async callers (like ViewModel), use [resolveAsync].
+ * Handles:
+ * 1. Batch sequential URL generation (e.g. episode ranges 1..24).
+ * 2. Parsing raw text lines into structured [Episode] objects.
+ * 3. Direct HTTP / File-to-Link URL passthrough for high-performance streaming.
  */
 object TelegramLinkResolver {
 
     private const val TAG = "TelegramLinkResolver"
     private const val MAX_BATCH_SIZE = 500
 
-    // ──────────────────────────────────────────────────────────────
-    // Batch Link Generation (Admin Editor)
-    // ──────────────────────────────────────────────────────────────
-
     /**
-     * Generates a list of batch Telegram links from start link to end link.
-     * E.g. start: "https://t.me/c/2633457020/7159", end: "https://t.me/c/2633457020/7170"
-     * Returns 12 links: 7159 through 7170.
+     * Generates a list of batch links from start link to end link.
+     * E.g. start: "https://your-domain.alwaysdata.net/watch/7159", end: "https://your-domain.alwaysdata.net/watch/7170"
+     * Returns 12 sequential links: 7159 through 7170.
      */
     fun generateBatchTelegramLinks(startUrl: String, endUrl: String): String {
-        val regex = Regex("""(https?://t\.me/(?:c/\d+|[^/]+)/)(\d+)""")
+        val regex = Regex("""(https?://.+?/)(\d+)""")
         val startMatch = regex.find(startUrl.trim())
         val endMatch = regex.find(endUrl.trim())
 
@@ -68,13 +51,8 @@ object TelegramLinkResolver {
     }
 
     /**
-     * Parses raw batch Telegram links / message URLs or stream links
+     * Parses raw batch stream links / message URLs or direct HTTP links
      * and automatically groups them into structured Episode objects.
-     *
-     * Each link is stored as:
-     *  - streamUrl: the original link (resolved at playback time by TdLibMediaProvider)
-     *  - mirrorStreamUrl: the original link (backup)
-     *  - telegramFileId: the message ID extracted from the link
      */
     fun parseAndGroupTelegramLinks(
         rawText: String,
@@ -94,7 +72,7 @@ object TelegramLinkResolver {
                     seasonNumber = seasonNumber,
                     arcName = arcName,
                     title = epTitle,
-                    streamUrl = line,  // Store the t.me link — resolved at playback time
+                    streamUrl = line,
                     mirrorStreamUrl = line,
                     telegramFileId = extractTelegramMessageOrFileId(line)
                 )
@@ -103,140 +81,24 @@ object TelegramLinkResolver {
         return episodes.sortedBy { it.episodeNumber }
     }
 
-    /**
-     * Fetch and attach rich TDLib metadata (fileName, fileSize, duration, thumbnail) for an Episode.
-     */
     suspend fun fetchMetadataForEpisode(episode: Episode): Episode {
-        if (!isTelegramLink(episode.streamUrl)) return episode
-        return try {
-            val meta = com.streamhub.app.data.telegram.TdLibMediaProvider.fetchMessageMetadata(episode.streamUrl) ?: return episode
-            episode.copy(
-                fileName = meta.fileName.ifBlank { episode.fileName },
-                fileSize = meta.fileSizeFormatted.ifBlank { episode.fileSize },
-                durationMs = if (meta.durationSeconds > 0) meta.durationSeconds * 1000L else episode.durationMs,
-                thumbnailUrl = meta.thumbnailPath.ifBlank { episode.thumbnailUrl }
-            )
-        } catch (e: Exception) {
-            episode
-        }
+        return episode
     }
 
-    // ──────────────────────────────────────────────────────────────
-    // Link Resolution (Streaming)
-    // ──────────────────────────────────────────────────────────────
-
     /**
-     * Asynchronously resolve a Telegram link to a playable stream URL.
-     *
-     * This is the primary method for resolving links before playback.
-     * It uses TdLibMediaProvider to:
-     *  1. Parse the t.me link
-     *  2. Access the Telegram channel via TDLib
-     *  3. Fetch the video message
-     *  4. Download the video file (or use cached version)
-     *  5. Return the local file path or HTTP URL for ExoPlayer
-     *
-     * @param url The t.me link or HTTP URL
-     * @return Resolved URL/path that ExoPlayer can play, or the original URL as fallback
+     * Resolves a stream URL to a playable HTTP URL or local file path.
      */
     suspend fun resolveAsync(url: String): String {
-        // Passthrough for non-Telegram HTTP URLs
-        if (!isTelegramLink(url)) {
-            return url
-        }
-
-        // Check if TDLib is ready
-        if (!TdLibMediaProviderReady()) {
-            Log.w(TAG, "TDLib not ready — cannot resolve Telegram link: $url")
-            return ""
-        }
-
-        return when (val result = TdLibMediaProvider.resolveStreamUrl(url, autoJoin = true)) {
-            is TelegramStreamResult.LocalFile -> {
-                Log.i(TAG, "Resolved to local file: ${result.filePath}")
-                result.filePath
-            }
-            is TelegramStreamResult.HttpUrl -> {
-                Log.i(TAG, "Resolved to HTTP URL: ${result.url}")
-                result.url
-            }
-            is TelegramStreamResult.Downloading -> {
-                // File is still downloading — return partial path if available
-                // ExoPlayer can start playback from the partial file
-                if (result.partialPath.isNotBlank()) {
-                    Log.i(TAG, "File downloading (${result.progress * 100}%): ${result.partialPath}")
-                    result.partialPath
-                } else {
-                    Log.w(TAG, "File downloading but no partial path available")
-                    url
-                }
-            }
-            is TelegramStreamResult.Failed -> {
-                Log.e(TAG, "Failed to resolve Telegram link: ${result.message}")
-                url // Return original URL as fallback
-            }
-        }
+        return url
     }
 
-    /**
-     * Synchronous resolution — blocks the calling thread until resolved or timeout.
-     *
-     * FIX: Added 15-second timeout to prevent indefinite blocking.
-     * runBlocking is still used (required for sync callers like DownloadManager),
-     * but the timeout guarantees the calling thread is never blocked forever.
-     *
-     * WARNING: Use ONLY in non-UI contexts (e.g. DownloadManager on Dispatchers.IO).
-     * Calling from the main thread WILL cause an ANR.
-     * For UI/playback, always use [resolveAsync].
-     */
     fun resolveSync(url: String): String {
-        check(Looper.myLooper() != Looper.getMainLooper()) {
-            "resolveSync must NOT be called on the main thread - use resolveAsync instead"
-        }
-        if (!isTelegramLink(url)) return url
-
-        return try {
-            runBlocking {
-                kotlinx.coroutines.withTimeoutOrNull(15_000L) {
-                    resolveAsync(url)
-                } ?: run {
-                    Log.w(TAG, "Sync resolution timed out after 15s for: $url")
-                    url // Fallback to original URL on timeout
-                }
-            }
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.e(TAG, "Sync resolution failed for: $url", e)
-            url
-        }
+        return url
     }
 
-    /**
-     * Check if a URL is a Telegram link that needs TDLib resolution.
-     */
     fun isTelegramLink(url: String): Boolean {
         return url.contains("://t.me/") || url.startsWith("t.me/")
     }
-
-    /**
-     * Check if TdLibMediaProvider is ready (TDLib authenticated).
-     */
-    private fun TdLibMediaProviderReady(): Boolean {
-        return try {
-            TdLibManagerReady()
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    private fun TdLibManagerReady(): Boolean {
-        return com.streamhub.app.data.telegram.TdLibManager.isReady()
-    }
-
-    // ──────────────────────────────────────────────────────────────
-    // Helpers
-    // ──────────────────────────────────────────────────────────────
 
     private fun extractEpisodeNumber(text: String): Int? {
         val epRegex = Regex("""(?i)(?:ep|episode|s\d+e|\be)\s*(\d+)""")
@@ -245,7 +107,7 @@ object TelegramLinkResolver {
     }
 
     fun extractTelegramMessageOrFileId(url: String): String {
-        val msgRegex = Regex("""t\.me/(?:c/\d+|[^/]+)/(\d+)""")
+        val msgRegex = Regex("""(?:t\.me/(?:c/\d+|[^/]+)/|watch/|dl/)(\d+)""")
         val match = msgRegex.find(url)
         return match?.groupValues?.get(1) ?: url.hashCode().toString()
     }

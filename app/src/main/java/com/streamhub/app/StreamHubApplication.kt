@@ -14,9 +14,6 @@ import com.streamhub.app.data.SubtitleSettingsManager
 import com.streamhub.app.data.UserStatsManager
 import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.YoutubeStreamExtractor
-import com.streamhub.app.data.telegram.TelegramAuthManager
-import com.streamhub.app.data.telegram.TdLibManager
-import com.streamhub.app.data.telegram.TelegramProxyManager
 import com.streamhub.app.player.StreamCacheManager
 import com.streamhub.app.player.StreamDownloadManager
 import com.streamhub.app.player.VideoThumbnailHelper
@@ -131,19 +128,6 @@ class StreamHubApplication : Application() {
             .onFailure { Log.e(TAG, "YoutubeStreamExtractor.init failed", it) }
         runCatching { StorageCacheManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "StorageCacheManager.init failed", it) }
-
-        initScope.launch {
-            val tdLibOk = runCatching { TdLibManager.initialize(applicationContext) }
-                .getOrDefault(false)
-            if (tdLibOk) {
-                runCatching { TelegramAuthManager.init(applicationContext) }
-                    .onFailure { Log.e(TAG, "TelegramAuthManager.init failed", it) }
-                runCatching { TelegramProxyManager.init(applicationContext) }
-                    .onFailure { Log.e(TAG, "TelegramProxyManager.init failed", it) }
-            } else {
-                Log.w(TAG, "TDLib initialization failed — Telegram features will be unavailable")
-            }
-        }
     }
 
     private fun startBackgroundServices() {

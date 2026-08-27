@@ -100,12 +100,6 @@ fun HomeScreen(
     var showAdminAddDialog by remember { mutableStateOf(false) }
     var showSurpriseMeDialog by remember { mutableStateOf(false) }
     var showClearHistoryDialog by remember { mutableStateOf(false) }
-    var isTelegramBannerDismissed by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(30_000L)
-        isTelegramBannerDismissed = true
-    }
 
     val myListIds by com.streamhub.app.data.MyListManager.myListFlow.collectAsState()
 
@@ -162,48 +156,11 @@ fun HomeScreen(
         }
         CategorizedCatalog(trending, anime, movies, series)
     }
-    val recentlyAddedItems = filteredCatalog
-
-    val tgState by com.streamhub.app.data.telegram.TelegramAuthManager.authState.collectAsState()
-
     Box(modifier = modifier.fillMaxSize().background(BackgroundDark)) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 80.dp)
         ) {
-            if (!isTelegramBannerDismissed && tgState !is com.streamhub.app.data.telegram.TelegramAuthState.Authenticated) {
-                item {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1B4B)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 6.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("🔑 Telegram Login Recommended", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                Text("Log in via Profile to auto-join streaming channels & unlock full media access.", color = Color(0xFFC7D2FE), fontSize = 11.sp)
-                            }
-                            IconButton(
-                                onClick = { isTelegramBannerDismissed = true },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Dismiss",
-                                    tint = Color(0xFFC7D2FE)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
             // Category Filter Pills & Surprise Me Roulette Button
             item {
                 Row(
@@ -455,11 +412,11 @@ fun HomeScreen(
             }
 
             // Recently Added Row
-            if (recentlyAddedItems.isNotEmpty()) {
+            if (filteredCatalog.isNotEmpty()) {
                 item {
                     MediaSectionRow(
                         title = "✨ Recently Added",
-                        items = recentlyAddedItems,
+                        items = filteredCatalog,
                         onMediaClick = onMediaClick
                     )
                 }

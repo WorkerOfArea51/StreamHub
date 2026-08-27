@@ -45,8 +45,8 @@ android {
         minSdk = 24
         targetSdk = 35
         val envVersionName = System.getenv("VERSION_NAME")?.removePrefix("v")?.removePrefix("V")
-        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 156
-        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.156"
+        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 157
+        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.157"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -201,11 +201,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-process:2.8.7")
     // NOTE: Using 1.1.0-alpha06 for KeyScheme.AES256_GCM support (not available in 1.0.0 stable)
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
-
-    implementation("com.google.zxing:core:3.5.3")
-
-    // TDLib — Telegram Database Library (native MTProto client)
-    implementation(libs.tdlib.java)
 
     // FIX: Test dependencies for unit and instrumented tests
     testImplementation("junit:junit:4.13.2")
