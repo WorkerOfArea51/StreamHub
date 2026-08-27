@@ -458,13 +458,30 @@ fun AppUpdateCard() {
 }
 
 @Composable
-fun AboutCard() {
+fun AboutCard(onSecretAdminTap: () -> Unit = {}) {
+    var tapCount by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var lastTapTime by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
         modifier = Modifier
             .fillMaxWidth()
             .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
+            .clickable {
+                val now = System.currentTimeMillis()
+                if (now - lastTapTime > 3000L) {
+                    tapCount = 1
+                } else {
+                    tapCount++
+                }
+                lastTapTime = now
+
+                if (tapCount >= 5) {
+                    tapCount = 0
+                    onSecretAdminTap()
+                }
+            }
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

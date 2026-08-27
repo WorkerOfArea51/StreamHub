@@ -1,6 +1,7 @@
 package com.streamhub.app.ui.screens
 
 import android.content.Context
+import android.widget.Toast
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -37,7 +38,6 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.AlertDialog
@@ -55,6 +55,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -118,7 +120,7 @@ fun ProfileScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Profile & Account 👤",
+                    text = "My Space & Settings 👤",
                     color = TextPrimary,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold
@@ -126,13 +128,17 @@ fun ProfileScreen(
             }
         }
 
-        // ── VIP Profile Card ──
+        // ── VIP Profile Card (With secret 5-tap Admin Easter Egg on Avatar) ──
         item(key = "vip_profile_card") {
             StreamHubUserProfileCard(
                 isAdmin = isAdminMode,
                 primaryColor = primaryColor,
-                onUnlockAdmin = { showAdminPasswordDialog = true },
-                onOpenStudio = { showAddContentDialog = true }
+                onSecretTapUnlock = { showAdminPasswordDialog = true },
+                onOpenStudio = { showAddContentDialog = true },
+                onLockAdmin = {
+                    AdminManager.disableAdmin()
+                    Toast.makeText(context, "Admin mode locked", Toast.LENGTH_SHORT).show()
+                }
             )
         }
 
@@ -217,13 +223,14 @@ fun ProfileScreen(
         }
     }
 
-    // Owner / Admin Password Verification Dialog
+    // Master Password Verification Dialog (Triggered only via 5-tap gesture or secret code)
     if (showAdminPasswordDialog) {
         AdminPasswordDialog(
             onDismiss = { showAdminPasswordDialog = false },
             onSuccess = {
                 showAdminPasswordDialog = false
                 showAddContentDialog = true
+                Toast.makeText(context, "Creator Studio Unlocked! 🎬", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -245,9 +252,14 @@ fun ProfileScreen(
 private fun StreamHubUserProfileCard(
     isAdmin: Boolean,
     primaryColor: Color,
-    onUnlockAdmin: () -> Unit,
-    onOpenStudio: () -> Unit
+    onSecretTapUnlock: () -> Unit,
+    onOpenStudio: () -> Unit,
+    onLockAdmin: () -> Unit
 ) {
+    val context = LocalContext.current
+    var tapCount by remember { mutableIntStateOf(0) }
+    var lastTapTime by remember { mutableLongStateOf(0L) }
+
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
@@ -285,7 +297,7 @@ private fun StreamHubUserProfileCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Avatar with glowing border
+                // Avatar with 5-tap secret easter egg trigger
                 Box(
                     modifier = Modifier
                         .size(64.dp)
@@ -293,9 +305,24 @@ private fun StreamHubUserProfileCard(
                         .clip(CircleShape)
                         .background(
                             Brush.linearGradient(
-                                listOf(primaryColor, Color(0xFF38BDF8))
+                                if (isAdmin) listOf(Color(0xFFFFD700), Color(0xFFF59E0B))
+                                else listOf(primaryColor, Color(0xFF38BDF8))
                             )
-                        ),
+                        )
+                        .clickable {
+                            val now = System.currentTimeMillis()
+                            if (now - lastTapTime > 3000L) {
+                                tapCount = 1
+                            } else {
+                                tapCount++
+                            }
+                            lastTapTime = now
+
+                            if (tapCount >= 5) {
+                                tapCount = 0
+                                onSecretTapUnlock()
+                            }
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -335,53 +362,71 @@ private fun StreamHubUserProfileCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            // ONLY visible when Admin is unlocked on this device!
+            if (isAdmin) {
+                Spacer(modifier = Modifier.height(16.dp))
 
-            // Studio / Admin Access Button
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = if (isAdmin) Color(0xFF1E1E2E) else Color(0xFF181824),
-                border = BorderStroke(1.dp, if (isAdmin) Color(0xFFFFD700).copy(alpha = 0.5f) else Color(0xFF2C2C3E)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        if (isAdmin) onOpenStudio() else onUnlockAdmin()
-                    }
-            ) {
-                Row(
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFF1E1E2E),
+                    border = BorderStroke(1.dp, Color(0xFFFFD700).copy(alpha = 0.5f)),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .clickable { onOpenStudio() }
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = if (isAdmin) Icons.Default.LockOpen else Icons.Default.Lock,
-                            contentDescription = "Admin",
-                            tint = if (isAdmin) Color(0xFFFFD700) else TextSecondary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = if (isAdmin) "🎬 Open Creator Studio" else "🔒 Creator Studio (Publish Shows)",
-                                color = if (isAdmin) Color(0xFFFFD700) else TextPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.LockOpen,
+                                contentDescription = "Admin",
+                                tint = Color(0xFFFFD700),
+                                modifier = Modifier.size(20.dp)
                             )
-                            Text(
-                                text = if (isAdmin) "Tap to add or edit movies, anime & web series" else "Enter owner password to unlock publishing",
-                                color = TextSecondary,
-                                fontSize = 11.sp
-                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "🎬 Open Creator Studio",
+                                    color = Color(0xFFFFD700),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                                Text(
+                                    text = "Add or edit movies, anime & web series",
+                                    color = TextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
                         }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                            contentDescription = "Open",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(14.dp)
+                        )
                     }
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
-                        contentDescription = "Open",
-                        tint = TextSecondary,
-                        modifier = Modifier.size(14.dp)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Text(
+                        text = "🔒 Lock Admin Access",
+                        color = Color(0xFFEF4444),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onLockAdmin() }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
             }

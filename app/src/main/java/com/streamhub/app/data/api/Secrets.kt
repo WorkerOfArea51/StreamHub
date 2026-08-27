@@ -29,6 +29,9 @@ object Secrets {
     val TELEGRAM_MOVIES_CHANNEL: String get() = BuildConfig.TELEGRAM_MOVIES_CHANNEL
     val TELEGRAM_SERIES_CHANNEL: String get() = BuildConfig.TELEGRAM_SERIES_CHANNEL
 
+    /** Master Admin password for Creator Studio unlock. */
+    val ADMIN_MASTER_PASSWORD: String get() = BuildConfig.ADMIN_MASTER_PASSWORD
+
     /** MyAnimeList v2 REST API base URL. */
     const val MAL_BASE_URL: String = "https://api.myanimelist.net/v2/"
 

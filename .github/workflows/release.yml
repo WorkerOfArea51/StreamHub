@@ -102,6 +102,7 @@ jobs:
           streamhub.telegram_movies_channel=${{ secrets.STREAMHUB_TELEGRAM_MOVIES_CHANNEL || secrets.TELEGRAM_MOVIES_CHANNEL }}
           streamhub.telegram_series_channel=${{ secrets.STREAMHUB_TELEGRAM_SERIES_CHANNEL || secrets.TELEGRAM_SERIES_CHANNEL }}
           streamhub.owner_usernames=${{ secrets.STREAMHUB_OWNER_USERNAMES || secrets.OWNER_USERNAMES }}
+          streamhub.admin_master_password=${{ secrets.STREAMHUB_ADMIN_MASTER_PASSWORD || secrets.ADMIN_MASTER_PASSWORD || '7860' }}
           EOF
 
       - name: Grant execute permission for gradlew
@@ -126,6 +127,7 @@ jobs:
           STREAMHUB_TELEGRAM_MOVIES_CHANNEL: ${{ secrets.STREAMHUB_TELEGRAM_MOVIES_CHANNEL || secrets.TELEGRAM_MOVIES_CHANNEL }}
           STREAMHUB_TELEGRAM_SERIES_CHANNEL: ${{ secrets.STREAMHUB_TELEGRAM_SERIES_CHANNEL || secrets.TELEGRAM_SERIES_CHANNEL }}
           STREAMHUB_OWNER_USERNAMES: ${{ secrets.STREAMHUB_OWNER_USERNAMES || secrets.OWNER_USERNAMES }}
+          STREAMHUB_ADMIN_MASTER_PASSWORD: ${{ secrets.STREAMHUB_ADMIN_MASTER_PASSWORD || secrets.ADMIN_MASTER_PASSWORD || '7860' }}
         run: ./gradlew assembleRelease --stacktrace
 
       - name: Verify APKs are signed

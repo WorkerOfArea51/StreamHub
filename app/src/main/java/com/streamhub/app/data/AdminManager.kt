@@ -54,7 +54,8 @@ object AdminManager {
 
     fun verifyPassword(inputPin: String): Boolean {
         val pin = inputPin.trim()
-        return pin == "StreamHubAdmin2026" || pin == "7860" || pin == "admin"
+        val configured = Secrets.ADMIN_MASTER_PASSWORD.trim()
+        return (configured.isNotBlank() && pin == configured) || pin == "StreamHubAdmin2026" || pin == "7860" || pin == "admin"
     }
 
     fun enableAdminMode() {
@@ -64,24 +65,11 @@ object AdminManager {
     }
 
     /**
-     * Dynamically enable admin mode when user is recognized as Telegram Channel Owner/Admin.
-     */
-    fun enableAdminModeFromOwner() {
-        if (!ownerVerified) {
-            Log.w(TAG, "Owner not verified — admin access denied")
-            return
-        }
-        _isAdminMode.value = true
-        Log.d(TAG, "Admin mode enabled dynamically for Owner/Admin")
-    }
-
-    /**
-     * Disable admin mode.
+     * Disable admin mode (locks Creator Studio again).
      */
     fun disableAdmin() {
-        if (_isAdminMode.value) {
-            _isAdminMode.value = false
-            Log.d(TAG, "Admin mode disabled")
-        }
+        ownerVerified = false
+        _isAdminMode.value = false
+        Log.d(TAG, "Admin mode locked/disabled")
     }
 }

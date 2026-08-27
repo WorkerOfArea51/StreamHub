@@ -76,9 +76,19 @@ fun SearchScreen(
     val catalog by repository.mediaCatalog.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
     var debouncedQuery by remember { mutableStateOf("") }
+    var showAdminPasswordDialog by remember { mutableStateOf(false) }
+    var showAddContentDialog by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+
     LaunchedEffect(searchQuery) {
-        delay(300L)
-        debouncedQuery = searchQuery
+        val trimmed = searchQuery.trim()
+        if (trimmed.equals("#admin", ignoreCase = true) || trimmed == "#7860" || trimmed.equals("#publish", ignoreCase = true)) {
+            searchQuery = ""
+            showAdminPasswordDialog = true
+        } else {
+            delay(300L)
+            debouncedQuery = searchQuery
+        }
     }
 
     var selectedCategoryFilter by remember { mutableStateOf("ALL") }
@@ -353,5 +363,27 @@ fun SearchScreen(
                 }
             }
         }
+    }
+
+    if (showAdminPasswordDialog) {
+        com.streamhub.app.ui.screens.AdminPasswordDialog(
+            onDismiss = { showAdminPasswordDialog = false },
+            onSuccess = {
+                showAdminPasswordDialog = false
+                showAddContentDialog = true
+                android.widget.Toast.makeText(context, "Creator Studio Unlocked! 🎬", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    if (showAddContentDialog) {
+        com.streamhub.app.ui.components.AdminEditorDialog(
+            initialItem = null,
+            onDismiss = { showAddContentDialog = false },
+            onSave = { newItem ->
+                repository.saveMediaItem(newItem)
+                showAddContentDialog = false
+            }
+        )
     }
 }
