@@ -404,7 +404,8 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
     var showAdPassGate by remember { mutableStateOf(false) }
 
     val safePlayEpisode: (com.streamhub.app.data.models.MediaItem, Int) -> Unit = { media, episodeIndex ->
-        if (com.streamhub.app.data.ads.AdPassManager.hasActivePass() || media.id.startsWith("offline:")) {
+        val isExemptFromAds = isAdminMode || isAccessKeyUnlocked || isAdPassActive || media.id.startsWith("offline:")
+        if (isExemptFromAds) {
             navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
         } else {
             pendingPlayMedia = Pair(media, episodeIndex)
