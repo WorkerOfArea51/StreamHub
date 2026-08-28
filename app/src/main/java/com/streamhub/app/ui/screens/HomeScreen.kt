@@ -121,6 +121,15 @@ fun HomeScreen(
         }
     }
 
+    val selectedCategoryDisplayName = remember(selectedCategoryFilter) {
+        when (selectedCategoryFilter) {
+            "ANIME" -> "Anime"
+            "MOVIES" -> "Movies"
+            "SERIES" -> "Series"
+            else -> "Content"
+        }
+    }
+
     val featuredItems = remember(filteredCatalog) {
         val featured = filteredCatalog.filter { it.isFeatured }
         if (featured.isNotEmpty()) featured else filteredCatalog.take(5)
@@ -256,17 +265,11 @@ fun HomeScreen(
 
             // Empty state for specific category filter (e.g. Anime, Series)
             if (catalog.isNotEmpty() && filteredCatalog.isEmpty() && catalogState is com.streamhub.app.data.repository.CatalogState.Ready) {
-                val categoryName = when (selectedCategoryFilter) {
-                    "ANIME" -> "Anime"
-                    "MOVIES" -> "Movies"
-                    "SERIES" -> "Series"
-                    else -> "Content"
-                }
-                item {
+                item(key = "category_empty_state") {
                     EmptyStateCard(
                         icon = Icons.Default.Movie,
-                        title = "No $categoryName Yet",
-                        subtitle = if (isAdminMode) "Tap the + button below to add your first $categoryName"
+                        title = "No $selectedCategoryDisplayName Yet",
+                        subtitle = if (isAdminMode) "Tap the + button below to add your first $selectedCategoryDisplayName"
                                    else "Check back later or switch to 'All' / 'Movies' to explore",
                         modifier = Modifier.height(350.dp)
                     )

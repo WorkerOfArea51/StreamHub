@@ -195,16 +195,18 @@ class StreamPlayerViewModel : ViewModel() {
                     .setPrioritizeTimeOverSizeThresholds(true)
                     .setTargetBufferBytes(128 * 1024 * 1024) // 128 MB target buffer pool
                     .build()
-                ExoPlayer.Builder(context, renderersFactory)
-                    .setTrackSelector(trackSelector!!)
-                    .setAudioAttributes(audioAttributes, true)
-                    .setHandleAudioBecomingNoisy(true)
-                    .setLoadControl(loadControl)
-                    .setSeekParameters(androidx.media3.exoplayer.SeekParameters.DEFAULT)
-                    .setMediaSourceFactory(
-                        androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory)
-                    )
-                    .build()
+                    val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
+                        .setConstantBitrateSeekingEnabled(true)
+                    ExoPlayer.Builder(context, renderersFactory)
+                        .setTrackSelector(trackSelector!!)
+                        .setAudioAttributes(audioAttributes, true)
+                        .setHandleAudioBecomingNoisy(true)
+                        .setLoadControl(loadControl)
+                        .setSeekParameters(androidx.media3.exoplayer.SeekParameters.DEFAULT)
+                        .setMediaSourceFactory(
+                            androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory)
+                        )
+                        .build()
             }
 
             if (createResult.isFailure) {

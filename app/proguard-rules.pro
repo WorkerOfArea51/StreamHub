@@ -90,8 +90,15 @@
 -dontwarn org.schabi.newpipe.extractor.**
 -dontwarn org.mozilla.javascript.**
 -dontwarn org.mozilla.classfile.**
--dontwarn java.beans.**
--dontwarn org.jsoup.**
+# --- Jetpack Compose Runtime & UI ---
+-keep class androidx.compose.** { *; }
+-dontwarn androidx.compose.**
+-keep class androidx.compose.runtime.** { *; }
+-keepclassmembers class * extends androidx.compose.runtime.** { *; }
+
+# --- Media3 OkHttp & ExoPlayer ---
+-keep class androidx.media3.datasource.okhttp.** { *; }
+-dontwarn androidx.media3.datasource.okhttp.**
 
 
 

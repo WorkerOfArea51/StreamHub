@@ -76,7 +76,18 @@ class StreamDataSourceFactory(
                     else -> cachedHttpSource
                 }
                 transferListener?.let { currentSource?.addTransferListener(it) }
-                return currentSource!!.open(dataSpec)
+                return try {
+                    currentSource!!.open(dataSpec)
+                } catch (e: Exception) {
+                    if (!isLocalFile && currentSource !== directHttpSource) {
+                        Log.w(TAG, "Cache stream open failed, falling back to direct OkHttp stream: ${e.message}")
+                        currentSource = directHttpSource
+                        transferListener?.let { currentSource?.addTransferListener(it) }
+                        currentSource!!.open(dataSpec)
+                    } else {
+                        throw e
+                    }
+                }
             }
 
             override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
