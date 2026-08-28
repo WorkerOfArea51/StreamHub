@@ -40,9 +40,8 @@ class FirebaseRepository private constructor() {
         const val COLLECTION_MOVIES = "movies"
         const val COLLECTION_ANIMES = "animes"
         const val COLLECTION_SERIES = "web_series"
-        const val COLLECTION_LEGACY = "media_content"
 
-        val ALL_COLLECTIONS = listOf(COLLECTION_MOVIES, COLLECTION_ANIMES, COLLECTION_SERIES, COLLECTION_LEGACY)
+        val ALL_COLLECTIONS = listOf(COLLECTION_MOVIES, COLLECTION_ANIMES, COLLECTION_SERIES)
 
         fun getCollectionForCategory(category: String, type: String = ""): String {
             val cat = category.trim().lowercase()
@@ -215,7 +214,7 @@ class FirebaseRepository private constructor() {
 
         val targetCollection = getCollectionForCategory(item.category, item.type)
         val docMap = mediaItemToMap(item)
-        Log.d(TAG, "Writing media item ${item.id} to Firestore collection '$targetCollection' and '$COLLECTION_LEGACY'...")
+        Log.d(TAG, "Writing media item ${item.id} to Firestore collection '$targetCollection'...")
 
         // Primary collection write (movies, animes, web_series)
         db.collection(targetCollection)
@@ -228,20 +227,6 @@ class FirebaseRepository private constructor() {
             .addOnFailureListener { e ->
                 Log.w(TAG, "Primary write to '$targetCollection' failed (check security rules): ${e.message}")
             }
-
-        // Dual-write to legacy media_content if targetCollection is different
-        if (targetCollection != COLLECTION_LEGACY) {
-            db.collection(COLLECTION_LEGACY)
-                .document(item.id)
-                .set(docMap)
-                .addOnSuccessListener {
-                    Log.d(TAG, "Successfully synced media item to legacy collection '$COLLECTION_LEGACY': ${item.id}")
-                    _adminOperationState.value = AdminOperationState.Success()
-                }
-                .addOnFailureListener { e ->
-                    Log.w(TAG, "Legacy write to '$COLLECTION_LEGACY' failed: ${e.message}")
-                }
-        }
     }
 
     /**
