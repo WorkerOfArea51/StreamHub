@@ -148,6 +148,8 @@ fun AdminEditorDialog(
     var endBatchLink by remember { mutableStateOf("") }
     var arcNameText by remember { mutableStateOf("") }
     var generatedEpisodesText by remember { mutableStateOf("") }
+    var f2lBatchInput by remember { mutableStateOf("") }
+    var isFetchingF2l by remember { mutableStateOf(false) }
     var isFetchingMeta by remember { mutableStateOf(false) }
     var fetchedFileName by remember(initialItem) { mutableStateOf(initialItem?.episodes?.firstOrNull()?.fileName ?: "") }
     var fetchedDurationMs by remember(initialItem) { mutableLongStateOf(initialItem?.episodes?.firstOrNull()?.durationMs ?: 0L) }
@@ -697,6 +699,96 @@ fun AdminEditorDialog(
                                     singleLine = true,
                                     modifier = Modifier.weight(2f)
                                 )
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // --- 1-CLICK F2L REST API IMPORTER ---
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFF1E1E2E),
+                                border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.5f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = Color(0xFF38BDF8),
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "1-Click F2L Bot REST API Importer ⚡",
+                                            color = Color(0xFF38BDF8),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        OutlinedTextField(
+                                            value = f2lBatchInput,
+                                            onValueChange = { f2lBatchInput = it; batchError = null },
+                                            label = { Text("F2L Batch ID or URL", color = TextSecondary, fontSize = 11.sp) },
+                                            placeholder = { Text("e.g. eb76ab230b4d...", color = TextSecondary, fontSize = 11.sp) },
+                                            singleLine = true,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Button(
+                                            onClick = {
+                                                if (f2lBatchInput.isBlank()) {
+                                                    batchError = "Please enter Batch ID or URL"
+                                                    return@Button
+                                                }
+                                                isFetchingF2l = true
+                                                batchError = null
+                                                scope.launch {
+                                                    val res = com.streamhub.app.data.api.F2lApiClient.fetchBatch(f2lBatchInput, parsedSeasonNum, arcNameText)
+                                                    res.fold(
+                                                        onSuccess = { eps ->
+                                                            if (eps.isNotEmpty()) {
+                                                                val jsonArray = org.json.JSONArray()
+                                                                eps.forEach { ep ->
+                                                                    val obj = org.json.JSONObject()
+                                                                    obj.put("episode_num", ep.episodeNumber)
+                                                                    obj.put("file_name", ep.fileName)
+                                                                    obj.put("file_size", ep.fileSize)
+                                                                    obj.put("direct_stream_url", ep.streamUrl)
+                                                                    obj.put("download_url", ep.mirrorStreamUrl)
+                                                                    jsonArray.put(obj)
+                                                                }
+                                                                generatedEpisodesText = jsonArray.toString(2)
+                                                                startBatchLink = generatedEpisodesText
+                                                            } else {
+                                                                batchError = "No episodes returned by F2L API"
+                                                            }
+                                                        },
+                                                        onFailure = { err ->
+                                                            batchError = "F2L API Import Failed: ${err.message}"
+                                                        }
+                                                    )
+                                                    isFetchingF2l = false
+                                                }
+                                            },
+                                            enabled = f2lBatchInput.isNotBlank() && !isFetchingF2l,
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier.height(50.dp)
+                                        ) {
+                                            if (isFetchingF2l) {
+                                                CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
+                                            } else {
+                                                Text("Fetch API", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(10.dp))

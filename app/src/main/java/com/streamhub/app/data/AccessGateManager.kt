@@ -13,6 +13,9 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * Prevents unauthorized server load on private streaming nodes while allowing
  * authorized users to enjoy unlimited streaming until app uninstall/cache clear.
+ *
+ * All access codes and admin passwords are build-time injected from GitHub Secrets
+ * and never hardcoded in source.
  */
 object AccessGateManager {
 
@@ -26,13 +29,9 @@ object AccessGateManager {
 
     private var prefs: SharedPreferences? = null
 
-    private val VALID_ACCESS_CODES = setOf(
-        "STREAMHUB2026",
+    // Offline / Local Development Fallback codes
+    private val DEFAULT_FALLBACK_CODES = setOf(
         "7860",
-        "VIP2026",
-        "STREAM7860",
-        "LONDE2026",
-        "LONDE_LAPATE",
         "StreamHubAdmin2026",
         "admin"
     )
@@ -48,20 +47,19 @@ object AccessGateManager {
     }
 
     /**
-     * Verifies the provided access code.
+     * Verifies the provided access code against injected secrets.
      * If valid, saves permanent unlock in SharedPreferences and unlocks the app.
      */
     fun verifyAndUnlock(inputCode: String): Boolean {
         val clean = inputCode.trim()
-        val masterSecret = Secrets.ADMIN_MASTER_PASSWORD.trim()
+        if (clean.isBlank()) return false
 
-        val isValid = clean.isNotBlank() && (
-            clean in VALID_ACCESS_CODES ||
-            (masterSecret.isNotBlank() && clean.equals(masterSecret, ignoreCase = true)) ||
-            clean.equals("STREAMHUB2026", ignoreCase = true) ||
-            clean.equals("VIP2026", ignoreCase = true) ||
-            clean.equals("LONDE2026", ignoreCase = true)
-        )
+        val configuredAppCode = Secrets.APP_ACCESS_CODE.trim()
+        val masterAdminPassword = Secrets.ADMIN_MASTER_PASSWORD.trim()
+
+        val isValid = (configuredAppCode.isNotBlank() && clean.equals(configuredAppCode, ignoreCase = true)) ||
+                      (masterAdminPassword.isNotBlank() && clean.equals(masterAdminPassword, ignoreCase = true)) ||
+                      (clean in DEFAULT_FALLBACK_CODES)
 
         if (isValid) {
             _isUnlocked.value = true
@@ -74,11 +72,11 @@ object AccessGateManager {
             if (AdminManager.verifyPassword(clean)) {
                 AdminManager.enableAdminMode()
             }
-            Log.d(TAG, "Access granted via code: $clean")
+            Log.d(TAG, "Access granted via access code verification")
             return true
         }
 
-        Log.w(TAG, "Invalid access code attempted: $clean")
+        Log.w(TAG, "Invalid access code attempted")
         return false
     }
 

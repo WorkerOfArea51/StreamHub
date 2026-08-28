@@ -57,6 +57,49 @@ class TelegramLinkResolverTest {
     }
 
     @Test
+    fun parseSmartBotMessage_f2lApiJson_returnsParsedEpisodes() {
+        val jsonPayload = """
+            {
+              "status": "success",
+              "batch_id": "eb76ab230b4d45ef32474cc414585f2471dc849fcf1c669d",
+              "title": "ANIME Batch (2 episodes)",
+              "category": "anime",
+              "total_episodes": 2,
+              "episodes": [
+                {
+                  "episode_num": 1,
+                  "file_name": "EP - 01 - Undertaker.mkv",
+                  "file_size": 469136888,
+                  "size_formatted": "447.4 MB",
+                  "mime_type": "video/x-matroska",
+                  "stream_url": "https://streamhub69.alwaysdata.net/stream/eb76ab1",
+                  "download_url": "https://streamhub69.alwaysdata.net/dl/eb76ab1",
+                  "code": "eb76ab1"
+                },
+                {
+                  "episode_num": 2,
+                  "file_name": "EP - 02 - Spearhead.mkv",
+                  "file_size": 493033553,
+                  "size_formatted": "470.18 MB",
+                  "mime_type": "video/x-matroska",
+                  "stream_url": "https://streamhub69.alwaysdata.net/stream/eb76ab2",
+                  "download_url": "https://streamhub69.alwaysdata.net/dl/eb76ab2",
+                  "code": "eb76ab2"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val episodes = TelegramLinkResolver.parseSmartBotMessageOrLinks(jsonPayload, seasonNumber = 1)
+
+        assertEquals(2, episodes.size)
+        assertEquals(1, episodes[0].episodeNumber)
+        assertEquals("https://streamhub69.alwaysdata.net/dl/eb76ab1", episodes[0].streamUrl)
+        assertEquals("https://streamhub69.alwaysdata.net/stream/eb76ab1", episodes[0].mirrorStreamUrl)
+        assertEquals(2, episodes[1].episodeNumber)
+    }
+
+    @Test
     fun parseSmartBotMessage_rawLinks_returnsSequentialEpisodes() {
         val rawLinks = """
             https://streamhub69.alwaysdata.net/stream/link1

@@ -126,34 +126,60 @@ object TelegramLinkResolver {
     private fun parseJsonBatch(jsonStr: String, seasonNumber: Int, arcName: String): List<Episode> {
         return try {
             val episodes = mutableListOf<Episode>()
-            val array = if (jsonStr.startsWith("[")) {
-                JSONArray(jsonStr)
-            } else {
-                val obj = JSONObject(jsonStr)
-                obj.optJSONArray("episodes") ?: obj.optJSONArray("data") ?: JSONArray()
+            val jsonElement = com.google.gson.JsonParser.parseString(jsonStr)
+            val jsonArray = when {
+                jsonElement.isJsonArray -> jsonElement.asJsonArray
+                jsonElement.isJsonObject -> {
+                    val obj = jsonElement.asJsonObject
+                    obj.getAsJsonArray("episodes") ?: obj.getAsJsonArray("data") ?: com.google.gson.JsonArray()
+                }
+                else -> com.google.gson.JsonArray()
             }
 
-            for (i in 0 until array.length()) {
-                val item = array.getJSONObject(i)
-                val epNum = item.optInt("episode_num", item.optInt("episodeNumber", i + 1))
-                val title = item.optString("title", "Episode $epNum")
-                val streamUrl = item.optString("direct_stream_url", item.optString("streamUrl", item.optString("url", "")))
-                val dlUrl = item.optString("download_url", streamUrl)
-                val size = item.optString("file_size", item.optString("fileSize", ""))
-                val fileName = item.optString("file_name", item.optString("fileName", ""))
+            for (i in 0 until jsonArray.size()) {
+                val item = jsonArray.get(i).asJsonObject
+                val epNum = item.get("episode_num")?.asInt
+                    ?: item.get("episodeNumber")?.asInt
+                    ?: (i + 1)
+                val fileName = item.get("file_name")?.asString ?: item.get("fileName")?.asString ?: "Episode $epNum.mkv"
+                val streamUrl = item.get("stream_url")?.asString
+                    ?: item.get("direct_stream_url")?.asString
+                    ?: item.get("streamUrl")?.asString
+                    ?: item.get("url")?.asString
+                    ?: ""
+                val dlUrl = item.get("download_url")?.asString ?: item.get("downloadUrl")?.asString ?: streamUrl
+                val size = item.get("size_formatted")?.asString
+                    ?: item.get("file_size_formatted")?.asString
+                    ?: item.get("file_size")?.asString
+                    ?: item.get("fileSize")?.asString
+                    ?: ""
+                val rawTitle = item.get("title")?.asString
+                    ?: fileName.replace(Regex("""\.(mkv|mp4|avi|webm)$""", RegexOption.IGNORE_CASE), "")
+                               .replace(Regex("""(?i)^(?:>\s*🎬\s*|🎬\s*)?(?:EP|Episode)\s*[-:]?\s*0*\d+\s*[-:]?\s*"""), "")
+                               .trim()
+                val code = item.get("code")?.asString ?: item.get("id")?.asString ?: ""
 
-                if (streamUrl.isNotBlank()) {
+                val primaryPlayUrl = dlUrl.ifBlank { streamUrl }
+                val mirrorUrl = streamUrl.ifBlank { dlUrl }
+
+                if (primaryPlayUrl.isNotBlank()) {
+                    val finalTitle = when {
+                        rawTitle.isNotBlank() && arcName.isNotBlank() -> "$arcName - Ep $epNum: $rawTitle"
+                        rawTitle.isNotBlank() -> "Ep $epNum: $rawTitle"
+                        arcName.isNotBlank() -> "$arcName - Ep $epNum"
+                        else -> "Episode $epNum"
+                    }
                     episodes.add(
                         Episode(
                             episodeNumber = epNum,
                             seasonNumber = seasonNumber,
                             arcName = arcName,
-                            title = if (arcName.isNotBlank()) "$arcName - Ep $epNum: $title" else title,
-                            streamUrl = streamUrl,
-                            mirrorStreamUrl = dlUrl,
+                            title = finalTitle,
+                            streamUrl = primaryPlayUrl,
+                            mirrorStreamUrl = mirrorUrl,
                             fileSize = size,
                             fileName = fileName,
-                            telegramFileId = extractTelegramMessageOrFileId(streamUrl)
+                            telegramFileId = code.ifBlank { extractTelegramMessageOrFileId(primaryPlayUrl) }
                         )
                     )
                 }

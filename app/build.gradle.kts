@@ -58,6 +58,7 @@ android {
         buildConfigField("String", "MAL_CLIENT_SECRET", "\"${secret("streamhub.mal_client_secret")}\"")
         buildConfigField("boolean", "DEBUG_LOGGING", "false")
         buildConfigField("String", "ADMIN_MASTER_PASSWORD", "\"${secret("streamhub.admin_master_password", "7860")}\"")
+        buildConfigField("String", "APP_ACCESS_CODE", "\"${secret("streamhub.app_access_code", "")}\"")
     }
 
     splits {
