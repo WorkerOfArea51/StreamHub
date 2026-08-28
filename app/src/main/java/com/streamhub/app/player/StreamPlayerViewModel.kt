@@ -386,7 +386,7 @@ class StreamPlayerViewModel : ViewModel() {
                     }
                     androidx.media3.common.PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
                     androidx.media3.common.PlaybackException.ERROR_CODE_IO_NO_PERMISSION -> {
-                        PlayerErrorInfo(PlayerErrorType.SOURCE_NOT_FOUND, "This video source is no longer available.", false)
+                        PlayerErrorInfo(PlayerErrorType.SOURCE_NOT_FOUND, "This video source is currently unreachable or unavailable.", true)
                     }
                     else -> PlayerErrorInfo(PlayerErrorType.UNKNOWN, message, canRetry)
                 }

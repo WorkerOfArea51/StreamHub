@@ -13,11 +13,14 @@ import androidx.media3.datasource.FileDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.cache.CacheDataSource
 
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import com.streamhub.app.data.api.SharedHttpClient
+
 /**
  * High-performance Direct HTTP & Local File DataSource Factory for Media3 ExoPlayer.
  *
  * Supports:
- * - Direct HTTP/HTTPS progressive streaming (MP4, MKV, WebM, HLS)
+ * - Direct HTTP/HTTPS progressive streaming (MP4, MKV, WebM, HLS) via robust OkHttp
  * - Multi-gigabyte sparse chunk caching via [StreamCacheManager]
  * - Local offline media playback via [FileDataSource]
  * - Byte-range seeking (Accept-Ranges: bytes)
@@ -34,25 +37,20 @@ class StreamDataSourceFactory(
         const val LOCAL_FILE_SCHEME = "file"
     }
 
-    private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-        .setAllowCrossProtocolRedirects(true)
-        .setKeepPostFor302Redirects(true)
-        .setConnectTimeoutMs(25_000)
-        .setReadTimeoutMs(25_000)
-        .setDefaultRequestProperties(mapOf("Accept-Ranges" to "bytes"))
+    private val okHttpDataSourceFactory = OkHttpDataSource.Factory(SharedHttpClient.baseClient)
         .setUserAgent("Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
 
     private val cacheDataSourceFactory: CacheDataSource.Factory by lazy {
         val cache = StreamCacheManager.getCache(appContext)
         CacheDataSource.Factory()
             .setCache(cache)
-            .setUpstreamDataSourceFactory(httpDataSourceFactory)
+            .setUpstreamDataSourceFactory(okHttpDataSourceFactory)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     }
 
     override fun createDataSource(): DataSource {
         val cachedHttpSource = cacheDataSourceFactory.createDataSource()
-        val directHttpSource = httpDataSourceFactory.createDataSource()
+        val directHttpSource = okHttpDataSourceFactory.createDataSource()
         val fileSource = FileDataSource()
 
         return object : DataSource {
