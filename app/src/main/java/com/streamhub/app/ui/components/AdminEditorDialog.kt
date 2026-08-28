@@ -253,7 +253,7 @@ fun AdminEditorDialog(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     TabButton("🎬 Overview", isSelected = selectedTab == 0, modifier = Modifier.weight(1f)) { selectedTab = 0 }
-                    TabButton("📡 Telegram", isSelected = selectedTab == 1, modifier = Modifier.weight(1f)) { selectedTab = 1 }
+                    TabButton("🔗 Stream Links", isSelected = selectedTab == 1, modifier = Modifier.weight(1f)) { selectedTab = 1 }
                     TabButton("⚙️ Full Specs", isSelected = selectedTab == 2, modifier = Modifier.weight(1f)) { selectedTab = 2 }
                 }
 
@@ -558,14 +558,14 @@ fun AdminEditorDialog(
 
                     1 -> {
                         // ==========================================
-                        // TAB 1: TELEGRAM EPISODES & STREAM LINKS
+                        // TAB 1: EPISODES & STREAM LINKS
                         // ==========================================
                         if (isMovieFormat) {
                             // --- MOVIE FORMAT: SINGLE LINK INPUT ---
-                            Text("2. Movie Telegram Stream Link 🎬", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("2. Movie Direct Stream Link 🎬", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "Paste the single Telegram message link containing the movie file from your channel.",
+                                "Paste the direct stream URL, download link, or F2L direct link for this movie.",
                                 color = TextSecondary,
                                 fontSize = 11.sp,
                                 lineHeight = 15.sp
@@ -576,8 +576,8 @@ fun AdminEditorDialog(
                             OutlinedTextField(
                                 value = startBatchLink,
                                 onValueChange = { startBatchLink = it; batchError = null },
-                                label = { Text("Movie Stream Link *", color = TextSecondary) },
-                                placeholder = { Text("https://t.me/c/1234567890/100 or https://t.me/channel/100", color = TextSecondary) },
+                                label = { Text("Movie Stream URL / Direct Link *", color = TextSecondary) },
+                                placeholder = { Text("https://streamhub69.alwaysdata.net/dl/xxx or direct link", color = TextSecondary) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
