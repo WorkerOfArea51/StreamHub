@@ -129,7 +129,11 @@ fun TrailerPlayerDialog(
     DisposableEffect(streamUrl) {
         val currentUrl = streamUrl
         if (!currentUrl.isNullOrBlank()) {
-            val player = ExoPlayer.Builder(context).build().apply {
+            val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
+                setEnableDecoderFallback(true)
+                setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            }
+            val player = ExoPlayer.Builder(context, renderersFactory).build().apply {
                 setMediaItem(MediaItem.fromUri(currentUrl))
                 prepare()
                 playWhenReady = true

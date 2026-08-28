@@ -155,6 +155,11 @@ class StreamPlayerViewModel : ViewModel() {
         if (exoPlayer == null) {
             val createResult = runCatching {
                 val dataSourceFactory = StreamDataSourceFactory(context)
+                val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
+                    setEnableDecoderFallback(true) // Software decoder fallback if hardware EAC3/DTS/AC3 decoder missing
+                    setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+                    setEnableAudioTrackPlaybackParams(true)
+                }
                 trackSelector = DefaultTrackSelector(context).apply {
                     parameters = buildUponParameters()
                         .setMinVideoBitrate(200_000)
@@ -162,10 +167,11 @@ class StreamPlayerViewModel : ViewModel() {
                         .setMinVideoSize(320, 240)
                         .setMaxVideoSize(1920, 1080)
                         .setViewportSizeToPhysicalDisplaySize(context, true)
-                        // FIX: Telegram HTTP 206 streams have ~1-2s RTT — ExoPlayer's default
-                        // 10s ABR window is too short and causes quality thrashing.
-                        // Force a stable quality for 30s before allowing ABR to switch.
-                        .setExceedRendererCapabilitiesIfNecessary(false)
+                        .setExceedRendererCapabilitiesIfNecessary(true) // Ensure EAC3/AC3/DTS audio tracks play on all devices
+                        .setAllowAudioMixedMimeTypeAdaptiveness(true)
+                        .setAllowAudioMixedChannelCountAdaptiveness(true)
+                        .setAllowAudioNonSeamlessAdaptiveness(true)
+                        .setAllowMultipleAdaptiveSelections(true)
                         .setForceHighestSupportedBitrate(false)
                         .build()
                 }
@@ -189,7 +195,7 @@ class StreamPlayerViewModel : ViewModel() {
                     .setPrioritizeTimeOverSizeThresholds(true)
                     .setTargetBufferBytes(128 * 1024 * 1024) // 128 MB target buffer pool
                     .build()
-                ExoPlayer.Builder(context)
+                ExoPlayer.Builder(context, renderersFactory)
                     .setTrackSelector(trackSelector!!)
                     .setAudioAttributes(audioAttributes, true)
                     .setHandleAudioBecomingNoisy(true)

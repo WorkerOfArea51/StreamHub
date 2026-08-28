@@ -655,6 +655,34 @@ fun PlayerScreen(
         // Hold a reference to the PlayerView so screenshot and controls can access it
         var rememberPlayerViewRef by remember { mutableStateOf<androidx.media3.ui.PlayerView?>(null) }
 
+        // Live Subtitle Styling Engine — immediately propagates user font size, colors & outlines to SubtitleView
+        LaunchedEffect(subConfig, rememberPlayerViewRef) {
+            val pv = rememberPlayerViewRef ?: return@LaunchedEffect
+            pv.subtitleView?.apply {
+                val typefaceStyle = when {
+                    subConfig.bold && subConfig.italic -> android.graphics.Typeface.BOLD_ITALIC
+                    subConfig.bold -> android.graphics.Typeface.BOLD
+                    subConfig.italic -> android.graphics.Typeface.ITALIC
+                    else -> android.graphics.Typeface.NORMAL
+                }
+                val customTypeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, typefaceStyle)
+
+                setStyle(
+                    androidx.media3.ui.CaptionStyleCompat(
+                        subConfig.textColorArgb.toInt(),
+                        subConfig.backgroundColorArgb.toInt(),
+                        android.graphics.Color.TRANSPARENT,
+                        subConfig.edgeType,
+                        android.graphics.Color.BLACK,
+                        customTypeface
+                    )
+                )
+                setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, subConfig.fontSizeSp)
+                setApplyEmbeddedStyles(false)
+                setApplyEmbeddedFontSizes(false)
+            }
+        }
+
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
@@ -715,6 +743,14 @@ fun PlayerScreen(
                             }
                         }
                         playerView.subtitleView?.apply {
+                            val typefaceStyle = when {
+                                subConfig.bold && subConfig.italic -> android.graphics.Typeface.BOLD_ITALIC
+                                subConfig.bold -> android.graphics.Typeface.BOLD
+                                subConfig.italic -> android.graphics.Typeface.ITALIC
+                                else -> android.graphics.Typeface.NORMAL
+                            }
+                            val customTypeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, typefaceStyle)
+
                             setStyle(
                                 androidx.media3.ui.CaptionStyleCompat(
                                     subConfig.textColorArgb.toInt(),
@@ -722,18 +758,12 @@ fun PlayerScreen(
                                     android.graphics.Color.TRANSPARENT,
                                     subConfig.edgeType,
                                     android.graphics.Color.BLACK,
-                                    null
+                                    customTypeface
                                 )
                             )
                             setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, subConfig.fontSizeSp)
-                            // FIX: Apply user subtitle sync offset — fires on every recomposition
-                            // so changing the offset takes effect immediately.
-                            if (uiState.subtitleOffsetMs != 0L) {
-                                setApplyEmbeddedStyles(true)
-                                // CaptioningManager-level offset (works on API 19+)
-                                // PlayerView's SubtitleView exposes setFractionalTextSize but not time offset.
-                                // We rely on the user-level visual offset via setApplyDelayedCaptions — fall back to user awareness.
-                            }
+                            setApplyEmbeddedStyles(false)
+                            setApplyEmbeddedFontSizes(false)
                         }
                     }
                 )
