@@ -131,6 +131,10 @@ class StreamHubApplication : Application() {
             .onFailure { Log.e(TAG, "YoutubeStreamExtractor.init failed", it) }
         runCatching { StorageCacheManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "StorageCacheManager.init failed", it) }
+        runCatching { com.streamhub.app.data.ads.AdPassManager.init(applicationContext) }
+            .onFailure { Log.e(TAG, "AdPassManager.init failed", it) }
+        runCatching { com.streamhub.app.data.ads.UnityAdsManager.init(applicationContext) }
+            .onFailure { Log.e(TAG, "UnityAdsManager.init failed", it) }
     }
 
     private fun startBackgroundServices() {

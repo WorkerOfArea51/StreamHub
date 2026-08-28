@@ -26,6 +26,18 @@ object Secrets {
     /** Private Community Access Code for App Gate. */
     val APP_ACCESS_CODE: String get() = BuildConfig.APP_ACCESS_CODE
 
+    /** Unity Monetization Game ID for Android. */
+    val UNITY_GAME_ID: String get() = BuildConfig.UNITY_GAME_ID
+
+    /** Unity Rewarded Video Ad Unit / Placement ID. */
+    val UNITY_REWARDED_AD_UNIT_ID: String get() = BuildConfig.UNITY_REWARDED_AD_UNIT_ID
+
+    /** Unity Interstitial Ad Unit / Placement ID. */
+    val UNITY_INTERSTITIAL_AD_UNIT_ID: String get() = BuildConfig.UNITY_INTERSTITIAL_AD_UNIT_ID
+
+    /** Unity Banner Ad Unit / Placement ID. */
+    val UNITY_BANNER_AD_UNIT_ID: String get() = BuildConfig.UNITY_BANNER_AD_UNIT_ID
+
     /** MyAnimeList v2 REST API base URL. */
     const val MAL_BASE_URL: String = "https://api.myanimelist.net/v2/"
 

@@ -395,6 +395,18 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
     val isAppUnlocked by com.streamhub.app.data.AccessGateManager.isUnlocked.collectAsState()
     val showBottomBar = bottomBarScreens.any { it.route == currentRoute }
 
+    var pendingPlayMedia by remember { mutableStateOf<Pair<com.streamhub.app.data.models.MediaItem, Int>?>(null) }
+    var showAdPassGate by remember { mutableStateOf(false) }
+
+    val safePlayEpisode: (com.streamhub.app.data.models.MediaItem, Int) -> Unit = { media, episodeIndex ->
+        if (com.streamhub.app.data.ads.AdPassManager.hasActivePass() || media.id.startsWith("offline:")) {
+            navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
+        } else {
+            pendingPlayMedia = Pair(media, episodeIndex)
+            showAdPassGate = true
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             bottomBar = {
@@ -474,9 +486,7 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                     onMediaClick = { media ->
                         navController.navigate(Screen.Details.createRoute(media.id))
                     },
-                    onPlayEpisode = { media, episodeIndex ->
-                        navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
-                    },
+                    onPlayEpisode = safePlayEpisode,
                     onNavigateToHistory = {
                         navController.navigate(Screen.History.route)
                     }
@@ -494,9 +504,7 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
 
             composable(Screen.Downloads.route) {
                 DownloadsScreen(
-                    onPlayEpisode = { media, episodeIndex ->
-                        navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
-                    }
+                    onPlayEpisode = safePlayEpisode
                 )
             }
 
@@ -533,9 +541,7 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                     onMediaClick = { media ->
                         navController.navigate(Screen.Details.createRoute(media.id))
                     },
-                    onPlayEpisode = { media, episodeIndex ->
-                        navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
-                    }
+                    onPlayEpisode = safePlayEpisode
                 )
             }
 
@@ -583,9 +589,7 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                     mediaId = mediaId,
                     repository = repository,
                     onBackClick = { navController.popBackStack() },
-                    onPlayEpisode = { media, episodeIndex ->
-                        navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
-                    },
+                    onPlayEpisode = safePlayEpisode,
                     onMediaClick = { media ->
                         navController.navigate(Screen.Details.createRoute(media.id))
                     }
@@ -619,6 +623,7 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                             .firstOrNull { it.mediaId == realMediaId && it.episodeIndex == epIdx }
                             ?.let { downloadItem ->
                                 val localEpisode = com.streamhub.app.data.models.Episode(
+                                    episodeNumber = epIdx,
                                     title = downloadItem.episodeTitle,
                                     streamUrl = downloadItem.localFilePath
                                 )
@@ -635,7 +640,7 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                 }
 
                 when {
-                    catalogState is CatalogState.Loading && mediaItem == null && !mediaId.startsWith("offline:") -> {
+                    catalogState is CatalogState.Loading && mediaItem == null -> {
                         PlayerLoadingScreen()
                     }
                     mediaItem == null -> {
@@ -657,6 +662,21 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
         }
         if (currentRoute != Screen.Splash.route) {
             com.streamhub.app.ui.components.AccessGateOverlay(isUnlocked = isAppUnlocked)
+        }
+        if (showAdPassGate) {
+            com.streamhub.app.ui.components.AdPassGateDialog(
+                onDismiss = {
+                    showAdPassGate = false
+                    pendingPlayMedia = null
+                },
+                onPassGranted = {
+                    showAdPassGate = false
+                    pendingPlayMedia?.let { (media, epIndex) ->
+                        navController.navigate(Screen.Player.createRoute(media.id, epIndex))
+                        pendingPlayMedia = null
+                    }
+                }
+            )
         }
         StreamHubToastHost()
     }

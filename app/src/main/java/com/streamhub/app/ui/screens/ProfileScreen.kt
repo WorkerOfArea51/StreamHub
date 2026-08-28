@@ -105,6 +105,7 @@ fun ProfileScreen(
 
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
     var showAddContentDialog by remember { mutableStateOf(false) }
+    var showAdPassDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier
@@ -140,6 +141,107 @@ fun ProfileScreen(
                     Toast.makeText(context, "Admin mode locked", Toast.LENGTH_SHORT).show()
                 }
             )
+        }
+
+        // ── 12-Hour Streaming Pass Card ──
+        item(key = "pass_status_card") {
+            val passExpiry by com.streamhub.app.data.ads.AdPassManager.passExpiryMillis.collectAsState()
+            var remainingMs by remember { mutableLongStateOf(com.streamhub.app.data.ads.AdPassManager.getRemainingTimeMillis()) }
+            val hasActivePass = com.streamhub.app.data.ads.AdPassManager.hasActivePass()
+
+            androidx.compose.runtime.LaunchedEffect(passExpiry) {
+                while (true) {
+                    remainingMs = com.streamhub.app.data.ads.AdPassManager.getRemainingTimeMillis()
+                    kotlinx.coroutines.delay(1000L)
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = if (hasActivePass) {
+                                listOf(Color(0xFF0F382C), Color(0xFF0A2E28))
+                            } else {
+                                listOf(Color(0xFF261D3B), Color(0xFF19172B))
+                            }
+                        )
+                    )
+                    .border(
+                        width = 1.dp,
+                        brush = Brush.horizontalGradient(
+                            colors = if (hasActivePass) {
+                                listOf(Color(0xFF00E676).copy(alpha = 0.6f), Color(0xFF00B0FF).copy(alpha = 0.3f))
+                            } else {
+                                listOf(Color(0xFF00E5FF).copy(alpha = 0.5f), Color(0xFF7C4DFF).copy(alpha = 0.5f))
+                            }
+                        ),
+                        shape = RoundedCornerShape(16.dp)
+                    )
+                    .clickable { showAdPassDialog = true }
+                    .padding(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(
+                                    if (hasActivePass) Color(0xFF00E676).copy(alpha = 0.15f) else Color(0xFF00E5FF).copy(alpha = 0.15f),
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(if (hasActivePass) "🎟️" else "⚡", fontSize = 20.sp)
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "12-Hour Streaming Pass",
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (hasActivePass) {
+                                    "${com.streamhub.app.data.ads.AdPassManager.formatRemainingTime(remainingMs)} remaining"
+                                } else {
+                                    "Watch 1 ad for 12 hours free"
+                                },
+                                color = if (hasActivePass) Color(0xFF00E676) else Color(0xFFFFB74D),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                if (hasActivePass) Color(0xFF00E676).copy(alpha = 0.2f) else Color(0xFF00E5FF).copy(alpha = 0.2f)
+                            )
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = if (hasActivePass) "EXTEND" else "GET PASS",
+                            color = if (hasActivePass) Color(0xFF00E676) else Color(0xFF00E5FF),
+                            fontWeight = FontWeight.Black,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
         }
 
         // ── Watch Stats Row ──
@@ -244,6 +346,13 @@ fun ProfileScreen(
                 repository.saveMediaItem(newItem)
                 showAddContentDialog = false
             }
+        )
+    }
+
+    // 12-Hour Access Pass Dialog
+    if (showAdPassDialog) {
+        com.streamhub.app.ui.components.AdPassGateDialog(
+            onDismiss = { showAdPassDialog = false }
         )
     }
 }

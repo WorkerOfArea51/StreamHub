@@ -100,6 +100,18 @@ fun HomeScreen(
     var showAdminAddDialog by remember { mutableStateOf(false) }
     var showSurpriseMeDialog by remember { mutableStateOf(false) }
     var showClearHistoryDialog by remember { mutableStateOf(false) }
+    var showAdPassDialog by remember { mutableStateOf(false) }
+
+    val passExpiry by com.streamhub.app.data.ads.AdPassManager.passExpiryMillis.collectAsState()
+    var remainingPassMs by remember { mutableStateOf(com.streamhub.app.data.ads.AdPassManager.getRemainingTimeMillis()) }
+    val isPassActive = com.streamhub.app.data.ads.AdPassManager.hasActivePass()
+
+    LaunchedEffect(passExpiry) {
+        while (true) {
+            remainingPassMs = com.streamhub.app.data.ads.AdPassManager.getRemainingTimeMillis()
+            kotlinx.coroutines.delay(1000L)
+        }
+    }
 
     val myListIds by com.streamhub.app.data.MyListManager.myListFlow.collectAsState()
 
@@ -138,26 +150,19 @@ fun HomeScreen(
     val continueWatchingList = remember(catalog, watchHistoryMap, selectedCategoryFilter) {
         val catalogMap = catalog.associateBy { it.id }
         watchHistoryMap.values
-            .sortedByDescending { it.lastUpdated }
-            .map { progress ->
-                val media = catalogMap[progress.mediaId] ?: MediaItem(
-                    id = progress.mediaId,
-                    title = progress.title.ifEmpty { "Video" },
-                    posterUrl = progress.posterUrl,
-                    bannerUrl = progress.backdropUrl,
-                    category = progress.mediaType.ifEmpty { "Movie" },
-                    type = progress.mediaType.ifEmpty { "Movie" }
-                )
-                Pair(media, progress)
-            }
-            .filter { (media, _) ->
-                when (selectedCategoryFilter) {
+            .mapNotNull { progress ->
+                val media = catalogMap[progress.mediaId] ?: return@mapNotNull null
+                val isMatchingCategory = when (selectedCategoryFilter) {
                     "ANIME" -> media.category.equals("ANIME", ignoreCase = true)
                     "MOVIES" -> media.category.equals("MOVIE", ignoreCase = true) || media.category.equals("MOVIES", ignoreCase = true)
                     "SERIES" -> media.category.equals("WEB_SERIES", ignoreCase = true) || media.category.equals("SERIES", ignoreCase = true)
                     else -> true
                 }
+                if (!isMatchingCategory) return@mapNotNull null
+                val completed = progress.durationMs > 0 && progress.positionMs >= (progress.durationMs * 0.95)
+                if (completed) null else Pair(media, progress)
             }
+            .sortedByDescending { it.second.lastUpdated }
     }
 
     val (trendingItems, animeItems, movieItems, webSeriesItems) = remember(filteredCatalog) {
@@ -178,7 +183,7 @@ fun HomeScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 80.dp)
         ) {
-            // Category Filter Pills & Surprise Me Roulette Button
+            // Category Filter Pills, 12h Pass Badge & Surprise Me Roulette Button
             item {
                 Row(
                     modifier = Modifier
@@ -188,13 +193,45 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.weight(1f)
                     ) {
                         CategoryFilterChip("All", selectedCategoryFilter == "ALL") { selectedCategoryFilter = "ALL" }
                         CategoryFilterChip("Anime", selectedCategoryFilter == "ANIME") { selectedCategoryFilter = "ANIME" }
                         CategoryFilterChip("Movies", selectedCategoryFilter == "MOVIES") { selectedCategoryFilter = "MOVIES" }
                         CategoryFilterChip("Series", selectedCategoryFilter == "SERIES") { selectedCategoryFilter = "SERIES" }
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    // 12-Hour Streaming Pass Badge
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(
+                                if (isPassActive) Color(0xFF0F382C) else Color(0xFF261D3B)
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = if (isPassActive) Color(0xFF00E676).copy(alpha = 0.6f) else Color(0xFF00E5FF).copy(alpha = 0.6f),
+                                shape = RoundedCornerShape(20.dp)
+                            )
+                            .clickable { showAdPassDialog = true }
+                            .padding(horizontal = 9.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Text(if (isPassActive) "🎟️" else "⚡", fontSize = 11.sp)
+                            Text(
+                                text = if (isPassActive) com.streamhub.app.data.ads.AdPassManager.formatRemainingTime(remainingPassMs) else "12h Pass",
+                                color = if (isPassActive) Color(0xFF00E676) else Color(0xFF00E5FF),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.width(6.dp))
@@ -218,7 +255,7 @@ fun HomeScreen(
                                 shape = RoundedCornerShape(20.dp)
                             )
                             .clickable { showSurpriseMeDialog = true }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Row(
@@ -227,9 +264,9 @@ fun HomeScreen(
                         ) {
                             Text("🎰", fontSize = 12.sp)
                             Text(
-                                text = "Surprise Me",
+                                text = "Surprise",
                                 color = AccentOrange,
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -510,6 +547,12 @@ fun HomeScreen(
                 }
             },
             containerColor = Color(0xFF1E1E2E)
+        )
+    }
+
+    if (showAdPassDialog) {
+        com.streamhub.app.ui.components.AdPassGateDialog(
+            onDismiss = { showAdPassDialog = false }
         )
     }
 }
