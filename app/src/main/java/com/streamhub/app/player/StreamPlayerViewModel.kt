@@ -182,14 +182,14 @@ class StreamPlayerViewModel : ViewModel() {
                     .build()
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        15_000,  // minBufferMs (15s minimum buffer for fast response)
-                        60_000,  // maxBufferMs (up to 60s buffer ahead)
-                        1_500,   // bufferForPlaybackMs (1.5s initial buffer — prevents immediate rebuffering loop)
-                        2_500    // bufferForPlaybackAfterRebufferMs (2.5s stable recovery)
+                        60_000,   // minBufferMs (keep at least 60s minimum buffer ahead)
+                        300_000,  // maxBufferMs (buffer up to 5 full minutes ahead continuously!)
+                        500,      // bufferForPlaybackMs (instant 0.5s startup)
+                        1_000     // bufferForPlaybackAfterRebufferMs (fast 1s recovery)
                     )
-                    .setBackBuffer(30_000, true) // 30s retained back-buffer for instant rewind
-                    .setPrioritizeTimeOverSizeThresholds(true)
-                    .setTargetBufferBytes(64 * 1024 * 1024) // 64 MB target buffer pool
+                    .setBackBuffer(60_000, true) // 60s retained back-buffer for instant rewind
+                    .setPrioritizeTimeOverSizeThresholds(false) // Continuous caching at max network speed
+                    .setTargetBufferBytes(256 * 1024 * 1024) // 256 MB buffer pool for 1080p/4K bitrates
                     .build()
                     val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
                         .setConstantBitrateSeekingEnabled(true)

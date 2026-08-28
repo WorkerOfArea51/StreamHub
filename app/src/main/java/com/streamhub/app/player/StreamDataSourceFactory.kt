@@ -12,6 +12,8 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.TransferListener
+import androidx.media3.datasource.cache.CacheDataSink
+import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import com.streamhub.app.data.api.SharedHttpClient
 import java.io.IOException
@@ -159,7 +161,25 @@ class StreamDataSourceFactory(
         }
     }
 
-    private val defaultDataSourceFactory = DefaultDataSource.Factory(appContext, resilientHttpDataSourceFactory)
+    private val simpleCache by lazy { StreamCacheManager.getCache(appContext) }
+
+    private val cacheDataSinkFactory by lazy {
+        CacheDataSink.Factory()
+            .setCache(simpleCache)
+            .setFragmentSize(8 * 1024 * 1024L) // 8 MB chunk fragments for smooth streaming & disk persistence
+    }
+
+    private val cachedHttpDataSourceFactory by lazy {
+        CacheDataSource.Factory()
+            .setCache(simpleCache)
+            .setUpstreamDataSourceFactory(resilientHttpDataSourceFactory)
+            .setCacheWriteDataSinkFactory(cacheDataSinkFactory)
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+    }
+
+    private val defaultDataSourceFactory by lazy {
+        DefaultDataSource.Factory(appContext, cachedHttpDataSourceFactory)
+    }
 
     override fun createDataSource(): DataSource {
         return defaultDataSourceFactory.createDataSource()
