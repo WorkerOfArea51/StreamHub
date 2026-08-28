@@ -165,18 +165,45 @@ fun HomeScreen(
             .sortedByDescending { it.second.lastUpdated }
     }
 
-    val (trendingItems, animeItems, movieItems, webSeriesItems) = remember(filteredCatalog) {
+    val (trendingItems, dynamicCategoryShelves) = remember(filteredCatalog) {
         val trending = mutableListOf<MediaItem>()
         val anime = mutableListOf<MediaItem>()
         val movies = mutableListOf<MediaItem>()
         val series = mutableListOf<MediaItem>()
-        for (item in filteredCatalog) {
+
+        var firstAnimeIndex = Int.MAX_VALUE
+        var firstMovieIndex = Int.MAX_VALUE
+        var firstSeriesIndex = Int.MAX_VALUE
+
+        filteredCatalog.forEachIndexed { index, item ->
             if (item.isTrending) trending.add(item)
-            if (item.category.equals("ANIME", ignoreCase = true)) anime.add(item)
-            if (item.category.equals("MOVIE", ignoreCase = true) || item.category.equals("MOVIES", ignoreCase = true)) movies.add(item)
-            if (item.category.equals("WEB_SERIES", ignoreCase = true) || item.category.equals("SERIES", ignoreCase = true)) series.add(item)
+            if (item.category.equals("ANIME", ignoreCase = true)) {
+                anime.add(item)
+                if (firstAnimeIndex == Int.MAX_VALUE) firstAnimeIndex = index
+            } else if (item.category.equals("MOVIE", ignoreCase = true) || item.category.equals("MOVIES", ignoreCase = true)) {
+                movies.add(item)
+                if (firstMovieIndex == Int.MAX_VALUE) firstMovieIndex = index
+            } else if (item.category.equals("WEB_SERIES", ignoreCase = true) || item.category.equals("SERIES", ignoreCase = true)) {
+                series.add(item)
+                if (firstSeriesIndex == Int.MAX_VALUE) firstSeriesIndex = index
+            }
         }
-        CategorizedCatalog(trending, anime, movies, series)
+
+        val shelves = mutableListOf<CategoryShelf>()
+        if (movies.isNotEmpty()) {
+            shelves.add(CategoryShelf("MOVIES", "🎬 Blockbuster Movies", movies, firstMovieIndex))
+        }
+        if (anime.isNotEmpty()) {
+            shelves.add(CategoryShelf("ANIME", "🎌 Top Rated Anime", anime, firstAnimeIndex))
+        }
+        if (series.isNotEmpty()) {
+            shelves.add(CategoryShelf("SERIES", "📺 Popular Web Series", series, firstSeriesIndex))
+        }
+
+        // Dynamically rank shelves so the category with the most recently added title appears on top!
+        shelves.sortBy { it.newestIndex }
+
+        Pair(trending, shelves)
     }
     Box(modifier = modifier.fillMaxSize().background(BackgroundDark)) {
         LazyColumn(
@@ -406,9 +433,9 @@ fun HomeScreen(
                 }
             }
 
-            // Recently Added Row (First Shelf)
+            // 1. Recently Added Row (Always on Top)
             if (filteredCatalog.isNotEmpty()) {
-                item {
+                item(key = "section_recently_added") {
                     MediaSectionRow(
                         title = "✨ Recently Added",
                         items = filteredCatalog,
@@ -417,20 +444,9 @@ fun HomeScreen(
                 }
             }
 
-            // Blockbuster Movies Row
-            if (movieItems.isNotEmpty()) {
-                item {
-                    MediaSectionRow(
-                        title = "🎬 Blockbuster Movies",
-                        items = movieItems,
-                        onMediaClick = onMediaClick
-                    )
-                }
-            }
-
-            // Trending Row
+            // 2. Trending & Popular Row
             if (trendingItems.isNotEmpty()) {
-                item {
+                item(key = "section_trending") {
                     MediaSectionRow(
                         title = "🔥 Trending & Popular",
                         items = trendingItems,
@@ -439,23 +455,12 @@ fun HomeScreen(
                 }
             }
 
-            // Top Anime Row
-            if (animeItems.isNotEmpty()) {
-                item {
+            // 3. Dynamic Category Shelves (Sorted dynamically by freshest upload!)
+            dynamicCategoryShelves.forEach { shelf ->
+                item(key = "section_shelf_${shelf.key}") {
                     MediaSectionRow(
-                        title = "🎌 Top Rated Anime",
-                        items = animeItems,
-                        onMediaClick = onMediaClick
-                    )
-                }
-            }
-
-            // Web Series Row
-            if (webSeriesItems.isNotEmpty()) {
-                item {
-                    MediaSectionRow(
-                        title = "📺 Popular Web Series",
-                        items = webSeriesItems,
+                        title = shelf.title,
+                        items = shelf.items,
                         onMediaClick = onMediaClick
                     )
                 }
@@ -742,9 +747,9 @@ fun CategoryFilterChip(
     }
 }
 
-private data class CategorizedCatalog(
-    val trending: List<MediaItem>,
-    val anime: List<MediaItem>,
-    val movies: List<MediaItem>,
-    val series: List<MediaItem>
+private data class CategoryShelf(
+    val key: String,
+    val title: String,
+    val items: List<MediaItem>,
+    val newestIndex: Int
 )
