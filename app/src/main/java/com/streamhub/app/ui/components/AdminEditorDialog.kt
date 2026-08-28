@@ -140,14 +140,18 @@ fun AdminEditorDialog(
     var audioTracksText by remember(initialItem) { mutableStateOf(initialItem?.mediaInfo?.audioTracks?.joinToString(", ") ?: "") }
     var subtitleTracksText by remember(initialItem) { mutableStateOf(initialItem?.mediaInfo?.subtitleTracks?.joinToString(", ") ?: "") }
 
-    // --- State: Telegram Batch / Single Movie / Multi-Arc ---
+    // --- State: Stream Links / Single Movie / Multi-Arc ---
     val isMovieFormat = type.equals("MOVIE", ignoreCase = true) || category.equals("MOVIE", ignoreCase = true)
     var startBatchLink by remember(initialItem) {
-        mutableStateOf(initialItem?.episodes?.firstOrNull()?.streamUrl ?: "")
+        val ep = initialItem?.episodes?.firstOrNull()
+        mutableStateOf(ep?.streamUrl?.ifBlank { ep.mirrorStreamUrl } ?: "")
     }
     var endBatchLink by remember { mutableStateOf("") }
     var arcNameText by remember { mutableStateOf("") }
-    var generatedEpisodesText by remember { mutableStateOf("") }
+    var generatedEpisodesText by remember(initialItem) {
+        val ep = initialItem?.episodes?.firstOrNull()
+        mutableStateOf(ep?.streamUrl?.ifBlank { ep.mirrorStreamUrl } ?: "")
+    }
     var f2lBatchInput by remember { mutableStateOf("") }
     var isFetchingF2l by remember { mutableStateOf(false) }
     var isFetchingMeta by remember { mutableStateOf(false) }
@@ -573,14 +577,35 @@ fun AdminEditorDialog(
 
                             Spacer(modifier = Modifier.height(12.dp))
 
+                            val isF2lLink = startBatchLink.contains("alwaysdata.net", ignoreCase = true)
+                            val isF2lTruncated = isF2lLink && (
+                                (startBatchLink.contains("/dl/") && startBatchLink.substringAfter("/dl/").trim().length < 32) ||
+                                (startBatchLink.contains("/stream/") && startBatchLink.substringAfter("/stream/").trim().length < 32)
+                            )
+
                             OutlinedTextField(
                                 value = startBatchLink,
-                                onValueChange = { startBatchLink = it; batchError = null },
+                                onValueChange = {
+                                    startBatchLink = it
+                                    generatedEpisodesText = it
+                                    batchError = null
+                                },
                                 label = { Text("Movie Stream URL / Direct Link *", color = TextSecondary) },
                                 placeholder = { Text("https://streamhub69.alwaysdata.net/dl/xxx or direct link", color = TextSecondary) },
                                 singleLine = true,
+                                isError = isF2lTruncated,
                                 modifier = Modifier.fillMaxWidth()
                             )
+
+                            if (isF2lTruncated) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    "⚠️ Incomplete Link: The F2L code appears truncated. Please paste the full 48-character link from the bot.",
+                                    color = Color(0xFFFFB74D),
+                                    fontSize = 11.sp,
+                                    lineHeight = 14.sp
+                                )
+                            }
 
                             Spacer(modifier = Modifier.height(12.dp))
 
@@ -1131,8 +1156,8 @@ fun AdminEditorDialog(
                                                       category.equals("Movies", ignoreCase = true)
                                     val parsedSeasonNum = if (isMovieItem) 0 else (seasonNumberText.toIntOrNull() ?: 1)
                                     val episodes = when {
-                                        isMovieFormat && (generatedEpisodesText.isNotBlank() || startBatchLink.isNotBlank()) -> {
-                                            val link = generatedEpisodesText.ifBlank { startBatchLink }.trim()
+                                        isMovieFormat && (startBatchLink.isNotBlank() || generatedEpisodesText.isNotBlank()) -> {
+                                            val link = startBatchLink.ifBlank { generatedEpisodesText }.trim()
                                             val existingEp = initialItem?.episodes?.firstOrNull()
                                             listOf(
                                                 Episode(
