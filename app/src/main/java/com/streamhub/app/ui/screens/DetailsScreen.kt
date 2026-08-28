@@ -1001,9 +1001,10 @@ fun EpisodeRowItem(
             }
         } else {
             if (episode.arcName.isNotBlank()) {
-                add("${episode.arcName} • Ep ${episode.episodeNumber}")
-            } else {
-                add("Season ${episode.seasonNumber} • Ep ${episode.episodeNumber}")
+                add(episode.arcName)
+            }
+            if (episode.fileSize.isNotBlank()) {
+                add(episode.fileSize)
             }
         }
     }.joinToString(" • ")
