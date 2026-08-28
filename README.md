@@ -59,9 +59,9 @@ If you enjoy StreamHub and want to support server hosting costs, dedicated high-
 ### 💰 Crypto Donations (Binance / Web3):
 
 - **USDT / USDC (BNB Smart Chain - BEP20)**:
-  `0xd99557ea7e9f3b7d15fcad927845778848a6021d`
+  ``
 - **USDT (Tron - TRC20)**:
-  `THr3c57DkJFh9KjZ2vQeTfL53258mNvx1s`
+  ``
 
 > 💬 Or reach out on Telegram [@Londe_Lapate](https://t.me/Londe_Lapate) for custom sponsorship or alternative payment methods.
 
