@@ -1,5 +1,6 @@
 package com.streamhub.app.ui.components
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -9,6 +10,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,13 +26,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -45,7 +51,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -55,6 +60,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamhub.app.data.AccessGateManager
+import com.streamhub.app.data.ads.AdPassManager
+import com.streamhub.app.data.ads.UnityAdsManager
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
@@ -67,8 +74,11 @@ fun AccessGateOverlay(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val activity = context as? Activity
     var accessCodeInput by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showAdPassDialog by remember { mutableStateOf(false) }
+    var isLoadingAd by remember { mutableStateOf(false) }
     val primaryColor = MaterialTheme.colorScheme.primary
 
     AnimatedVisibility(
@@ -79,22 +89,22 @@ fun AccessGateOverlay(
         Box(
             modifier = modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.82f))
-                .padding(20.dp),
+                .background(Color.Black.copy(alpha = 0.88f))
+                .padding(16.dp),
             contentAlignment = Alignment.Center
         ) {
             Card(
                 shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF141422)),
                 modifier = Modifier
-                    .fillMaxWidth(0.95f)
+                    .fillMaxWidth(0.96f)
                     .border(
                         1.5.dp,
                         Brush.linearGradient(
                             listOf(
                                 primaryColor.copy(alpha = 0.8f),
                                 Color(0xFFFFD700).copy(alpha = 0.6f),
-                                Color(0xFF38BDF8).copy(alpha = 0.4f)
+                                Color(0xFF00E676).copy(alpha = 0.4f)
                             )
                         ),
                         RoundedCornerShape(24.dp)
@@ -103,13 +113,13 @@ fun AccessGateOverlay(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(24.dp),
+                        .padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     // Header Glowing Icon
                     Box(
                         modifier = Modifier
-                            .size(60.dp)
+                            .size(56.dp)
                             .clip(CircleShape)
                             .background(
                                 Brush.linearGradient(
@@ -122,16 +132,16 @@ fun AccessGateOverlay(
                             imageVector = Icons.Default.Lock,
                             contentDescription = "Lock",
                             tint = Color.White,
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
                         text = "Private VIP Access Gate 🔒",
                         color = Color.White,
-                        fontSize = 19.sp,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center
                     )
@@ -145,13 +155,13 @@ fun AccessGateOverlay(
                         border = BorderStroke(1.dp, Color(0xFF2C2C44)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
+                        Column(modifier = Modifier.padding(10.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
                                     imageVector = Icons.Default.Shield,
                                     contentDescription = null,
                                     tint = Color(0xFFFFD700),
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(15.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
@@ -161,17 +171,128 @@ fun AccessGateOverlay(
                                     fontWeight = FontWeight.Bold
                                 )
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(3.dp))
                             Text(
-                                text = "Our streaming infrastructure operates on private high-speed nodes with dedicated RAM & bandwidth. To maintain ultra-smooth, bufferless 4K & 1080p streaming for our community, access is currently invite-only.",
+                                text = "To maintain ultra-smooth, bufferless 4K & 1080p streaming, unlock access using a community code or by watching 1 quick ad for 12 hours free.",
                                 color = TextSecondary,
-                                fontSize = 11.sp,
-                                lineHeight = 15.sp
+                                fontSize = 10.5.sp,
+                                lineHeight = 14.sp
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(18.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // ── PRIMARY OPTION 1: 12-Hour Free Ad Pass Button ──
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFF0F382C),
+                        border = BorderStroke(
+                            1.dp,
+                            Brush.horizontalGradient(
+                                listOf(Color(0xFF00E676), Color(0xFF00B0FF))
+                            )
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = !isLoadingAd) {
+                                if (activity != null && UnityAdsManager.isRewardedAdLoaded.value) {
+                                    isLoadingAd = true
+                                    UnityAdsManager.showRewardedAd(
+                                        activity = activity,
+                                        onUserEarnedReward = {
+                                            isLoadingAd = false
+                                            Toast.makeText(context, "12-Hour Free Pass Unlocked! 🎟️", Toast.LENGTH_LONG).show()
+                                        },
+                                        onAdDismissed = {
+                                            isLoadingAd = false
+                                        },
+                                        onAdError = { reason ->
+                                            isLoadingAd = false
+                                            showAdPassDialog = true
+                                        }
+                                    )
+                                } else {
+                                    showAdPassDialog = true
+                                }
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(Color(0xFF00E676).copy(alpha = 0.2f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isLoadingAd) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(18.dp),
+                                            color = Color(0xFF00E676),
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Text("📺", fontSize = 18.sp)
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "Watch 1 Ad for 12h Free Pass",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                    Text(
+                                        text = "Instant 12h unlimited streaming access",
+                                        color = Color(0xFF00E676),
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF00E676))
+                                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                            ) {
+                                Text(
+                                    text = "FREE PASS ⚡",
+                                    color = Color.Black,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // ── OR DIVIDER ──
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFF2C2C44))
+                        Text(
+                            text = "  OR USE ACCESS CODE  ",
+                            color = TextSecondary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFF2C2C44))
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     // Access Code Input
                     OutlinedTextField(
@@ -180,11 +301,11 @@ fun AccessGateOverlay(
                             accessCodeInput = it
                             errorMessage = null
                         },
-                        label = { Text("Enter Access Code", color = TextSecondary) },
-                        placeholder = { Text("e.g. STREAMHUB2026 or Invite PIN", color = TextSecondary) },
+                        label = { Text("Enter Access Code", color = TextSecondary, fontSize = 12.sp) },
+                        placeholder = { Text("e.g. Invite PIN or Password", color = TextSecondary, fontSize = 12.sp) },
                         singleLine = true,
                         leadingIcon = {
-                            Icon(Icons.Default.Key, contentDescription = null, tint = primaryColor, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Key, contentDescription = null, tint = primaryColor, modifier = Modifier.size(18.dp))
                         },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = primaryColor,
@@ -196,7 +317,7 @@ fun AccessGateOverlay(
                     )
 
                     errorMessage?.let {
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = it,
                             color = PrimaryRed,
@@ -205,7 +326,7 @@ fun AccessGateOverlay(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     // Unlock Button
                     Button(
@@ -217,24 +338,24 @@ fun AccessGateOverlay(
                             if (AccessGateManager.verifyAndUnlock(accessCodeInput)) {
                                 Toast.makeText(context, "Welcome to StreamHub VIP! 🚀", Toast.LENGTH_LONG).show()
                             } else {
-                                errorMessage = "Invalid access code. Please contact the owner on Telegram below."
+                                errorMessage = "Invalid access code. Use 12h Free Pass above or contact on Telegram."
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(46.dp)
+                            .height(42.dp)
                     ) {
                         Text(
-                            text = "Unlock Instant Access 🚀",
+                            text = "Unlock Permanent Access 🚀",
                             color = Color.White,
-                            fontSize = 14.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     // Telegram Contact Button
                     OutlinedButton(
@@ -251,7 +372,7 @@ fun AccessGateOverlay(
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF0088CC)),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(44.dp)
+                            .height(38.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -261,28 +382,29 @@ fun AccessGateOverlay(
                                 imageVector = Icons.AutoMirrored.Filled.Send,
                                 contentDescription = "Telegram",
                                 tint = Color(0xFF0088CC),
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(15.dp)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "💬 Get Access Code on Telegram",
+                                text = "Get Code on Telegram (@Londe_Lapate)",
                                 color = Color(0xFF0088CC),
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        text = "Contact @Londe_Lapate for instant access code & community perks.",
-                        color = TextSecondary,
-                        fontSize = 10.sp,
-                        textAlign = TextAlign.Center
-                    )
                 }
             }
         }
+    }
+
+    if (showAdPassDialog) {
+        AdPassGateDialog(
+            onDismiss = { showAdPassDialog = false },
+            onPassGranted = {
+                showAdPassDialog = false
+                Toast.makeText(context, "12-Hour Free Pass Active! 🎟️", Toast.LENGTH_LONG).show()
+            }
+        )
     }
 }

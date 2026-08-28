@@ -392,7 +392,12 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
         )
     }
 
-    val isAppUnlocked by com.streamhub.app.data.AccessGateManager.isUnlocked.collectAsState()
+    val isAccessKeyUnlocked by com.streamhub.app.data.AccessGateManager.isUnlocked.collectAsState()
+    val passExpiryMillis by com.streamhub.app.data.ads.AdPassManager.passExpiryMillis.collectAsState()
+    val isAdminMode by com.streamhub.app.data.AdminManager.isAdminMode.collectAsState()
+    val isAdPassActive = com.streamhub.app.data.ads.AdPassManager.hasActivePass()
+
+    val isAppUnlocked = isAccessKeyUnlocked || isAdPassActive || isAdminMode
     val showBottomBar = bottomBarScreens.any { it.route == currentRoute }
 
     var pendingPlayMedia by remember { mutableStateOf<Pair<com.streamhub.app.data.models.MediaItem, Int>?>(null) }
