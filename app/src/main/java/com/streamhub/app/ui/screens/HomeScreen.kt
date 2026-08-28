@@ -126,7 +126,7 @@ fun HomeScreen(
         if (featured.isNotEmpty()) featured else filteredCatalog.take(5)
     }
 
-    val continueWatchingList = remember(catalog, watchHistoryMap) {
+    val continueWatchingList = remember(catalog, watchHistoryMap, selectedCategoryFilter) {
         val catalogMap = catalog.associateBy { it.id }
         watchHistoryMap.values
             .sortedByDescending { it.lastUpdated }
@@ -140,6 +140,14 @@ fun HomeScreen(
                     type = progress.mediaType.ifEmpty { "Movie" }
                 )
                 Pair(media, progress)
+            }
+            .filter { (media, _) ->
+                when (selectedCategoryFilter) {
+                    "ANIME" -> media.category.equals("ANIME", ignoreCase = true)
+                    "MOVIES" -> media.category.equals("MOVIE", ignoreCase = true) || media.category.equals("MOVIES", ignoreCase = true)
+                    "SERIES" -> media.category.equals("WEB_SERIES", ignoreCase = true) || media.category.equals("SERIES", ignoreCase = true)
+                    else -> true
+                }
             }
     }
 
@@ -242,6 +250,25 @@ fun HomeScreen(
                         subtitle = if (isAdminMode) "Tap the + button to add your first show"
                                    else "Ask the admin to add content",
                         modifier = Modifier.height(400.dp)
+                    )
+                }
+            }
+
+            // Empty state for specific category filter (e.g. Anime, Series)
+            if (catalog.isNotEmpty() && filteredCatalog.isEmpty() && catalogState is com.streamhub.app.data.repository.CatalogState.Ready) {
+                val categoryName = when (selectedCategoryFilter) {
+                    "ANIME" -> "Anime"
+                    "MOVIES" -> "Movies"
+                    "SERIES" -> "Series"
+                    else -> "Content"
+                }
+                item {
+                    EmptyStateCard(
+                        icon = Icons.Default.Movie,
+                        title = "No $categoryName Yet",
+                        subtitle = if (isAdminMode) "Tap the + button below to add your first $categoryName"
+                                   else "Check back later or switch to 'All' / 'Movies' to explore",
+                        modifier = Modifier.height(350.dp)
                     )
                 }
             }
