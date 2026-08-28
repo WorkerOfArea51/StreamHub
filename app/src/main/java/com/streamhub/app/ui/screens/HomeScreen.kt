@@ -406,6 +406,28 @@ fun HomeScreen(
                 }
             }
 
+            // Recently Added Row (First Shelf)
+            if (filteredCatalog.isNotEmpty()) {
+                item {
+                    MediaSectionRow(
+                        title = "✨ Recently Added",
+                        items = filteredCatalog,
+                        onMediaClick = onMediaClick
+                    )
+                }
+            }
+
+            // Blockbuster Movies Row
+            if (movieItems.isNotEmpty()) {
+                item {
+                    MediaSectionRow(
+                        title = "🎬 Blockbuster Movies",
+                        items = movieItems,
+                        onMediaClick = onMediaClick
+                    )
+                }
+            }
+
             // Trending Row
             if (trendingItems.isNotEmpty()) {
                 item {
@@ -428,34 +450,12 @@ fun HomeScreen(
                 }
             }
 
-            // Blockbuster Movies Row
-            if (movieItems.isNotEmpty()) {
-                item {
-                    MediaSectionRow(
-                        title = "🎬 Blockbuster Movies",
-                        items = movieItems,
-                        onMediaClick = onMediaClick
-                    )
-                }
-            }
-
             // Web Series Row
             if (webSeriesItems.isNotEmpty()) {
                 item {
                     MediaSectionRow(
                         title = "📺 Popular Web Series",
                         items = webSeriesItems,
-                        onMediaClick = onMediaClick
-                    )
-                }
-            }
-
-            // Recently Added Row
-            if (filteredCatalog.isNotEmpty()) {
-                item {
-                    MediaSectionRow(
-                        title = "✨ Recently Added",
-                        items = filteredCatalog,
                         onMediaClick = onMediaClick
                     )
                 }
