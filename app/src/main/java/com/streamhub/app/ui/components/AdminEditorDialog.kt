@@ -821,10 +821,43 @@ fun AdminEditorDialog(
                             // Smart F2L Bot Output / JSON / Links Input Area
                             OutlinedTextField(
                                 value = generatedEpisodesText.ifBlank { startBatchLink },
-                                onValueChange = {
-                                    startBatchLink = it
-                                    generatedEpisodesText = it
+                                onValueChange = { newText ->
+                                    startBatchLink = newText
+                                    generatedEpisodesText = newText
                                     batchError = null
+
+                                    val trimmed = newText.trim()
+                                    val isBatchUrl = (trimmed.startsWith("http://") || trimmed.startsWith("https://")) &&
+                                                     (trimmed.contains("/batch/", ignoreCase = true) || trimmed.contains("api/batch", ignoreCase = true))
+                                    if (isBatchUrl && !isFetchingF2l) {
+                                        f2lBatchInput = trimmed
+                                        isFetchingF2l = true
+                                        scope.launch {
+                                            val res = com.streamhub.app.data.api.F2lApiClient.fetchBatch(trimmed, parsedSeasonNum, arcNameText)
+                                            res.fold(
+                                                onSuccess = { eps ->
+                                                    if (eps.isNotEmpty()) {
+                                                        val jsonArray = org.json.JSONArray()
+                                                        eps.forEach { ep ->
+                                                            val obj = org.json.JSONObject()
+                                                            obj.put("episode_num", ep.episodeNumber)
+                                                            obj.put("file_name", ep.fileName)
+                                                            obj.put("file_size", ep.fileSize)
+                                                            obj.put("direct_stream_url", ep.streamUrl)
+                                                            obj.put("download_url", ep.mirrorStreamUrl)
+                                                            jsonArray.put(obj)
+                                                        }
+                                                        generatedEpisodesText = jsonArray.toString(2)
+                                                        startBatchLink = generatedEpisodesText
+                                                    }
+                                                },
+                                                onFailure = { err ->
+                                                    batchError = "F2L API Import: ${err.message}"
+                                                }
+                                            )
+                                            isFetchingF2l = false
+                                        }
+                                    }
                                 },
                                 label = { Text("⚡ Smart F2L Bot Output / JSON / Links *", color = TextSecondary) },
                                 placeholder = { Text("Paste entire Telegram bot message here...\n> 🎬 EP - 01 - Undertaker.mkv (447.4 MB)\n> 🔗 Stream: https://...\n> ⬇️ Download: https://...", color = TextSecondary) },
@@ -852,6 +885,44 @@ fun AdminEditorDialog(
                                             batchError = "Clipboard is empty"
                                             return@Button
                                         }
+
+                                        val isBatchUrlOrId = clipText.contains("/batch/", ignoreCase = true) ||
+                                                             clipText.contains("api/batch", ignoreCase = true) ||
+                                                             (clipText.length in 32..64 && clipText.matches(Regex("^[a-fA-F0-9]+$")))
+
+                                        if (isBatchUrlOrId) {
+                                            f2lBatchInput = clipText
+                                            isFetchingF2l = true
+                                            scope.launch {
+                                                val res = com.streamhub.app.data.api.F2lApiClient.fetchBatch(clipText, parsedSeasonNum, arcNameText)
+                                                res.fold(
+                                                    onSuccess = { eps ->
+                                                        if (eps.isNotEmpty()) {
+                                                            val jsonArray = org.json.JSONArray()
+                                                            eps.forEach { ep ->
+                                                                val obj = org.json.JSONObject()
+                                                                obj.put("episode_num", ep.episodeNumber)
+                                                                obj.put("file_name", ep.fileName)
+                                                                obj.put("file_size", ep.fileSize)
+                                                                obj.put("direct_stream_url", ep.streamUrl)
+                                                                obj.put("download_url", ep.mirrorStreamUrl)
+                                                                jsonArray.put(obj)
+                                                            }
+                                                            generatedEpisodesText = jsonArray.toString(2)
+                                                            startBatchLink = generatedEpisodesText
+                                                        } else {
+                                                            batchError = "No episodes returned by F2L API"
+                                                        }
+                                                    },
+                                                    onFailure = { err ->
+                                                        batchError = "F2L API Import Failed: ${err.message}"
+                                                    }
+                                                )
+                                                isFetchingF2l = false
+                                            }
+                                            return@Button
+                                        }
+
                                         startBatchLink = clipText
                                         generatedEpisodesText = clipText
                                         val parsed = TelegramLinkResolver.parseSmartBotMessageOrLinks(clipText, parsedSeasonNum, arcNameText)

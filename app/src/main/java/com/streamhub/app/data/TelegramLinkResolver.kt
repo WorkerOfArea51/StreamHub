@@ -205,6 +205,10 @@ object TelegramLinkResolver {
 
         lines.forEachIndexed { index, line ->
             if (line.startsWith("http://") || line.startsWith("https://") || line.startsWith("t.me/")) {
+                // Ignore batch API endpoints from being parsed as raw video stream files
+                if (line.contains("/api/batch", ignoreCase = true) || line.contains("/batch/", ignoreCase = true)) {
+                    return@forEachIndexed
+                }
                 val epNum = extractEpisodeNumber(line) ?: (index + 1)
                 val epTitle = if (arcName.isNotBlank()) "$arcName - Ep $epNum" else "Episode $epNum"
 
