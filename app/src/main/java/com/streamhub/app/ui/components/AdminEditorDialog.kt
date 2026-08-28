@@ -662,11 +662,14 @@ fun AdminEditorDialog(
                                 }
                             }
                         } else {
-                            // --- SERIES / ANIME FORMAT: BATCH RANGE INPUT ---
-                            Text("2. Episode Range Stream Links 📺", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            // --- SERIES / ANIME FORMAT: SMART F2L & BATCH RANGE INPUT ---
+                            val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                            val parsedSeasonNum = seasonNumberText.toIntOrNull() ?: 1
+
+                            Text("2. Stream Links & Episodes Importer 📺", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "Paste the first (Ep 1) and last episode message URL from your private channel. Episodes will be indexed automatically.",
+                                "Paste your entire Telegram F2L bot output message, JSON batch, or episode link list. Everything is parsed and sorted automatically!",
                                 color = TextSecondary,
                                 fontSize = 11.sp,
                                 lineHeight = 15.sp
@@ -696,29 +699,29 @@ fun AdminEditorDialog(
                                 )
                             }
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
 
+                            // Smart F2L Bot Output / JSON / Links Input Area
                             OutlinedTextField(
-                                value = startBatchLink,
-                                onValueChange = { startBatchLink = it; batchError = null },
-                                label = { Text("Start Message Link (Ep 1) *", color = TextSecondary) },
-                                placeholder = { Text("https://t.me/c/1234567890/100", color = TextSecondary) },
-                                singleLine = true,
+                                value = generatedEpisodesText.ifBlank { startBatchLink },
+                                onValueChange = {
+                                    startBatchLink = it
+                                    generatedEpisodesText = it
+                                    batchError = null
+                                },
+                                label = { Text("⚡ Smart F2L Bot Output / JSON / Links *", color = TextSecondary) },
+                                placeholder = { Text("Paste entire Telegram bot message here...\n> 🎬 EP - 01 - Undertaker.mkv (447.4 MB)\n> 🔗 Stream: https://...\n> ⬇️ Download: https://...", color = TextSecondary) },
+                                minLines = 4,
+                                maxLines = 8,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Color(0xFFFFD700),
+                                    unfocusedBorderColor = Color(0xFF2C2C3E),
+                                    focusedTextColor = TextPrimary
+                                ),
                                 modifier = Modifier.fillMaxWidth()
                             )
 
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            OutlinedTextField(
-                                value = endBatchLink,
-                                onValueChange = { endBatchLink = it; batchError = null },
-                                label = { Text("End Message Link (Optional)", color = TextSecondary) },
-                                placeholder = { Text("https://t.me/c/1234567890/112", color = TextSecondary) },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -727,28 +730,28 @@ fun AdminEditorDialog(
                                 Button(
                                     onClick = {
                                         batchError = null
-                                        if (startBatchLink.isBlank()) {
-                                            batchError = "Start link is required"
+                                        val clipText = clipboardManager.getText()?.text?.trim()
+                                        if (clipText.isNullOrBlank()) {
+                                            batchError = "Clipboard is empty"
                                             return@Button
                                         }
-                                        val generated = TelegramLinkResolver.generateBatchTelegramLinks(startBatchLink, endBatchLink)
-                                        if (generated.isBlank()) {
-                                            batchError = "No episodes generated. Check link format."
-                                        } else {
-                                            generatedEpisodesText = generated
+                                        startBatchLink = clipText
+                                        generatedEpisodesText = clipText
+                                        val parsed = TelegramLinkResolver.parseSmartBotMessageOrLinks(clipText, parsedSeasonNum, arcNameText)
+                                        if (parsed.isEmpty()) {
+                                            batchError = "Could not parse episodes. Please check format."
                                         }
                                     },
-                                    enabled = startBatchLink.isNotBlank(),
-                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0088CC)),
                                     shape = RoundedCornerShape(12.dp),
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Index Episode Range", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("📋 Paste & Auto-Parse", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
 
-                                if (startBatchLink.isNotBlank() || endBatchLink.isNotBlank() || generatedEpisodesText.isNotBlank()) {
+                                if (startBatchLink.isNotBlank() || generatedEpisodesText.isNotBlank()) {
                                     OutlinedButton(
                                         onClick = {
                                             startBatchLink = ""
@@ -772,21 +775,74 @@ fun AdminEditorDialog(
                                 Text(it, color = PrimaryRed, fontSize = 11.sp)
                             }
 
-                            if (generatedEpisodesText.isNotBlank()) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                val count = generatedEpisodesText.lines().filter { it.isNotBlank() }.size
+                            // Live Parsed Episodes Preview
+                            val rawContent = generatedEpisodesText.ifBlank { startBatchLink }
+                            if (rawContent.isNotBlank()) {
+                                val parsedList = remember(rawContent, parsedSeasonNum, arcNameText) {
+                                    TelegramLinkResolver.parseSmartBotMessageOrLinks(rawContent, parsedSeasonNum, arcNameText)
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
                                 Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = Color(0xFF1E2E1E),
-                                    border = BorderStroke(1.dp, Color(0xFF4CAF50))
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFF162316),
+                                    border = BorderStroke(1.dp, Color(0xFF4CAF50)),
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Text(
-                                        "✅ Successfully indexed $count stream episodes!",
-                                        color = Color(0xFF81C784),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                    )
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(
+                                            "✅ Successfully Parsed ${parsedList.size} Episodes (Auto-Sorted)!",
+                                            color = Color(0xFF81C784),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+
+                                        if (parsedList.isNotEmpty()) {
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Column(
+                                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                parsedList.take(6).forEach { ep ->
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        Text(
+                                                            text = "EP ${ep.episodeNumber.toString().padStart(2, '0')}:",
+                                                            color = Color(0xFFFFD700),
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            modifier = Modifier.width(45.dp)
+                                                        )
+                                                        Text(
+                                                            text = ep.title.removePrefix("Ep ${ep.episodeNumber}: ").ifBlank { ep.fileName },
+                                                            color = TextPrimary,
+                                                            fontSize = 10.sp,
+                                                            maxLines = 1,
+                                                            modifier = Modifier.weight(1f)
+                                                        )
+                                                        if (ep.fileSize.isNotBlank()) {
+                                                            Spacer(modifier = Modifier.width(6.dp))
+                                                            Text(
+                                                                text = ep.fileSize,
+                                                                color = TextSecondary,
+                                                                fontSize = 9.sp
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                                if (parsedList.size > 6) {
+                                                    Text(
+                                                        text = "... + ${parsedList.size - 6} more episodes",
+                                                        color = Color(0xFFA5D6A7),
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Medium
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1000,8 +1056,8 @@ fun AdminEditorDialog(
                                                 )
                                             )
                                         }
-                                        generatedEpisodesText.isNotBlank() -> TelegramLinkResolver.parseAndGroupTelegramLinks(generatedEpisodesText, seasonNumber = parsedSeasonNum, arcName = arcNameText)
-                                        startBatchLink.isNotBlank() -> TelegramLinkResolver.parseAndGroupTelegramLinks(startBatchLink, seasonNumber = parsedSeasonNum, arcName = arcNameText)
+                                        generatedEpisodesText.isNotBlank() -> TelegramLinkResolver.parseSmartBotMessageOrLinks(generatedEpisodesText, seasonNumber = parsedSeasonNum, arcName = arcNameText)
+                                        startBatchLink.isNotBlank() -> TelegramLinkResolver.parseSmartBotMessageOrLinks(startBatchLink, seasonNumber = parsedSeasonNum, arcName = arcNameText)
                                         else -> initialItem?.episodes ?: emptyList()
                                     }
 

@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.draw.blur
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -391,6 +392,7 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
         )
     }
 
+    val isAppUnlocked by com.streamhub.app.data.AccessGateManager.isUnlocked.collectAsState()
     val showBottomBar = bottomBarScreens.any { it.route == currentRoute }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -440,7 +442,15 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
             }
         },
         containerColor = BackgroundDark,
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .then(
+                if (!isAppUnlocked && currentRoute != Screen.Splash.route) {
+                    Modifier.blur(14.dp)
+                } else {
+                    Modifier
+                }
+            )
     ) { innerPadding ->
         NavHost(
             navController = navController,
@@ -644,6 +654,9 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                 }
             }
         }
+        }
+        if (currentRoute != Screen.Splash.route) {
+            com.streamhub.app.ui.components.AccessGateOverlay(isUnlocked = isAppUnlocked)
         }
         StreamHubToastHost()
     }

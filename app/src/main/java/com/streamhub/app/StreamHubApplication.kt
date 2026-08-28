@@ -2,6 +2,7 @@ package com.streamhub.app
 
 import android.app.Application
 import android.util.Log
+import com.streamhub.app.data.AccessGateManager
 import com.streamhub.app.data.AdminManager
 import com.streamhub.app.data.AppUpdateManager
 import com.streamhub.app.data.DownloadManager
@@ -108,6 +109,8 @@ class StreamHubApplication : Application() {
     private fun initializeManagers() {
         runCatching { PlayerSettingsManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "PlayerSettingsManager.init failed", it) }
+        runCatching { AccessGateManager.init(applicationContext) }
+            .onFailure { Log.e(TAG, "AccessGateManager.init failed", it) }
         runCatching { AdminManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "AdminManager.init failed", it) }
         runCatching { ThemeManager.init(applicationContext) }
