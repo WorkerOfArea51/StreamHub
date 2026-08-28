@@ -300,12 +300,16 @@ fun AdPassGateDialog(
                                 },
                                 onAdError = { errorMsg ->
                                     isLoadingAd = false
-                                    showGraceOption = true
-                                    Toast.makeText(context, "Ad note: $errorMsg", Toast.LENGTH_SHORT).show()
+                                    AdPassManager.grant12HourPass()
+                                    Toast.makeText(context, "🎉 12-Hour Pass Unlocked!", Toast.LENGTH_LONG).show()
+                                    onPassGranted()
+                                    onDismiss()
                                 }
                             )
                         } else {
-                            Toast.makeText(context, "Cannot find host activity", Toast.LENGTH_SHORT).show()
+                            AdPassManager.grant12HourPass()
+                            onPassGranted()
+                            onDismiss()
                         }
                     },
                     modifier = Modifier

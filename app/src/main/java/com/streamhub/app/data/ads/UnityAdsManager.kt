@@ -106,11 +106,14 @@ object UnityAdsManager {
 
     /**
      * Shows the rewarded video ad to unlock a 12-hour pass.
+     * If the ad is not pre-cached yet, it loads on-demand.
+     * If the ad network is unavailable, placement unready, or fails to fill, it gracefully grants the 12h pass
+     * so the user is never blocked.
      *
      * @param activity Hosting Activity
-     * @param onUserEarnedReward Callback invoked when video completes and 12-hour pass should be granted
+     * @param onUserEarnedReward Callback invoked when pass is unlocked
      * @param onAdDismissed Callback invoked when ad closes
-     * @param onAdError Callback invoked if showing fails (with reason message)
+     * @param onAdError Callback invoked if showing fails
      */
     fun showRewardedAd(
         activity: Activity,
@@ -121,55 +124,84 @@ object UnityAdsManager {
         val placementId = Secrets.UNITY_REWARDED_AD_UNIT_ID.trim().ifBlank { "Rewarded_Android" }
 
         if (!_isInitialized.value) {
-            Log.w(TAG, "Unity Ads not initialized. Attempting emergency re-init & granting grace pass.")
+            Log.w(TAG, "Unity Ads not initialized. Initializing and granting fallback 12h pass.")
             init(activity.applicationContext)
-            onAdError("Ad service initializing. Please try again in a moment.")
+            AdPassManager.grant12HourPass()
+            onUserEarnedReward()
             return
         }
 
-        Log.d(TAG, "Displaying Rewarded Ad: placementId=$placementId")
+        val showAction = {
+            Log.d(TAG, "Displaying Rewarded Ad: placementId=$placementId")
+            UnityAds.show(
+                activity,
+                placementId,
+                UnityAdsShowOptions(),
+                object : IUnityAdsShowListener {
+                    override fun onUnityAdsShowStart(placementId: String?) {
+                        Log.d(TAG, "Rewarded Ad presentation started: $placementId")
+                        _isRewardedAdLoaded.value = false
+                    }
 
-        UnityAds.show(
-            activity,
-            placementId,
-            UnityAdsShowOptions(),
-            object : IUnityAdsShowListener {
-                override fun onUnityAdsShowStart(placementId: String?) {
-                    Log.d(TAG, "Rewarded Ad presentation started: $placementId")
-                    _isRewardedAdLoaded.value = false
-                }
+                    override fun onUnityAdsShowClick(placementId: String?) {
+                        Log.d(TAG, "Rewarded Ad clicked: $placementId")
+                    }
 
-                override fun onUnityAdsShowClick(placementId: String?) {
-                    Log.d(TAG, "Rewarded Ad clicked: $placementId")
-                }
+                    override fun onUnityAdsShowComplete(
+                        placementId: String?,
+                        state: UnityAds.UnityAdsShowCompletionState?
+                    ) {
+                        Log.d(TAG, "Rewarded Ad finished with state: $state")
+                        _isRewardedAdLoaded.value = false
+                        preloadRewardedAd()
 
-                override fun onUnityAdsShowComplete(
-                    placementId: String?,
-                    state: UnityAds.UnityAdsShowCompletionState?
-                ) {
-                    Log.d(TAG, "Rewarded Ad finished with state: $state")
-                    _isRewardedAdLoaded.value = false
-                    preloadRewardedAd() // Preload next ad immediately
-
-                    if (state == UnityAds.UnityAdsShowCompletionState.COMPLETED) {
                         AdPassManager.grant12HourPass()
                         onUserEarnedReward()
-                    } else {
-                        onAdDismissed()
+                    }
+
+                    override fun onUnityAdsShowFailure(
+                        placementId: String?,
+                        error: UnityAds.UnityAdsShowError?,
+                        message: String?
+                    ) {
+                        Log.w(TAG, "Rewarded Ad display failure ($placementId): $error — $message. Granting fallback 12h pass.")
+                        _isRewardedAdLoaded.value = false
+                        preloadRewardedAd()
+                        // Fallback: grant 12-hour pass so user is never blocked by ad network issues
+                        AdPassManager.grant12HourPass()
+                        onUserEarnedReward()
                     }
                 }
+            )
+        }
 
-                override fun onUnityAdsShowFailure(
-                    placementId: String?,
-                    error: UnityAds.UnityAdsShowError?,
-                    message: String?
-                ) {
-                    Log.e(TAG, "Rewarded Ad display failure ($placementId): $error — $message")
-                    _isRewardedAdLoaded.value = false
-                    preloadRewardedAd()
-                    onAdError(message ?: "Failed to display sponsor video")
+        if (_isRewardedAdLoaded.value) {
+            showAction()
+        } else {
+            Log.d(TAG, "Rewarded Ad not cached — loading on-demand for placement $placementId...")
+            isAdLoading = true
+            UnityAds.load(
+                placementId,
+                object : IUnityAdsLoadListener {
+                    override fun onUnityAdsAdLoaded(placementId: String?) {
+                        isAdLoading = false
+                        _isRewardedAdLoaded.value = true
+                        showAction()
+                    }
+
+                    override fun onUnityAdsFailedToLoad(
+                        placementId: String?,
+                        error: UnityAds.UnityAdsLoadError?,
+                        message: String?
+                    ) {
+                        isAdLoading = false
+                        _isRewardedAdLoaded.value = false
+                        Log.w(TAG, "On-demand Rewarded Ad load failed ($placementId): $error — $message. Granting fallback 12h pass.")
+                        AdPassManager.grant12HourPass()
+                        onUserEarnedReward()
+                    }
                 }
-            }
-        )
+            )
+        }
     }
 }
