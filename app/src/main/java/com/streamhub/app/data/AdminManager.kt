@@ -19,7 +19,7 @@ object AdminManager {
     private var prefs: android.content.SharedPreferences? = null
 
     private var ownerVerified: Boolean = false
-        get() = (prefs?.getBoolean("owner_verified", false) == true) || (prefs?.getBoolean("is_owner", false) == true) || field
+        get() = (prefs?.getBoolean("owner_verified", false) == true) || field
         set(value) {
             field = value
             prefs?.edit()?.putBoolean("owner_verified", value)?.apply()
@@ -50,6 +50,7 @@ object AdminManager {
 
     internal fun markOwnerVerified() {
         ownerVerified = true
+        _isAdminMode.value = true
     }
 
     fun verifyPassword(inputPin: String): Boolean {
@@ -69,6 +70,7 @@ object AdminManager {
      */
     fun disableAdmin() {
         ownerVerified = false
+        prefs?.edit()?.putBoolean("owner_verified", false)?.putBoolean("is_owner", false)?.apply()
         _isAdminMode.value = false
         Log.d(TAG, "Admin mode locked/disabled")
     }

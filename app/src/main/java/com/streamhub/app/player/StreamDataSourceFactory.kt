@@ -8,22 +8,23 @@ import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.datasource.FileDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import com.streamhub.app.data.api.SharedHttpClient
 import java.io.IOException
 
 /**
- * High-Performance Resilient HTTP & Local File DataSource Factory for Media3 ExoPlayer.
+ * High-Performance Resilient Media DataSource Factory for Media3 ExoPlayer.
  *
- * Key Capabilities:
- * 1. Zero-timeout streaming via dedicated [SharedHttpClient.streamingClient] (prevents socket drops on buffer stall).
- * 2. Secondary failover to [DefaultHttpDataSource] with cross-protocol redirect support.
- * 3. In-flight transparent byte-range auto-recovery on socket disconnection during read operations.
- * 4. Zero disk contention progressive streaming for multi-gigabyte media files.
- * 5. Full local offline file playback via [FileDataSource].
+ * Wraps ExoPlayer's [DefaultDataSource.Factory] with a dedicated, fault-tolerant
+ * HTTP streaming pipeline:
+ * 1. Primary: Zero-timeout streaming via [SharedHttpClient.streamingClient] (OkHttp).
+ * 2. Failover: Automatic fallback to [DefaultHttpDataSource] with cross-protocol redirect support.
+ * 3. In-flight byte-range auto-recovery: Transparent reconnection when sockets drop during progressive streaming.
+ * 4. Local files & content providers: Automatically handled via Media3's [DefaultDataSource] (file://, content://, rawresource://).
  */
 @OptIn(UnstableApi::class)
 class StreamDataSourceFactory(
@@ -34,7 +35,6 @@ class StreamDataSourceFactory(
 
     companion object {
         private const val TAG = "StreamDataSourceFactory"
-        const val LOCAL_FILE_SCHEME = "file"
         private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
         private val DEFAULT_HEADERS = mapOf(
             "Accept" to "*/*",
@@ -54,41 +54,26 @@ class StreamDataSourceFactory(
         .setKeepPostFor302Redirects(true)
         .setDefaultRequestProperties(DEFAULT_HEADERS)
 
-    private val fileDataSourceFactory = FileDataSource.Factory()
-
-    override fun createDataSource(): DataSource {
+    private val resilientHttpDataSourceFactory = DataSource.Factory {
         val okHttpSource = okHttpDataSourceFactory.createDataSource()
         val defaultHttpSource = defaultHttpDataSourceFactory.createDataSource()
-        val fileSource = fileDataSourceFactory.createDataSource()
 
-        return object : DataSource {
+        object : HttpDataSource {
             private var currentSource: DataSource? = null
             private var transferListener: TransferListener? = null
             private var activeDataSpec: DataSpec? = null
             private var bytesReadTotal: Long = 0L
-            private var isLocal: Boolean = false
 
             override fun addTransferListener(transferListener: TransferListener) {
                 this.transferListener = transferListener
                 okHttpSource.addTransferListener(transferListener)
                 defaultHttpSource.addTransferListener(transferListener)
-                fileSource.addTransferListener(transferListener)
             }
 
             override fun open(dataSpec: DataSpec): Long {
                 try { currentSource?.close() } catch (_: Exception) {}
                 activeDataSpec = dataSpec
                 bytesReadTotal = 0L
-
-                val uri = dataSpec.uri
-                val scheme = uri.scheme?.lowercase()
-                isLocal = scheme == LOCAL_FILE_SCHEME || scheme == null || uri.path?.startsWith("/") == true
-
-                if (isLocal) {
-                    currentSource = fileSource
-                    transferListener?.let { currentSource?.addTransferListener(it) }
-                    return currentSource!!.open(dataSpec)
-                }
 
                 // Remote HTTP/HTTPS Stream: Try OkHttp streaming first, fallback to DefaultHttpDataSource
                 currentSource = okHttpSource
@@ -113,7 +98,7 @@ class StreamDataSourceFactory(
                     readBytes
                 } catch (e: IOException) {
                     // Transparent in-flight reconnection for remote HTTP media streams
-                    if (!isLocal && activeDataSpec != null) {
+                    if (activeDataSpec != null) {
                         val resumeOffset = activeDataSpec!!.position + bytesReadTotal
                         Log.w(TAG, "Remote stream read dropped after $bytesReadTotal bytes at offset $resumeOffset. Attempting auto-reconnect: ${e.message}")
                         try {
@@ -139,6 +124,29 @@ class StreamDataSourceFactory(
 
             override fun getUri(): Uri? = currentSource?.uri ?: activeDataSpec?.uri
 
+            override fun getResponseHeaders(): Map<String, List<String>> {
+                return (currentSource as? HttpDataSource)?.responseHeaders ?: emptyMap()
+            }
+
+            override fun getResponseCode(): Int {
+                return (currentSource as? HttpDataSource)?.responseCode ?: 200
+            }
+
+            override fun setRequestProperty(name: String, value: String) {
+                (okHttpSource as? HttpDataSource)?.setRequestProperty(name, value)
+                (defaultHttpSource as? HttpDataSource)?.setRequestProperty(name, value)
+            }
+
+            override fun clearRequestProperty(name: String) {
+                (okHttpSource as? HttpDataSource)?.clearRequestProperty(name)
+                (defaultHttpSource as? HttpDataSource)?.clearRequestProperty(name)
+            }
+
+            override fun clearAllRequestProperties() {
+                (okHttpSource as? HttpDataSource)?.clearAllRequestProperties()
+                (defaultHttpSource as? HttpDataSource)?.clearAllRequestProperties()
+            }
+
             override fun close() {
                 try {
                     currentSource?.close()
@@ -146,9 +154,14 @@ class StreamDataSourceFactory(
                     currentSource = null
                     activeDataSpec = null
                     bytesReadTotal = 0L
-                    isLocal = false
                 }
             }
         }
+    }
+
+    private val defaultDataSourceFactory = DefaultDataSource.Factory(appContext, resilientHttpDataSourceFactory)
+
+    override fun createDataSource(): DataSource {
+        return defaultDataSourceFactory.createDataSource()
     }
 }

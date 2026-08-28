@@ -183,92 +183,64 @@ fun HomeScreen(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 80.dp)
         ) {
-            // Category Filter Pills, 12h Pass Badge & Surprise Me Roulette Button
+            // Category Filter Pills & Surprise Me Roulette Button
             item {
-                Row(
+                LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                        .padding(top = 8.dp, bottom = 12.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
+                    item {
                         CategoryFilterChip("All", selectedCategoryFilter == "ALL") { selectedCategoryFilter = "ALL" }
+                    }
+                    item {
                         CategoryFilterChip("Anime", selectedCategoryFilter == "ANIME") { selectedCategoryFilter = "ANIME" }
+                    }
+                    item {
                         CategoryFilterChip("Movies", selectedCategoryFilter == "MOVIES") { selectedCategoryFilter = "MOVIES" }
+                    }
+                    item {
                         CategoryFilterChip("Series", selectedCategoryFilter == "SERIES") { selectedCategoryFilter = "SERIES" }
                     }
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    // 12-Hour Streaming Pass Badge
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(
-                                if (isPassActive) Color(0xFF0F382C) else Color(0xFF261D3B)
-                            )
-                            .border(
-                                width = 1.dp,
-                                color = if (isPassActive) Color(0xFF00E676).copy(alpha = 0.6f) else Color(0xFF00E5FF).copy(alpha = 0.6f),
-                                shape = RoundedCornerShape(20.dp)
-                            )
-                            .clickable { showAdPassDialog = true }
-                            .padding(horizontal = 9.dp, vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(3.dp)
-                        ) {
-                            Text(if (isPassActive) "🎟️" else "⚡", fontSize = 11.sp)
-                            Text(
-                                text = if (isPassActive) com.streamhub.app.data.ads.AdPassManager.formatRemainingTime(remainingPassMs) else "12h Pass",
-                                color = if (isPassActive) Color(0xFF00E676) else Color(0xFF00E5FF),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(
-                                androidx.compose.ui.graphics.Brush.horizontalGradient(
-                                    colors = listOf(
-                                        AccentOrange.copy(alpha = 0.22f),
-                                        Color(0xFFE11D48).copy(alpha = 0.22f)
+                    item {
+                        // Surprise Roulette
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(
+                                    androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                        colors = listOf(
+                                            AccentOrange.copy(alpha = 0.22f),
+                                            Color(0xFFE11D48).copy(alpha = 0.22f)
+                                        )
                                     )
                                 )
-                            )
-                            .border(
-                                width = 1.dp,
-                                brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
-                                    colors = listOf(AccentOrange, Color(0xFFE11D48))
-                                ),
-                                shape = RoundedCornerShape(20.dp)
-                            )
-                            .clickable { showSurpriseMeDialog = true }
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                .border(
+                                    width = 1.dp,
+                                    brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                        colors = listOf(AccentOrange, Color(0xFFE11D48))
+                                    ),
+                                    shape = RoundedCornerShape(20.dp)
+                                )
+                                .clickable { showSurpriseMeDialog = true }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text("🎰", fontSize = 12.sp)
-                            Text(
-                                text = "Surprise",
-                                color = AccentOrange,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text("🎰", fontSize = 12.sp)
+                                Text(
+                                    text = "Surprise",
+                                    color = AccentOrange,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }

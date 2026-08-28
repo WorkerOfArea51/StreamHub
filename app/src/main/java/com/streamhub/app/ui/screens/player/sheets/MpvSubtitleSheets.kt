@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -455,11 +457,11 @@ fun MpvSubtitleSettingsDrawer(
             ) {
                 Text("Text:", color = TextSecondary, fontSize = 12.sp, modifier = Modifier.width(44.dp))
                 listOf(
-                    0xFFFFFFFF to "White",
-                    0xFFFFEB3B to "Yellow",
-                    0xFF00E5FF to "Cyan",
-                    0xFF69F0AE to "Green",
-                    0xFFFF5252 to "Red"
+                    0xFFFFFFFFL to "White",
+                    0xFFFFEB3BL to "Yellow",
+                    0xFF00E5FFL to "Cyan",
+                    0xFF69F0AEL to "Green",
+                    0xFFFF5252L to "Red"
                 ).forEach { (colorVal, _) ->
                     Surface(
                         shape = CircleShape,

@@ -657,30 +657,7 @@ fun PlayerScreen(
 
         // Live Subtitle Styling Engine — immediately propagates user font size, colors & outlines to SubtitleView
         LaunchedEffect(subConfig, rememberPlayerViewRef) {
-            val pv = rememberPlayerViewRef ?: return@LaunchedEffect
-            pv.subtitleView?.apply {
-                val typefaceStyle = when {
-                    subConfig.bold && subConfig.italic -> android.graphics.Typeface.BOLD_ITALIC
-                    subConfig.bold -> android.graphics.Typeface.BOLD
-                    subConfig.italic -> android.graphics.Typeface.ITALIC
-                    else -> android.graphics.Typeface.NORMAL
-                }
-                val customTypeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, typefaceStyle)
-
-                setStyle(
-                    androidx.media3.ui.CaptionStyleCompat(
-                        subConfig.textColorArgb.toInt(),
-                        subConfig.backgroundColorArgb.toInt(),
-                        android.graphics.Color.TRANSPARENT,
-                        subConfig.edgeType,
-                        android.graphics.Color.BLACK,
-                        customTypeface
-                    )
-                )
-                setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, subConfig.fontSizeSp)
-                setApplyEmbeddedStyles(false)
-                setApplyEmbeddedFontSizes(false)
-            }
+            applySubtitleStyling(rememberPlayerViewRef?.subtitleView, subConfig)
         }
 
         Box(
@@ -723,6 +700,7 @@ fun PlayerScreen(
                         PlayerView(ctx).apply {
                             useController = false
                             player = viewModel.getPlayer()
+                            applySubtitleStyling(subtitleView, subConfig)
                             rememberPlayerViewRef = this
                         }
                     },
@@ -742,29 +720,7 @@ fun PlayerScreen(
                                 else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                             }
                         }
-                        playerView.subtitleView?.apply {
-                            val typefaceStyle = when {
-                                subConfig.bold && subConfig.italic -> android.graphics.Typeface.BOLD_ITALIC
-                                subConfig.bold -> android.graphics.Typeface.BOLD
-                                subConfig.italic -> android.graphics.Typeface.ITALIC
-                                else -> android.graphics.Typeface.NORMAL
-                            }
-                            val customTypeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, typefaceStyle)
-
-                            setStyle(
-                                androidx.media3.ui.CaptionStyleCompat(
-                                    subConfig.textColorArgb.toInt(),
-                                    subConfig.backgroundColorArgb.toInt(),
-                                    android.graphics.Color.TRANSPARENT,
-                                    subConfig.edgeType,
-                                    android.graphics.Color.BLACK,
-                                    customTypeface
-                                )
-                            )
-                            setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, subConfig.fontSizeSp)
-                            setApplyEmbeddedStyles(false)
-                            setApplyEmbeddedFontSizes(false)
-                        }
+                        applySubtitleStyling(playerView.subtitleView, subConfig)
                     }
                 )
             }
@@ -2227,4 +2183,49 @@ private fun MpvHudPill(
     }
 }
 
+private fun applySubtitleStyling(
+    subtitleView: androidx.media3.ui.SubtitleView?,
+    config: com.streamhub.app.data.SubtitleConfig
+) {
+    val sv = subtitleView ?: return
 
+    // Explicitly enforce native Canvas renderer so custom styling reliably overrides embedded SSA/SRT formatting instantly
+    sv.setViewType(androidx.media3.ui.SubtitleView.VIEW_TYPE_CANVAS)
+    sv.setApplyEmbeddedStyles(false)
+    sv.setApplyEmbeddedFontSizes(false)
+
+    val typefaceStyle = when {
+        config.bold && config.italic -> android.graphics.Typeface.BOLD_ITALIC
+        config.bold -> android.graphics.Typeface.BOLD
+        config.italic -> android.graphics.Typeface.ITALIC
+        else -> android.graphics.Typeface.NORMAL
+    }
+    val customTypeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, typefaceStyle)
+
+    val effectiveEdgeType = when {
+        config.outlineWidth > 0f -> androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE
+        config.shadowOffset > 0f -> androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
+        else -> config.edgeType
+    }
+
+    sv.setStyle(
+        androidx.media3.ui.CaptionStyleCompat(
+            config.textColorArgb.toInt(),
+            config.backgroundColorArgb.toInt(),
+            android.graphics.Color.TRANSPARENT,
+            effectiveEdgeType,
+            android.graphics.Color.BLACK,
+            customTypeface
+        )
+    )
+
+    if (config.scaleByWindow) {
+        sv.setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * (config.fontSizeSp / 18f))
+    } else {
+        sv.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, config.fontSizeSp)
+    }
+
+    sv.setBottomPaddingFraction(0.08f)
+    sv.invalidate()
+    sv.requestLayout()
+}
