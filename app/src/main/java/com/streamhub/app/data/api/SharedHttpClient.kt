@@ -19,4 +19,22 @@ object SharedHttpClient {
             .retryOnConnectionFailure(true)
             .build()
     }
+
+    /**
+     * Dedicated OkHttpClient instance tailored for progressive video streaming.
+     * Uses zero read timeout (no socket drops when player pauses or buffers ahead),
+     * keep-alive connection pooling, and connection retry.
+     */
+    val streamingClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(0, TimeUnit.SECONDS) // No read timeout for continuous media streaming
+            .writeTimeout(0, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .retryOnConnectionFailure(true)
+            .connectionPool(okhttp3.ConnectionPool(10, 5, TimeUnit.MINUTES))
+            .build()
+    }
 }
+

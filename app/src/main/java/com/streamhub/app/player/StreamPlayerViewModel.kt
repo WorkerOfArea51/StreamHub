@@ -116,6 +116,7 @@ class StreamPlayerViewModel : ViewModel() {
     private var pendingSeekTargetMs: Long? = null
     private var pendingSeekTimeoutJob: Job? = null
     private var sleepTimerJob: Job? = null
+    private val triedMirrorUrls = mutableSetOf<String>()
 
     private var lastBufferedBytes: Long = 0L
     private var lastSpeedSampleMs: Long = 0L
@@ -180,20 +181,15 @@ class StreamPlayerViewModel : ViewModel() {
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)
                     .build()
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
-                    // TelStream aggressive progressive buffering:
-                    // - Instant start in 250ms on first keyframe arrival.
-                    // - Aggressively buffers up to 5 minutes (300,000ms) ahead on network.
-                    // - 60s retained back-buffer for instant rewind.
-                    // - Prioritizes buffer time ahead of playhead for continuous stutter-free playback.
                     .setBufferDurationsMs(
-                        60_000,  // minBufferMs (60s minimum buffer)
-                        300_000, // maxBufferMs (up to 5 minutes buffer ahead)
-                        250,     // bufferForPlaybackMs (instant start in 250ms)
-                        1_000    // bufferForPlaybackAfterRebufferMs (1s on rebuffer)
+                        15_000,  // minBufferMs (15s minimum buffer for fast response)
+                        60_000,  // maxBufferMs (up to 60s buffer ahead)
+                        1_500,   // bufferForPlaybackMs (1.5s initial buffer — prevents immediate rebuffering loop)
+                        2_500    // bufferForPlaybackAfterRebufferMs (2.5s stable recovery)
                     )
-                    .setBackBuffer(60_000, true) // 60s retained back-buffer
+                    .setBackBuffer(30_000, true) // 30s retained back-buffer for instant rewind
                     .setPrioritizeTimeOverSizeThresholds(true)
-                    .setTargetBufferBytes(128 * 1024 * 1024) // 128 MB target buffer pool
+                    .setTargetBufferBytes(64 * 1024 * 1024) // 64 MB target buffer pool
                     .build()
                     val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
                         .setConstantBitrateSeekingEnabled(true)
