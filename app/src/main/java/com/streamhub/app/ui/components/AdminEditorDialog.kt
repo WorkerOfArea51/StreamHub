@@ -143,14 +143,30 @@ fun AdminEditorDialog(
     // --- State: Stream Links / Single Movie / Multi-Arc ---
     val isMovieFormat = type.equals("MOVIE", ignoreCase = true) || category.equals("MOVIE", ignoreCase = true)
     var startBatchLink by remember(initialItem) {
-        val ep = initialItem?.episodes?.firstOrNull()
-        mutableStateOf(ep?.streamUrl?.ifBlank { ep.mirrorStreamUrl } ?: "")
+        mutableStateOf(if (isMovieFormat) (initialItem?.episodes?.firstOrNull()?.streamUrl ?: "") else "")
     }
     var endBatchLink by remember { mutableStateOf("") }
     var arcNameText by remember { mutableStateOf("") }
     var generatedEpisodesText by remember(initialItem) {
-        val ep = initialItem?.episodes?.firstOrNull()
-        mutableStateOf(ep?.streamUrl?.ifBlank { ep.mirrorStreamUrl } ?: "")
+        val eps = initialItem?.episodes ?: emptyList()
+        if (eps.isEmpty()) {
+            mutableStateOf("")
+        } else if (isMovieFormat && eps.size == 1) {
+            val ep = eps.first()
+            mutableStateOf(ep.streamUrl.ifBlank { ep.mirrorStreamUrl })
+        } else {
+            val jsonArray = org.json.JSONArray()
+            eps.forEach { ep ->
+                val obj = org.json.JSONObject()
+                obj.put("episode_num", ep.episodeNumber)
+                obj.put("file_name", ep.fileName)
+                obj.put("file_size", ep.fileSize)
+                obj.put("direct_stream_url", ep.streamUrl)
+                obj.put("download_url", ep.mirrorStreamUrl)
+                jsonArray.put(obj)
+            }
+            mutableStateOf(jsonArray.toString(2))
+        }
     }
     var f2lBatchInput by remember { mutableStateOf("") }
     var isFetchingF2l by remember { mutableStateOf(false) }
@@ -1228,7 +1244,7 @@ fun AdminEditorDialog(
                                     val parsedSeasonNum = if (isMovieItem) 0 else (seasonNumberText.toIntOrNull() ?: 1)
                                     val episodes = when {
                                         isMovieFormat && (startBatchLink.isNotBlank() || generatedEpisodesText.isNotBlank()) -> {
-                                            val link = startBatchLink.ifBlank { generatedEpisodesText }.trim()
+                                            val link = TelegramLinkResolver.sanitizePlayableUrl(startBatchLink.ifBlank { generatedEpisodesText }.trim())
                                             val existingEp = initialItem?.episodes?.firstOrNull()
                                             listOf(
                                                 Episode(

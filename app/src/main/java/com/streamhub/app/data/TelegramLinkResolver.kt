@@ -105,16 +105,19 @@ object TelegramLinkResolver {
                     else -> "Episode $epNum"
                 }
 
+                val directPlayUrl = dlUrl.ifBlank { streamUrl }
+                val fallbackMirrorUrl = streamUrl.ifBlank { dlUrl }
+
                 Episode(
                     episodeNumber = epNum,
                     seasonNumber = seasonNumber,
                     arcName = arcName,
                     title = finalTitle,
-                    streamUrl = streamUrl,
-                    mirrorStreamUrl = dlUrl,
+                    streamUrl = sanitizePlayableUrl(directPlayUrl),
+                    mirrorStreamUrl = sanitizePlayableUrl(fallbackMirrorUrl),
                     fileSize = size,
                     fileName = if (rawTitle.isNotBlank()) rawTitle else "Episode $epNum.mkv",
-                    telegramFileId = extractTelegramMessageOrFileId(streamUrl)
+                    telegramFileId = extractTelegramMessageOrFileId(directPlayUrl)
                 )
             }.sortedBy { it.episodeNumber }
         }
@@ -159,8 +162,8 @@ object TelegramLinkResolver {
                                .trim()
                 val code = item.get("code")?.asString ?: item.get("id")?.asString ?: ""
 
-                val primaryPlayUrl = dlUrl.ifBlank { streamUrl }
-                val mirrorUrl = streamUrl.ifBlank { dlUrl }
+                val primaryPlayUrl = sanitizePlayableUrl(dlUrl.ifBlank { streamUrl })
+                val mirrorUrl = sanitizePlayableUrl(streamUrl.ifBlank { dlUrl })
 
                 if (primaryPlayUrl.isNotBlank()) {
                     val finalTitle = when {
@@ -211,6 +214,7 @@ object TelegramLinkResolver {
                 }
                 val epNum = extractEpisodeNumber(line) ?: (index + 1)
                 val epTitle = if (arcName.isNotBlank()) "$arcName - Ep $epNum" else "Episode $epNum"
+                val sanitizedUrl = sanitizePlayableUrl(line)
 
                 episodes.add(
                     Episode(
@@ -218,9 +222,9 @@ object TelegramLinkResolver {
                         seasonNumber = seasonNumber,
                         arcName = arcName,
                         title = epTitle,
-                        streamUrl = line,
-                        mirrorStreamUrl = line,
-                        telegramFileId = extractTelegramMessageOrFileId(line)
+                        streamUrl = sanitizedUrl,
+                        mirrorStreamUrl = sanitizedUrl,
+                        telegramFileId = extractTelegramMessageOrFileId(sanitizedUrl)
                     )
                 )
             }
@@ -228,12 +232,20 @@ object TelegramLinkResolver {
         return episodes.sortedBy { it.episodeNumber }
     }
 
+    fun sanitizePlayableUrl(url: String): String {
+        val trimmed = url.trim()
+        if (trimmed.contains("alwaysdata.net/stream/", ignoreCase = true)) {
+            return trimmed.replace(Regex("""(?i)alwaysdata\.net/stream/"""), "alwaysdata.net/dl/")
+        }
+        return trimmed
+    }
+
     suspend fun resolveAsync(url: String): String {
-        return url
+        return sanitizePlayableUrl(url)
     }
 
     fun resolveSync(url: String): String {
-        return url
+        return sanitizePlayableUrl(url)
     }
 
     fun isTelegramLink(url: String): Boolean {
