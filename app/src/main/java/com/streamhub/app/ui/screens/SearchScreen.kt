@@ -82,7 +82,7 @@ fun SearchScreen(
 
     LaunchedEffect(searchQuery) {
         val trimmed = searchQuery.trim()
-        if (trimmed.equals("#admin", ignoreCase = true) || trimmed == "#7860" || trimmed.equals("#publish", ignoreCase = true)) {
+        if (trimmed.equals("#admin", ignoreCase = true) || trimmed.equals("#publish", ignoreCase = true)) {
             searchQuery = ""
             showAdminPasswordDialog = true
         } else {

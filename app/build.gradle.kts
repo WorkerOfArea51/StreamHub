@@ -45,8 +45,8 @@ android {
         minSdk = 24
         targetSdk = 35
         val envVersionName = System.getenv("VERSION_NAME")?.removePrefix("v")?.removePrefix("V")
-        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 198
-        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.198"
+        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 199
+        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.199"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -57,7 +57,7 @@ android {
         buildConfigField("String", "MAL_CLIENT_ID", "\"${secret("streamhub.mal_client_id")}\"")
         buildConfigField("String", "MAL_CLIENT_SECRET", "\"${secret("streamhub.mal_client_secret")}\"")
         buildConfigField("boolean", "DEBUG_LOGGING", "false")
-        buildConfigField("String", "ADMIN_MASTER_PASSWORD", "\"${secret("streamhub.admin_master_password", "7860")}\"")
+        buildConfigField("String", "ADMIN_MASTER_PASSWORD", "\"${secret("streamhub.admin_master_password", "")}\"")
         buildConfigField("String", "APP_ACCESS_CODE", "\"${secret("streamhub.app_access_code", "")}\"")
         buildConfigField("String", "UNITY_GAME_ID", "\"${secret("streamhub.unity_game_id", "800363798")}\"")
         buildConfigField("String", "UNITY_REWARDED_AD_UNIT_ID", "\"${secret("streamhub.unity_rewarded_ad_unit_id", "Rewarded_Android")}\"")

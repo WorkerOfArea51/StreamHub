@@ -29,13 +29,6 @@ object AccessGateManager {
 
     private var prefs: SharedPreferences? = null
 
-    // Offline / Local Development Fallback codes
-    private val DEFAULT_FALLBACK_CODES = setOf(
-        "7860",
-        "StreamHubAdmin2026",
-        "admin"
-    )
-
     fun init(context: Context) {
         if (prefs != null) return
         val appContext = context.applicationContext
@@ -58,8 +51,7 @@ object AccessGateManager {
         val masterAdminPassword = Secrets.ADMIN_MASTER_PASSWORD.trim()
 
         val isValid = (configuredAppCode.isNotBlank() && clean.equals(configuredAppCode, ignoreCase = true)) ||
-                      (masterAdminPassword.isNotBlank() && clean.equals(masterAdminPassword, ignoreCase = true)) ||
-                      (clean in DEFAULT_FALLBACK_CODES)
+                      (masterAdminPassword.isNotBlank() && clean.equals(masterAdminPassword, ignoreCase = true))
 
         if (isValid) {
             _isUnlocked.value = true

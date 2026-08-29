@@ -56,7 +56,7 @@ object AdminManager {
     fun verifyPassword(inputPin: String): Boolean {
         val pin = inputPin.trim()
         val configured = Secrets.ADMIN_MASTER_PASSWORD.trim()
-        return (configured.isNotBlank() && pin == configured) || pin == "StreamHubAdmin2026" || pin == "7860" || pin == "admin"
+        return configured.isNotBlank() && pin == configured
     }
 
     fun enableAdminMode() {
