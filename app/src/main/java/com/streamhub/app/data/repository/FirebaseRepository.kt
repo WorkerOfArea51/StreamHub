@@ -277,7 +277,6 @@ class FirebaseRepository private constructor() {
             "producers" to item.producers,
             "source" to item.source,
             "duration" to item.duration,
-            "budgetBoxOffice" to item.budgetBoxOffice,
             "castList" to item.castList,
             "posterUrl" to item.posterUrl,
             "bannerUrl" to item.bannerUrl,

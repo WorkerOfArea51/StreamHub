@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
@@ -38,6 +39,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -124,12 +127,26 @@ fun HomeScreen(
         }
     }
 
-    val filteredCatalog = remember(catalog, selectedCategoryFilter) {
+    val homeLayoutConfig by com.streamhub.app.data.HomeScreenLayoutManager.layoutConfig.collectAsState()
+    val sortOrder = homeLayoutConfig.catalogSortOrder
+    var showSortMenu by remember { mutableStateOf(false) }
+
+    val sortedCatalog = remember(catalog, sortOrder) {
+        when (sortOrder) {
+            com.streamhub.app.data.CatalogSortOrder.NEWEST_FIRST -> catalog.reversed()
+            com.streamhub.app.data.CatalogSortOrder.OLDEST_FIRST -> catalog
+            com.streamhub.app.data.CatalogSortOrder.HIGHEST_RATED -> catalog.sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
+            com.streamhub.app.data.CatalogSortOrder.RELEASE_YEAR -> catalog.sortedByDescending { it.releaseYear.toIntOrNull() ?: 0 }
+            com.streamhub.app.data.CatalogSortOrder.ALPHABETICAL -> catalog.sortedBy { it.title.lowercase() }
+        }
+    }
+
+    val filteredCatalog = remember(sortedCatalog, selectedCategoryFilter) {
         when (selectedCategoryFilter) {
-            "ANIME" -> catalog.filter { it.category.equals("ANIME", ignoreCase = true) }
-            "MOVIES" -> catalog.filter { it.category.equals("MOVIE", ignoreCase = true) || it.category.equals("MOVIES", ignoreCase = true) }
-            "SERIES" -> catalog.filter { it.category.equals("WEB_SERIES", ignoreCase = true) || it.category.equals("SERIES", ignoreCase = true) }
-            else -> catalog
+            "ANIME" -> sortedCatalog.filter { it.category.equals("ANIME", ignoreCase = true) }
+            "MOVIES" -> sortedCatalog.filter { it.category.equals("MOVIE", ignoreCase = true) || it.category.equals("MOVIES", ignoreCase = true) }
+            "SERIES" -> sortedCatalog.filter { it.category.equals("WEB_SERIES", ignoreCase = true) || it.category.equals("SERIES", ignoreCase = true) }
+            else -> sortedCatalog
         }
     }
 
@@ -231,6 +248,62 @@ fun HomeScreen(
                     }
                     item {
                         CategoryFilterChip("Series", selectedCategoryFilter == "SERIES") { selectedCategoryFilter = "SERIES" }
+                    }
+                    item {
+                        // Sort Mode Selector Pill
+                        Box {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(Color(0xFF1E1E2C))
+                                    .border(1.dp, Color(0xFF38384E), RoundedCornerShape(20.dp))
+                                    .clickable { showSortMenu = true }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.Sort,
+                                        contentDescription = "Sort",
+                                        tint = AccentOrange,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Text(
+                                        text = sortOrder.displayName,
+                                        color = TextPrimary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+
+                            DropdownMenu(
+                                expanded = showSortMenu,
+                                onDismissRequest = { showSortMenu = false },
+                                modifier = Modifier.background(SurfaceDark).border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
+                            ) {
+                                com.streamhub.app.data.CatalogSortOrder.values().forEach { order ->
+                                    val isSelected = order == sortOrder
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = order.displayName,
+                                                color = if (isSelected) AccentOrange else TextPrimary,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                fontSize = 13.sp
+                                            )
+                                        },
+                                        onClick = {
+                                            com.streamhub.app.data.HomeScreenLayoutManager.setSortOrder(order)
+                                            showSortMenu = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                     item {
                         // Surprise Roulette

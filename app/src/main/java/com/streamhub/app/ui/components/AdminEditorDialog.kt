@@ -108,7 +108,6 @@ fun AdminEditorDialog(
     var producers by remember(initialItem) { mutableStateOf(initialItem?.producers ?: "") }
     var source by remember(initialItem) { mutableStateOf(initialItem?.source ?: "") }
     var duration by remember(initialItem) { mutableStateOf(initialItem?.duration ?: "") }
-    var budgetBoxOffice by remember(initialItem) { mutableStateOf(initialItem?.budgetBoxOffice ?: "") }
     var genresText by remember(initialItem) { mutableStateOf(initialItem?.genres?.joinToString(", ") ?: "") }
     var castText by remember(initialItem) { mutableStateOf(initialItem?.castList?.joinToString(", ") ?: "") }
     var posterUrl by remember(initialItem) { mutableStateOf(initialItem?.posterUrl ?: "") }
@@ -1074,7 +1073,13 @@ fun AdminEditorDialog(
                         MetadataRow(premiered, { premiered = it }, "Premiered (e.g. 2024)", aired, { aired = it }, "Aired Date Range")
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        MetadataRow(budgetBoxOffice, { budgetBoxOffice = it }, "Budget / Box Office", trailerId, { trailerId = it }, "YouTube Trailer ID")
+                        OutlinedTextField(
+                            value = trailerId,
+                            onValueChange = { trailerId = it },
+                            label = { Text("YouTube Trailer ID", color = TextSecondary) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
 
                         OutlinedTextField(
@@ -1295,7 +1300,6 @@ fun AdminEditorDialog(
                                         producers = producers,
                                         source = source,
                                         duration = duration,
-                                        budgetBoxOffice = budgetBoxOffice,
                                         castList = castText.split(",").map { it.trim() }.filter { it.isNotBlank() },
                                         posterUrl = posterUrl,
                                         bannerUrl = bannerUrl.ifBlank { posterUrl },

@@ -123,6 +123,48 @@ fun HomeLayoutCard(currentAccent: AppThemeAccent) {
                 accentColor = currentAccent.color,
                 onCheckedChange = { HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showMoviesSection = it)) }
             )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Text("Default Catalog Sort Order ⚡", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                listOf(
+                    com.streamhub.app.data.CatalogSortOrder.NEWEST_FIRST,
+                    com.streamhub.app.data.CatalogSortOrder.HIGHEST_RATED,
+                    com.streamhub.app.data.CatalogSortOrder.RELEASE_YEAR,
+                    com.streamhub.app.data.CatalogSortOrder.ALPHABETICAL
+                ).forEach { order ->
+                    val isSelected = layoutConfig.catalogSortOrder == order
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isSelected) currentAccent.color.copy(alpha = 0.25f) else Color(0xFF191924))
+                            .border(if (isSelected) 1.5.dp else 1.dp, if (isSelected) currentAccent.color else Color(0xFF2C2C3E), RoundedCornerShape(8.dp))
+                            .clickable { HomeScreenLayoutManager.setSortOrder(order) }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = when (order) {
+                                com.streamhub.app.data.CatalogSortOrder.NEWEST_FIRST -> "Newest"
+                                com.streamhub.app.data.CatalogSortOrder.HIGHEST_RATED -> "Rating"
+                                com.streamhub.app.data.CatalogSortOrder.RELEASE_YEAR -> "Year"
+                                com.streamhub.app.data.CatalogSortOrder.ALPHABETICAL -> "A-Z"
+                                else -> order.name
+                            },
+                            color = TextPrimary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
         }
     }
 }

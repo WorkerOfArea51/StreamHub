@@ -6,18 +6,27 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+enum class CatalogSortOrder(val displayName: String) {
+    NEWEST_FIRST("Newest Uploads ⚡"),
+    OLDEST_FIRST("Oldest Uploads ⏳"),
+    HIGHEST_RATED("Top Rated ⭐"),
+    RELEASE_YEAR("Release Year 📅"),
+    ALPHABETICAL("Alphabetical (A - Z)")
+}
+
 data class HomeLayoutConfig(
     val showHeroCarousel: Boolean = true,
     val showContinueWatching: Boolean = true,
     val continueWatchingFirst: Boolean = false,
     val showTrendingSection: Boolean = true,
     val showAnimeSection: Boolean = true,
-    val showMoviesSection: Boolean = true
+    val showMoviesSection: Boolean = true,
+    val catalogSortOrder: CatalogSortOrder = CatalogSortOrder.NEWEST_FIRST
 )
 
 /**
  * Production Home Screen Layout Preferences Manager:
- * - Allows users to customize Home Screen section order and visibility
+ * - Allows users to customize Home Screen section order, sorting, and visibility
  * - Persists preferences in SharedPreferences (streamhub_home_layout_prefs)
  */
 object HomeScreenLayoutManager {
@@ -29,6 +38,7 @@ object HomeScreenLayoutManager {
     private const val KEY_SHOW_TRENDING = "show_trending"
     private const val KEY_SHOW_ANIME = "show_anime"
     private const val KEY_SHOW_MOVIES = "show_movies"
+    private const val KEY_SORT_ORDER = "catalog_sort_order"
 
     private var prefs: SharedPreferences? = null
 
@@ -44,13 +54,17 @@ object HomeScreenLayoutManager {
     private fun loadFromDisk() {
         val p = prefs ?: return
         try {
+            val sortOrderName = p.getString(KEY_SORT_ORDER, CatalogSortOrder.NEWEST_FIRST.name) ?: CatalogSortOrder.NEWEST_FIRST.name
+            val sortOrder = runCatching { CatalogSortOrder.valueOf(sortOrderName) }.getOrDefault(CatalogSortOrder.NEWEST_FIRST)
+
             _layoutConfig.value = HomeLayoutConfig(
                 showHeroCarousel = p.getBoolean(KEY_SHOW_HERO, true),
                 showContinueWatching = p.getBoolean(KEY_SHOW_CONTINUE, true),
                 continueWatchingFirst = p.getBoolean(KEY_CONTINUE_FIRST, false),
                 showTrendingSection = p.getBoolean(KEY_SHOW_TRENDING, true),
                 showAnimeSection = p.getBoolean(KEY_SHOW_ANIME, true),
-                showMoviesSection = p.getBoolean(KEY_SHOW_MOVIES, true)
+                showMoviesSection = p.getBoolean(KEY_SHOW_MOVIES, true),
+                catalogSortOrder = sortOrder
             )
         } catch (e: Exception) {
             p.edit().clear().apply()
@@ -67,7 +81,12 @@ object HomeScreenLayoutManager {
             putBoolean(KEY_SHOW_TRENDING, newConfig.showTrendingSection)
             putBoolean(KEY_SHOW_ANIME, newConfig.showAnimeSection)
             putBoolean(KEY_SHOW_MOVIES, newConfig.showMoviesSection)
+            putString(KEY_SORT_ORDER, newConfig.catalogSortOrder.name)
             apply()
         }
+    }
+
+    fun setSortOrder(order: CatalogSortOrder) {
+        updateConfig(_layoutConfig.value.copy(catalogSortOrder = order))
     }
 }

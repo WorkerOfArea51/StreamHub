@@ -32,7 +32,6 @@ data class MediaItem(
     val producers: String = "",          // e.g. "Aniplex, Crunchyroll" — empty if unknown
     val source: String = "",             // e.g. "Web manga" — empty if unknown
     val duration: String = "",           // e.g. "23 min. per ep" — empty if unknown
-    val budgetBoxOffice: String = "",    // e.g. "$25M Budget / $85M Box Office" — empty if unknown
     val castList: List<String> = emptyList(),
     val posterUrl: String = "",
     val bannerUrl: String = "",

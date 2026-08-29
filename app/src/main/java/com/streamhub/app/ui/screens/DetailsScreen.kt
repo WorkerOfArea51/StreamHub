@@ -884,7 +884,6 @@ fun DetailsScreen(
                         if (mediaItem.studio.isNotEmpty()) InfoDetailRow("Studio", mediaItem.studio)
                         if (mediaItem.source.isNotEmpty()) InfoDetailRow("Source", mediaItem.source)
                         if (mediaItem.duration.isNotEmpty()) InfoDetailRow("Duration", mediaItem.duration)
-                        if (mediaItem.budgetBoxOffice.isNotEmpty()) InfoDetailRow("Budget / Box Office", mediaItem.budgetBoxOffice)
                         if (isAnime && mediaItem.malId.isNotEmpty()) InfoDetailRow("MAL ID", mediaItem.malId)
                         if (mediaItem.trailerId.isNotEmpty()) InfoDetailRow("YouTube Trailer ID", mediaItem.trailerId)
                         if (mediaItem.tmdbId.isNotEmpty()) InfoDetailRow("TMDB ID", mediaItem.tmdbId)
