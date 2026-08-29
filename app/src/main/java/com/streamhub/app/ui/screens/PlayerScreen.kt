@@ -656,8 +656,33 @@ fun PlayerScreen(
         var rememberPlayerViewRef by remember { mutableStateOf<androidx.media3.ui.PlayerView?>(null) }
 
         // Live Subtitle Styling Engine — immediately propagates user font size, colors & outlines to SubtitleView
+        val exoPlayerInstance = viewModel.getPlayer()
         LaunchedEffect(subConfig, rememberPlayerViewRef) {
             applySubtitleStyling(rememberPlayerViewRef?.subtitleView, subConfig)
+        }
+
+        // Real-Time PGS & Bitmap Subtitle Processing Pipeline
+        DisposableEffect(exoPlayerInstance, subConfig, rememberPlayerViewRef) {
+            val p = exoPlayerInstance
+            val sv = rememberPlayerViewRef?.subtitleView
+            if (p == null || sv == null) return@DisposableEffect onDispose {}
+
+            val cueListener = object : androidx.media3.common.Player.Listener {
+                override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
+                    val transformed = cueGroup.cues.map { transformCue(it, subConfig) }
+                    sv.setCues(transformed)
+                }
+            }
+            p.addListener(cueListener)
+
+            if (p.currentCues.cues.isNotEmpty()) {
+                val transformed = p.currentCues.cues.map { transformCue(it, subConfig) }
+                sv.setCues(transformed)
+            }
+
+            onDispose {
+                p.removeListener(cueListener)
+            }
         }
 
         Box(
@@ -2181,6 +2206,69 @@ private fun MpvHudPill(
             )
         }
     }
+}
+
+private fun transformCue(
+    cue: androidx.media3.common.text.Cue,
+    config: com.streamhub.app.data.SubtitleConfig
+): androidx.media3.common.text.Cue {
+    val bitmap = cue.bitmap
+    if (bitmap != null && !bitmap.isRecycled) {
+        val scale = (config.fontSizeSp / 18f).coerceIn(0.6f, 2.5f)
+        val targetWidth = (bitmap.width * scale).toInt().coerceAtLeast(1)
+        val targetHeight = (bitmap.height * scale).toInt().coerceAtLeast(1)
+
+        val processedBitmap = try {
+            val output = android.graphics.Bitmap.createBitmap(targetWidth, targetHeight, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(output)
+
+            // 1. Draw custom background box if opacity is configured
+            val bgColor = config.backgroundColorArgb.toInt()
+            if (android.graphics.Color.alpha(bgColor) > 10) {
+                val bgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                    color = bgColor
+                    style = android.graphics.Paint.Style.FILL
+                }
+                val rect = android.graphics.RectF(0f, 0f, targetWidth.toFloat(), targetHeight.toFloat())
+                canvas.drawRoundRect(rect, 10f * scale, 10f * scale, bgPaint)
+            }
+
+            // 2. Draw scaled & color-tinted PGS text
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
+            val textColor = config.textColorArgb.toInt()
+
+            // Apply color filter to recolor white/gray/yellow PGS pixels to user selected custom color
+            if (textColor != 0 && textColor != android.graphics.Color.WHITE) {
+                paint.colorFilter = android.graphics.PorterDuffColorFilter(textColor, android.graphics.PorterDuff.Mode.SRC_IN)
+            }
+
+            val srcRect = android.graphics.Rect(0, 0, bitmap.width, bitmap.height)
+            val dstRect = android.graphics.Rect(0, 0, targetWidth, targetHeight)
+            canvas.drawBitmap(bitmap, srcRect, dstRect, paint)
+            output
+        } catch (_: Exception) {
+            bitmap
+        }
+
+        val newBitmapHeight = if (cue.bitmapHeight != androidx.media3.common.text.Cue.DIMEN_UNSET) {
+            (cue.bitmapHeight * scale).coerceAtMost(0.95f)
+        } else {
+            androidx.media3.common.text.Cue.DIMEN_UNSET
+        }
+
+        val newSize = if (cue.size != androidx.media3.common.text.Cue.DIMEN_UNSET) {
+            (cue.size * scale).coerceAtMost(0.98f)
+        } else {
+            androidx.media3.common.text.Cue.DIMEN_UNSET
+        }
+
+        return cue.buildUpon()
+            .setBitmap(processedBitmap)
+            .setBitmapHeight(newBitmapHeight)
+            .setSize(newSize)
+            .build()
+    }
+    return cue
 }
 
 private fun applySubtitleStyling(

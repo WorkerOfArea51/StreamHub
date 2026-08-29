@@ -443,14 +443,24 @@ class StreamPlayerViewModel : ViewModel() {
                                 (format.roleFlags and androidx.media3.common.C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND != 0)
                     val isForced = (format.selectionFlags and androidx.media3.common.C.SELECTION_FLAG_FORCED != 0) ||
                                   (format.label?.contains("forced", ignoreCase = true) == true)
-                    val badge = when {
+                    val mime = format.sampleMimeType?.lowercase(java.util.Locale.ROOT) ?: ""
+                    val isPgs = mime.contains("pgs") || mime.contains("hdmv") || mime.contains("dvb") || mime.contains("vobsub")
+                    val isAss = mime.contains("ssa") || mime.contains("ass")
+
+                    val codecBadge = when {
+                        isPgs -> "[PGS]"
+                        isAss -> "[ASS]"
+                        else -> null
+                    }
+                    val roleBadge = when {
                         isSdh -> "[SDH]"
                         isForced -> "[Forced]"
                         else -> null
                     }
                     val label = listOfNotNull(
                         lang.ifEmpty { "Subtitle ${subtitleTrackNames.size}" },
-                        badge
+                        codecBadge,
+                        roleBadge
                     ).joinToString(" ")
                     subtitleTrackNames.add(label)
                 }
