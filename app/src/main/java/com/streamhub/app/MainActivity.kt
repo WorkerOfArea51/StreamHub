@@ -641,7 +641,12 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                                 )
                             }
                     } else {
-                        catalog.firstOrNull { it.id == mediaId }
+                        catalog.firstOrNull { 
+                            it.id == mediaId ||
+                            (it.tmdbId.isNotBlank() && (it.tmdbId == mediaId || it.tmdbId == mediaId.removePrefix("tmdb_rec_").removePrefix("tmdb_"))) ||
+                            (it.malId.isNotBlank() && (it.malId == mediaId || it.malId == mediaId.removePrefix("mal_rec_").removePrefix("mal_"))) ||
+                            (it.title.isNotBlank() && (it.title.equals(mediaId, ignoreCase = true) || it.title.replace(":", "").equals(mediaId.replace(":", ""), ignoreCase = true)))
+                        }
                     }
                 }
 

@@ -131,7 +131,14 @@ fun DetailsScreen(
     var recommendations by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
 
     var currentMediaId by remember(mediaId) { mutableStateOf(mediaId) }
-    val mediaItem = catalog.firstOrNull { it.id == currentMediaId }
+    val mediaItem = remember(currentMediaId, catalog) {
+        catalog.firstOrNull { 
+            it.id == currentMediaId ||
+            (it.tmdbId.isNotBlank() && (it.tmdbId == currentMediaId || it.tmdbId == currentMediaId.removePrefix("tmdb_rec_").removePrefix("tmdb_"))) ||
+            (it.malId.isNotBlank() && (it.malId == currentMediaId || it.malId == currentMediaId.removePrefix("mal_rec_").removePrefix("mal_"))) ||
+            (it.title.isNotBlank() && (it.title.equals(currentMediaId, ignoreCase = true) || it.title.replace(":", "").equals(currentMediaId.replace(":", ""), ignoreCase = true)))
+        }
+    }
 
     val effectiveSeasonNumber = remember(mediaItem) {
         if (mediaItem != null) com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(mediaItem) else 1
@@ -899,12 +906,38 @@ fun DetailsScreen(
                         Text(recTitle, color = AccentOrange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        if (recommendations.isNotEmpty()) {
+                        val resolvedRecommendations = remember(recommendations, catalog) {
+                            recommendations.map { rec ->
+                                val match = catalog.firstOrNull { cat ->
+                                    (cat.id == rec.id) ||
+                                    (cat.tmdbId.isNotBlank() && (cat.tmdbId == rec.tmdbId || cat.tmdbId == rec.id.removePrefix("tmdb_rec_"))) ||
+                                    (cat.malId.isNotBlank() && (cat.malId == rec.malId || cat.malId == rec.id.removePrefix("mal_rec_"))) ||
+                                    (cat.title.isNotBlank() && (cat.title.equals(rec.title, ignoreCase = true) || cat.title.replace(":", "").equals(rec.title.replace(":", ""), ignoreCase = true)))
+                                }
+                                match ?: rec
+                            }
+                        }
+
+                        if (resolvedRecommendations.isNotEmpty()) {
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                items(recommendations) { recItem ->
+                                items(resolvedRecommendations) { recItem ->
                                     MediaCard(
                                         item = recItem,
-                                        onClick = { onMediaClick(recItem) }
+                                        onClick = {
+                                            val catalogMatch = catalog.firstOrNull { cat ->
+                                                (cat.id == recItem.id) ||
+                                                (cat.tmdbId.isNotBlank() && (cat.tmdbId == recItem.tmdbId || cat.tmdbId == recItem.id.removePrefix("tmdb_rec_"))) ||
+                                                (cat.malId.isNotBlank() && (cat.malId == recItem.malId || cat.malId == recItem.id.removePrefix("mal_rec_"))) ||
+                                                (cat.title.isNotBlank() && (cat.title.equals(recItem.title, ignoreCase = true) || cat.title.replace(":", "").equals(recItem.title.replace(":", ""), ignoreCase = true)))
+                                            }
+                                            if (catalogMatch != null) {
+                                                currentMediaId = catalogMatch.id
+                                                selectedSeasonNumber = com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(catalogMatch)
+                                                selectedArcName = ""
+                                            } else {
+                                                onMediaClick(recItem)
+                                            }
+                                        }
                                     )
                                 }
                             }
