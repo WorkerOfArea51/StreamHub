@@ -652,19 +652,22 @@ fun PlayerScreen(
             Modifier.fillMaxSize()
         }
 
-        // Hold a reference to the PlayerView so screenshot and controls can access it
+        // Hold references to PlayerView and our dedicated SubtitleView overlay
         var rememberPlayerViewRef by remember { mutableStateOf<androidx.media3.ui.PlayerView?>(null) }
+        var rememberSubtitleViewRef by remember { mutableStateOf<androidx.media3.ui.SubtitleView?>(null) }
 
-        // Live Subtitle Styling Engine — immediately propagates user font size, colors & outlines to SubtitleView
+        // Live Subtitle Styling Engine — propagates custom font size, colors & outlines to dedicated SubtitleView
         val exoPlayerInstance = viewModel.getPlayer()
-        LaunchedEffect(subConfig, rememberPlayerViewRef) {
-            applySubtitleStyling(rememberPlayerViewRef?.subtitleView, subConfig)
+        LaunchedEffect(subConfig, rememberSubtitleViewRef) {
+            applySubtitleStyling(rememberSubtitleViewRef, subConfig)
+            val currentCues = exoPlayerInstance?.currentCues?.cues ?: emptyList()
+            rememberSubtitleViewRef?.setCues(currentCues.map { transformCue(it, subConfig) })
         }
 
-        // Real-Time PGS & Bitmap Subtitle Processing Pipeline
-        DisposableEffect(exoPlayerInstance, subConfig, rememberPlayerViewRef) {
+        // Real-Time PGS, ASS & Universal Subtitle Processing Pipeline
+        DisposableEffect(exoPlayerInstance, subConfig, rememberSubtitleViewRef) {
             val p = exoPlayerInstance
-            val sv = rememberPlayerViewRef?.subtitleView
+            val sv = rememberSubtitleViewRef
             if (p == null || sv == null) return@DisposableEffect onDispose {}
 
             val cueListener = object : androidx.media3.common.Player.Listener {
@@ -675,8 +678,9 @@ fun PlayerScreen(
             }
             p.addListener(cueListener)
 
-            if (p.currentCues.cues.isNotEmpty()) {
-                val transformed = p.currentCues.cues.map { transformCue(it, subConfig) }
+            val currentCues = p.currentCues.cues
+            if (currentCues.isNotEmpty()) {
+                val transformed = currentCues.map { transformCue(it, subConfig) }
                 sv.setCues(transformed)
             }
 
@@ -693,6 +697,7 @@ fun PlayerScreen(
                 modifier = videoContainerModifier,
                 contentAlignment = Alignment.Center
             ) {
+                // 1. Video Surface PlayerView (internal subtitle view hidden so it never conflicts)
                 AndroidView(
                     modifier = Modifier
                         .fillMaxSize()
@@ -725,12 +730,13 @@ fun PlayerScreen(
                         PlayerView(ctx).apply {
                             useController = false
                             player = viewModel.getPlayer()
-                            applySubtitleStyling(subtitleView, subConfig)
+                            subtitleView?.visibility = android.view.View.GONE
                             rememberPlayerViewRef = this
                         }
                     },
                     update = { playerView ->
                         playerView.player = viewModel.getPlayer()
+                        playerView.subtitleView?.visibility = android.view.View.GONE
                         rememberPlayerViewRef = playerView
                         // Standard/Cinema ratios: scale to fill the custom-ratio container Box.
                         // Screen options: use native AspectRatioFrameLayout modes (FIT, ZOOM, FILL).
@@ -745,7 +751,23 @@ fun PlayerScreen(
                                 else -> androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                             }
                         }
-                        applySubtitleStyling(playerView.subtitleView, subConfig)
+                    }
+                )
+
+                // 2. Dedicated Universal Subtitle View (100% full control for ASS, PGS, SRT, VTT!)
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { ctx ->
+                        androidx.media3.ui.SubtitleView(ctx).apply {
+                            applySubtitleStyling(this, subConfig)
+                            rememberSubtitleViewRef = this
+                        }
+                    },
+                    update = { sv ->
+                        rememberSubtitleViewRef = sv
+                        applySubtitleStyling(sv, subConfig)
+                        val currentCues = exoPlayerInstance?.currentCues?.cues ?: emptyList()
+                        sv.setCues(currentCues.map { transformCue(it, subConfig) })
                     }
                 )
             }
@@ -2229,8 +2251,14 @@ private fun transformCue(
     cue: androidx.media3.common.text.Cue,
     config: com.streamhub.app.data.SubtitleConfig
 ): androidx.media3.common.text.Cue {
-    val bitmap = cue.bitmap
-    if (bitmap != null && !bitmap.isRecycled) {
+    val rawBitmap = cue.bitmap
+    if (rawBitmap != null && !rawBitmap.isRecycled) {
+        val bitmap = if (rawBitmap.config == android.graphics.Bitmap.Config.HARDWARE) {
+            rawBitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
+        } else {
+            rawBitmap
+        }
+
         val scale = (config.fontSizeSp / 18f).coerceIn(0.6f, 2.5f)
         val targetWidth = (bitmap.width * scale).toInt().coerceAtLeast(1)
         val targetHeight = (bitmap.height * scale).toInt().coerceAtLeast(1)
@@ -2247,23 +2275,23 @@ private fun transformCue(
                     style = android.graphics.Paint.Style.FILL
                 }
                 val rect = android.graphics.RectF(0f, 0f, targetWidth.toFloat(), targetHeight.toFloat())
-                canvas.drawRoundRect(rect, 10f * scale, 10f * scale, bgPaint)
+                canvas.drawRoundRect(rect, 8f * scale, 8f * scale, bgPaint)
             }
 
-            // 2. Draw scaled & color-tinted PGS text
+            // 2. Draw scaled & color-tinted PGS text using LightingColorFilter (preserves sharp black outlines)
             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
             val textColor = config.textColorArgb.toInt()
 
-            // Apply color filter to recolor white/gray/yellow PGS pixels to user selected custom color
             if (textColor != 0 && textColor != android.graphics.Color.WHITE) {
-                paint.colorFilter = android.graphics.PorterDuffColorFilter(textColor, android.graphics.PorterDuff.Mode.SRC_IN)
+                paint.colorFilter = android.graphics.LightingColorFilter(textColor, 0)
             }
 
             val srcRect = android.graphics.Rect(0, 0, bitmap.width, bitmap.height)
             val dstRect = android.graphics.Rect(0, 0, targetWidth, targetHeight)
             canvas.drawBitmap(bitmap, srcRect, dstRect, paint)
             output
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.e("PlayerScreen", "Error transforming PGS cue: ${e.message}", e)
             bitmap
         }
 
@@ -2296,10 +2324,9 @@ private fun applySubtitleStyling(
 ) {
     val sv = subtitleView ?: return
 
-    // Explicitly enforce native Canvas renderer so custom styling reliably overrides embedded SSA/SRT formatting instantly
-    sv.setViewType(androidx.media3.ui.SubtitleView.VIEW_TYPE_CANVAS)
-    sv.setApplyEmbeddedStyles(false)
-    sv.setApplyEmbeddedFontSizes(false)
+    // Preserve full embedded styling & font sizes for rich ASS/SSA anime subtitles
+    sv.setApplyEmbeddedStyles(true)
+    sv.setApplyEmbeddedFontSizes(true)
 
     val typefaceStyle = when {
         config.bold && config.italic -> android.graphics.Typeface.BOLD_ITALIC

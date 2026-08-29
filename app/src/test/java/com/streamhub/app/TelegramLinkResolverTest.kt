@@ -144,4 +144,26 @@ class TelegramLinkResolverTest {
         assertEquals("PREQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jw3, jw4))
         assertEquals("CURRENT", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jw4, jw4))
     }
+
+    @Test
+    fun getFranchiseTag_explicitPrequelMovie_ordersBeforeMainSeasons() {
+        val jjk0 = com.streamhub.app.data.models.MediaItem(id = "jjk0", title = "Jujutsu Kaisen 0", releaseYear = "2021", category = "MOVIE", relationType = "Prequel")
+        val jjkS1 = com.streamhub.app.data.models.MediaItem(id = "jjkS1", title = "Jujutsu Kaisen Season 1", releaseYear = "2020", category = "Anime", seasonNumber = 1)
+        val jjkS2 = com.streamhub.app.data.models.MediaItem(id = "jjkS2", title = "Jujutsu Kaisen Season 2", releaseYear = "2023", category = "Anime", seasonNumber = 2)
+
+        // When viewing Jujutsu Kaisen Season 1
+        assertEquals("PREQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jjk0, jjkS1))
+        assertEquals("CURRENT", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jjkS1, jjkS1))
+        assertEquals("SEQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jjkS2, jjkS1))
+
+        // When viewing Jujutsu Kaisen 0 (The Prequel Movie)
+        assertEquals("CURRENT", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jjk0, jjk0))
+        assertEquals("SEQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jjkS1, jjk0))
+        assertEquals("SEQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jjkS2, jjk0))
+
+        // When viewing Jujutsu Kaisen Season 2
+        assertEquals("PREQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jjk0, jjkS2))
+        assertEquals("PREQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jjkS1, jjkS2))
+        assertEquals("CURRENT", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jjkS2, jjkS2))
+    }
 }

@@ -399,6 +399,34 @@ class StreamPlayerViewModel : ViewModel() {
     }
 
     @OptIn(UnstableApi::class)
+    private fun getSubtitleTrackLabel(format: androidx.media3.common.Format, fallbackIndex: Int): String {
+        val lang = cleanTrackName(format.label, format.language, isSubtitle = true)
+        val isSdh = (format.label?.contains("sdh", ignoreCase = true) == true) ||
+                    (format.roleFlags and androidx.media3.common.C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND != 0)
+        val isForced = (format.selectionFlags and androidx.media3.common.C.SELECTION_FLAG_FORCED != 0) ||
+                      (format.label?.contains("forced", ignoreCase = true) == true)
+        val mime = format.sampleMimeType?.lowercase(java.util.Locale.ROOT) ?: ""
+        val isPgs = mime.contains("pgs") || mime.contains("hdmv") || mime.contains("dvb") || mime.contains("vobsub")
+        val isAss = mime.contains("ssa") || mime.contains("ass")
+
+        val codecBadge = when {
+            isPgs -> "[PGS]"
+            isAss -> "[ASS]"
+            else -> null
+        }
+        val roleBadge = when {
+            isSdh -> "[SDH]"
+            isForced -> "[Forced]"
+            else -> null
+        }
+        return listOfNotNull(
+            lang.ifEmpty { "Subtitle $fallbackIndex" },
+            codecBadge,
+            roleBadge
+        ).joinToString(" ")
+    }
+
+    @OptIn(UnstableApi::class)
     private fun updateAvailableTracks(tracks: androidx.media3.common.Tracks) {
         val audioTrackNames = mutableListOf<String>()
         val subtitleTrackNames = mutableListOf("Off")
@@ -420,48 +448,17 @@ class StreamPlayerViewModel : ViewModel() {
                         mime?.contains("truehd", ignoreCase = true) == true -> "Dolby TrueHD"
                         else -> null
                     }
-                    val chCount = format.channelCount
-                    val chLabel = when (chCount) {
-                        1 -> "Mono"
-                        2 -> "Stereo 2.0"
-                        6 -> "5.1 Surround"
-                        8 -> "7.1 Atmos"
-                        else -> if (chCount > 0) "${chCount}ch" else null
-                    }
-                    val label = listOfNotNull(
-                        lang.ifEmpty { "Audio ${audioTrackNames.size + 1}" },
-                        chLabel,
-                        codec
-                    ).joinToString(" • ")
+                    val isDefault = format.selectionFlags and androidx.media3.common.C.SELECTION_FLAG_DEFAULT != 0
+                    val isForced = format.selectionFlags and androidx.media3.common.C.SELECTION_FLAG_FORCED != 0
+                    val defaultSuffix = if (isDefault) " (Default)" else if (isForced) " (Forced)" else ""
+                    val codecSuffix = if (codec != null) " [$codec]" else ""
+                    val label = lang.ifEmpty { "Audio ${audioTrackNames.size + 1}" } + defaultSuffix + codecSuffix
                     audioTrackNames.add(label)
                 }
             } else if (trackType == androidx.media3.common.C.TRACK_TYPE_TEXT) {
                 for (i in 0 until trackGroup.length) {
                     val format = trackGroup.getTrackFormat(i)
-                    val lang = cleanTrackName(format.label, format.language, isSubtitle = true)
-                    val isSdh = (format.label?.contains("sdh", ignoreCase = true) == true) ||
-                                (format.roleFlags and androidx.media3.common.C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND != 0)
-                    val isForced = (format.selectionFlags and androidx.media3.common.C.SELECTION_FLAG_FORCED != 0) ||
-                                  (format.label?.contains("forced", ignoreCase = true) == true)
-                    val mime = format.sampleMimeType?.lowercase(java.util.Locale.ROOT) ?: ""
-                    val isPgs = mime.contains("pgs") || mime.contains("hdmv") || mime.contains("dvb") || mime.contains("vobsub")
-                    val isAss = mime.contains("ssa") || mime.contains("ass")
-
-                    val codecBadge = when {
-                        isPgs -> "[PGS]"
-                        isAss -> "[ASS]"
-                        else -> null
-                    }
-                    val roleBadge = when {
-                        isSdh -> "[SDH]"
-                        isForced -> "[Forced]"
-                        else -> null
-                    }
-                    val label = listOfNotNull(
-                        lang.ifEmpty { "Subtitle ${subtitleTrackNames.size}" },
-                        codecBadge,
-                        roleBadge
-                    ).joinToString(" ")
+                    val label = getSubtitleTrackLabel(format, subtitleTrackNames.size)
                     subtitleTrackNames.add(label)
                 }
             }
@@ -675,22 +672,10 @@ class StreamPlayerViewModel : ViewModel() {
                 if (trackGroup.type != androidx.media3.common.C.TRACK_TYPE_TEXT) continue
                 for (ti in 0 until trackGroup.length) {
                     val format = trackGroup.getTrackFormat(ti)
-                    val lang = cleanTrackName(format.label, format.language, isSubtitle = true)
-                    val isSdh = (format.label?.contains("sdh", ignoreCase = true) == true) ||
-                                (format.roleFlags and androidx.media3.common.C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND != 0)
-                    val isForced = (format.selectionFlags and androidx.media3.common.C.SELECTION_FLAG_FORCED != 0) ||
-                                  (format.label?.contains("forced", ignoreCase = true) == true)
-                    val badge = when {
-                        isSdh -> "[SDH]"
-                        isForced -> "[Forced]"
-                        else -> null
-                    }
-                    val formatted = listOfNotNull(
-                        lang.ifEmpty { "Subtitle ${subCount + 1}" },
-                        badge
-                    ).joinToString(" ")
+                    val formatted = getSubtitleTrackLabel(format, subCount + 1)
 
-                    if (formatted == trackName || format.label == trackName || format.language == trackName) {
+                    if (formatted == trackName || format.label == trackName || format.language == trackName ||
+                        cleanTrackName(format.label, format.language, isSubtitle = true) == trackName) {
                         groupIndex = gi
                         trackIndex = ti
                         break@outer

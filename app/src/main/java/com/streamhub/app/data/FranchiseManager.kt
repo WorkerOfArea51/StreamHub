@@ -118,14 +118,17 @@ object FranchiseManager {
     }
 
     fun getChronologicalScore(item: MediaItem): Double {
+        val isExplicitPrequel = item.relationType.trim().equals("PREQUEL", ignoreCase = true)
         val year = item.releaseYear.trim().toIntOrNull() ?: 0
         val chapter = detectChapterOrPartNumber(item.title) ?: getEffectiveSeasonNumber(item).takeIf { it > 0 } ?: 1
 
-        return if (year > 1900) {
+        val baseScore = if (year > 1900) {
             (year * 100.0) + chapter
         } else {
             chapter.toDouble()
         }
+
+        return if (isExplicitPrequel) baseScore - 1_000_000.0 else baseScore
     }
 
     /**
