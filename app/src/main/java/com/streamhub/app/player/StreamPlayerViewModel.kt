@@ -279,7 +279,14 @@ class StreamPlayerViewModel : ViewModel() {
                     val errorInfo = classifyError(error)
                     val isMidPlayback = _uiState.value.currentPositionMs > 5_000L
 
-                    // On initial playback startup, auto-retry seamlessly up to 3 times without flashing error dialog
+                    // Auto-evict cached resource on playback error to clear stale data from replaced files
+                    _uiState.value.resolvedStreamUrl.let { currentUrl ->
+                        if (currentUrl.isNotBlank()) {
+                            StreamCacheManager.removeResource(currentUrl)
+                        }
+                    }
+
+                    // On initial playback startup, auto-retry seamlessly up to 3 times with mirror failover
                     if (errorInfo.canRetry && !isMidPlayback && autoRetryCount < 3) {
                         _uiState.update {
                             it.copy(
@@ -575,13 +582,51 @@ class StreamPlayerViewModel : ViewModel() {
 
     fun retryCurrentEpisode() {
         val snapshot = _uiState.value
+        val ep = episodesList.getOrNull(snapshot.currentEpisodeIndex)
         _uiState.update { it.copy(playerError = null, playerErrorInfo = null, isBuffering = true) }
-        // FIX: Use the pending seek target if available — prevents restart from 0 when
-        // retry fires after a seek error. The position tracker's currentPositionMs might
-        // be stale (the old position before the seek), causing the retry to seek to the
-        // wrong position and restart from 0.
-        val retryPositionMs = pendingSeekTargetMs ?: snapshot.currentPositionMs
+
+        // If primary stream failed on retry attempt > 0, swap or fallback to alternative mirror/stream URL
+        if (autoRetryCount > 1 && ep != null) {
+            val currentUrl = snapshot.resolvedStreamUrl
+            val altUrl = when {
+                ep.mirrorStreamUrl.isNotBlank() && ep.mirrorStreamUrl != currentUrl -> ep.mirrorStreamUrl
+                currentUrl.contains("/stream/", ignoreCase = true) -> currentUrl.replace("/stream/", "/dl/")
+                currentUrl.contains("/dl/", ignoreCase = true) -> currentUrl.replace("/dl/", "/stream/")
+                else -> currentUrl
+            }
+            if (altUrl.isNotBlank() && altUrl != currentUrl) {
+                Log.i("StreamPlayerViewModel", "Retrying with failover stream URL: $altUrl")
+                playEpisodeWithExplicitUrl(snapshot.currentEpisodeIndex, altUrl, 0L)
+                return
+            }
+        }
+
+        // Retry from 0 if position seek failed on newly replaced video file
+        val retryPositionMs = if (autoRetryCount > 1) 0L else (pendingSeekTargetMs ?: snapshot.currentPositionMs)
         playEpisode(snapshot.currentEpisodeIndex, retryPositionMs)
+    }
+
+    private fun playEpisodeWithExplicitUrl(index: Int, rawUrl: String, startPositionMs: Long = 0L) {
+        if (episodesList.isEmpty() || index !in episodesList.indices) return
+        _uiState.update {
+            it.copy(
+                currentEpisodeIndex = index,
+                playerError = null,
+                playerErrorInfo = null,
+                resolvedStreamUrl = rawUrl
+            )
+        }
+        val uri = if (rawUrl.startsWith("/")) android.net.Uri.fromFile(java.io.File(rawUrl)) else android.net.Uri.parse(rawUrl)
+        val mediaItem = ExoMediaItem.fromUri(uri)
+
+        exoPlayer?.apply {
+            setMediaItem(mediaItem)
+            prepare()
+            if (startPositionMs > 0L) {
+                seekTo(startPositionMs)
+            }
+            playWhenReady = true
+        }
     }
 
     fun skipIntro(seconds: Int = 90) {

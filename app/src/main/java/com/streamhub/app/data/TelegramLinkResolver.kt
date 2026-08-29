@@ -105,8 +105,8 @@ object TelegramLinkResolver {
                     else -> "Episode $epNum"
                 }
 
-                val directPlayUrl = dlUrl.ifBlank { streamUrl }
-                val fallbackMirrorUrl = streamUrl.ifBlank { dlUrl }
+                val directPlayUrl = streamUrl.ifBlank { dlUrl }
+                val fallbackMirrorUrl = dlUrl.ifBlank { streamUrl }
 
                 Episode(
                     episodeNumber = epNum,
@@ -126,15 +126,22 @@ object TelegramLinkResolver {
         return parseAndGroupTelegramLinks(trimmed, seasonNumber, arcName)
     }
 
-    private fun parseJsonBatch(jsonStr: String, seasonNumber: Int, arcName: String): List<Episode> {
+    /**
+     * Parses JSON batch array or object from F2L / Stream bot REST API.
+     */
+    private fun parseJsonBatch(
+        jsonString: String,
+        seasonNumber: Int,
+        arcName: String
+    ): List<Episode> {
         return try {
             val episodes = mutableListOf<Episode>()
-            val jsonElement = com.google.gson.JsonParser.parseString(jsonStr)
+            val jsonElement = com.google.gson.JsonParser.parseString(jsonString)
             val jsonArray = when {
                 jsonElement.isJsonArray -> jsonElement.asJsonArray
                 jsonElement.isJsonObject -> {
                     val obj = jsonElement.asJsonObject
-                    obj.getAsJsonArray("episodes") ?: obj.getAsJsonArray("data") ?: com.google.gson.JsonArray()
+                    obj.getAsJsonArray("episodes") ?: obj.getAsJsonArray("files") ?: obj.getAsJsonArray("data") ?: com.google.gson.JsonArray()
                 }
                 else -> com.google.gson.JsonArray()
             }
@@ -142,15 +149,20 @@ object TelegramLinkResolver {
             for (i in 0 until jsonArray.size()) {
                 val item = jsonArray.get(i).asJsonObject
                 val epNum = item.get("episode_num")?.asInt
-                    ?: item.get("episodeNumber")?.asInt
+                    ?: item.get("episode")?.asInt
                     ?: (i + 1)
-                val fileName = item.get("file_name")?.asString ?: item.get("fileName")?.asString ?: "Episode $epNum.mkv"
-                val streamUrl = item.get("stream_url")?.asString
-                    ?: item.get("direct_stream_url")?.asString
+                val fileName = item.get("file_name")?.asString
+                    ?: item.get("name")?.asString
+                    ?: item.get("fileName")?.asString
+                    ?: ""
+                val streamUrl = item.get("direct_stream_url")?.asString
+                    ?: item.get("stream_url")?.asString
                     ?: item.get("streamUrl")?.asString
                     ?: item.get("url")?.asString
                     ?: ""
-                val dlUrl = item.get("download_url")?.asString ?: item.get("downloadUrl")?.asString ?: streamUrl
+                val dlUrl = item.get("download_url")?.asString
+                    ?: item.get("downloadUrl")?.asString
+                    ?: streamUrl
                 val size = item.get("size_formatted")?.asString
                     ?: item.get("file_size_formatted")?.asString
                     ?: item.get("file_size")?.asString
@@ -158,12 +170,12 @@ object TelegramLinkResolver {
                     ?: ""
                 val rawTitle = item.get("title")?.asString
                     ?: fileName.replace(Regex("""\.(mkv|mp4|avi|webm)$""", RegexOption.IGNORE_CASE), "")
-                               .replace(Regex("""(?i)^(?:>\s*🎬\s*|🎬\s*)?(?:EP|Episode)\s*[-:]?\s*0*\d+\s*[-:]?\s*"""), "")
-                               .trim()
+                        .replace(Regex("""(?i)^(?:>\s*🎬\s*|🎬\s*)?(?:EP|Episode)\s*[-:]?\s*0*\d+\s*[-:]?\s*"""), "")
+                        .trim()
                 val code = item.get("code")?.asString ?: item.get("id")?.asString ?: ""
 
-                val primaryPlayUrl = sanitizePlayableUrl(dlUrl.ifBlank { streamUrl })
-                val mirrorUrl = sanitizePlayableUrl(streamUrl.ifBlank { dlUrl })
+                val primaryPlayUrl = sanitizePlayableUrl(streamUrl.ifBlank { dlUrl })
+                val mirrorUrl = sanitizePlayableUrl(dlUrl.ifBlank { streamUrl })
 
                 if (primaryPlayUrl.isNotBlank()) {
                     val finalTitle = when {
@@ -233,11 +245,7 @@ object TelegramLinkResolver {
     }
 
     fun sanitizePlayableUrl(url: String): String {
-        val trimmed = url.trim()
-        if (trimmed.contains("alwaysdata.net/stream/", ignoreCase = true)) {
-            return trimmed.replace(Regex("""(?i)alwaysdata\.net/stream/"""), "alwaysdata.net/dl/")
-        }
-        return trimmed
+        return url.trim()
     }
 
     suspend fun resolveAsync(url: String): String {

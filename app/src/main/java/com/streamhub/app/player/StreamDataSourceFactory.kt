@@ -86,7 +86,17 @@ class StreamDataSourceFactory(
                     Log.w(TAG, "OkHttp stream open failed for ${dataSpec.uri}, failing over to DefaultHttpDataSource: ${e.message}")
                     currentSource = defaultHttpSource
                     transferListener?.let { currentSource?.addTransferListener(it) }
-                    currentSource!!.open(dataSpec)
+                    try {
+                        currentSource!!.open(dataSpec)
+                    } catch (e2: Exception) {
+                        if (dataSpec.position > 0) {
+                            Log.w(TAG, "Seek range open failed at ${dataSpec.position}. Retrying from byte 0: ${e2.message}")
+                            val zeroSpec = dataSpec.buildUpon().setPosition(0).build()
+                            currentSource!!.open(zeroSpec)
+                        } else {
+                            throw e2
+                        }
+                    }
                 }
             }
 

@@ -109,6 +109,18 @@ object StreamCacheManager {
         }
     }
 
+    fun removeResource(key: String) {
+        cacheLock.read {
+            val cache = simpleCache ?: return
+            try {
+                cache.removeResource(key)
+                Log.i(TAG, "Evicted stale cache for resource: $key")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to remove resource $key from cache: ${e.message}")
+            }
+        }
+    }
+
     fun release() {
         cacheLock.write {
             if (activeReaderCount > 0) {
