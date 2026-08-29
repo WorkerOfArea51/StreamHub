@@ -45,8 +45,8 @@ android {
         minSdk = 24
         targetSdk = 35
         val envVersionName = System.getenv("VERSION_NAME")?.removePrefix("v")?.removePrefix("V")
-        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 189
-        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.189"
+        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 190
+        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.190"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -186,6 +186,7 @@ dependencies {
     implementation(libs.androidx.media3.datasource)
     implementation(libs.androidx.media3.datasource.okhttp)
     implementation("androidx.media3:media3-session:1.3.1")
+    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.3.1+1")
     implementation("com.github.TeamNewPipe.NewPipeExtractor:extractor:v0.24.4")
 
     implementation(libs.coil.compose)
