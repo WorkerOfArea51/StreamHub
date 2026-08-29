@@ -6,12 +6,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-enum class CatalogSortOrder(val displayName: String) {
-    NEWEST_FIRST("Newest Uploads ⚡"),
-    OLDEST_FIRST("Oldest Uploads ⏳"),
-    HIGHEST_RATED("Top Rated ⭐"),
-    RELEASE_YEAR("Release Year 📅"),
-    ALPHABETICAL("Alphabetical (A - Z)")
+enum class CatalogSortOrder(val displayName: String, val shortName: String) {
+    NEWEST_FIRST("Newest Uploads ⚡", "Newest ⚡"),
+    OLDEST_FIRST("Oldest Uploads ⏳", "Oldest ⏳"),
+    HIGHEST_RATED("Top Rated ⭐", "Top Rated ⭐"),
+    RELEASE_YEAR("Release Year 📅", "Year 📅"),
+    ALPHABETICAL("Alphabetical (A - Z)", "A - Z")
 }
 
 data class HomeLayoutConfig(

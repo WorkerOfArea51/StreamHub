@@ -250,6 +250,44 @@ fun HomeScreen(
                         CategoryFilterChip("Series", selectedCategoryFilter == "SERIES") { selectedCategoryFilter = "SERIES" }
                     }
                     item {
+                        // Surprise Roulette Button (Prominent gradient pill)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(
+                                    androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                        colors = listOf(
+                                            AccentOrange.copy(alpha = 0.25f),
+                                            Color(0xFFE11D48).copy(alpha = 0.25f)
+                                        )
+                                    )
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                        colors = listOf(AccentOrange, Color(0xFFE11D48))
+                                    ),
+                                    shape = RoundedCornerShape(20.dp)
+                                )
+                                .clickable { showSurpriseMeDialog = true }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text("🎲", fontSize = 12.sp)
+                                Text(
+                                    text = "Surprise Me",
+                                    color = AccentOrange,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                    item {
                         // Sort Mode Selector Pill
                         Box {
                             Box(
@@ -258,7 +296,7 @@ fun HomeScreen(
                                     .background(Color(0xFF1E1E2C))
                                     .border(1.dp, Color(0xFF38384E), RoundedCornerShape(20.dp))
                                     .clickable { showSortMenu = true }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Row(
@@ -269,10 +307,10 @@ fun HomeScreen(
                                         imageVector = Icons.AutoMirrored.Filled.Sort,
                                         contentDescription = "Sort",
                                         tint = AccentOrange,
-                                        modifier = Modifier.size(15.dp)
+                                        modifier = Modifier.size(14.dp)
                                     )
                                     Text(
-                                        text = sortOrder.displayName,
+                                        text = sortOrder.shortName,
                                         color = TextPrimary,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Medium
@@ -302,44 +340,6 @@ fun HomeScreen(
                                         }
                                     )
                                 }
-                            }
-                        }
-                    }
-                    item {
-                        // Surprise Roulette
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(
-                                    androidx.compose.ui.graphics.Brush.horizontalGradient(
-                                        colors = listOf(
-                                            AccentOrange.copy(alpha = 0.22f),
-                                            Color(0xFFE11D48).copy(alpha = 0.22f)
-                                        )
-                                    )
-                                )
-                                .border(
-                                    width = 1.dp,
-                                    brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
-                                        colors = listOf(AccentOrange, Color(0xFFE11D48))
-                                    ),
-                                    shape = RoundedCornerShape(20.dp)
-                                )
-                                .clickable { showSurpriseMeDialog = true }
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text("🎰", fontSize = 12.sp)
-                                Text(
-                                    text = "Surprise",
-                                    color = AccentOrange,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
                             }
                         }
                     }
