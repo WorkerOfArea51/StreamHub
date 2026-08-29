@@ -34,22 +34,56 @@ fun MediaInfoBadges(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         // Resolution Badge
-        if (mediaInfo.resolution.isNotBlank()) BadgeItem(text = mediaInfo.resolution, borderColor = PrimaryRed)
-
-        // Codec Badge
-        if (mediaInfo.videoCodec.isNotBlank()) BadgeItem(text = mediaInfo.videoCodec, borderColor = AccentOrange)
-
-        // File Size Badge
-        if (mediaInfo.fileSize.isNotBlank()) BadgeItem(text = mediaInfo.fileSize, borderColor = Color(0xFF3B82F6))
-
-        // Audio Tracks Badges
-        mediaInfo.audioTracks.forEach { audio ->
-            BadgeItem(text = audio, borderColor = Color(0xFF10B981))
+        if (mediaInfo.resolution.isNotBlank()) {
+            BadgeItem(
+                text = mediaInfo.resolution,
+                borderColor = PrimaryRed,
+                bgColor = Color(0x1AFF3B30)
+            )
         }
 
-        // Subtitles Badges
+        // Codec Badge
+        if (mediaInfo.videoCodec.isNotBlank()) {
+            BadgeItem(
+                text = mediaInfo.videoCodec,
+                borderColor = AccentOrange,
+                bgColor = Color(0x1AFF9800)
+            )
+        }
+
+        // File Size Badge
+        if (mediaInfo.fileSize.isNotBlank()) {
+            BadgeItem(
+                text = mediaInfo.fileSize,
+                borderColor = Color(0xFF3B82F6),
+                bgColor = Color(0x1A3B82F6)
+            )
+        }
+
+        // Audio Tracks Badges (🔊 Audio)
+        mediaInfo.audioTracks.forEach { audio ->
+            val cleanAudio = audio.trim()
+            if (cleanAudio.isNotBlank()) {
+                val label = if (cleanAudio.startsWith("🔊") || cleanAudio.startsWith("🎧")) cleanAudio else "🔊 $cleanAudio"
+                BadgeItem(
+                    text = label,
+                    borderColor = Color(0xFF10B981),
+                    bgColor = Color(0x1A10B981)
+                )
+            }
+        }
+
+        // Subtitles Badges (💬 Subtitle)
         mediaInfo.subtitleTracks.forEach { sub ->
-            BadgeItem(text = sub, borderColor = Color(0xFF8B5CF6))
+            val cleanSub = sub.trim()
+            if (cleanSub.isNotBlank()) {
+                val label = if (cleanSub.startsWith("💬") || cleanSub.startsWith("📝") || cleanSub.startsWith("CC")) cleanSub else "💬 $cleanSub"
+                BadgeItem(
+                    text = label,
+                    borderColor = Color(0xFF8B5CF6),
+                    bgColor = Color(0x1A8B5CF6)
+                )
+            }
         }
     }
 }
@@ -57,13 +91,14 @@ fun MediaInfoBadges(
 @Composable
 fun BadgeItem(
     text: String,
-    borderColor: Color = PrimaryRed
+    borderColor: Color = PrimaryRed,
+    bgColor: Color = QualityBadgeBg
 ) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
-            .background(QualityBadgeBg)
-            .border(1.dp, borderColor.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+            .background(bgColor)
+            .border(1.dp, borderColor.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
         Text(

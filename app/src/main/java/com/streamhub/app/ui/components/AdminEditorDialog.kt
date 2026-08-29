@@ -1116,9 +1116,6 @@ fun AdminEditorDialog(
                         MetadataRow(resolution, { resolution = it }, "Resolution (e.g. 1080p)", videoCodec, { videoCodec = it }, "Codec (e.g. x265)")
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        MetadataRow(bitrate, { bitrate = it }, "Bitrate (e.g. 4500 kb/s)", frameRate, { frameRate = it }, "FPS (e.g. 23.976)")
-                        Spacer(modifier = Modifier.height(8.dp))
-
                         OutlinedTextField(
                             value = fileSize,
                             onValueChange = { fileSize = it },

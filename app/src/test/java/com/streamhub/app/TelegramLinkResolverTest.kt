@@ -42,7 +42,7 @@ class TelegramLinkResolverTest {
         assertEquals(1, episodes[0].episodeNumber)
         assertEquals("Ep 1: Undertaker", episodes[0].title)
         assertEquals("447.4 MB", episodes[0].fileSize)
-        assertEquals("https://streamhub69.alwaysdata.net/stream/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc", episodes[0].streamUrl)
+        assertEquals("https://streamhub69.alwaysdata.net/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc", episodes[0].streamUrl)
         assertEquals("https://streamhub69.alwaysdata.net/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc", episodes[0].mirrorStreamUrl)
 
         // Ep 2
@@ -95,7 +95,7 @@ class TelegramLinkResolverTest {
         assertEquals(2, episodes.size)
         assertEquals(1, episodes[0].episodeNumber)
         assertEquals("https://streamhub69.alwaysdata.net/dl/eb76ab1", episodes[0].streamUrl)
-        assertEquals("https://streamhub69.alwaysdata.net/stream/eb76ab1", episodes[0].mirrorStreamUrl)
+        assertEquals("https://streamhub69.alwaysdata.net/dl/eb76ab1", episodes[0].mirrorStreamUrl)
         assertEquals(2, episodes[1].episodeNumber)
     }
 

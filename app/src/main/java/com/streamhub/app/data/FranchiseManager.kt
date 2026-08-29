@@ -92,6 +92,44 @@ object FranchiseManager {
         return if (detected > 1) detected else (item.seasonNumber.takeIf { it > 0 } ?: 1)
     }
 
+    fun detectChapterOrPartNumber(title: String): Int? {
+        val regex = Regex("""(?i)(?:chapter|part|vol|volume|season|\bch\b|\bpt\b)\s*[-:]?\s*0*(\d+)""")
+        val match = regex.find(title)
+        if (match != null) {
+            return match.groupValues[1].toIntOrNull()
+        }
+        val romanRegex = Regex("""(?i)\b(II|III|IV|V|VI|VII|VIII|IX|X)\b\s*$""")
+        val romanMatch = romanRegex.find(title.trim())
+        if (romanMatch != null) {
+            return when (romanMatch.groupValues[1].uppercase(Locale.ROOT)) {
+                "II" -> 2
+                "III" -> 3
+                "IV" -> 4
+                "V" -> 5
+                "VI" -> 6
+                "VII" -> 7
+                "VIII" -> 8
+                "IX" -> 9
+                "X" -> 10
+                else -> null
+            }
+        }
+        return null
+    }
+
+    fun getChronologicalScore(item: MediaItem): Double {
+        val chapterNum = detectChapterOrPartNumber(item.title)
+        if (chapterNum != null) return chapterNum.toDouble()
+
+        val seasonNum = getEffectiveSeasonNumber(item)
+        if (seasonNum > 1) return seasonNum.toDouble()
+
+        val year = item.releaseYear.trim().toIntOrNull()
+        if (year != null && year > 1900) return year.toDouble()
+
+        return 1.0
+    }
+
     /**
      * Formats a relation tag for displaying on season cards.
      * e.g. "CURRENT", "SEQUEL", "PREQUEL", "MOVIE", "SIDE STORY", "SEASON 2"
@@ -99,41 +137,66 @@ object FranchiseManager {
     fun getFranchiseTag(candidate: MediaItem, currentItem: MediaItem): String {
         if (candidate.id == currentItem.id) return "CURRENT"
 
-        if (candidate.relationType.isNotBlank() && !candidate.relationType.equals("Main Story", true)) {
-            return candidate.relationType.uppercase(Locale.ROOT)
+        val explicitRelation = candidate.relationType.trim().uppercase(Locale.ROOT)
+        if (explicitRelation in listOf("SIDE STORY", "SPIN-OFF", "SPINOFF", "OVA", "SPECIAL")) {
+            return explicitRelation
         }
 
-        val isMovie = candidate.category.equals("MOVIE", ignoreCase = true) || candidate.type.equals("MOVIE", ignoreCase = true)
-        if (isMovie) return "MOVIE"
+        val isMovieCandidate = candidate.category.equals("MOVIE", ignoreCase = true) || candidate.type.equals("MOVIE", ignoreCase = true)
+        val isMovieCurrent = currentItem.category.equals("MOVIE", ignoreCase = true) || currentItem.type.equals("MOVIE", ignoreCase = true)
 
-        val currentSeason = getEffectiveSeasonNumber(currentItem)
-        val candidateSeason = getEffectiveSeasonNumber(candidate)
+        if (isMovieCandidate && !isMovieCurrent) {
+            return "MOVIE"
+        }
+
+        val candidateRank = getChronologicalScore(candidate)
+        val currentRank = getChronologicalScore(currentItem)
 
         return when {
-            candidateSeason > currentSeason -> "SEQUEL"
-            candidateSeason < currentSeason -> "PREQUEL"
-            candidateSeason > 1 -> "SEASON $candidateSeason"
-            else -> "SEQUEL"
+            candidateRank > currentRank -> "SEQUEL"
+            candidateRank < currentRank -> "PREQUEL"
+            else -> {
+                val candYear = candidate.releaseYear.toIntOrNull() ?: 0
+                val currYear = currentItem.releaseYear.toIntOrNull() ?: 0
+                if (candYear > 0 && currYear > 0) {
+                    if (candYear > currYear) "SEQUEL" else if (candYear < currYear) "PREQUEL" else "RELATED"
+                } else {
+                    "RELATED"
+                }
+            }
         }
     }
 
     /**
      * Computes the display title for a franchise card.
-     * e.g. "Season 1 • 2024", "Season 2 • 2025"
+     * e.g. "2017 • 122m" for movies, "Season 1 • 2024 • 12 Eps" for series.
      */
     fun getSeasonCardSubtitle(item: MediaItem): String {
+        val isMovie = item.category.equals("MOVIE", ignoreCase = true) || item.type.equals("MOVIE", ignoreCase = true)
         val sNum = getEffectiveSeasonNumber(item)
         val parts = mutableListOf<String>()
-        if (sNum > 0) {
-            parts.add("Season $sNum")
-        }
-        if (item.releaseYear.isNotBlank()) {
-            parts.add(item.releaseYear)
-        }
-        if (item.totalEpisodes.isNotBlank()) {
-            parts.add(item.totalEpisodes)
-        } else if (item.episodes.isNotEmpty()) {
-            parts.add("${item.episodes.size} Eps")
+        if (isMovie) {
+            if (item.releaseYear.isNotBlank()) {
+                parts.add(item.releaseYear)
+            }
+            if (item.duration.isNotBlank()) {
+                parts.add(item.duration)
+            } else if (item.episodes.isNotEmpty()) {
+                val durMs = item.episodes.first().durationMs
+                if (durMs > 0) parts.add("${durMs / 60000}m")
+            }
+        } else {
+            if (sNum > 0) {
+                parts.add("Season $sNum")
+            }
+            if (item.releaseYear.isNotBlank()) {
+                parts.add(item.releaseYear)
+            }
+            if (item.totalEpisodes.isNotBlank()) {
+                parts.add(item.totalEpisodes)
+            } else if (item.episodes.isNotEmpty()) {
+                parts.add("${item.episodes.size} Eps")
+            }
         }
 
         return parts.joinToString(" • ")
