@@ -194,6 +194,10 @@ class StreamPlayerViewModel : ViewModel() {
                     .build()
                     val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
                         .setConstantBitrateSeekingEnabled(true)
+                        .setMatroskaExtractorFlags(
+                            androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES or
+                            androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_EMIT_RAW_SUBTITLE_DATA
+                        )
                     ExoPlayer.Builder(context, renderersFactory)
                         .setTrackSelector(trackSelector!!)
                         .setAudioAttributes(audioAttributes, true)
@@ -585,18 +589,13 @@ class StreamPlayerViewModel : ViewModel() {
         val ep = episodesList.getOrNull(snapshot.currentEpisodeIndex)
         _uiState.update { it.copy(playerError = null, playerErrorInfo = null, isBuffering = true) }
 
-        // If primary stream failed on retry attempt > 0, swap or fallback to alternative mirror/stream URL
+        // If primary stream failed on retry attempt > 0, swap or fallback to alternative mirror URL if available
         if (autoRetryCount > 1 && ep != null) {
             val currentUrl = snapshot.resolvedStreamUrl
-            val altUrl = when {
-                ep.mirrorStreamUrl.isNotBlank() && ep.mirrorStreamUrl != currentUrl -> ep.mirrorStreamUrl
-                currentUrl.contains("/stream/", ignoreCase = true) -> currentUrl.replace("/stream/", "/dl/")
-                currentUrl.contains("/dl/", ignoreCase = true) -> currentUrl.replace("/dl/", "/stream/")
-                else -> currentUrl
-            }
-            if (altUrl.isNotBlank() && altUrl != currentUrl) {
-                Log.i("StreamPlayerViewModel", "Retrying with failover stream URL: $altUrl")
-                playEpisodeWithExplicitUrl(snapshot.currentEpisodeIndex, altUrl, 0L)
+            val mirrorUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.mirrorStreamUrl)
+            if (mirrorUrl.isNotBlank() && mirrorUrl != currentUrl && !mirrorUrl.contains("/stream/", ignoreCase = true)) {
+                Log.i("StreamPlayerViewModel", "Retrying with failover mirror URL: $mirrorUrl")
+                playEpisodeWithExplicitUrl(snapshot.currentEpisodeIndex, mirrorUrl, 0L)
                 return
             }
         }

@@ -86,17 +86,7 @@ class StreamDataSourceFactory(
                     Log.w(TAG, "OkHttp stream open failed for ${dataSpec.uri}, failing over to DefaultHttpDataSource: ${e.message}")
                     currentSource = defaultHttpSource
                     transferListener?.let { currentSource?.addTransferListener(it) }
-                    try {
-                        currentSource!!.open(dataSpec)
-                    } catch (e2: Exception) {
-                        if (dataSpec.position > 0) {
-                            Log.w(TAG, "Seek range open failed at ${dataSpec.position}. Retrying from byte 0: ${e2.message}")
-                            val zeroSpec = dataSpec.buildUpon().setPosition(0).build()
-                            currentSource!!.open(zeroSpec)
-                        } else {
-                            throw e2
-                        }
-                    }
+                    currentSource!!.open(dataSpec)
                 }
             }
 
@@ -171,24 +161,8 @@ class StreamDataSourceFactory(
         }
     }
 
-    private val simpleCache by lazy { StreamCacheManager.getCache(appContext) }
-
-    private val cacheDataSinkFactory by lazy {
-        CacheDataSink.Factory()
-            .setCache(simpleCache)
-            .setFragmentSize(8 * 1024 * 1024L) // 8 MB chunk fragments for smooth streaming & disk persistence
-    }
-
-    private val cachedHttpDataSourceFactory by lazy {
-        CacheDataSource.Factory()
-            .setCache(simpleCache)
-            .setUpstreamDataSourceFactory(resilientHttpDataSourceFactory)
-            .setCacheWriteDataSinkFactory(cacheDataSinkFactory)
-            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-    }
-
     private val defaultDataSourceFactory by lazy {
-        DefaultDataSource.Factory(appContext, cachedHttpDataSourceFactory)
+        DefaultDataSource.Factory(appContext, resilientHttpDataSourceFactory)
     }
 
     override fun createDataSource(): DataSource {

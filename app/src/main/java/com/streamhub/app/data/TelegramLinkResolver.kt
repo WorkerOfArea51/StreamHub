@@ -245,7 +245,11 @@ object TelegramLinkResolver {
     }
 
     fun sanitizePlayableUrl(url: String): String {
-        return url.trim()
+        val trimmed = url.trim()
+        if (trimmed.contains("alwaysdata.net/stream/", ignoreCase = true)) {
+            return trimmed.replace(Regex("""(?i)alwaysdata\.net/stream/"""), "alwaysdata.net/dl/")
+        }
+        return trimmed
     }
 
     suspend fun resolveAsync(url: String): String {
