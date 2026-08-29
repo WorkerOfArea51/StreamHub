@@ -433,17 +433,41 @@ fun DetailsScreen(
 
                             Spacer(modifier = Modifier.height(6.dp))
 
-                            if (mediaItem.rating.isNotBlank()) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Star, contentDescription = "Rating", tint = AccentGold, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    val ratingLabel = if (isAnime) "MAL Score" else "TMDB Score"
-                                    Text(
-                                        text = "$ratingLabel: ${mediaItem.rating}",
-                                        color = TextPrimary,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                            if (mediaItem.rating.isNotBlank() || mediaItem.maturityRating.isNotBlank()) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (mediaItem.rating.isNotBlank()) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Star, contentDescription = "Rating", tint = AccentGold, modifier = Modifier.size(15.dp))
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            val ratingLabel = if (isAnime) "MAL Score" else "TMDB Score"
+                                            Text(
+                                                text = "$ratingLabel: ${mediaItem.rating}",
+                                                color = TextPrimary,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+
+                                    if (mediaItem.maturityRating.isNotBlank()) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(Color(0xFF282836))
+                                                .border(1.dp, Color(0xFF48485E), RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = mediaItem.maturityRating,
+                                                color = TextPrimary,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
                             }
@@ -878,6 +902,7 @@ fun DetailsScreen(
                         if (mediaItem.synonyms.isNotEmpty()) InfoDetailRow("Synonyms", mediaItem.synonyms)
                         if (!isMovie && mediaItem.totalEpisodes.isNotEmpty()) InfoDetailRow("Total Episodes", mediaItem.totalEpisodes)
                         if (mediaItem.status.isNotEmpty()) InfoDetailRow("Status", mediaItem.status)
+                        if (mediaItem.maturityRating.isNotEmpty()) InfoDetailRow("Maturity Rating", mediaItem.maturityRating)
                         if (mediaItem.aired.isNotEmpty()) InfoDetailRow(if (isMovie) "Release Date" else "Aired Dates", mediaItem.aired)
                         if (mediaItem.premiered.isNotEmpty()) InfoDetailRow("Premiered", mediaItem.premiered)
                         if (mediaItem.producers.isNotEmpty()) InfoDetailRow("Producers", mediaItem.producers)

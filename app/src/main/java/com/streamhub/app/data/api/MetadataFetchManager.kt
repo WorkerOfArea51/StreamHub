@@ -198,7 +198,7 @@ object MetadataFetchManager {
                 genresList.add(if (isMovie) "Movie" else "TV Series")
             }
 
-            // Detailed lookup for extra metadata (trailer, producers, cast, status)
+            // Detailed lookup for extra metadata (trailer, producers, cast, status, maturity rating)
             var studio = ""
             var producers = ""
             var duration = ""
@@ -206,10 +206,12 @@ object MetadataFetchManager {
             var totalEpisodes = ""
             var youtubeTrailerId = ""
             var castList = ""
+            var maturityRating = ""
 
             if (tmdbIdNum > 0) {
                 try {
-                    val detailUrl = "$TMDB_BASE/$detailType/$tmdbIdNum?append_to_response=credits,videos"
+                    val appendParams = if (isMovie) "credits,videos,release_dates" else "credits,videos,content_ratings"
+                    val detailUrl = "$TMDB_BASE/$detailType/$tmdbIdNum?append_to_response=$appendParams"
                     val detailReq = Request.Builder().url(detailUrl).header("Accept", "application/json").build()
 
                     httpClient.newCall(detailReq).execute().use { dResp ->
@@ -271,6 +273,54 @@ object MetadataFetchManager {
                                     castList = topCast.joinToString(", ")
                                 }
 
+                                // Maturity / Content Certification
+                                if (isMovie) {
+                                    val releaseDates = dJson.optJSONObject("release_dates")
+                                    val resultsArr = releaseDates?.optJSONArray("results")
+                                    if (resultsArr != null) {
+                                        var usRating = ""
+                                        var fallbackRating = ""
+                                        for (ri in 0 until resultsArr.length()) {
+                                            val rObj = resultsArr.getJSONObject(ri)
+                                            val country = rObj.optString("iso_3166_1", "")
+                                            val dates = rObj.optJSONArray("release_dates")
+                                            if (dates != null) {
+                                                for (di in 0 until dates.length()) {
+                                                    val cert = dates.getJSONObject(di).optString("certification", "").trim()
+                                                    if (cert.isNotBlank()) {
+                                                        if (country.equals("US", ignoreCase = true) && usRating.isBlank()) {
+                                                            usRating = cert
+                                                        } else if (fallbackRating.isBlank()) {
+                                                            fallbackRating = cert
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        maturityRating = if (usRating.isNotBlank()) usRating else fallbackRating
+                                    }
+                                } else {
+                                    val contentRatings = dJson.optJSONObject("content_ratings")
+                                    val resultsArr = contentRatings?.optJSONArray("results")
+                                    if (resultsArr != null) {
+                                        var usRating = ""
+                                        var fallbackRating = ""
+                                        for (ri in 0 until resultsArr.length()) {
+                                            val rObj = resultsArr.getJSONObject(ri)
+                                            val country = rObj.optString("iso_3166_1", "")
+                                            val rating = rObj.optString("rating", "").trim()
+                                            if (rating.isNotBlank()) {
+                                                if (country.equals("US", ignoreCase = true) && usRating.isBlank()) {
+                                                    usRating = rating
+                                                } else if (fallbackRating.isBlank()) {
+                                                    fallbackRating = rating
+                                                }
+                                            }
+                                        }
+                                        maturityRating = if (usRating.isNotBlank()) usRating else fallbackRating
+                                    }
+                                }
+
                                 // YouTube Trailer ID
                                 val videos = dJson.optJSONObject("videos")
                                 val videoResults = videos?.optJSONArray("results")
@@ -322,6 +372,7 @@ object MetadataFetchManager {
                 backdropUrl = backdropUrl,
                 releaseYear = releaseYear,
                 rating = rating,
+                maturityRating = maturityRating,
                 category = if (isMovie) "Movies" else "Series",
                 genres = genresList.take(5),
                 studio = studio,
@@ -473,7 +524,7 @@ object MetadataFetchManager {
 
             // Rating / Maturity
             val rawMaturity = node.optString("rating", "")
-            val maturityStr = when (rawMaturity.lowercase()) {
+            var maturityStr = when (rawMaturity.lowercase()) {
                 "g" -> "G - All Ages"
                 "pg" -> "PG - Children"
                 "pg_13" -> "PG-13 - Teens 13+"
@@ -512,6 +563,7 @@ object MetadataFetchManager {
                 tmdbResult.getOrNull()?.let { tmdbMeta ->
                     if (youtubeTrailerId.isBlank()) youtubeTrailerId = tmdbMeta.youtubeTrailerId
                     if (castListStr.isBlank()) castListStr = tmdbMeta.castList
+                    if (maturityStr.isBlank() && tmdbMeta.maturityRating.isNotBlank()) maturityStr = tmdbMeta.maturityRating
                     if (finalBackdropUrl.isBlank() || finalBackdropUrl == posterUrl) {
                         if (tmdbMeta.backdropUrl.isNotBlank()) finalBackdropUrl = tmdbMeta.backdropUrl
                     }
