@@ -195,7 +195,6 @@ class StreamPlayerViewModel : ViewModel() {
                     val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
                         .setConstantBitrateSeekingEnabled(true)
                         .setMatroskaExtractorFlags(
-                            androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES or
                             androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_EMIT_RAW_SUBTITLE_DATA
                         )
                     ExoPlayer.Builder(context, renderersFactory)
