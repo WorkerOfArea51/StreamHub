@@ -656,22 +656,43 @@ fun PlayerScreen(
         var rememberPlayerViewRef by remember { mutableStateOf<androidx.media3.ui.PlayerView?>(null) }
         var rememberSubtitleViewRef by remember { mutableStateOf<androidx.media3.ui.SubtitleView?>(null) }
 
+        val isSubOff = uiState.selectedSubtitleTrack.equals("Off", ignoreCase = true)
+
         // Live Subtitle Styling Engine — propagates custom font size, colors & outlines to dedicated SubtitleView
         val exoPlayerInstance = viewModel.getPlayer()
-        LaunchedEffect(subConfig, rememberSubtitleViewRef) {
-            applySubtitleStyling(rememberSubtitleViewRef, subConfig)
-            val currentCues = exoPlayerInstance?.currentCues?.cues ?: emptyList()
-            rememberSubtitleViewRef?.setCues(currentCues.map { transformCue(it, subConfig) })
+        LaunchedEffect(subConfig, rememberSubtitleViewRef, isSubOff) {
+            val sv = rememberSubtitleViewRef ?: return@LaunchedEffect
+            if (isSubOff) {
+                sv.setCues(emptyList())
+                sv.visibility = android.view.View.GONE
+            } else {
+                sv.visibility = android.view.View.VISIBLE
+                applySubtitleStyling(sv, subConfig)
+                val currentCues = exoPlayerInstance?.currentCues?.cues ?: emptyList()
+                sv.setCues(currentCues.map { transformCue(it, subConfig) })
+            }
         }
 
         // Real-Time PGS, ASS & Universal Subtitle Processing Pipeline
-        DisposableEffect(exoPlayerInstance, subConfig, rememberSubtitleViewRef) {
+        DisposableEffect(exoPlayerInstance, subConfig, rememberSubtitleViewRef, isSubOff) {
             val p = exoPlayerInstance
             val sv = rememberSubtitleViewRef
             if (p == null || sv == null) return@DisposableEffect onDispose {}
 
+            if (isSubOff) {
+                sv.setCues(emptyList())
+                sv.visibility = android.view.View.GONE
+                return@DisposableEffect onDispose {}
+            } else {
+                sv.visibility = android.view.View.VISIBLE
+            }
+
             val cueListener = object : androidx.media3.common.Player.Listener {
                 override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
+                    if (isSubOff) {
+                        sv.setCues(emptyList())
+                        return
+                    }
                     val transformed = cueGroup.cues.map { transformCue(it, subConfig) }
                     sv.setCues(transformed)
                 }
@@ -679,7 +700,7 @@ fun PlayerScreen(
             p.addListener(cueListener)
 
             val currentCues = p.currentCues.cues
-            if (currentCues.isNotEmpty()) {
+            if (currentCues.isNotEmpty() && !isSubOff) {
                 val transformed = currentCues.map { transformCue(it, subConfig) }
                 sv.setCues(transformed)
             }
@@ -755,21 +776,31 @@ fun PlayerScreen(
                 )
 
                 // 2. Dedicated Universal Subtitle View (100% full control for ASS, PGS, SRT, VTT!)
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { ctx ->
-                        androidx.media3.ui.SubtitleView(ctx).apply {
-                            applySubtitleStyling(this, subConfig)
-                            rememberSubtitleViewRef = this
+                if (!isSubOff) {
+                    AndroidView(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                // Translates vertical subtitle position smoothly for ALL subtitle formats (ASS, PGS, SRT, VTT)
+                                // bottomPaddingFraction: 0.02f (bottom) to 0.85f (top)
+                                val basePadding = 0.08f
+                                val delta = subConfig.bottomPaddingFraction - basePadding
+                                translationY = -size.height * delta
+                            },
+                        factory = { ctx ->
+                            androidx.media3.ui.SubtitleView(ctx).apply {
+                                applySubtitleStyling(this, subConfig)
+                                rememberSubtitleViewRef = this
+                            }
+                        },
+                        update = { sv ->
+                            rememberSubtitleViewRef = sv
+                            applySubtitleStyling(sv, subConfig)
+                            val currentCues = exoPlayerInstance?.currentCues?.cues ?: emptyList()
+                            sv.setCues(currentCues.map { transformCue(it, subConfig) })
                         }
-                    },
-                    update = { sv ->
-                        rememberSubtitleViewRef = sv
-                        applySubtitleStyling(sv, subConfig)
-                        val currentCues = exoPlayerInstance?.currentCues?.cues ?: emptyList()
-                        sv.setCues(currentCues.map { transformCue(it, subConfig) })
-                    }
-                )
+                    )
+                }
             }
         }
 
@@ -857,29 +888,26 @@ fun PlayerScreen(
                         }
                 )
 
-                // Center Zone: Single tap (Controls) & Double-tap (Play/Pause), Subtitle Drag + Long Press 2X Speed
-                val hasSubsActive = uiState.selectedSubtitleTrack.isNotBlank() && !uiState.selectedSubtitleTrack.equals("Off", ignoreCase = true)
+                // Center Zone: Single tap (Controls) & Double-tap (Play/Pause), Subtitle Vertical Drag
                 Box(
                     modifier = Modifier
                         .weight(0.30f)
                         .fillMaxHeight()
-                        .pointerInput(hasSubsActive, subConfig) {
-                            if (hasSubsActive) {
-                                detectVerticalDragGestures(
-                                    onDragStart = {
-                                        triggerHudPill("Subtitle Height: ${(subConfig.bottomPaddingFraction * 100).toInt()}%", Icons.Default.Subtitles)
-                                    },
-                                    onVerticalDrag = { change, dragAmount ->
-                                        change.consume()
-                                        val deltaFraction = -dragAmount / 600f
-                                        val newPadding = (subConfig.bottomPaddingFraction + deltaFraction).coerceIn(0.02f, 0.85f)
-                                        SubtitleSettingsManager.updateConfig(subConfig.copy(bottomPaddingFraction = newPadding))
-                                        triggerHudPill("Subtitle Height: ${(newPadding * 100).toInt()}%", Icons.Default.Subtitles)
-                                    }
-                                )
-                            }
+                        .pointerInput(subConfig) {
+                            detectVerticalDragGestures(
+                                onDragStart = {
+                                    triggerHudPill("Subtitle Position: ${(subConfig.bottomPaddingFraction * 100).toInt()}%", Icons.Default.Subtitles)
+                                },
+                                onVerticalDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val deltaFraction = -dragAmount / 400f
+                                    val newPadding = (subConfig.bottomPaddingFraction + deltaFraction).coerceIn(0.02f, 0.85f)
+                                    SubtitleSettingsManager.updateConfig(subConfig.copy(bottomPaddingFraction = newPadding))
+                                    triggerHudPill("Subtitle Position: ${(newPadding * 100).toInt()}%", Icons.Default.Subtitles)
+                                }
+                            )
                         }
-                        .pointerInput(Unit) {
+                        .pointerInput(uiState.isPlaying) {
                             detectTapGestures(
                                 onTap = { viewModel.toggleControlsVisibility() },
                                 onDoubleTap = {
@@ -2311,10 +2339,50 @@ private fun transformCue(
             .setBitmap(processedBitmap)
             .setBitmapHeight(newBitmapHeight)
             .setSize(newSize)
-            .setLine((1f - config.bottomPaddingFraction).coerceIn(0.05f, 0.98f), androidx.media3.common.text.Cue.LINE_TYPE_FRACTION)
-            .setLineAnchor(androidx.media3.common.text.Cue.ANCHOR_TYPE_END)
             .build()
     }
+
+    val rawText = cue.text
+    if (rawText != null) {
+        val str = rawText.toString()
+        val builder = android.text.SpannableStringBuilder(str)
+
+        val textColor = config.textColorArgb.toInt()
+        if (textColor != 0) {
+            builder.setSpan(
+                android.text.style.ForegroundColorSpan(textColor),
+                0,
+                builder.length,
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+
+        val bgColor = config.backgroundColorArgb.toInt()
+        if (android.graphics.Color.alpha(bgColor) > 10) {
+            builder.setSpan(
+                android.text.style.BackgroundColorSpan(bgColor),
+                0,
+                builder.length,
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+
+        val styleSpan = when {
+            config.bold && config.italic -> android.text.style.StyleSpan(android.graphics.Typeface.BOLD_ITALIC)
+            config.bold -> android.text.style.StyleSpan(android.graphics.Typeface.BOLD)
+            config.italic -> android.text.style.StyleSpan(android.graphics.Typeface.ITALIC)
+            else -> null
+        }
+        if (styleSpan != null) {
+            builder.setSpan(styleSpan, 0, builder.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+
+        return cue.buildUpon()
+            .setText(builder)
+            .setTextSize(config.fontSizeSp, androidx.media3.common.text.Cue.TEXT_SIZE_TYPE_ABSOLUTE)
+            .build()
+    }
+
     return cue
 }
 
@@ -2324,9 +2392,9 @@ private fun applySubtitleStyling(
 ) {
     val sv = subtitleView ?: return
 
-    // Preserve full embedded styling & font sizes for rich ASS/SSA anime subtitles
-    sv.setApplyEmbeddedStyles(true)
-    sv.setApplyEmbeddedFontSizes(true)
+    // Apply custom user styling (colors, sizes, backgrounds) cleanly
+    sv.setApplyEmbeddedStyles(false)
+    sv.setApplyEmbeddedFontSizes(false)
 
     val typefaceStyle = when {
         config.bold && config.italic -> android.graphics.Typeface.BOLD_ITALIC
@@ -2359,7 +2427,6 @@ private fun applySubtitleStyling(
         sv.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, config.fontSizeSp)
     }
 
-    sv.setBottomPaddingFraction(config.bottomPaddingFraction.coerceIn(0.01f, 0.90f))
     sv.invalidate()
     sv.requestLayout()
 }

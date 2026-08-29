@@ -174,6 +174,7 @@ class StreamPlayerViewModel : ViewModel() {
                         .setAllowAudioNonSeamlessAdaptiveness(true)
                         .setAllowMultipleAdaptiveSelections(true)
                         .setForceHighestSupportedBitrate(false)
+                        .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true)
                         .build()
                 }
                 val audioAttributes = androidx.media3.common.AudioAttributes.Builder()
@@ -470,6 +471,16 @@ class StreamPlayerViewModel : ViewModel() {
                 availableSubtitleTracks = subtitleTrackNames
             )
         }
+
+        val currentSub = _uiState.value.selectedSubtitleTrack
+        if (currentSub.isBlank() || currentSub.equals("Off", ignoreCase = true)) {
+            trackSelector?.let { sel ->
+                sel.parameters = sel.buildUponParameters()
+                    .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true)
+                    .clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_TEXT)
+                    .build()
+            }
+        }
     }
 
     fun playEpisode(index: Int, startPositionMs: Long = 0L) {
@@ -658,9 +669,10 @@ class StreamPlayerViewModel : ViewModel() {
         val player = exoPlayer ?: return
         val selector = trackSelector ?: return
 
-        if (trackName == "Off") {
+        if (trackName.equals("Off", ignoreCase = true)) {
             val parameters = selector.buildUponParameters()
                 .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true)
+                .clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_TEXT)
             selector.parameters = parameters.build()
         } else {
             val tracks = player.currentTracks
