@@ -161,8 +161,24 @@ class StreamDataSourceFactory(
         }
     }
 
+    private val simpleCache by lazy { StreamCacheManager.getCache(appContext) }
+
+    private val cacheDataSinkFactory by lazy {
+        CacheDataSink.Factory()
+            .setCache(simpleCache)
+            .setFragmentSize(8 * 1024 * 1024L) // 8 MB chunk fragments for smooth streaming & disk persistence
+    }
+
+    private val cachedHttpDataSourceFactory by lazy {
+        CacheDataSource.Factory()
+            .setCache(simpleCache)
+            .setUpstreamDataSourceFactory(resilientHttpDataSourceFactory)
+            .setCacheWriteDataSinkFactory(cacheDataSinkFactory)
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+    }
+
     private val defaultDataSourceFactory by lazy {
-        DefaultDataSource.Factory(appContext, resilientHttpDataSourceFactory)
+        DefaultDataSource.Factory(appContext, cachedHttpDataSourceFactory)
     }
 
     override fun createDataSource(): DataSource {
