@@ -118,16 +118,14 @@ object FranchiseManager {
     }
 
     fun getChronologicalScore(item: MediaItem): Double {
-        val chapterNum = detectChapterOrPartNumber(item.title)
-        if (chapterNum != null) return chapterNum.toDouble()
+        val year = item.releaseYear.trim().toIntOrNull() ?: 0
+        val chapter = detectChapterOrPartNumber(item.title) ?: getEffectiveSeasonNumber(item).takeIf { it > 0 } ?: 1
 
-        val seasonNum = getEffectiveSeasonNumber(item)
-        if (seasonNum > 1) return seasonNum.toDouble()
-
-        val year = item.releaseYear.trim().toIntOrNull()
-        if (year != null && year > 1900) return year.toDouble()
-
-        return 1.0
+        return if (year > 1900) {
+            (year * 100.0) + chapter
+        } else {
+            chapter.toDouble()
+        }
     }
 
     /**

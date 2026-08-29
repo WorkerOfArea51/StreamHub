@@ -112,4 +112,36 @@ class TelegramLinkResolverTest {
         assertEquals(1, episodes[0].episodeNumber)
         assertEquals(2, episodes[1].episodeNumber)
     }
+
+    @Test
+    fun getFranchiseTag_johnWickFranchise_computesDynamicPrequelAndSequelCorrectly() {
+        val jw1 = com.streamhub.app.data.models.MediaItem(id = "jw1", title = "John Wick", releaseYear = "2014", category = "MOVIE")
+        val jw2 = com.streamhub.app.data.models.MediaItem(id = "jw2", title = "John Wick: Chapter 2", releaseYear = "2017", category = "MOVIE")
+        val jw3 = com.streamhub.app.data.models.MediaItem(id = "jw3", title = "John Wick: Chapter 3 - Parabellum", releaseYear = "2019", category = "MOVIE")
+        val jw4 = com.streamhub.app.data.models.MediaItem(id = "jw4", title = "John Wick: Chapter 4", releaseYear = "2023", category = "MOVIE")
+
+        // When viewing John Wick 1 (2014)
+        assertEquals("CURRENT", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jw1, jw1))
+        assertEquals("SEQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jw2, jw1))
+        assertEquals("SEQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jw3, jw1))
+        assertEquals("SEQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jw4, jw1))
+
+        // When viewing John Wick: Chapter 2 (2017)
+        assertEquals("PREQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jw1, jw2))
+        assertEquals("CURRENT", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jw2, jw2))
+        assertEquals("SEQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jw3, jw2))
+        assertEquals("SEQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jw4, jw2))
+
+        // When viewing John Wick: Chapter 3 (2019)
+        assertEquals("PREQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jw1, jw3))
+        assertEquals("PREQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jw2, jw3))
+        assertEquals("CURRENT", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jw3, jw3))
+        assertEquals("SEQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jw4, jw3))
+
+        // When viewing John Wick: Chapter 4 (2023)
+        assertEquals("PREQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jw1, jw4))
+        assertEquals("PREQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jw2, jw4))
+        assertEquals("PREQUEL", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jw3, jw4))
+        assertEquals("CURRENT", com.streamhub.app.data.FranchiseManager.getFranchiseTag(jw4, jw4))
+    }
 }
