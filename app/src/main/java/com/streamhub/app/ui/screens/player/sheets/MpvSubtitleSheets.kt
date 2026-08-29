@@ -438,6 +438,60 @@ fun MpvSubtitleSettingsDrawer(
                 )
             }
 
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Vertical Screen Position / Height Slider
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Vertical screen position", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text("${(config.bottomPaddingFraction * 100).toInt()}%", color = Color(0xFFD0BCFF), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+            Slider(
+                value = config.bottomPaddingFraction,
+                onValueChange = { onUpdateConfig(config.copy(bottomPaddingFraction = it)) },
+                valueRange = 0.02f..0.85f,
+                colors = SliderDefaults.colors(
+                    thumbColor = Color.White,
+                    activeTrackColor = Color(0xFFD0BCFF),
+                    inactiveTrackColor = Color(0x33FFFFFF)
+                )
+            )
+
+            // Quick Position Presets
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    "Bottom" to 0.08f,
+                    "Raised" to 0.16f,
+                    "Middle" to 0.45f,
+                    "Top" to 0.85f
+                ).forEach { (label, fraction) ->
+                    val isSelected = kotlin.math.abs(config.bottomPaddingFraction - fraction) < 0.03f
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isSelected) Color(0xFF6750A4) else Color(0x18FFFFFF),
+                        border = BorderStroke(1.dp, if (isSelected) Color(0xFFD0BCFF) else Color(0x33FFFFFF)),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onUpdateConfig(config.copy(bottomPaddingFraction = fraction)) }
+                    ) {
+                        Text(
+                            text = label,
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(vertical = 6.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             // Colors Customizer Section (Matching mpvEx SubtitleSettingsColorsCard)

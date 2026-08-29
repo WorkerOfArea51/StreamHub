@@ -20,7 +20,8 @@ data class SubtitleConfig(
     val alignment: String = "CENTER",
     val outlineWidth: Float = 2f,
     val shadowOffset: Float = 2f,
-    val scaleByWindow: Boolean = true
+    val scaleByWindow: Boolean = true,
+    val bottomPaddingFraction: Float = 0.08f // Vertical screen offset (0.02f = bottom, 0.85f = top)
 )
 
 /**
@@ -28,6 +29,7 @@ data class SubtitleConfig(
  * - Configures closed caption font size (Small 14sp, Medium 18sp, Large 24sp, XL 30sp)
  * - Configures text color (Yellow, White, Cyan, Green)
  * - Configures typography styles (Bold, Italic, Alignment, Outlines)
+ * - Configures vertical screen position (bottom padding fraction)
  * - Persists preferences in SharedPreferences (streamhub_subtitle_prefs)
  */
 @OptIn(UnstableApi::class)
@@ -44,6 +46,7 @@ object SubtitleSettingsManager {
     private const val KEY_OUTLINE_WIDTH = "outline_width"
     private const val KEY_SHADOW_OFFSET = "shadow_offset"
     private const val KEY_SCALE_BY_WINDOW = "scale_by_window"
+    private const val KEY_BOTTOM_PADDING = "bottom_padding_fraction"
 
     private var prefs: SharedPreferences? = null
 
@@ -69,7 +72,8 @@ object SubtitleSettingsManager {
                 alignment = p.getString(KEY_ALIGNMENT, "CENTER") ?: "CENTER",
                 outlineWidth = p.getFloat(KEY_OUTLINE_WIDTH, 2f),
                 shadowOffset = p.getFloat(KEY_SHADOW_OFFSET, 2f),
-                scaleByWindow = p.getBoolean(KEY_SCALE_BY_WINDOW, true)
+                scaleByWindow = p.getBoolean(KEY_SCALE_BY_WINDOW, true),
+                bottomPaddingFraction = p.getFloat(KEY_BOTTOM_PADDING, 0.08f)
             )
         } catch (e: Exception) {
             p.edit().clear().apply()
@@ -90,6 +94,7 @@ object SubtitleSettingsManager {
             putFloat(KEY_OUTLINE_WIDTH, newConfig.outlineWidth)
             putFloat(KEY_SHADOW_OFFSET, newConfig.shadowOffset)
             putBoolean(KEY_SCALE_BY_WINDOW, newConfig.scaleByWindow)
+            putFloat(KEY_BOTTOM_PADDING, newConfig.bottomPaddingFraction)
             apply()
         }
     }

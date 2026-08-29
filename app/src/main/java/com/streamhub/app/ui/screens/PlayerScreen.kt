@@ -835,11 +835,28 @@ fun PlayerScreen(
                         }
                 )
 
-                // Center Zone: Single tap (Controls) & Double-tap (Play/Pause) + Long Press 2X Speed
+                // Center Zone: Single tap (Controls) & Double-tap (Play/Pause), Subtitle Drag + Long Press 2X Speed
+                val hasSubsActive = uiState.selectedSubtitleTrack.isNotBlank() && !uiState.selectedSubtitleTrack.equals("Off", ignoreCase = true)
                 Box(
                     modifier = Modifier
                         .weight(0.30f)
                         .fillMaxHeight()
+                        .pointerInput(hasSubsActive, subConfig) {
+                            if (hasSubsActive) {
+                                detectVerticalDragGestures(
+                                    onDragStart = {
+                                        triggerHudPill("Subtitle Height: ${(subConfig.bottomPaddingFraction * 100).toInt()}%", Icons.Default.Subtitles)
+                                    },
+                                    onVerticalDrag = { change, dragAmount ->
+                                        change.consume()
+                                        val deltaFraction = -dragAmount / 600f
+                                        val newPadding = (subConfig.bottomPaddingFraction + deltaFraction).coerceIn(0.02f, 0.85f)
+                                        SubtitleSettingsManager.updateConfig(subConfig.copy(bottomPaddingFraction = newPadding))
+                                        triggerHudPill("Subtitle Height: ${(newPadding * 100).toInt()}%", Icons.Default.Subtitles)
+                                    }
+                                )
+                            }
+                        }
                         .pointerInput(Unit) {
                             detectTapGestures(
                                 onTap = { viewModel.toggleControlsVisibility() },
@@ -2266,6 +2283,8 @@ private fun transformCue(
             .setBitmap(processedBitmap)
             .setBitmapHeight(newBitmapHeight)
             .setSize(newSize)
+            .setLine((1f - config.bottomPaddingFraction).coerceIn(0.05f, 0.98f), androidx.media3.common.text.Cue.LINE_TYPE_FRACTION)
+            .setLineAnchor(androidx.media3.common.text.Cue.ANCHOR_TYPE_END)
             .build()
     }
     return cue
@@ -2313,7 +2332,7 @@ private fun applySubtitleStyling(
         sv.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, config.fontSizeSp)
     }
 
-    sv.setBottomPaddingFraction(0.08f)
+    sv.setBottomPaddingFraction(config.bottomPaddingFraction.coerceIn(0.01f, 0.90f))
     sv.invalidate()
     sv.requestLayout()
 }

@@ -232,6 +232,37 @@ fun SubtitleAppearanceCard(currentAccent: AppThemeAccent) {
                 }
             }
 
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text("Vertical Screen Position", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                listOf(
+                    "Bottom (8%)" to 0.08f,
+                    "Raised (16%)" to 0.16f,
+                    "Center (45%)" to 0.45f,
+                    "Top (85%)" to 0.85f
+                ).forEach { (label, fraction) ->
+                    val isSelected = kotlin.math.abs(subConfig.bottomPaddingFraction - fraction) < 0.03f
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isSelected) currentAccent.color.copy(alpha = 0.25f) else Color(0xFF191924))
+                            .border(if (isSelected) 1.5.dp else 1.dp, if (isSelected) currentAccent.color else Color(0xFF2C2C3E), RoundedCornerShape(8.dp))
+                            .clickable { SubtitleSettingsManager.updateConfig(subConfig.copy(bottomPaddingFraction = fraction)) }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(label.split(" ")[0], color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(14.dp))
 
             Box(
