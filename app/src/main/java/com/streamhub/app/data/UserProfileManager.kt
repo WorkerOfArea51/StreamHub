@@ -2,9 +2,12 @@ package com.streamhub.app.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.Uri
+import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.io.File
 import java.util.UUID
 
 data class UserProfile(
@@ -106,6 +109,21 @@ object UserProfileManager {
             .putString(KEY_AVATAR_URI, updated.avatarUri)
             .putInt(KEY_AVATAR_PRESET, updated.avatarPresetIndex)
             .apply()
+    }
+
+    fun saveCustomAvatar(context: Context, sourceUri: Uri): String {
+        return try {
+            val destFile = File(context.filesDir, "custom_avatar.jpg")
+            context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                destFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            "file://${destFile.absolutePath}?t=${System.currentTimeMillis()}"
+        } catch (e: Exception) {
+            Log.e("UserProfileManager", "Failed to save custom avatar", e)
+            ""
+        }
     }
 
     @Synchronized

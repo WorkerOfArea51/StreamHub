@@ -95,8 +95,13 @@ fun EditProfileDialog(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-            avatarUriInput = uri.toString()
-            Toast.makeText(context, "Photo selected!", Toast.LENGTH_SHORT).show()
+            val savedPath = UserProfileManager.saveCustomAvatar(context, uri)
+            if (savedPath.isNotBlank()) {
+                avatarUriInput = savedPath
+                Toast.makeText(context, "Photo selected! 📸", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "Failed to load photo", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

@@ -18,7 +18,11 @@ data class HomeLayoutConfig(
     val showHeroCarousel: Boolean = true,
     val showContinueWatching: Boolean = true,
     val continueWatchingFirst: Boolean = false,
+    val showRecentlyAdded: Boolean = true,
+    val showBecauseYouWatched: Boolean = true,
     val showTrendingSection: Boolean = true,
+    val showCategoryShelves: Boolean = true,
+    val showMicroGenreShelves: Boolean = true,
     val showAnimeSection: Boolean = true,
     val showMoviesSection: Boolean = true,
     val catalogSortOrder: CatalogSortOrder = CatalogSortOrder.NEWEST_FIRST
@@ -35,7 +39,11 @@ object HomeScreenLayoutManager {
     private const val KEY_SHOW_HERO = "show_hero"
     private const val KEY_SHOW_CONTINUE = "show_continue"
     private const val KEY_CONTINUE_FIRST = "continue_first"
+    private const val KEY_SHOW_RECENTLY_ADDED = "show_recently_added"
+    private const val KEY_SHOW_BECAUSE_WATCHED = "show_because_watched"
     private const val KEY_SHOW_TRENDING = "show_trending"
+    private const val KEY_SHOW_CATEGORY_SHELVES = "show_category_shelves"
+    private const val KEY_SHOW_MICRO_GENRES = "show_micro_genres"
     private const val KEY_SHOW_ANIME = "show_anime"
     private const val KEY_SHOW_MOVIES = "show_movies"
     private const val KEY_SORT_ORDER = "catalog_sort_order"
@@ -61,7 +69,11 @@ object HomeScreenLayoutManager {
                 showHeroCarousel = p.getBoolean(KEY_SHOW_HERO, true),
                 showContinueWatching = p.getBoolean(KEY_SHOW_CONTINUE, true),
                 continueWatchingFirst = p.getBoolean(KEY_CONTINUE_FIRST, false),
+                showRecentlyAdded = p.getBoolean(KEY_SHOW_RECENTLY_ADDED, true),
+                showBecauseYouWatched = p.getBoolean(KEY_SHOW_BECAUSE_WATCHED, true),
                 showTrendingSection = p.getBoolean(KEY_SHOW_TRENDING, true),
+                showCategoryShelves = p.getBoolean(KEY_SHOW_CATEGORY_SHELVES, true),
+                showMicroGenreShelves = p.getBoolean(KEY_SHOW_MICRO_GENRES, true),
                 showAnimeSection = p.getBoolean(KEY_SHOW_ANIME, true),
                 showMoviesSection = p.getBoolean(KEY_SHOW_MOVIES, true),
                 catalogSortOrder = sortOrder
@@ -78,7 +90,11 @@ object HomeScreenLayoutManager {
             putBoolean(KEY_SHOW_HERO, newConfig.showHeroCarousel)
             putBoolean(KEY_SHOW_CONTINUE, newConfig.showContinueWatching)
             putBoolean(KEY_CONTINUE_FIRST, newConfig.continueWatchingFirst)
+            putBoolean(KEY_SHOW_RECENTLY_ADDED, newConfig.showRecentlyAdded)
+            putBoolean(KEY_SHOW_BECAUSE_WATCHED, newConfig.showBecauseYouWatched)
             putBoolean(KEY_SHOW_TRENDING, newConfig.showTrendingSection)
+            putBoolean(KEY_SHOW_CATEGORY_SHELVES, newConfig.showCategoryShelves)
+            putBoolean(KEY_SHOW_MICRO_GENRES, newConfig.showMicroGenreShelves)
             putBoolean(KEY_SHOW_ANIME, newConfig.showAnimeSection)
             putBoolean(KEY_SHOW_MOVIES, newConfig.showMoviesSection)
             putString(KEY_SORT_ORDER, newConfig.catalogSortOrder.name)

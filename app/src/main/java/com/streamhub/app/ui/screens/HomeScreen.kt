@@ -56,6 +56,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -100,7 +101,7 @@ fun HomeScreen(
     val updateState by com.streamhub.app.data.AppUpdateManager.updateState.collectAsState()
     val layoutConfig by com.streamhub.app.data.HomeScreenLayoutManager.layoutConfig.collectAsState()
 
-    var selectedCategoryFilter by remember { mutableStateOf("ALL") }
+    var selectedCategoryFilter by rememberSaveable { mutableStateOf("ALL") }
     var showAdminAddDialog by remember { mutableStateOf(false) }
     var showSurpriseMeDialog by remember { mutableStateOf(false) }
     var showClearHistoryDialog by remember { mutableStateOf(false) }
@@ -562,7 +563,7 @@ fun HomeScreen(
             }
 
             // 1. Recently Added Row (Auto-hides after 3 days of upload inactivity)
-            if (recentlyAddedItems.isNotEmpty()) {
+            if (layoutConfig.showRecentlyAdded && recentlyAddedItems.isNotEmpty()) {
                 item(key = "section_recently_added") {
                     MediaSectionRow(
                         title = "✨ Recently Added",
@@ -573,18 +574,20 @@ fun HomeScreen(
             }
 
             // 2. Smart Personalized "Because You Watched [Title]" Recommendation Shelf
-            becauseYouWatchedData?.let { (title, items) ->
-                item(key = "section_because_you_watched") {
-                    MediaSectionRow(
-                        title = title,
-                        items = items,
-                        onMediaClick = onMediaClick
-                    )
+            if (layoutConfig.showBecauseYouWatched) {
+                becauseYouWatchedData?.let { (title, items) ->
+                    item(key = "section_because_you_watched") {
+                        MediaSectionRow(
+                            title = title,
+                            items = items,
+                            onMediaClick = onMediaClick
+                        )
+                    }
                 }
             }
 
             // 3. Trending & Popular Row
-            if (trendingItems.isNotEmpty()) {
+            if (layoutConfig.showTrendingSection && trendingItems.isNotEmpty()) {
                 item(key = "section_trending") {
                     MediaSectionRow(
                         title = "🔥 Trending & Popular",
@@ -595,24 +598,28 @@ fun HomeScreen(
             }
 
             // 4. Dynamic Category Shelves (Sorted dynamically by freshest upload!)
-            dynamicCategoryShelves.forEach { shelf ->
-                item(key = "section_shelf_${shelf.key}") {
-                    MediaSectionRow(
-                        title = shelf.title,
-                        items = shelf.items,
-                        onMediaClick = onMediaClick
-                    )
+            if (layoutConfig.showCategoryShelves) {
+                dynamicCategoryShelves.forEach { shelf ->
+                    item(key = "section_shelf_${shelf.key}") {
+                        MediaSectionRow(
+                            title = shelf.title,
+                            items = shelf.items,
+                            onMediaClick = onMediaClick
+                        )
+                    }
                 }
             }
 
             // 5. Dynamic Micro-Genre & Thematic Shelves
-            microGenreShelves.forEachIndexed { index, (title, items) ->
-                item(key = "section_micro_genre_$index") {
-                    MediaSectionRow(
-                        title = title,
-                        items = items,
-                        onMediaClick = onMediaClick
-                    )
+            if (layoutConfig.showMicroGenreShelves) {
+                microGenreShelves.forEachIndexed { index, (title, items) ->
+                    item(key = "section_micro_genre_$index") {
+                        MediaSectionRow(
+                            title = title,
+                            items = items,
+                            onMediaClick = onMediaClick
+                        )
+                    }
                 }
             }
         }

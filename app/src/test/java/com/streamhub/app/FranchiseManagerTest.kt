@@ -80,4 +80,19 @@ class FranchiseManagerTest {
         assertEquals("CURRENT • MOVIE", FranchiseManager.getFranchiseTag(sequelMovie, sequelMovie))
         assertEquals("PREQUEL • TV", FranchiseManager.getFranchiseTag(tvSeries, sequelMovie))
     }
+
+    @Test
+    fun detectSeasonNumber_colonAndHyphenSeparators() {
+        assertEquals(1, FranchiseManager.detectSeasonNumber("Squid Game : Season 1"))
+        assertEquals(2, FranchiseManager.detectSeasonNumber("Squid Game : Season 2"))
+        assertEquals(3, FranchiseManager.detectSeasonNumber("Squid Game - Season 3"))
+        assertEquals(1, FranchiseManager.detectSeasonNumber("Squid Game (Season 1)"))
+    }
+
+    @Test
+    fun getFranchiseId_colonSeparatedSeasons() {
+        val s1 = MediaItem(id = "1", title = "Squid Game : Season 1")
+        val s2 = MediaItem(id = "2", title = "Squid Game : Season 2")
+        assertEquals(FranchiseManager.getFranchiseId(s1), FranchiseManager.getFranchiseId(s2))
+    }
 }

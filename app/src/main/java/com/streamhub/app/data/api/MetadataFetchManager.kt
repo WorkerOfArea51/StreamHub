@@ -147,11 +147,12 @@ object MetadataFetchManager {
         val genreIdsList = mutableListOf<Int>()
 
         if (directTmdbId == null) {
-            val searchCleanTerm = if (!isMovie && effectiveSeason > 1) {
+            val searchCleanTerm = if (!isMovie) {
                 cleanQuery
-                    .replace(Regex("(?i)(?::|\\b|-)?\\s*(?:season|s)\\s*\\d+.*$"), "")
-                    .replace(Regex("(?i)\\s*\\(\\s*season\\s*\\d+\\s*\\)"), "")
-                    .replace(Regex("(?i)\\s*\\b(?:2nd|3rd|4th|5th)\\s+season\\b.*$"), "")
+                    .replace(Regex("(?i)(?:\\s*:\\s*|\\s*-\\s*|\\s+)\\b(?:season|s)\\s*\\d+.*$"), "")
+                    .replace(Regex("(?i)\\s*\\(\\s*(?:season|s)\\s*\\d+\\s*\\)"), "")
+                    .replace(Regex("(?i)\\s*\\b(?:2nd|3rd|4th|5th|1st)\\s+season\\b.*$"), "")
+                    .replace(Regex("(?i)\\s*\\bpart\\s*\\d+.*$"), "")
                     .trim()
                     .ifBlank { cleanQuery }
             } else cleanQuery
@@ -470,8 +471,11 @@ object MetadataFetchManager {
         val rating = if (voteAverage > 0) String.format(java.util.Locale.US, "%.1f", voteAverage) else ""
 
         val franchiseBaseTitle = if (!isMovie) {
-            cleanQuery.replace(Regex("(?i)(?::|\\b|-)?\\s*(?:season|s)\\s*\\d+.*$"), "")
-                .replace(Regex("(?i)\\s*\\(\\s*season\\s*\\d+\\s*\\)"), "")
+            cleanQuery
+                .replace(Regex("(?i)(?:\\s*:\\s*|\\s*-\\s*|\\s+)\\b(?:season|s)\\s*\\d+.*$"), "")
+                .replace(Regex("(?i)\\s*\\(\\s*(?:season|s)\\s*\\d+\\s*\\)"), "")
+                .replace(Regex("(?i)\\s*\\b(?:2nd|3rd|4th|5th|1st)\\s+season\\b.*$"), "")
+                .replace(Regex("(?i)\\s*\\bpart\\s*\\d+.*$"), "")
                 .trim()
                 .ifBlank { title.substringBefore(":").trim() }
         } else title

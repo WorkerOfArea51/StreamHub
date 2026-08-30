@@ -53,8 +53,6 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val currentAccent by ThemeManager.currentAccent.collectAsState()
-    var showAboutDialog by remember { mutableStateOf(false) }
-    var showWhatsNewDialog by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -144,33 +142,13 @@ fun SettingsScreen(
 
             // App Updates & Version Info
             item(key = "cat_about") {
-                SettingsCategoryHeader(title = "ABOUT STREAMHUB", accentColor = Color(0xFFF472B6))
+                SettingsCategoryHeader(title = "UPDATES & SYSTEM", accentColor = Color(0xFFF472B6))
             }
 
             item(key = "card_updates") {
                 AppUpdateCard()
             }
-
-            item(key = "card_about") {
-                AboutCard(onClick = { showAboutDialog = true })
-            }
         }
-    }
-
-    if (showAboutDialog) {
-        com.streamhub.app.ui.components.AppAboutDialog(
-            onDismiss = { showAboutDialog = false },
-            onOpenWhatsNew = {
-                showAboutDialog = false
-                showWhatsNewDialog = true
-            }
-        )
-    }
-
-    if (showWhatsNewDialog) {
-        com.streamhub.app.ui.components.WhatsNewDialog(
-            onDismiss = { showWhatsNewDialog = false }
-        )
     }
 }
 

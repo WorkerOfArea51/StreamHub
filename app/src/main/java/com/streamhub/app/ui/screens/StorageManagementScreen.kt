@@ -90,6 +90,10 @@ fun StorageManagementScreen(
     var showClearAllConfirmDialog by remember { mutableStateOf(false) }
     var isOptimizingDb by remember { mutableStateOf(false) }
 
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        StorageCacheManager.calculateStorageUsage()
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()

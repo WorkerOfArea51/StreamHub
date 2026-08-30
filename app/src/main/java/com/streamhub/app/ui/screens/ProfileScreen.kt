@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ElectricBolt
 import androidx.compose.material.icons.filled.History
@@ -88,6 +89,7 @@ import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.components.AdminEditorDialog
 import com.streamhub.app.ui.components.BulkImportDialog
+import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
@@ -124,12 +126,20 @@ fun ProfileScreen(
         }
     }
 
+    androidx.compose.runtime.LaunchedEffect(isAdminMode) {
+        if (isAdminMode) {
+            com.streamhub.app.data.UserTelemetryManager.startObservingLiveMetrics()
+        }
+        com.streamhub.app.data.StorageCacheManager.calculateStorageUsage()
+    }
+
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
     var showAddContentDialog by remember { mutableStateOf(false) }
     var showBulkImportDialog by remember { mutableStateOf(false) }
     var showAdPassDialog by remember { mutableStateOf(false) }
     var showLiveTelemetryDialog by remember { mutableStateOf(false) }
-    var showAboutDialog by remember { mutableStateOf(false) }
+    var showAboutScreen by remember { mutableStateOf(false) }
+    var showCustomizeHomeDialog by remember { mutableStateOf(false) }
     var showWhatsNewDialog by remember { mutableStateOf(false) }
     var showEditProfileDialog by remember { mutableStateOf(false) }
 
@@ -281,6 +291,17 @@ fun ProfileScreen(
             )
         }
 
+        item(key = "settings_customize_home") {
+            ProfileSettingsItem(
+                icon = Icons.Default.DashboardCustomize,
+                iconTint = AccentOrange,
+                title = "Customize Home Screen Layout",
+                subtitle = "Toggle hero carousel, recommendations, continue watching & shelves",
+                badge = "Layout 🎛️",
+                onClick = { showCustomizeHomeDialog = true }
+            )
+        }
+
         item(key = "settings_all_prefs") {
             ProfileSettingsItem(
                 icon = Icons.Default.Settings,
@@ -297,28 +318,24 @@ fun ProfileScreen(
                 icon = Icons.Default.Info,
                 iconTint = Color(0xFF38BDF8),
                 title = "About StreamHub & Telegram Bot",
-                subtitle = "v${com.streamhub.app.BuildConfig.VERSION_NAME} • Developer info, @Fil3Stor3_bot & Tech Stack",
+                subtitle = "StreamHub v${com.streamhub.app.BuildConfig.VERSION_NAME} • Ultra-fast Media3 & TDLib MTProto streaming ecosystem",
                 badge = "About ℹ️",
-                onClick = { showAboutDialog = true }
+                onClick = { showAboutScreen = true }
             )
         }
     }
 
-    // App About Dialog
-    if (showAboutDialog) {
-        com.streamhub.app.ui.components.AppAboutDialog(
-            onDismiss = { showAboutDialog = false },
-            onOpenWhatsNew = {
-                showAboutDialog = false
-                showWhatsNewDialog = true
-            }
+    // Customize Home Screen Layout Dialog
+    if (showCustomizeHomeDialog) {
+        com.streamhub.app.ui.components.CustomizeHomeLayoutDialog(
+            onDismiss = { showCustomizeHomeDialog = false }
         )
     }
 
-    // What's New Dialog
-    if (showWhatsNewDialog) {
-        com.streamhub.app.ui.components.WhatsNewDialog(
-            onDismiss = { showWhatsNewDialog = false }
+    // Dedicated About Screen (Full Screen View)
+    if (showAboutScreen) {
+        AboutScreen(
+            onBackClick = { showAboutScreen = false }
         )
     }
 
@@ -513,7 +530,9 @@ private fun StreamHubUserProfileCard(
                         .scale(pulseScale)
                         .clip(CircleShape)
                         .background(
-                            if (userProfile.avatarPresetIndex > 0 && userProfile.avatarUri.isBlank()) {
+                            if (userProfile.avatarUri.isNotBlank()) {
+                                Brush.linearGradient(listOf(Color(0xFF1E1E2E), Color(0xFF2D2D44)))
+                            } else if (userProfile.customName.isNotBlank() || userProfile.customTagline.isNotBlank()) {
                                 val preset = UserProfileManager.PRESET_AVATARS.getOrElse(userProfile.avatarPresetIndex) { UserProfileManager.PRESET_AVATARS[0] }
                                 Brush.linearGradient(preset.gradientColors.map { Color(it) })
                             } else {
@@ -544,7 +563,7 @@ private fun StreamHubUserProfileCard(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
-                    } else if (userProfile.avatarPresetIndex > 0) {
+                    } else if (userProfile.customName.isNotBlank() || userProfile.customTagline.isNotBlank()) {
                         val preset = UserProfileManager.PRESET_AVATARS.getOrElse(userProfile.avatarPresetIndex) { UserProfileManager.PRESET_AVATARS[0] }
                         Text(preset.emoji, fontSize = 32.sp)
                     } else {

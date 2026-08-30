@@ -104,24 +104,38 @@ fun HomeLayoutCard(currentAccent: AppThemeAccent) {
             )
 
             LayoutToggleRow(
-                label = "Trending Now Section 🔥",
+                label = "Recently Added Row ✨",
+                checked = layoutConfig.showRecentlyAdded,
+                accentColor = currentAccent.color,
+                onCheckedChange = { HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showRecentlyAdded = it)) }
+            )
+
+            LayoutToggleRow(
+                label = "Because You Watched Recommendations 🎯",
+                checked = layoutConfig.showBecauseYouWatched,
+                accentColor = currentAccent.color,
+                onCheckedChange = { HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showBecauseYouWatched = it)) }
+            )
+
+            LayoutToggleRow(
+                label = "Trending & Popular Section 🔥",
                 checked = layoutConfig.showTrendingSection,
                 accentColor = currentAccent.color,
                 onCheckedChange = { HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showTrendingSection = it)) }
             )
 
             LayoutToggleRow(
-                label = "Top Anime Section 🎌",
-                checked = layoutConfig.showAnimeSection,
+                label = "Dynamic Category Shelves 🎬",
+                checked = layoutConfig.showCategoryShelves,
                 accentColor = currentAccent.color,
-                onCheckedChange = { HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showAnimeSection = it)) }
+                onCheckedChange = { HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showCategoryShelves = it)) }
             )
 
             LayoutToggleRow(
-                label = "Blockbuster Movies Section 🎬",
-                checked = layoutConfig.showMoviesSection,
+                label = "Micro-Genre Thematic Collections 🎭",
+                checked = layoutConfig.showMicroGenreShelves,
                 accentColor = currentAccent.color,
-                onCheckedChange = { HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showMoviesSection = it)) }
+                onCheckedChange = { HomeScreenLayoutManager.updateConfig(layoutConfig.copy(showMicroGenreShelves = it)) }
             )
 
             Spacer(modifier = Modifier.height(14.dp))
