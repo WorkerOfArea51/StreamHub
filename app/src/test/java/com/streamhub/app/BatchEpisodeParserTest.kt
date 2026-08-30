@@ -99,4 +99,18 @@ class BatchEpisodeParserTest {
         assertEquals("470.18 MB", parsed[1].fileSize)
         assertEquals("https://streamhub69.alwaysdata.net/dl/1737eabf2d800430739c2d171cbeee18fe47f19fdc149412", parsed[1].streamUrl)
     }
+
+    @Test
+    fun parseRawDump_longEpisodeDuration_formatsWithHours() {
+        val squidGameDump = """
+            {"batch_id":"squid_game","category":"series","episodes":[{"episode_num":1,"title":"Red Light, Green Light","duration_ms":3644000,"direct_stream_url":"https://streamhub69.alwaysdata.net/dl/123"}]}
+        """.trimIndent()
+
+        val parsed = BatchEpisodeParser.parseRawDump(squidGameDump)
+        assertEquals(1, parsed.size)
+        assertEquals(3644000L, parsed[0].durationMs)
+
+        val jsonStr = BatchEpisodeParser.toJsonString(parsed)
+        assertTrue(jsonStr.contains("\"duration_formatted\": \"1:00:44\""))
+    }
 }

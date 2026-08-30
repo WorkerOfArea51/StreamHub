@@ -1225,9 +1225,14 @@ fun AdminEditorDialog(
                                                         )
                                                         val durationText = if (ep.durationMs > 0) {
                                                             val totalSec = (ep.durationMs / 1000).toInt()
-                                                            val m = totalSec / 60
+                                                            val h = totalSec / 3600
+                                                            val m = (totalSec % 3600) / 60
                                                             val s = totalSec % 60
-                                                            String.format(java.util.Locale.US, "%02d:%02d", m, s)
+                                                            if (h > 0) {
+                                                                String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, s)
+                                                            } else {
+                                                                String.format(java.util.Locale.US, "%02d:%02d", m, s)
+                                                            }
                                                         } else ""
                                                         val metaChips = listOfNotNull(
                                                             durationText.takeIf { it.isNotBlank() }?.let { "⏱️ $it" },
