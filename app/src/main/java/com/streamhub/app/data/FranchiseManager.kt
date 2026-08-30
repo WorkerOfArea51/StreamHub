@@ -76,8 +76,8 @@ object FranchiseManager {
 
         return matched.sortedWith(
             compareBy<MediaItem> { item ->
-                // Sort main numbered seasons first (1, 2, 3), movies/specials with season 0 after
-                if (item.seasonNumber > 0) item.seasonNumber else 999
+                val sNum = getEffectiveSeasonNumber(item)
+                if (sNum > 0) sNum else 999
             }.thenBy { item ->
                 item.releaseYear.toIntOrNull() ?: 9999
             }.thenBy { item ->
@@ -118,14 +118,16 @@ object FranchiseManager {
     }
 
     fun getChronologicalScore(item: MediaItem): Double {
-        val isExplicitPrequel = item.relationType.trim().equals("PREQUEL", ignoreCase = true)
+        val sNum = getEffectiveSeasonNumber(item)
         val year = item.releaseYear.trim().toIntOrNull() ?: 0
-        val chapter = detectChapterOrPartNumber(item.title) ?: getEffectiveSeasonNumber(item).takeIf { it > 0 } ?: 1
+        val chapter = detectChapterOrPartNumber(item.title) ?: sNum.takeIf { it > 0 } ?: 1
+        val isExplicitPrequel = item.relationType.trim().equals("PREQUEL", ignoreCase = true) && sNum <= 1
 
-        val baseScore = if (year > 1900) {
-            (year * 100.0) + chapter
-        } else {
-            chapter.toDouble()
+        val baseScore = when {
+            sNum > 0 && year > 1900 -> (sNum * 100000.0) + (year * 10.0)
+            sNum > 0 -> sNum * 100000.0
+            year > 1900 -> (year * 100.0) + chapter
+            else -> chapter.toDouble()
         }
 
         return if (isExplicitPrequel) baseScore - 1_000_000.0 else baseScore
@@ -147,20 +149,25 @@ object FranchiseManager {
         val isExplicitMovie = relUpper == "MOVIE" ||
                 catUpper == "MOVIE" ||
                 catUpper == "MOVIES" ||
+                typeUpper == "MOVIE" ||
                 titleUpper.contains(" MOVIE") ||
                 titleUpper.endsWith("MOVIE") ||
                 titleUpper.contains(" THE MOVIE")
 
         if (catUpper == "ANIME" || catUpper == "ANIMES" || catUpper == "WEB_SERIES" || catUpper == "SERIES" || typeUpper == "SERIES") {
             // It's anime/series category — check if it's explicitly a franchise film/movie
-            return if (isExplicitMovie && item.seasonNumber <= 0 && item.episodes.size <= 1) "MOVIE" else "TV"
+            return if (isExplicitMovie && item.seasonNumber <= 1 && item.episodes.size <= 1 && !titleUpper.contains("SEASON")) "MOVIE" else "TV"
         }
 
-        if (catUpper == "MOVIE" || catUpper == "MOVIES" || isExplicitMovie) {
+        if (isExplicitMovie) {
             return "MOVIE"
         }
 
-        return "TV"
+        if (item.seasonNumber > 1 || titleUpper.contains("SEASON")) {
+            return "TV"
+        }
+
+        return if (catUpper == "MOVIE" || typeUpper == "MOVIE") "MOVIE" else "TV"
     }
 
     /**
@@ -168,11 +175,10 @@ object FranchiseManager {
      * Combines relation role (CURRENT, SEQUEL, PREQUEL, SIDE STORY, MAIN STORY, SEASON X)
      * with format type (TV, MOVIE, OVA, ONA, SPECIAL).
      *
-     * Examples:
-     * - "CURRENT • TV", "CURRENT • MOVIE"
-     * - "SEQUEL • MOVIE", "SEQUEL • TV"
-     * - "PREQUEL • TV", "PREQUEL • MOVIE"
-     * - "SIDE STORY • OVA", "SPECIAL"
+     * Relative to [currentItem]:
+     * - Past releases (lower season / earlier release year) -> PREQUEL
+     * - Future releases (higher season / later release year) -> SEQUEL
+     * - Currently open item -> CURRENT
      */
     fun getFranchiseTag(candidate: MediaItem, currentItem: MediaItem): String {
         val format = getMediaFormatLabel(candidate)
@@ -184,28 +190,20 @@ object FranchiseManager {
 
         val explicitRelation = candidate.relationType.trim().uppercase(Locale.ROOT)
         val role = when {
-            explicitRelation in listOf("SEQUEL", "PREQUEL", "SIDE STORY", "SPIN-OFF", "SPINOFF", "MAIN STORY") -> {
+            // Non-linear / Side stories / Spin-offs / OVAs maintain their distinct non-linear role
+            explicitRelation in listOf("SIDE STORY", "SPIN-OFF", "SPINOFF", "ALTERNATIVE", "PARODY", "RECAP") -> {
                 if (explicitRelation == "SPINOFF") "SPIN-OFF" else explicitRelation
             }
             explicitRelation in listOf("OVA", "ONA", "SPECIAL") -> {
                 explicitRelation
             }
             else -> {
-                val candidateRank = getChronologicalScore(candidate)
-                val currentRank = getChronologicalScore(currentItem)
+                val candidateScore = getChronologicalScore(candidate)
+                val currentScore = getChronologicalScore(currentItem)
                 when {
-                    candidateRank > currentRank -> "SEQUEL"
-                    candidateRank < currentRank -> "PREQUEL"
-                    else -> {
-                        val candYear = candidate.releaseYear.toIntOrNull() ?: 0
-                        val currYear = currentItem.releaseYear.toIntOrNull() ?: 0
-                        if (candYear > 0 && currYear > 0) {
-                            if (candYear > currYear) "SEQUEL" else if (candYear < currYear) "PREQUEL" else "RELATED"
-                        } else {
-                            val sNum = getEffectiveSeasonNumber(candidate)
-                            if (sNum > 1) "SEASON $sNum" else "RELATED"
-                        }
-                    }
+                    candidateScore > currentScore -> "SEQUEL"
+                    candidateScore < currentScore -> "PREQUEL"
+                    else -> "RELATED"
                 }
             }
         }

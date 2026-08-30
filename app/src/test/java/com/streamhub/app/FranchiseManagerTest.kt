@@ -95,4 +95,26 @@ class FranchiseManagerTest {
         val s2 = MediaItem(id = "2", title = "Squid Game : Season 2")
         assertEquals(FranchiseManager.getFranchiseId(s1), FranchiseManager.getFranchiseId(s2))
     }
+
+    @Test
+    fun getFranchiseTag_relativeMultiSeasonProgression() {
+        val s1 = MediaItem(id = "aot_1", title = "Attack on Titan", seasonNumber = 1, releaseYear = "2013", relationType = "Prequel", category = "Anime", type = "SERIES")
+        val s2 = MediaItem(id = "aot_2", title = "Attack on Titan Season 2", seasonNumber = 2, releaseYear = "2017", relationType = "Sequel", category = "Anime", type = "SERIES")
+        val s3 = MediaItem(id = "aot_3", title = "Attack on Titan Season 3", seasonNumber = 3, releaseYear = "2018", relationType = "Sequel", category = "Anime", type = "SERIES")
+
+        // When viewing Season 1:
+        assertEquals("CURRENT • TV", FranchiseManager.getFranchiseTag(s1, s1))
+        assertEquals("SEQUEL • TV", FranchiseManager.getFranchiseTag(s2, s1))
+        assertEquals("SEQUEL • TV", FranchiseManager.getFranchiseTag(s3, s1))
+
+        // When viewing Season 2:
+        assertEquals("PREQUEL • TV", FranchiseManager.getFranchiseTag(s1, s2))
+        assertEquals("CURRENT • TV", FranchiseManager.getFranchiseTag(s2, s2))
+        assertEquals("SEQUEL • TV", FranchiseManager.getFranchiseTag(s3, s2))
+
+        // When viewing Season 3:
+        assertEquals("PREQUEL • TV", FranchiseManager.getFranchiseTag(s1, s3))
+        assertEquals("PREQUEL • TV", FranchiseManager.getFranchiseTag(s2, s3))
+        assertEquals("CURRENT • TV", FranchiseManager.getFranchiseTag(s3, s3))
+    }
 }
