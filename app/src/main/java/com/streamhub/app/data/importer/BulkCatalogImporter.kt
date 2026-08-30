@@ -302,27 +302,74 @@ object BulkCatalogImporter {
         val result = mutableListOf<Episode>()
         for (i in 0 until array.length()) {
             val obj = array.optJSONObject(i) ?: continue
-            val epNum = obj.optInt("episode_num", obj.optInt("episodeNumber", i + 1))
-            val title = obj.optString("title", obj.optString("episode_title", "Episode $epNum"))
-            val stream = obj.optString("direct_stream_url", obj.optString("streamUrl", obj.optString("url", "")))
-            val mirror = obj.optString("download_url", obj.optString("mirrorStreamUrl", ""))
-            val fileName = obj.optString("file_name", obj.optString("fileName", ""))
-            val fileSize = obj.optString("file_size", obj.optString("fileSize", ""))
+            val epNum = obj.optInt("episode_num", obj.optInt("episodeNumber", obj.optInt("episode", i + 1)))
+            val rawFileName = obj.optString("file_name", obj.optString("fileName", obj.optString("name", "")))
+            val rawTitle = obj.optString("title", obj.optString("episode_title", ""))
+            val title = when {
+                rawTitle.isNotBlank() -> com.streamhub.app.data.TelegramLinkResolver.cleanEpisodeTitle(rawTitle, epNum)
+                rawFileName.isNotBlank() -> com.streamhub.app.data.TelegramLinkResolver.cleanEpisodeTitle(rawFileName, epNum)
+                else -> "Episode $epNum"
+            }
+
+            val stream = obj.optString("direct_stream_url", obj.optString("stream_url", obj.optString("streamUrl", obj.optString("stream_link", obj.optString("url", "")))))
+            val mirror = obj.optString("download_url", obj.optString("dl_link", obj.optString("downloadUrl", obj.optString("mirrorStreamUrl", ""))))
             val arc = obj.optString("arc_name", "")
             val season = obj.optInt("season_num", obj.optInt("seasonNumber", defaultSeason))
+            val code = obj.optString("code", obj.optString("id", ""))
 
-            result.add(
-                Episode(
-                    episodeNumber = epNum,
-                    seasonNumber = season,
-                    arcName = arc,
-                    title = title,
-                    streamUrl = stream,
-                    mirrorStreamUrl = mirror,
-                    fileName = fileName,
-                    fileSize = fileSize
+            val durationMs = when {
+                obj.has("duration_ms") -> obj.optLong("duration_ms", 0L)
+                obj.has("duration_sec") -> (obj.optDouble("duration_sec", 0.0) * 1000).toLong()
+                obj.has("duration") -> {
+                    val d = obj.optDouble("duration", 0.0)
+                    if (d > 10000) d.toLong() else (d * 1000).toLong()
+                }
+                obj.has("duration_formatted") -> {
+                    val str = obj.optString("duration_formatted", "")
+                    val parts = str.split(":").mapNotNull { it.toLongOrNull() }
+                    when (parts.size) {
+                        2 -> (parts[0] * 60 + parts[1]) * 1000L
+                        3 -> (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000L
+                        else -> 0L
+                    }
+                }
+                else -> 0L
+            }
+
+            val fileSize = when {
+                obj.has("size_formatted") -> obj.optString("size_formatted", "")
+                obj.has("file_size_formatted") -> obj.optString("file_size_formatted", "")
+                obj.has("file_size") -> {
+                    val rawSize = obj.optLong("file_size", -1L)
+                    if (rawSize > 10000L) {
+                        com.streamhub.app.data.TelegramLinkResolver.formatBytesToReadable(rawSize)
+                    } else {
+                        obj.optString("file_size", "")
+                    }
+                }
+                obj.has("fileSize") -> obj.optString("fileSize", "")
+                else -> ""
+            }
+
+            val primaryUrl = com.streamhub.app.data.TelegramLinkResolver.sanitizePlayableUrl(stream.ifBlank { mirror })
+            val secondaryUrl = com.streamhub.app.data.TelegramLinkResolver.sanitizePlayableUrl(mirror.ifBlank { stream })
+
+            if (primaryUrl.isNotBlank() || rawFileName.isNotBlank()) {
+                result.add(
+                    Episode(
+                        episodeNumber = epNum,
+                        seasonNumber = season,
+                        arcName = arc,
+                        title = title,
+                        streamUrl = primaryUrl,
+                        mirrorStreamUrl = secondaryUrl,
+                        fileName = rawFileName.ifBlank { "Episode $epNum.mkv" },
+                        fileSize = fileSize,
+                        durationMs = durationMs,
+                        telegramFileId = code.ifBlank { com.streamhub.app.data.TelegramLinkResolver.extractTelegramMessageOrFileId(primaryUrl) }
+                    )
                 )
-            )
+            }
         }
         return result.sortedBy { it.episodeNumber }
     }

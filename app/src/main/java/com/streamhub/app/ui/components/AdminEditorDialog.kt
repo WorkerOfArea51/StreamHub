@@ -1223,12 +1223,24 @@ fun AdminEditorDialog(
                                                             maxLines = 1,
                                                             modifier = Modifier.weight(1f)
                                                         )
-                                                        if (ep.fileSize.isNotBlank()) {
+                                                        val durationText = if (ep.durationMs > 0) {
+                                                            val totalSec = (ep.durationMs / 1000).toInt()
+                                                            val m = totalSec / 60
+                                                            val s = totalSec % 60
+                                                            String.format(java.util.Locale.US, "%02d:%02d", m, s)
+                                                        } else ""
+                                                        val metaChips = listOfNotNull(
+                                                            durationText.takeIf { it.isNotBlank() }?.let { "⏱️ $it" },
+                                                            ep.fileSize.takeIf { it.isNotBlank() }
+                                                        ).joinToString(" • ")
+
+                                                        if (metaChips.isNotBlank()) {
                                                             Spacer(modifier = Modifier.width(6.dp))
                                                             Text(
-                                                                text = ep.fileSize,
-                                                                color = TextSecondary,
-                                                                fontSize = 9.sp
+                                                                text = metaChips,
+                                                                color = Color(0xFF38BDF8),
+                                                                fontSize = 9.sp,
+                                                                fontWeight = FontWeight.Medium
                                                             )
                                                         }
                                                     }

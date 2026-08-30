@@ -34,7 +34,7 @@ object BatchEpisodeParser {
     private val RESOLUTION_REGEX = Regex("(?i)(4k|2160p|1080p|720p|480p|360p|fhd|hd)")
 
     /**
-     * Parses arbitrary raw text (Telegram posts, plain link lists, markdown, etc.)
+     * Parses arbitrary raw text (Telegram posts, plain link lists, markdown, JSON payloads, etc.)
      */
     fun parseRawDump(
         rawText: String,
@@ -43,9 +43,14 @@ object BatchEpisodeParser {
     ): List<Episode> {
         if (rawText.isBlank()) return emptyList()
 
-        // 1. Check if rawText is valid JSON array or object
         val trimmed = rawText.trim()
-        if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+
+        // 1. Check if rawText is valid JSON (Object or Array)
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+            // First try specialized Telegram/F2L bot JSON parser with full duration & size support
+            val fromResolver = com.streamhub.app.data.TelegramLinkResolver.parseSmartBotMessageOrLinks(trimmed, defaultSeason, defaultArc)
+            if (fromResolver.isNotEmpty()) return fromResolver
+
             val fromJson = parseJsonArray(trimmed, defaultSeason, defaultArc)
             if (fromJson.isNotEmpty()) return fromJson
         }
@@ -91,8 +96,8 @@ object BatchEpisodeParser {
                     seasonNumber = defaultSeason,
                     arcName = defaultArc,
                     title = epTitle,
-                    streamUrl = streamUrl,
-                    mirrorStreamUrl = mirrorUrl,
+                    streamUrl = com.streamhub.app.data.TelegramLinkResolver.sanitizePlayableUrl(streamUrl),
+                    mirrorStreamUrl = com.streamhub.app.data.TelegramLinkResolver.sanitizePlayableUrl(mirrorUrl),
                     fileName = fileName
                 )
             )
@@ -153,7 +158,7 @@ object BatchEpisodeParser {
                     seasonNumber = seasonNum,
                     arcName = arcName,
                     title = resolvedTitle,
-                    streamUrl = resolvedUrl,
+                    streamUrl = com.streamhub.app.data.TelegramLinkResolver.sanitizePlayableUrl(resolvedUrl),
                     fileName = if (resolvedUrl.isNotBlank()) File(resolvedUrl).name else "Episode_$ep.mp4"
                 )
             )
@@ -164,31 +169,87 @@ object BatchEpisodeParser {
 
     fun parseJsonArray(jsonString: String, defaultSeason: Int = 1, defaultArc: String = ""): List<Episode> {
         try {
-            val array = JSONArray(jsonString)
+            val trimmed = jsonString.trim()
+            val array = if (trimmed.startsWith("{")) {
+                val obj = JSONObject(trimmed)
+                obj.optJSONArray("episodes") ?: obj.optJSONArray("files") ?: obj.optJSONArray("data") ?: JSONArray()
+            } else {
+                JSONArray(trimmed)
+            }
+
             val result = mutableListOf<Episode>()
             for (i in 0 until array.length()) {
                 val obj = array.optJSONObject(i) ?: continue
-                val epNum = obj.optInt("episode_num", obj.optInt("episodeNumber", i + 1))
-                val title = obj.optString("title", obj.optString("episode_title", "Episode $epNum"))
-                val streamUrl = obj.optString("direct_stream_url", obj.optString("streamUrl", obj.optString("url", "")))
-                val mirrorUrl = obj.optString("download_url", obj.optString("mirrorStreamUrl", ""))
-                val fileName = obj.optString("file_name", obj.optString("fileName", ""))
-                val fileSize = obj.optString("file_size", obj.optString("fileSize", ""))
-                val arc = obj.optString("arc_name", defaultArc)
-                val season = obj.optInt("season_num", defaultSeason)
+                val epNum = obj.optInt("episode_num", obj.optInt("episodeNumber", obj.optInt("episode", i + 1)))
+                val rawFileName = obj.optString("file_name", obj.optString("fileName", obj.optString("name", "")))
+                val rawTitle = obj.optString("title", obj.optString("episode_title", ""))
+                val title = when {
+                    rawTitle.isNotBlank() -> com.streamhub.app.data.TelegramLinkResolver.cleanEpisodeTitle(rawTitle, epNum)
+                    rawFileName.isNotBlank() -> com.streamhub.app.data.TelegramLinkResolver.cleanEpisodeTitle(rawFileName, epNum)
+                    else -> "Episode $epNum"
+                }
 
-                result.add(
-                    Episode(
-                        episodeNumber = epNum,
-                        seasonNumber = season,
-                        arcName = arc,
-                        title = title,
-                        streamUrl = streamUrl,
-                        mirrorStreamUrl = mirrorUrl,
-                        fileName = fileName,
-                        fileSize = fileSize
+                val streamUrl = obj.optString("direct_stream_url", obj.optString("stream_url", obj.optString("streamUrl", obj.optString("stream_link", obj.optString("url", "")))))
+                val mirrorUrl = obj.optString("download_url", obj.optString("dl_link", obj.optString("downloadUrl", obj.optString("mirrorStreamUrl", ""))))
+                val code = obj.optString("code", obj.optString("id", ""))
+                val arc = obj.optString("arc_name", defaultArc)
+                val season = obj.optInt("season_num", obj.optInt("seasonNumber", defaultSeason))
+
+                // Robust duration parsing (seconds, ms, or "23:41" format)
+                val durationMs = when {
+                    obj.has("duration_ms") -> obj.optLong("duration_ms", 0L)
+                    obj.has("duration_sec") -> (obj.optDouble("duration_sec", 0.0) * 1000).toLong()
+                    obj.has("duration") -> {
+                        val d = obj.optDouble("duration", 0.0)
+                        if (d > 10000) d.toLong() else (d * 1000).toLong()
+                    }
+                    obj.has("duration_formatted") -> {
+                        val str = obj.optString("duration_formatted", "")
+                        val parts = str.split(":").mapNotNull { it.toLongOrNull() }
+                        when (parts.size) {
+                            2 -> (parts[0] * 60 + parts[1]) * 1000L
+                            3 -> (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000L
+                            else -> 0L
+                        }
+                    }
+                    else -> 0L
+                }
+
+                // Robust file size parsing
+                val fileSize = when {
+                    obj.has("size_formatted") -> obj.optString("size_formatted", "")
+                    obj.has("file_size_formatted") -> obj.optString("file_size_formatted", "")
+                    obj.has("file_size") -> {
+                        val rawSize = obj.optLong("file_size", -1L)
+                        if (rawSize > 10000L) {
+                            com.streamhub.app.data.TelegramLinkResolver.formatBytesToReadable(rawSize)
+                        } else {
+                            obj.optString("file_size", "")
+                        }
+                    }
+                    obj.has("fileSize") -> obj.optString("fileSize", "")
+                    else -> ""
+                }
+
+                val primaryUrl = com.streamhub.app.data.TelegramLinkResolver.sanitizePlayableUrl(streamUrl.ifBlank { mirrorUrl })
+                val secondaryUrl = com.streamhub.app.data.TelegramLinkResolver.sanitizePlayableUrl(mirrorUrl.ifBlank { streamUrl })
+
+                if (primaryUrl.isNotBlank() || rawFileName.isNotBlank()) {
+                    result.add(
+                        Episode(
+                            episodeNumber = epNum,
+                            seasonNumber = season,
+                            arcName = arc,
+                            title = title,
+                            streamUrl = primaryUrl,
+                            mirrorStreamUrl = secondaryUrl,
+                            fileName = rawFileName.ifBlank { "Episode $epNum.mkv" },
+                            fileSize = fileSize,
+                            durationMs = durationMs,
+                            telegramFileId = code.ifBlank { com.streamhub.app.data.TelegramLinkResolver.extractTelegramMessageOrFileId(primaryUrl) }
+                        )
                     )
-                )
+                }
             }
             if (result.isNotEmpty()) return result.sortedBy { it.episodeNumber }
         } catch (_: Throwable) {
@@ -210,6 +271,14 @@ object BatchEpisodeParser {
                 append("    \"title\": \"${escapeJson(ep.title)}\",\n")
                 append("    \"file_name\": \"${escapeJson(ep.fileName)}\",\n")
                 append("    \"file_size\": \"${escapeJson(ep.fileSize)}\",\n")
+                if (ep.durationMs > 0) {
+                    append("    \"duration_ms\": ${ep.durationMs},\n")
+                    val totalSec = (ep.durationMs / 1000).toInt()
+                    val m = totalSec / 60
+                    val s = totalSec % 60
+                    val formatted = String.format(java.util.Locale.US, "%02d:%02d", m, s)
+                    append("    \"duration_formatted\": \"$formatted\",\n")
+                }
                 append("    \"direct_stream_url\": \"${escapeJson(ep.streamUrl)}\",\n")
                 append("    \"download_url\": \"${escapeJson(ep.mirrorStreamUrl)}\"\n")
                 append("  }")
@@ -236,18 +305,53 @@ object BatchEpisodeParser {
             val content = match.groupValues[1]
             val epNum = Regex("\"episode_num\"\\s*:\\s*(\\d+)").find(content)?.groupValues?.get(1)?.toIntOrNull()
                 ?: Regex("\"episodeNumber\"\\s*:\\s*(\\d+)").find(content)?.groupValues?.get(1)?.toIntOrNull()
+                ?: Regex("\"episode\"\\s*:\\s*(\\d+)").find(content)?.groupValues?.get(1)?.toIntOrNull()
                 ?: (episodes.size + 1)
-            val season = Regex("\"season_num\"\\s*:\\s*(\\d+)").find(content)?.groupValues?.get(1)?.toIntOrNull() ?: defaultSeason
-            val title = Regex("\"title\"\\s*:\\s*\"([^\"]*)\"").find(content)?.groupValues?.get(1) ?: "Episode $epNum"
+            val season = Regex("\"season_num\"\\s*:\\s*(\\d+)").find(content)?.groupValues?.get(1)?.toIntOrNull()
+                ?: Regex("\"seasonNumber\"\\s*:\\s*(\\d+)").find(content)?.groupValues?.get(1)?.toIntOrNull()
+                ?: defaultSeason
+
+            val fileName = Regex("\"file_name\"\\s*:\\s*\"([^\"]*)\"").find(content)?.groupValues?.get(1)
+                ?: Regex("\"fileName\"\\s*:\\s*\"([^\"]*)\"").find(content)?.groupValues?.get(1)
+                ?: ""
+            val rawTitle = Regex("\"title\"\\s*:\\s*\"([^\"]*)\"").find(content)?.groupValues?.get(1) ?: ""
+            val title = when {
+                rawTitle.isNotBlank() -> com.streamhub.app.data.TelegramLinkResolver.cleanEpisodeTitle(rawTitle, epNum)
+                fileName.isNotBlank() -> com.streamhub.app.data.TelegramLinkResolver.cleanEpisodeTitle(fileName, epNum)
+                else -> "Episode $epNum"
+            }
+
             val streamUrl = Regex("\"direct_stream_url\"\\s*:\\s*\"([^\"]*)\"").find(content)?.groupValues?.get(1)
+                ?: Regex("\"stream_url\"\\s*:\\s*\"([^\"]*)\"").find(content)?.groupValues?.get(1)
                 ?: Regex("\"streamUrl\"\\s*:\\s*\"([^\"]*)\"").find(content)?.groupValues?.get(1)
+                ?: Regex("\"url\"\\s*:\\s*\"([^\"]*)\"").find(content)?.groupValues?.get(1)
                 ?: ""
             val downloadUrl = Regex("\"download_url\"\\s*:\\s*\"([^\"]*)\"").find(content)?.groupValues?.get(1)
                 ?: Regex("\"mirrorStreamUrl\"\\s*:\\s*\"([^\"]*)\"").find(content)?.groupValues?.get(1)
                 ?: ""
-            val fileName = Regex("\"file_name\"\\s*:\\s*\"([^\"]*)\"").find(content)?.groupValues?.get(1) ?: ""
-            val fileSize = Regex("\"file_size\"\\s*:\\s*\"([^\"]*)\"").find(content)?.groupValues?.get(1) ?: ""
+
+            val fileSize = Regex("\"size_formatted\"\\s*:\\s*\"([^\"]*)\"").find(content)?.groupValues?.get(1)
+                ?: Regex("\"file_size\"\\s*:\\s*\"([^\"]*)\"").find(content)?.groupValues?.get(1)
+                ?: Regex("\"fileSize\"\\s*:\\s*\"([^\"]*)\"").find(content)?.groupValues?.get(1)
+                ?: ""
             val arc = Regex("\"arc_name\"\\s*:\\s*\"([^\"]*)\"").find(content)?.groupValues?.get(1) ?: defaultArc
+
+            val durationMs = Regex("\"duration_ms\"\\s*:\\s*(\\d+)").find(content)?.groupValues?.get(1)?.toLongOrNull()
+                ?: Regex("\"duration\"\\s*:\\s*(\\d+(?:\\.\\d+)?)").find(content)?.groupValues?.get(1)?.toDoubleOrNull()?.let {
+                    if (it > 10000) it.toLong() else (it * 1000).toLong()
+                }
+                ?: Regex("\"duration_formatted\"\\s*:\\s*\"([^\"]*)\"").find(content)?.groupValues?.get(1)?.let { str ->
+                    val parts = str.split(":").mapNotNull { it.toLongOrNull() }
+                    when (parts.size) {
+                        2 -> (parts[0] * 60 + parts[1]) * 1000L
+                        3 -> (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000L
+                        else -> 0L
+                    }
+                }
+                ?: 0L
+
+            val primaryUrl = com.streamhub.app.data.TelegramLinkResolver.sanitizePlayableUrl(streamUrl.ifBlank { downloadUrl })
+            val secondaryUrl = com.streamhub.app.data.TelegramLinkResolver.sanitizePlayableUrl(downloadUrl.ifBlank { streamUrl })
 
             episodes.add(
                 Episode(
@@ -255,10 +359,11 @@ object BatchEpisodeParser {
                     seasonNumber = season,
                     arcName = arc,
                     title = title,
-                    streamUrl = streamUrl,
-                    mirrorStreamUrl = downloadUrl,
-                    fileName = fileName,
-                    fileSize = fileSize
+                    streamUrl = primaryUrl,
+                    mirrorStreamUrl = secondaryUrl,
+                    fileName = fileName.ifBlank { "Episode $epNum.mkv" },
+                    fileSize = fileSize,
+                    durationMs = durationMs
                 )
             )
         }

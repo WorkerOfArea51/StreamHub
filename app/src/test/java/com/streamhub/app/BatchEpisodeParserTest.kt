@@ -78,4 +78,25 @@ class BatchEpisodeParserTest {
         assertEquals("Canon", restored[0].arcName)
         assertEquals("https://cdn.io/ep_1.mp4", restored[0].streamUrl)
     }
+
+    @Test
+    fun parseRawDump_f2lBatchJsonObject_extractsDurationsAndExactTitles() {
+        val f2lJson = """
+            {"batch_id":"9af0276c674e15892cfdb7627086d8e5","category":"anime","channel_id":-1002633457020,"episodes":[{"code":"0d07b93b37770e5c2f3ea796cb43268dba85886553895acc","download_url":"https://streamhub69.alwaysdata.net/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc","duration":1421.0,"duration_formatted":"23:41","episode_num":1,"file_name":"EP - 01 - Undertaker.mkv","file_size":469136808,"mime_type":"video/x-matroska","size_formatted":"447.4 MB","stream_url":"https://streamhub69.alwaysdata.net/stream/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc"},{"code":"1737eabf2d800430739c2d171cbeee18fe47f19fdc149412","download_url":"https://streamhub69.alwaysdata.net/dl/1737eabf2d800430739c2d171cbeee18fe47f19fdc149412","duration":1429.0,"duration_formatted":"23:49","episode_num":2,"file_name":"EP - 02 - Spearhead.mkv","file_size":493015093,"mime_type":"video/x-matroska","size_formatted":"470.18 MB","stream_url":"https://streamhub69.alwaysdata.net/stream/1737eabf2d800430739c2d171cbeee18fe47f19fdc149412"}],"status":"success","title":"86 Eighty-Six","total_episodes":2}
+        """.trimIndent()
+
+        val parsed = BatchEpisodeParser.parseRawDump(f2lJson, defaultSeason = 1)
+        assertEquals(2, parsed.size)
+        assertEquals(1, parsed[0].episodeNumber)
+        assertEquals("EP - 01 - Undertaker", parsed[0].title)
+        assertEquals(1421000L, parsed[0].durationMs)
+        assertEquals("447.4 MB", parsed[0].fileSize)
+        assertEquals("https://streamhub69.alwaysdata.net/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc", parsed[0].streamUrl)
+
+        assertEquals(2, parsed[1].episodeNumber)
+        assertEquals("EP - 02 - Spearhead", parsed[1].title)
+        assertEquals(1429000L, parsed[1].durationMs)
+        assertEquals("470.18 MB", parsed[1].fileSize)
+        assertEquals("https://streamhub69.alwaysdata.net/dl/1737eabf2d800430739c2d171cbeee18fe47f19fdc149412", parsed[1].streamUrl)
+    }
 }
