@@ -165,7 +165,7 @@ fun WhatsNewDialog(
                 )
 
                 Text(
-                    text = "Version 2.5.0 • Ultra Reliability & Bulk Sync Release",
+                    text = "Version v${com.streamhub.app.BuildConfig.VERSION_NAME} • Ultra Reliability & Bulk Sync Release",
                     color = primaryColor,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold

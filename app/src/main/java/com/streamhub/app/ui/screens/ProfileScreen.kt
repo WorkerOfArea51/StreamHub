@@ -297,7 +297,7 @@ fun ProfileScreen(
                 icon = Icons.Default.Info,
                 iconTint = Color(0xFF38BDF8),
                 title = "About StreamHub & Telegram Bot",
-                subtitle = "v2.5.0 • Developer info, @Fil3Stor3_bot & Tech Stack",
+                subtitle = "v${com.streamhub.app.BuildConfig.VERSION_NAME} • Developer info, @Fil3Stor3_bot & Tech Stack",
                 badge = "About ℹ️",
                 onClick = { showAboutDialog = true }
             )

@@ -145,7 +145,7 @@ fun AppAboutDialog(
                 )
 
                 Text(
-                    text = "v2.5.0 • Ultra Reliability & Bulk Sync Release (Android 15 Native)",
+                    text = "v${com.streamhub.app.BuildConfig.VERSION_NAME} • Ultra Reliability & Bulk Sync Release (Android 15 Native)",
                     color = TextSecondary,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium
