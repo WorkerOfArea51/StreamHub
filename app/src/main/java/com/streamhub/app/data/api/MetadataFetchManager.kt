@@ -234,7 +234,7 @@ object MetadataFetchManager {
 
         if (tmdbIdNum > 0) {
             try {
-                val appendParams = if (isMovie) "credits,videos,release_dates" else "credits,videos,content_ratings"
+                val appendParams = if (isMovie) "credits,videos,release_dates,images" else "credits,videos,content_ratings,images"
                 val detailUrl = "$TMDB_BASE/$detailType/$tmdbIdNum?append_to_response=$appendParams"
                 val detailReq = Request.Builder().url(detailUrl).header("Accept", "application/json").build()
 
@@ -346,7 +346,7 @@ object MetadataFetchManager {
                                 }
                             }
 
-                            // YouTube Trailer ID
+                            // YouTube Trailer ID (Series level fallback)
                             val videos = dJson.optJSONObject("videos")
                             val videoResults = videos?.optJSONArray("results")
                             if (videoResults != null) {
@@ -378,7 +378,7 @@ object MetadataFetchManager {
                                 }
                             }
 
-                            // Multi-Season Specific Overrides (Poster, Synopsis, Release Date, Trailer)
+                            // Multi-Season Specific Overrides (Poster, Backdrop Still, Synopsis, Release Date, Trailer)
                             val hasExplicitSeason = cleanQuery.contains("Season", ignoreCase = true) || 
                                                     cleanQuery.contains(Regex("(?i)\\bS\\d+\\b")) ||
                                                     targetSeason > 1
@@ -421,19 +421,44 @@ object MetadataFetchManager {
                                     title = if (cleanQuery.contains("Season", ignoreCase = true)) cleanQuery else "$baseShowTitle: Season $effectiveSeason"
                                 }
 
-                                // Fetch season-specific YouTube trailer
+                                // Fetch Season-Specific Details (Episodes with Stills, Poster & Trailer)
                                 try {
-                                    val sVideoUrl = "$TMDB_BASE/tv/$tmdbIdNum/season/$effectiveSeason/videos"
-                                    val sVideoReq = Request.Builder().url(sVideoUrl).header("Accept", "application/json").build()
-                                    httpClient.newCall(sVideoReq).execute().use { sVideoResp ->
-                                        if (sVideoResp.isSuccessful) {
-                                            val sVideoBody = sVideoResp.body?.string()
-                                            if (!sVideoBody.isNullOrBlank()) {
-                                                val sVideoJson = JSONObject(sVideoBody)
-                                                val sResults = sVideoJson.optJSONArray("results")
-                                                if (sResults != null && sResults.length() > 0) {
-                                                    for (vi in 0 until sResults.length()) {
-                                                        val vObj = sResults.getJSONObject(vi)
+                                    val sDetailUrl = "$TMDB_BASE/tv/$tmdbIdNum/season/$effectiveSeason?append_to_response=videos,images"
+                                    val sDetailReq = Request.Builder().url(sDetailUrl).header("Accept", "application/json").build()
+                                    httpClient.newCall(sDetailReq).execute().use { sResp ->
+                                        if (sResp.isSuccessful) {
+                                            val sBody = sResp.body?.string()
+                                            if (!sBody.isNullOrBlank()) {
+                                                val sJson = JSONObject(sBody)
+
+                                                val sOverview = sJson.optString("overview", "").trim()
+                                                if (sOverview.isNotBlank()) overview = sOverview
+
+                                                val sPoster = sJson.optString("poster_path", "").trim()
+                                                if (sPoster.isNotBlank()) posterPath = sPoster
+
+                                                val sAirDate = sJson.optString("air_date", "").trim()
+                                                if (sAirDate.length >= 4) releaseDate = sAirDate
+
+                                                // Season-specific episode widescreen 16:9 still as backdrop
+                                                val sEpisodes = sJson.optJSONArray("episodes")
+                                                if (sEpisodes != null && sEpisodes.length() > 0) {
+                                                    totalEpisodes = sEpisodes.length().toString()
+                                                    for (ei in 0 until sEpisodes.length()) {
+                                                        val epStill = sEpisodes.getJSONObject(ei).optString("still_path", "").trim()
+                                                        if (epStill.isNotBlank()) {
+                                                            backdropPath = epStill
+                                                            break
+                                                        }
+                                                    }
+                                                }
+
+                                                // Season-specific YouTube Trailer
+                                                val sVideos = sJson.optJSONObject("videos")
+                                                val sVideoResults = sVideos?.optJSONArray("results")
+                                                if (sVideoResults != null && sVideoResults.length() > 0) {
+                                                    for (vi in 0 until sVideoResults.length()) {
+                                                        val vObj = sVideoResults.getJSONObject(vi)
                                                         val site = vObj.optString("site", "")
                                                         val typeStr = vObj.optString("type", "")
                                                         val keyStr = vObj.optString("key", "")
@@ -451,7 +476,18 @@ object MetadataFetchManager {
                                         }
                                     }
                                 } catch (e: Exception) {
-                                    Log.w(TAG, "Failed to fetch season $effectiveSeason trailer: ${e.message}")
+                                    Log.w(TAG, "Failed to fetch season $effectiveSeason details: ${e.message}")
+                                }
+
+                                // If season episode still wasn't found, pick a unique show backdrop for this season
+                                if (backdropPath.isBlank()) {
+                                    val imagesObj = dJson.optJSONObject("images")
+                                    val backdropsArr = imagesObj?.optJSONArray("backdrops")
+                                    if (backdropsArr != null && backdropsArr.length() > 0) {
+                                        val idx = (effectiveSeason - 1) % backdropsArr.length()
+                                        val bPath = backdropsArr.getJSONObject(idx).optString("file_path", "")
+                                        if (bPath.isNotBlank()) backdropPath = bPath
+                                    }
                                 }
                             }
                         }
@@ -669,6 +705,13 @@ object MetadataFetchManager {
                 if (endDate.isNotBlank()) "$startDate to $endDate" else "$startDate to Ongoing"
             } else ""
 
+            val detectedSeason = com.streamhub.app.data.FranchiseManager.detectSeasonNumber(finalTitle).let {
+                if (it > 1) it else com.streamhub.app.data.FranchiseManager.detectSeasonNumber(query)
+            }
+            val detectedFranchiseId = com.streamhub.app.data.FranchiseManager.getFranchiseId(com.streamhub.app.data.models.MediaItem(title = finalTitle))
+            val detectedFranchiseTitle = com.streamhub.app.data.FranchiseManager.getFranchiseTitle(com.streamhub.app.data.models.MediaItem(title = finalTitle))
+            val detectedRelation = if (detectedSeason > 1) "Sequel" else "Main Story"
+
             // Fetch YouTube Trailer ID & Cast List via TMDB fallback if needed
             var youtubeTrailerId = ""
             var castListStr = ""
@@ -679,7 +722,7 @@ object MetadataFetchManager {
                     finalTitle.substringBefore(" Season ").substringBefore(":").trim()
                 } else finalTitle
 
-                val tmdbResult = fetchFromTMDB(queryForTmdb, "Anime")
+                val tmdbResult = fetchFromTMDB(queryForTmdb, "Anime", targetSeason = detectedSeason)
                 tmdbResult.getOrNull()?.let { tmdbMeta ->
                     if (youtubeTrailerId.isBlank()) youtubeTrailerId = tmdbMeta.youtubeTrailerId
                     if (castListStr.isBlank()) castListStr = tmdbMeta.castList
@@ -700,11 +743,6 @@ object MetadataFetchManager {
 
             // Score precision: e.g. 8.14 instead of 8.1
             val formattedRating = if (mean > 0) String.format(java.util.Locale.US, "%.2f", mean).trimEnd('0').trimEnd('.') else ""
-
-            val detectedSeason = com.streamhub.app.data.FranchiseManager.detectSeasonNumber(finalTitle)
-            val detectedFranchiseId = com.streamhub.app.data.FranchiseManager.getFranchiseId(com.streamhub.app.data.models.MediaItem(title = finalTitle))
-            val detectedFranchiseTitle = com.streamhub.app.data.FranchiseManager.getFranchiseTitle(com.streamhub.app.data.models.MediaItem(title = finalTitle))
-            val detectedRelation = if (detectedSeason > 1) "Sequel" else "Main Story"
 
             val fetched = FetchedMetadata(
                 title = finalTitle,
