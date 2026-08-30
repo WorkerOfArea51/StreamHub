@@ -132,39 +132,89 @@ object FranchiseManager {
     }
 
     /**
-     * Formats a relation tag for displaying on season cards.
-     * e.g. "CURRENT", "SEQUEL", "PREQUEL", "MOVIE", "SIDE STORY", "SEASON 2"
+     * Extracts the format type of a media item: "TV", "MOVIE", "OVA", "ONA", "SPECIAL"
      */
-    fun getFranchiseTag(candidate: MediaItem, currentItem: MediaItem): String {
-        if (candidate.id == currentItem.id) return "CURRENT"
+    fun getMediaFormatLabel(item: MediaItem): String {
+        val relUpper = item.relationType.trim().uppercase(Locale.ROOT)
+        val catUpper = item.category.trim().uppercase(Locale.ROOT)
+        val typeUpper = item.type.trim().uppercase(Locale.ROOT)
+        val titleUpper = item.title.trim().uppercase(Locale.ROOT)
 
-        val explicitRelation = candidate.relationType.trim().uppercase(Locale.ROOT)
-        if (explicitRelation in listOf("SIDE STORY", "SPIN-OFF", "SPINOFF", "OVA", "SPECIAL")) {
-            return explicitRelation
+        if (relUpper == "OVA" || titleUpper.contains(" OVA") || titleUpper.endsWith("OVA")) return "OVA"
+        if (relUpper == "ONA" || titleUpper.contains(" ONA") || titleUpper.endsWith("ONA")) return "ONA"
+        if (relUpper == "SPECIAL" || titleUpper.contains(" SPECIAL") || titleUpper.endsWith("SPECIAL")) return "SPECIAL"
+
+        val isExplicitMovie = relUpper == "MOVIE" ||
+                catUpper == "MOVIE" ||
+                catUpper == "MOVIES" ||
+                titleUpper.contains(" MOVIE") ||
+                titleUpper.endsWith("MOVIE") ||
+                titleUpper.contains(" THE MOVIE")
+
+        if (catUpper == "ANIME" || catUpper == "ANIMES" || catUpper == "WEB_SERIES" || catUpper == "SERIES" || typeUpper == "SERIES") {
+            // It's anime/series category — check if it's explicitly a franchise film/movie
+            return if (isExplicitMovie && item.seasonNumber <= 0 && item.episodes.size <= 1) "MOVIE" else "TV"
         }
 
-        val isMovieCandidate = candidate.category.equals("MOVIE", ignoreCase = true) || candidate.type.equals("MOVIE", ignoreCase = true)
-        val isMovieCurrent = currentItem.category.equals("MOVIE", ignoreCase = true) || currentItem.type.equals("MOVIE", ignoreCase = true)
-
-        if (isMovieCandidate && !isMovieCurrent) {
+        if (catUpper == "MOVIE" || catUpper == "MOVIES" || isExplicitMovie) {
             return "MOVIE"
         }
 
-        val candidateRank = getChronologicalScore(candidate)
-        val currentRank = getChronologicalScore(currentItem)
+        return "TV"
+    }
 
-        return when {
-            candidateRank > currentRank -> "SEQUEL"
-            candidateRank < currentRank -> "PREQUEL"
+    /**
+     * Formats a relation tag for displaying on season cards.
+     * Combines relation role (CURRENT, SEQUEL, PREQUEL, SIDE STORY, MAIN STORY, SEASON X)
+     * with format type (TV, MOVIE, OVA, ONA, SPECIAL).
+     *
+     * Examples:
+     * - "CURRENT • TV", "CURRENT • MOVIE"
+     * - "SEQUEL • MOVIE", "SEQUEL • TV"
+     * - "PREQUEL • TV", "PREQUEL • MOVIE"
+     * - "SIDE STORY • OVA", "SPECIAL"
+     */
+    fun getFranchiseTag(candidate: MediaItem, currentItem: MediaItem): String {
+        val format = getMediaFormatLabel(candidate)
+        val isCurrent = candidate.id == currentItem.id
+
+        if (isCurrent) {
+            return "CURRENT • $format"
+        }
+
+        val explicitRelation = candidate.relationType.trim().uppercase(Locale.ROOT)
+        val role = when {
+            explicitRelation in listOf("SEQUEL", "PREQUEL", "SIDE STORY", "SPIN-OFF", "SPINOFF", "MAIN STORY") -> {
+                if (explicitRelation == "SPINOFF") "SPIN-OFF" else explicitRelation
+            }
+            explicitRelation in listOf("OVA", "ONA", "SPECIAL") -> {
+                explicitRelation
+            }
             else -> {
-                val candYear = candidate.releaseYear.toIntOrNull() ?: 0
-                val currYear = currentItem.releaseYear.toIntOrNull() ?: 0
-                if (candYear > 0 && currYear > 0) {
-                    if (candYear > currYear) "SEQUEL" else if (candYear < currYear) "PREQUEL" else "RELATED"
-                } else {
-                    "RELATED"
+                val candidateRank = getChronologicalScore(candidate)
+                val currentRank = getChronologicalScore(currentItem)
+                when {
+                    candidateRank > currentRank -> "SEQUEL"
+                    candidateRank < currentRank -> "PREQUEL"
+                    else -> {
+                        val candYear = candidate.releaseYear.toIntOrNull() ?: 0
+                        val currYear = currentItem.releaseYear.toIntOrNull() ?: 0
+                        if (candYear > 0 && currYear > 0) {
+                            if (candYear > currYear) "SEQUEL" else if (candYear < currYear) "PREQUEL" else "RELATED"
+                        } else {
+                            val sNum = getEffectiveSeasonNumber(candidate)
+                            if (sNum > 1) "SEASON $sNum" else "RELATED"
+                        }
+                    }
                 }
             }
+        }
+
+        return when {
+            role == format -> role
+            role in listOf("OVA", "ONA", "SPECIAL") -> role
+            role == "RELATED" -> format
+            else -> "$role • $format"
         }
     }
 
@@ -173,9 +223,11 @@ object FranchiseManager {
      * e.g. "2017 • 122m" for movies, "Season 1 • 2024 • 12 Eps" for series.
      */
     fun getSeasonCardSubtitle(item: MediaItem): String {
-        val isMovie = item.category.equals("MOVIE", ignoreCase = true) || item.type.equals("MOVIE", ignoreCase = true)
+        val format = getMediaFormatLabel(item)
+        val isMovie = format == "MOVIE"
         val sNum = getEffectiveSeasonNumber(item)
         val parts = mutableListOf<String>()
+
         if (isMovie) {
             if (item.releaseYear.isNotBlank()) {
                 parts.add(item.releaseYear)
@@ -194,7 +246,8 @@ object FranchiseManager {
                 parts.add(item.releaseYear)
             }
             if (item.totalEpisodes.isNotBlank()) {
-                parts.add(item.totalEpisodes)
+                val epText = item.totalEpisodes.trim()
+                parts.add(if (epText.endsWith("Eps", ignoreCase = true) || epText.endsWith("Episodes", ignoreCase = true)) epText else "$epText Eps")
             } else if (item.episodes.isNotEmpty()) {
                 parts.add("${item.episodes.size} Eps")
             }

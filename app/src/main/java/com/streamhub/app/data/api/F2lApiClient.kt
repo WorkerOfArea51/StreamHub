@@ -56,59 +56,13 @@ object F2lApiClient {
             val bodyString = response.body?.string()
                 ?: throw IllegalStateException("Empty response body from F2L API")
 
-            val json = JSONObject(bodyString)
-            val episodesArray = json.optJSONArray("episodes")
-                ?: json.optJSONArray("data")
-                ?: throw IllegalStateException("Invalid JSON response: missing 'episodes' array")
+            val episodeList = com.streamhub.app.data.TelegramLinkResolver.parseSmartBotMessageOrLinks(
+                rawText = bodyString,
+                seasonNumber = seasonNumber,
+                arcName = arcName
+            )
 
-            val episodeList = mutableListOf<Episode>()
-            for (i in 0 until episodesArray.length()) {
-                val item = episodesArray.getJSONObject(i)
-                val epNum = item.optInt("episode_num", item.optInt("episodeNumber", i + 1))
-                val fileName = item.optString("file_name", item.optString("fileName", "Episode $epNum.mkv"))
-                val sizeFormatted = item.optString("size_formatted", item.optString("file_size_formatted", ""))
-                val fileSizeLong = item.optLong("file_size", 0L)
-                val streamUrl = item.optString("stream_url", item.optString("streamUrl", ""))
-                val downloadUrl = item.optString("download_url", item.optString("downloadUrl", streamUrl))
-                val code = item.optString("code", item.optString("id", ""))
-
-                // Clean title: remove .mkv, .mp4, and leading "EP - 01 - "
-                val cleanTitle = fileName
-                    .replace(Regex("""\.(mkv|mp4|avi|webm)$""", RegexOption.IGNORE_CASE), "")
-                    .replace(Regex("""(?i)^(?:>\s*🎬\s*|🎬\s*)?(?:EP|Episode)\s*[-:]?\s*0*\d+\s*[-:]?\s*"""), "")
-                    .trim()
-
-                val finalTitle = when {
-                    cleanTitle.isNotBlank() && arcName.isNotBlank() -> "$arcName - Ep $epNum: $cleanTitle"
-                    cleanTitle.isNotBlank() -> "Ep $epNum: $cleanTitle"
-                    arcName.isNotBlank() -> "$arcName - Ep $epNum"
-                    else -> "Episode $epNum"
-                }
-
-                // In-App Player uses direct download_url for robust byte-range 206 progressive playback
-                val primaryPlayUrl = downloadUrl.ifBlank { streamUrl }
-                val fallbackMirrorUrl = streamUrl.ifBlank { downloadUrl }
-                val resolvedSize = if (sizeFormatted.isNotBlank()) sizeFormatted else formatBytes(fileSizeLong)
-
-                if (primaryPlayUrl.isNotBlank()) {
-                    episodeList.add(
-                        Episode(
-                            episodeNumber = epNum,
-                            seasonNumber = seasonNumber,
-                            arcName = arcName,
-                            title = finalTitle,
-                            streamUrl = primaryPlayUrl,
-                            mirrorStreamUrl = fallbackMirrorUrl,
-                            fileSize = resolvedSize,
-                            fileName = fileName,
-                            telegramFileId = code.ifBlank { epNum.toString() }
-                        )
-                    )
-                }
-            }
-
-            episodeList.sortBy { it.episodeNumber }
-            Log.d(TAG, "Successfully parsed ${episodeList.size} episodes from F2L API")
+            Log.d(TAG, "Successfully parsed ${episodeList.size} episodes from F2L API with durations & exact titles")
             episodeList
         }
     }

@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
@@ -33,6 +34,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -56,6 +58,7 @@ import com.streamhub.app.ui.components.MediaCard
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.CardBorderDark
+import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
@@ -74,6 +77,8 @@ fun SearchScreen(
     modifier: Modifier = Modifier
 ) {
     val catalog by repository.mediaCatalog.collectAsState()
+    val searchHistory by com.streamhub.app.data.SearchHistoryManager.historyFlow.collectAsState()
+
     var searchQuery by remember { mutableStateOf("") }
     var debouncedQuery by remember { mutableStateOf("") }
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
@@ -91,24 +96,40 @@ fun SearchScreen(
         }
     }
 
-    var selectedCategoryFilter by remember { mutableStateOf("ALL") }
+    LaunchedEffect(debouncedQuery) {
+        val trimmed = debouncedQuery.trim()
+        if (trimmed.length >= 2 && !trimmed.startsWith("#")) {
+            com.streamhub.app.data.SearchHistoryManager.addQuery(trimmed)
+        }
+    }
+
+    var selectedTypeFilter by remember { mutableStateOf("ALL") }
+    var selectedGenres by remember { mutableStateOf(setOf<String>()) }
     var minRatingFilter by remember { mutableStateOf(0.0) }
     var selectedYearFilter by remember { mutableStateOf("ALL") }
     var sortOption by remember { mutableStateOf(SortOption.LATEST) }
     var isSortMenuExpanded by remember { mutableStateOf(false) }
 
-    val categoryFilterList = listOf(
+    val typeFilterList = listOf(
         Pair("ALL", "All 🌐"),
         Pair("ANIME", "🎌 Anime"),
         Pair("MOVIE", "🎬 Movies"),
-        Pair("SERIES", "📺 Series"),
-        Pair("Action", "⚔️ Action"),
-        Pair("Fantasy", "🔮 Fantasy"),
-        Pair("Sci-Fi", "🤖 Sci-Fi"),
-        Pair("Romance", "❤️ Romance"),
-        Pair("Comedy", "😂 Comedy"),
-        Pair("Drama", "🎭 Drama"),
-        Pair("Supernatural", "⚡ Supernatural")
+        Pair("SERIES", "📺 Series")
+    )
+
+    val genreList = listOf(
+        "Action ⚔️" to "Action",
+        "Fantasy 🔮" to "Fantasy",
+        "Sci-Fi 🤖" to "Sci-Fi",
+        "Romance ❤️" to "Romance",
+        "Comedy 😂" to "Comedy",
+        "Drama 🎭" to "Drama",
+        "Supernatural ⚡" to "Supernatural",
+        "Horror 👻" to "Horror",
+        "Mystery 🕵️" to "Mystery",
+        "Adventure 🗺️" to "Adventure",
+        "Thriller 🩸" to "Thriller",
+        "Slice of Life ☕" to "Slice of Life"
     )
 
     val ratingFilterList = listOf(
@@ -119,27 +140,49 @@ fun SearchScreen(
 
     val currentYear = remember { java.time.LocalDate.now().year }
     val yearFilterList = remember(currentYear) {
-        listOf("ALL", currentYear.toString(), (currentYear - 1).toString(), (currentYear - 2).toString(), "Older")
+        listOf(
+            "ALL" to "All Years 📅",
+            currentYear.toString() to currentYear.toString(),
+            (currentYear - 1).toString() to (currentYear - 1).toString(),
+            (currentYear - 2).toString() to (currentYear - 2).toString(),
+            "Older" to "Classic / Older"
+        )
     }
 
     val primaryColor = MaterialTheme.colorScheme.primary
 
-    // Filter Logic
-    val filteredCatalog = remember(catalog, debouncedQuery, selectedCategoryFilter, minRatingFilter, selectedYearFilter, currentYear) {
-        catalog.filter { item ->
-            val matchesQuery = debouncedQuery.isEmpty() ||
-                    item.title.contains(debouncedQuery, ignoreCase = true) ||
-                    item.synonyms.contains(debouncedQuery, ignoreCase = true) ||
-                    item.category.contains(debouncedQuery, ignoreCase = true) ||
-                    item.studio.contains(debouncedQuery, ignoreCase = true) ||
-                    item.genres.any { genre -> genre.contains(debouncedQuery, ignoreCase = true) }
+    // Multi-tag & Multi-word Filter Logic
+    val filteredCatalog = remember(
+        catalog,
+        debouncedQuery,
+        selectedTypeFilter,
+        selectedGenres,
+        minRatingFilter,
+        selectedYearFilter,
+        currentYear
+    ) {
+        val queryTokens = debouncedQuery.trim().lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }
 
-            val matchesCategory = when (selectedCategoryFilter) {
+        catalog.filter { item ->
+            val matchesQuery = queryTokens.isEmpty() || queryTokens.all { token ->
+                item.title.contains(token, ignoreCase = true) ||
+                item.synonyms.contains(token, ignoreCase = true) ||
+                item.category.contains(token, ignoreCase = true) ||
+                item.studio.contains(token, ignoreCase = true) ||
+                item.description.contains(token, ignoreCase = true) ||
+                item.genres.any { it.contains(token, ignoreCase = true) }
+            }
+
+            val matchesType = when (selectedTypeFilter) {
                 "ALL" -> true
                 "ANIME" -> item.category.equals("ANIME", ignoreCase = true)
                 "MOVIE" -> item.category.equals("MOVIE", ignoreCase = true) || item.category.equals("MOVIES", ignoreCase = true)
                 "SERIES" -> item.category.equals("WEB_SERIES", ignoreCase = true) || item.category.equals("SERIES", ignoreCase = true)
-                else -> item.genres.any { it.equals(selectedCategoryFilter, ignoreCase = true) }
+                else -> true
+            }
+
+            val matchesGenres = selectedGenres.isEmpty() || selectedGenres.all { selectedGenre ->
+                item.genres.any { it.equals(selectedGenre, ignoreCase = true) }
             }
 
             val itemRating = item.rating.toDoubleOrNull() ?: 0.0
@@ -151,19 +194,36 @@ fun SearchScreen(
                 else -> item.releaseYear == selectedYearFilter
             }
 
-            matchesQuery && matchesCategory && matchesRating && matchesYear
+            matchesQuery && matchesType && matchesGenres && matchesRating && matchesYear
         }
     }
 
     // Sort Logic
     val sortedCatalog = remember(filteredCatalog, sortOption) {
         when (sortOption) {
-            SortOption.LATEST -> filteredCatalog
+            SortOption.LATEST -> filteredCatalog.sortedWith(
+                compareByDescending<MediaItem> { it.createdAt }
+                    .thenByDescending { it.releaseYear.toIntOrNull() ?: 0 }
+                    .thenByDescending { it.id }
+            )
             SortOption.RATING_DESC -> filteredCatalog.sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
-            SortOption.TITLE_ASC -> filteredCatalog.sortedBy { it.title }
+            SortOption.TITLE_ASC -> filteredCatalog.sortedBy { it.title.lowercase() }
             SortOption.YEAR_DESC -> filteredCatalog.sortedByDescending { it.releaseYear.toIntOrNull() ?: 0 }
         }
     }
+
+    val popularQueries = remember(catalog) {
+        val candidates = catalog.filter { it.isFeatured || (it.rating.toDoubleOrNull() ?: 0.0) >= 7.8 }
+            .map { it.title }
+            .distinct()
+        if (candidates.isNotEmpty()) candidates.take(8) else catalog.take(6).map { it.title }
+    }
+
+    val activeFilterCount = (if (selectedTypeFilter != "ALL") 1 else 0) +
+            selectedGenres.size +
+            (if (minRatingFilter > 0.0) 1 else 0) +
+            (if (selectedYearFilter != "ALL") 1 else 0) +
+            (if (debouncedQuery.isNotEmpty()) 1 else 0)
 
     Column(
         modifier = modifier
@@ -176,12 +236,30 @@ fun SearchScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Explore & Search 🔍",
-                color = TextPrimary,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Explore & Search 🔍",
+                    color = TextPrimary,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                if (activeFilterCount > 0) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = primaryColor.copy(alpha = 0.2f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, primaryColor)
+                    ) {
+                        Text(
+                            text = "$activeFilterCount active",
+                            color = primaryColor,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
 
             // Sort Dropdown Button
             Box {
@@ -249,22 +327,22 @@ fun SearchScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        // Category & Genre Pills Row
+        // Row 1: Content Type Pills
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            items(categoryFilterList) { (key, label) ->
-                val isSelected = selectedCategoryFilter == key
+            items(typeFilterList) { (key, label) ->
+                val isSelected = selectedTypeFilter == key
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
                         .background(if (isSelected) primaryColor else SurfaceDark)
                         .border(1.dp, if (isSelected) primaryColor else CardBorderDark, RoundedCornerShape(20.dp))
-                        .clickable { selectedCategoryFilter = key }
-                        .padding(horizontal = 14.dp, vertical = 7.dp)
+                        .clickable { selectedTypeFilter = key }
+                        .padding(horizontal = 13.dp, vertical = 6.dp)
                 ) {
                     Text(
                         text = label,
@@ -276,9 +354,46 @@ fun SearchScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
-        // Rating Filter Row
+        // Row 2: Multi-tag Genre Chips
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            items(genreList) { (label, rawKey) ->
+                val isSelected = selectedGenres.contains(rawKey)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (isSelected) Color(0xFF00E5FF).copy(alpha = 0.2f) else SurfaceDark)
+                        .border(
+                            1.dp,
+                            if (isSelected) Color(0xFF00E5FF) else CardBorderDark,
+                            RoundedCornerShape(20.dp)
+                        )
+                        .clickable {
+                            selectedGenres = if (isSelected) {
+                                selectedGenres - rawKey
+                            } else {
+                                selectedGenres + rawKey
+                            }
+                        }
+                        .padding(horizontal = 12.dp, vertical = 5.dp)
+                ) {
+                    Text(
+                        text = if (isSelected) "✓ $label" else label,
+                        color = if (isSelected) Color(0xFF00E5FF) else TextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Row 3: Rating & Year Quick Filters
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
@@ -290,8 +405,8 @@ fun SearchScreen(
                         .clip(RoundedCornerShape(20.dp))
                         .background(if (isSelected) Color(0xFFF59E0B) else SurfaceDark)
                         .border(1.dp, if (isSelected) Color(0xFFF59E0B) else CardBorderDark, RoundedCornerShape(20.dp))
-                        .clickable { minRatingFilter = minRating }
-                        .padding(horizontal = 12.dp, vertical = 5.dp)
+                        .clickable { minRatingFilter = if (isSelected && minRating > 0.0) 0.0 else minRating }
+                        .padding(horizontal = 11.dp, vertical = 5.dp)
                 ) {
                     Text(
                         text = label,
@@ -301,9 +416,134 @@ fun SearchScreen(
                     )
                 }
             }
+
+            items(yearFilterList) { (yearKey, label) ->
+                val isSelected = selectedYearFilter == yearKey
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(if (isSelected) AccentOrange.copy(alpha = 0.25f) else SurfaceDark)
+                        .border(1.dp, if (isSelected) AccentOrange else CardBorderDark, RoundedCornerShape(20.dp))
+                        .clickable { selectedYearFilter = if (isSelected && yearKey != "ALL") "ALL" else yearKey }
+                        .padding(horizontal = 11.dp, vertical = 5.dp)
+                ) {
+                    Text(
+                        text = label,
+                        color = if (isSelected) AccentOrange else TextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
+            }
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        // ── Recent Searches (When not filtering/searching) ──
+        if (debouncedQuery.isEmpty() && searchHistory.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "🕒 Recent Searches",
+                        color = TextPrimary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Clear",
+                        color = TextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.clickable {
+                            com.streamhub.app.data.SearchHistoryManager.clearAll()
+                        }
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(searchHistory) { queryItem ->
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = SurfaceDark,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, CardBorderDark)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
+                            ) {
+                                Text(
+                                    text = queryItem,
+                                    color = TextPrimary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.clickable {
+                                        searchQuery = queryItem
+                                        debouncedQuery = queryItem
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Remove search",
+                                    tint = TextSecondary,
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .clickable {
+                                            com.streamhub.app.data.SearchHistoryManager.removeQuery(queryItem)
+                                        }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Trending Searches (When not searching) ──
+        if (debouncedQuery.isEmpty() && popularQueries.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+                Text(
+                    text = "🔥 Trending Searches",
+                    color = TextPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(popularQueries) { popTitle ->
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = PrimaryRed.copy(alpha = 0.12f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, PrimaryRed.copy(alpha = 0.4f)),
+                            modifier = Modifier.clickable {
+                                searchQuery = popTitle
+                                debouncedQuery = popTitle
+                            }
+                        ) {
+                            Text(
+                                text = "🔥 $popTitle",
+                                color = TextPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
 
         // Search Results Stats & Reset Button
         Row(
@@ -318,15 +558,17 @@ fun SearchScreen(
                 fontWeight = FontWeight.SemiBold
             )
 
-            if (searchQuery.isNotEmpty() || selectedCategoryFilter != "ALL" || minRatingFilter > 0.0 || selectedYearFilter != "ALL") {
+            if (activeFilterCount > 0) {
                 Text(
-                    text = "Reset Filters 🔄",
+                    text = "Reset All Filters 🔄",
                     color = AccentOrange,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.clickable {
                         searchQuery = ""
-                        selectedCategoryFilter = "ALL"
+                        debouncedQuery = ""
+                        selectedTypeFilter = "ALL"
+                        selectedGenres = emptySet()
                         minRatingFilter = 0.0
                         selectedYearFilter = "ALL"
                         sortOption = SortOption.LATEST
@@ -335,15 +577,15 @@ fun SearchScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         // Results Grid
         if (sortedCatalog.isEmpty()) {
             EmptyStateCard(
                 icon = Icons.Default.Search,
                 title = if (searchQuery.isEmpty()) "No matching shows" else "No results found",
-                subtitle = if (searchQuery.isEmpty()) "Try adjusting your genre or rating filters"
-                           else "Try a different search keyword",
+                subtitle = if (searchQuery.isEmpty()) "Try adjusting your multi-genre, rating, or year filters"
+                           else "Try different keywords or clearing active filters",
                 modifier = Modifier.weight(1f)
             )
         } else {

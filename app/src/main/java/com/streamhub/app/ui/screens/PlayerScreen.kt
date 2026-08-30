@@ -166,7 +166,10 @@ import com.streamhub.app.ui.screens.player.AspectRatioToast
 import com.streamhub.app.ui.screens.player.BufferingHud
 import com.streamhub.app.ui.screens.player.DoubleTapSeekOverlay
 import com.streamhub.app.ui.screens.player.PlayerErrorOverlay
+import com.streamhub.app.ui.screens.player.ReconnectingStreamHud
 import com.streamhub.app.ui.screens.player.SmartResumePill
+import com.streamhub.app.ui.screens.player.StreamRestoredPill
+import com.streamhub.app.ui.screens.player.NextEpisodeCountdownCard
 import com.streamhub.app.ui.screens.player.controls.AmbientDiscoIcon
 import com.streamhub.app.ui.screens.player.controls.BrightnessSliderCard
 import com.streamhub.app.ui.screens.player.controls.CenterPlayPauseRippleOverlay
@@ -344,6 +347,7 @@ fun PlayerScreen(
     var isFrameNavExpanded by remember { mutableStateOf(false) }
     var isSnapshotLoading by remember { mutableStateOf(false) }
     var audioDelayMs by remember { mutableLongStateOf(0L) }
+    var dismissedNextEpIndex by remember { mutableIntStateOf(-1) }
 
     // Intercept back when a dialog/sheet is open — close the sheet first, don't pop the nav stack.
     androidx.activity.compose.BackHandler(
@@ -388,7 +392,10 @@ fun PlayerScreen(
     var centerPlayPauseIsPlaying by remember { mutableStateOf(false) }
     var centerPlayPauseJob by remember { mutableStateOf<Job?>(null) }
 
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+
     fun triggerCenterPlayPause(nowPlaying: Boolean) {
+        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
         centerPlayPauseIsPlaying = nowPlaying
         showCenterPlayPauseRipple = true
         centerPlayPauseJob?.cancel()
@@ -551,6 +558,7 @@ fun PlayerScreen(
             doubleTapAlignment = Alignment.CenterStart
         }
 
+        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
         showDoubleTapRipple = true
         resetCumulativeJob?.cancel()
         resetCumulativeJob = scope.launch {
@@ -1035,16 +1043,41 @@ fun PlayerScreen(
             }
         }
 
-        // FIX: Robust error overlay with retry — replaces the silent spinner-on-error behavior.
+        // Smart Auto-Reconnecting Stream HUD Overlay
+        ReconnectingStreamHud(
+            visible = uiState.isReconnecting,
+            attempt = uiState.reconnectAttempt,
+            maxAttempts = 3,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 18.dp)
+        )
+
+        // Stream Restored Pill Badge
+        StreamRestoredPill(
+            visible = uiState.streamRestoredToast,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 18.dp)
+        )
+
+        if (uiState.streamRestoredToast) {
+            LaunchedEffect(Unit) {
+                kotlinx.coroutines.delay(2500L)
+                viewModel.clearStreamRestoredToast()
+            }
+        }
+
+        // Robust error overlay with retry (shown only when auto-retries exhausted)
         val errorInfo = uiState.playerErrorInfo
-        if (errorInfo != null) {
+        if (errorInfo != null && !uiState.isReconnecting) {
             PlayerErrorOverlay(
                 errorInfo = errorInfo,
                 onRetry = { viewModel.retryCurrentEpisode() },
                 onBack = { onBackClick() },
                 modifier = Modifier.align(Alignment.Center)
             )
-        } else if (uiState.isBuffering) {
+        } else if (uiState.isBuffering && !uiState.isReconnecting) {
             BufferingHud(
                 visible = true,
                 networkSpeedKbps = uiState.networkSpeedKbps,
@@ -1053,126 +1086,173 @@ fun PlayerScreen(
             )
         }
 
-        // Gesture HUD Overlays
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = if (playerSettings.volumeOnRight) Alignment.CenterEnd else Alignment.CenterStart
-        ) {
-            VolumeSliderCard(
-                volumePercent = currentVolumePercent.toInt(),
-                isVisible = showVolumeIndicator,
-                modifier = Modifier.padding(horizontal = 24.dp)
-            )
-        }
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = if (playerSettings.volumeOnRight) Alignment.CenterStart else Alignment.CenterEnd
-        ) {
-            BrightnessSliderCard(
-                brightness = currentBrightnessPercent / 100f,
-                isVisible = showBrightnessIndicator,
-                modifier = Modifier.padding(horizontal = 24.dp)
-            )
-        }
-        // mpvEx Concave Oval Double-Tap Seeking Overlay
-        DoubleTapSeekRippleOverlay(
-            visible = showDoubleTapRipple,
-            isForward = isDoubleTapForward,
-            seekSecondsText = doubleTapRippleText
-        )
-        // Center Double-Tap Play/Pause Ripple Overlay
-        CenterPlayPauseRippleOverlay(
-            visible = showCenterPlayPauseRipple,
-            isPlaying = centerPlayPauseIsPlaying
-        )
-        AspectRatioToast(visible = showAspectToast, text = aspectToastText)
-
-        // mpvEx Horizontal Swipe Scrubbing HUD Card
-        if (isScrubbing) {
-            val deltaMs = scrubbingPositionMs - uiState.currentPositionMs
-            val deltaText = if (deltaMs >= 0) "+${formatMpvTime(deltaMs)}" else "-${formatMpvTime(-deltaMs)}"
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0xF212121A),
-                border = BorderStroke(1.dp, Color(0xFFD0BCFF)),
-                shadowElevation = 12.dp,
-                modifier = Modifier.align(Alignment.Center)
+        // Gesture HUD Overlays (only when not in Picture-in-Picture)
+        if (!isPipMode) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = if (playerSettings.volumeOnRight) Alignment.CenterEnd else Alignment.CenterStart
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                VolumeSliderCard(
+                    volumePercent = currentVolumePercent.toInt(),
+                    isVisible = showVolumeIndicator,
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                )
+            }
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = if (playerSettings.volumeOnRight) Alignment.CenterStart else Alignment.CenterEnd
+            ) {
+                BrightnessSliderCard(
+                    brightness = currentBrightnessPercent / 100f,
+                    isVisible = showBrightnessIndicator,
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                )
+            }
+            // mpvEx Concave Oval Double-Tap Seeking Overlay
+            DoubleTapSeekRippleOverlay(
+                visible = showDoubleTapRipple,
+                isForward = isDoubleTapForward,
+                seekSecondsText = doubleTapRippleText
+            )
+            // Center Double-Tap Play/Pause Ripple Overlay
+            CenterPlayPauseRippleOverlay(
+                visible = showCenterPlayPauseRipple,
+                isPlaying = centerPlayPauseIsPlaying
+            )
+            AspectRatioToast(visible = showAspectToast, text = aspectToastText)
+
+            // mpvEx Horizontal Swipe Scrubbing HUD Card
+            if (isScrubbing) {
+                val deltaMs = scrubbingPositionMs - uiState.currentPositionMs
+                val deltaText = if (deltaMs >= 0) "+${formatMpvTime(deltaMs)}" else "-${formatMpvTime(-deltaMs)}"
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xF212121A),
+                    border = BorderStroke(1.dp, Color(0xFFD0BCFF)),
+                    shadowElevation = 12.dp,
+                    modifier = Modifier.align(Alignment.Center)
                 ) {
-                    // FIX: Show thumbnail if available, otherwise show poster as fallback.
-                    // MediaMetadataRetriever can't extract frames from partially-downloaded
-                    // TDLib files, so the poster is the fallback during streaming.
-                    Box(
-                        modifier = Modifier
-                            .size(width = 160.dp, height = 90.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF1E1E28))
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
                     ) {
-                        if (scrubberThumbnailBitmap != null && !scrubberThumbnailBitmap!!.isRecycled) {
-                            Image(
-                                bitmap = scrubberThumbnailBitmap!!.asImageBitmap(),
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else if (uiState.posterUrl.isNotBlank()) {
-                            // Fallback: show poster image with a timestamp overlay
-                            AsyncImage(
-                                model = uiState.posterUrl,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            // Dark overlay to indicate it's a preview position
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(Color.Black.copy(alpha = 0.4f))
-                            )
-                        } else {
-                            // No poster — show a placeholder with timestamp
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = formatMpvTime(scrubbingPositionMs),
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
+                        // FIX: Show thumbnail if available, otherwise show poster as fallback.
+                        // MediaMetadataRetriever can't extract frames from partially-downloaded
+                        // TDLib files, so the poster is the fallback during streaming.
+                        Box(
+                            modifier = Modifier
+                                .size(width = 160.dp, height = 90.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFF1E1E28))
+                        ) {
+                            if (scrubberThumbnailBitmap != null && !scrubberThumbnailBitmap!!.isRecycled) {
+                                Image(
+                                    bitmap = scrubberThumbnailBitmap!!.asImageBitmap(),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
                                 )
+                            } else if (uiState.posterUrl.isNotBlank()) {
+                                // Fallback: show poster image with a timestamp overlay
+                                AsyncImage(
+                                    model = uiState.posterUrl,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                // Dark overlay to indicate it's a preview position
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color.Black.copy(alpha = 0.4f))
+                                )
+                            } else {
+                                // No poster — show a placeholder with timestamp
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = formatMpvTime(scrubbingPositionMs),
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = formatMpvTime(scrubbingPositionMs),
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "[$deltaText]",
-                            color = if (deltaMs >= 0) Color(0xFF81C784) else Color(0xFFFF8A80),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "/ ${formatMpvTime(uiState.durationMs)}",
-                            color = TextSecondary,
-                            fontSize = 13.sp,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = formatMpvTime(scrubbingPositionMs),
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "[$deltaText]",
+                                color = if (deltaMs >= 0) Color(0xFF81C784) else Color(0xFFFF8A80),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "/ ${formatMpvTime(uiState.durationMs)}",
+                                color = TextSecondary,
+                                fontSize = 13.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            )
+                        }
                     }
                 }
+            }
+        }
+
+        // ──────────────────────────────────────────────────────────────
+        // Netflix-Style Next Episode Countdown Card
+        // ──────────────────────────────────────────────────────────────
+        val episodes = mediaItem.episodes
+        val nextEpIndex = uiState.currentEpisodeIndex + 1
+        val nextEp = if (nextEpIndex in episodes.indices) episodes[nextEpIndex] else null
+        val nextEpThresholdSec = playerSettings.nextEpisodeThresholdSeconds
+        val remainingSeconds = if (uiState.durationMs > 0L) {
+            ((uiState.durationMs - uiState.currentPositionMs) / 1000L).toInt().coerceAtLeast(0)
+        } else 0
+
+        val showNextEpCountdown = nextEp != null &&
+                                  nextEpThresholdSec > 0 &&
+                                  remainingSeconds in 1..nextEpThresholdSec &&
+                                  dismissedNextEpIndex != uiState.currentEpisodeIndex &&
+                                  !uiState.isReconnecting &&
+                                  !isPipMode &&
+                                  uiState.playerErrorInfo == null
+
+        if (nextEp != null && !isPipMode) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(
+                        end = 24.dp,
+                        bottom = if (uiState.isControlsVisible && !uiState.isLocked) 92.dp else 24.dp
+                    ),
+                contentAlignment = Alignment.BottomEnd
+            ) {
+                NextEpisodeCountdownCard(
+                    visible = showNextEpCountdown,
+                    nextEpisodeTitle = nextEp.title.ifBlank { "Episode ${nextEpIndex + 1}" },
+                    remainingSeconds = remainingSeconds,
+                    thresholdSeconds = nextEpThresholdSec,
+                    onPlayNext = {
+                        dismissedNextEpIndex = uiState.currentEpisodeIndex
+                        viewModel.playNextEpisode()
+                    },
+                    onDismiss = {
+                        dismissedNextEpIndex = uiState.currentEpisodeIndex
+                    }
+                )
             }
         }
 
@@ -1180,7 +1260,7 @@ fun PlayerScreen(
         // Main Player Controls Overlay (mpvEx Complete UI/UX Layout)
         // ──────────────────────────────────────────────────────────────
         AnimatedVisibility(
-            visible = uiState.isControlsVisible && !uiState.isLocked,
+            visible = uiState.isControlsVisible && !uiState.isLocked && !isPipMode,
             enter = fadeIn(),
             exit = fadeOut()
         ) {

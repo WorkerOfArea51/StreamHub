@@ -1,5 +1,6 @@
 package com.streamhub.app.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -121,6 +122,7 @@ fun HomeScreen(
     val appContext = context.applicationContext
     LaunchedEffect(catalog, myListIds) {
         if (catalog.isNotEmpty()) {
+            com.streamhub.app.data.ThumbnailPrefetchManager.prefetchCatalog(appContext, catalog, limit = 30)
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 com.streamhub.app.data.NotificationAlertManager.checkAndNotifyNewEpisodes(appContext, catalog, myListIds)
             }
@@ -133,8 +135,20 @@ fun HomeScreen(
 
     val sortedCatalog = remember(catalog, sortOrder) {
         when (sortOrder) {
-            com.streamhub.app.data.CatalogSortOrder.NEWEST_FIRST -> catalog.reversed()
-            com.streamhub.app.data.CatalogSortOrder.OLDEST_FIRST -> catalog
+            com.streamhub.app.data.CatalogSortOrder.NEWEST_FIRST -> {
+                catalog.sortedWith(
+                    compareByDescending<MediaItem> { it.createdAt }
+                        .thenByDescending { it.releaseYear.toIntOrNull() ?: 0 }
+                        .thenByDescending { it.id }
+                )
+            }
+            com.streamhub.app.data.CatalogSortOrder.OLDEST_FIRST -> {
+                catalog.sortedWith(
+                    compareBy<MediaItem> { if (it.createdAt > 0L) it.createdAt else Long.MAX_VALUE }
+                        .thenBy { it.releaseYear.toIntOrNull() ?: 9999 }
+                        .thenBy { it.id }
+                )
+            }
             com.streamhub.app.data.CatalogSortOrder.HIGHEST_RATED -> catalog.sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
             com.streamhub.app.data.CatalogSortOrder.RELEASE_YEAR -> catalog.sortedByDescending { it.releaseYear.toIntOrNull() ?: 0 }
             com.streamhub.app.data.CatalogSortOrder.ALPHABETICAL -> catalog.sortedBy { it.title.lowercase() }
@@ -180,6 +194,86 @@ fun HomeScreen(
                 if (completed) null else Pair(media, progress)
             }
             .sortedByDescending { it.second.lastUpdated }
+    }
+
+    val recentlyAddedItems = remember(filteredCatalog) {
+        val now = System.currentTimeMillis()
+        val threeDaysAgo = now - (3L * 24L * 60L * 60L * 1000L) // 72-hour inactivity threshold
+        filteredCatalog.filter { it.createdAt > 0L && it.createdAt in (threeDaysAgo..now) }
+    }
+
+    // ── 1. Smart "Because You Watched [Title]" Recommendation Engine ──
+    val becauseYouWatchedData = remember(catalog, watchHistoryMap, selectedCategoryFilter, filteredCatalog) {
+        val lastWatchedProgress = watchHistoryMap.values.maxByOrNull { it.lastUpdated } ?: return@remember null
+        val sourceMedia = catalog.find { it.id == lastWatchedProgress.mediaId } ?: return@remember null
+        val sourceGenres = sourceMedia.genres.map { it.trim().lowercase() }.filter { it.isNotBlank() }
+
+        val candidates = filteredCatalog.filter { it.id != sourceMedia.id }.mapNotNull { candidate ->
+            var score = 0
+            if (candidate.franchiseId.isNotBlank() && candidate.franchiseId == sourceMedia.franchiseId) {
+                score += 4 // Same franchise / universe
+            }
+            val candidateGenres = candidate.genres.map { it.trim().lowercase() }
+            val commonGenres = candidateGenres.intersect(sourceGenres.toSet()).size
+            score += commonGenres * 2
+
+            if (candidate.studio.isNotBlank() && candidate.studio.equals(sourceMedia.studio, ignoreCase = true)) {
+                score += 1
+            }
+            if ((candidate.rating.toDoubleOrNull() ?: 0.0) >= 7.5) {
+                score += 1
+            }
+
+            if (score >= 2) Pair(candidate, score) else null
+        }.sortedWith(compareByDescending<Pair<MediaItem, Int>> { it.second }.thenByDescending { it.first.rating.toDoubleOrNull() ?: 0.0 })
+        .map { it.first }
+
+        if (candidates.size >= 2) {
+            Pair("💡 Because You Watched ${sourceMedia.title}", candidates.take(12))
+        } else null
+    }
+
+    // ── 2. Dynamic Micro-Genre & Thematic Shelves ──
+    val microGenreShelves = remember(filteredCatalog) {
+        val shelves = mutableListOf<Pair<String, List<MediaItem>>>()
+
+        fun addGenreShelf(title: String, vararg keywords: String) {
+            val matching = filteredCatalog.filter { item ->
+                val allText = (item.genres + listOf(item.category, item.description)).joinToString(" ").lowercase()
+                keywords.any { kw -> allText.contains(kw.lowercase()) }
+            }.distinctBy { it.id }
+
+            if (matching.size >= 2) {
+                shelves.add(Pair(title, matching))
+            }
+        }
+
+        // 1. Critically Acclaimed (8.0+ Rating)
+        val acclaimed = filteredCatalog.filter { (it.rating.toDoubleOrNull() ?: 0.0) >= 8.0 }
+            .sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
+        if (acclaimed.size >= 2) {
+            shelves.add(Pair("🏆 Critically Acclaimed (8.0+ ⭐)", acclaimed))
+        }
+
+        // 2. Action & High Stakes
+        addGenreShelf("⚡ Adrenaline & High-Octane Action", "action", "adventure", "martial arts", "military")
+
+        // 3. Fantasy & Supernatural
+        addGenreShelf("🔮 Fantasy, Magic & Supernatural", "fantasy", "supernatural", "magic", "isekai", "super power", "mythology")
+
+        // 4. Mystery, Crime & Psychological Thrillers
+        addGenreShelf("🧠 Mind-Bending Mystery & Crime", "mystery", "thriller", "psychological", "crime", "detective", "suspense")
+
+        // 5. Romance & Drama
+        addGenreShelf("❤️ Heartfelt Romance & Drama", "romance", "drama", "school", "shoujo", "slice of life")
+
+        // 6. Sci-Fi & Futuristic
+        addGenreShelf("🤖 Sci-Fi & Cyberpunk Worlds", "sci-fi", "science fiction", "mecha", "space", "cyberpunk")
+
+        // 7. Comedy & Feel-Good
+        addGenreShelf("😂 Laugh-Out-Loud Comedy", "comedy", "parody", "gag", "funny")
+
+        shelves
     }
 
     val (trendingItems, dynamicCategoryShelves) = remember(filteredCatalog) {
@@ -431,9 +525,21 @@ fun HomeScreen(
                 }
             }
 
-            // Featured Hero Carousel (If NOT set to continueWatchingFirst)
-            if (!layoutConfig.continueWatchingFirst && layoutConfig.showHeroCarousel && featuredItems.isNotEmpty()) {
-                item {
+            // ── Continue Watching Row (Top placement if continueWatchingFirst == true) ──
+            if (layoutConfig.continueWatchingFirst && layoutConfig.showContinueWatching && continueWatchingList.isNotEmpty()) {
+                item(key = "continue_watching_top_rail") {
+                    ContinueWatchingSection(
+                        continueWatchingList = continueWatchingList,
+                        onPlayEpisode = onPlayEpisode,
+                        onNavigateToHistory = onNavigateToHistory,
+                        onClearClick = { showClearHistoryDialog = true }
+                    )
+                }
+            }
+
+            // ── Featured Hero Carousel ──
+            if (layoutConfig.showHeroCarousel && featuredItems.isNotEmpty()) {
+                item(key = "hero_carousel") {
                     com.streamhub.app.ui.components.HeroCarousel(
                         featuredItems = featuredItems,
                         onPlayClick = { media -> onPlayEpisode(media, 0) },
@@ -443,81 +549,41 @@ fun HomeScreen(
                 }
             }
 
-            // Continue Watching Row (Resume Playback)
-            if (layoutConfig.showContinueWatching && continueWatchingList.isNotEmpty()) {
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "⏯️ Continue Watching",
-                                color = TextPrimary,
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "History ↗",
-                                    color = PrimaryRed,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.clickable { onNavigateToHistory() }
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    text = "Clear",
-                                    color = TextSecondary,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.clickable {
-                                        showClearHistoryDialog = true
-                                    }
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(14.dp),
-                            modifier = Modifier.padding(horizontal = 16.dp)
-                        ) {
-                            items(continueWatchingList, key = { it.first.id }) { (media, progress) ->
-                                ContinueWatchingRowItem(
-                                    media = media,
-                                    progress = progress,
-                                    onPlay = { onPlayEpisode(media, progress.episodeNumber) },
-                                    onRemove = { WatchHistoryManager.removeMediaProgress(media.id) }
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(20.dp))
-                    }
+            // ── Continue Watching Row (Standard placement below Hero Carousel) ──
+            if (!layoutConfig.continueWatchingFirst && layoutConfig.showContinueWatching && continueWatchingList.isNotEmpty()) {
+                item(key = "continue_watching_standard_rail") {
+                    ContinueWatchingSection(
+                        continueWatchingList = continueWatchingList,
+                        onPlayEpisode = onPlayEpisode,
+                        onNavigateToHistory = onNavigateToHistory,
+                        onClearClick = { showClearHistoryDialog = true }
+                    )
                 }
             }
 
-            // 1. Recently Added Row (Always on Top)
-            if (filteredCatalog.isNotEmpty()) {
+            // 1. Recently Added Row (Auto-hides after 3 days of upload inactivity)
+            if (recentlyAddedItems.isNotEmpty()) {
                 item(key = "section_recently_added") {
                     MediaSectionRow(
                         title = "✨ Recently Added",
-                        items = filteredCatalog,
+                        items = recentlyAddedItems,
                         onMediaClick = onMediaClick
                     )
                 }
             }
 
-            // 2. Trending & Popular Row
+            // 2. Smart Personalized "Because You Watched [Title]" Recommendation Shelf
+            becauseYouWatchedData?.let { (title, items) ->
+                item(key = "section_because_you_watched") {
+                    MediaSectionRow(
+                        title = title,
+                        items = items,
+                        onMediaClick = onMediaClick
+                    )
+                }
+            }
+
+            // 3. Trending & Popular Row
             if (trendingItems.isNotEmpty()) {
                 item(key = "section_trending") {
                     MediaSectionRow(
@@ -528,12 +594,23 @@ fun HomeScreen(
                 }
             }
 
-            // 3. Dynamic Category Shelves (Sorted dynamically by freshest upload!)
+            // 4. Dynamic Category Shelves (Sorted dynamically by freshest upload!)
             dynamicCategoryShelves.forEach { shelf ->
                 item(key = "section_shelf_${shelf.key}") {
                     MediaSectionRow(
                         title = shelf.title,
                         items = shelf.items,
+                        onMediaClick = onMediaClick
+                    )
+                }
+            }
+
+            // 5. Dynamic Micro-Genre & Thematic Shelves
+            microGenreShelves.forEachIndexed { index, (title, items) ->
+                item(key = "section_micro_genre_$index") {
+                    MediaSectionRow(
+                        title = title,
+                        items = items,
                         onMediaClick = onMediaClick
                     )
                 }
@@ -644,6 +721,90 @@ fun MediaSectionRow(
 }
 
 @Composable
+fun ContinueWatchingSection(
+    continueWatchingList: List<Pair<MediaItem, PlaybackProgress>>,
+    onPlayEpisode: (MediaItem, Int) -> Unit,
+    onNavigateToHistory: () -> Unit,
+    onClearClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "⏯️ Continue Watching",
+                    color = TextPrimary,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = PrimaryRed.copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, PrimaryRed.copy(alpha = 0.4f))
+                ) {
+                    Text(
+                        text = "${continueWatchingList.size}",
+                        color = PrimaryRed,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp)
+                    )
+                }
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "History ↗",
+                    color = PrimaryRed,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable { onNavigateToHistory() }
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "Clear",
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clickable { onClearClick() }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            items(continueWatchingList, key = { it.first.id }) { (media, progress) ->
+                ContinueWatchingRowItem(
+                    media = media,
+                    progress = progress,
+                    onPlay = { onPlayEpisode(media, progress.episodeNumber) },
+                    onRemove = { WatchHistoryManager.removeMediaProgress(media.id) }
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(18.dp))
+    }
+}
+
+@Composable
 fun ContinueWatchingRowItem(
     media: MediaItem,
     progress: PlaybackProgress,
@@ -665,18 +826,18 @@ fun ContinueWatchingRowItem(
     val currentEp = media.episodes.getOrNull(progress.episodeNumber)
 
     Card(
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
         modifier = Modifier
-            .width(185.dp)
-            .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
+            .width(200.dp)
+            .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
             .clickable { onPlay() }
     ) {
         Column {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(108.dp)
+                    .height(114.dp)
             ) {
                 AsyncImage(
                     model = currentEp?.thumbnailUrl?.ifEmpty { media.bannerUrl.ifEmpty { media.posterUrl } } ?: media.posterUrl,
@@ -691,7 +852,7 @@ fun ContinueWatchingRowItem(
                         .fillMaxSize()
                         .background(
                             androidx.compose.ui.graphics.Brush.verticalGradient(
-                                colors = listOf(Color(0x44000000), Color(0x88000000))
+                                colors = listOf(Color(0x33000000), Color(0x99000000))
                             )
                         ),
                     contentAlignment = Alignment.Center
@@ -699,14 +860,14 @@ fun ContinueWatchingRowItem(
                     Box(
                         modifier = Modifier
                             .clip(CircleShape)
-                            .background(PrimaryRed.copy(alpha = 0.95f))
-                            .padding(8.dp)
+                            .background(PrimaryRed.copy(alpha = 0.92f))
+                            .padding(9.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.PlayArrow,
                             contentDescription = "Resume Episode",
                             tint = Color.White,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -714,8 +875,9 @@ fun ContinueWatchingRowItem(
                 // Time remaining chip on top-left
                 if (remainingMinutes > 0) {
                     Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = Color(0xCC000000),
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xD9000000),
+                        border = BorderStroke(0.5.dp, Color(0x33FFFFFF)),
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .padding(6.dp)
@@ -725,7 +887,7 @@ fun ContinueWatchingRowItem(
                             color = Color.White,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
                 }
@@ -737,7 +899,7 @@ fun ContinueWatchingRowItem(
                         .padding(6.dp)
                         .size(22.dp)
                         .clip(CircleShape)
-                        .background(Color(0xAA000000))
+                        .background(Color(0xCC000000))
                         .clickable { onRemove() },
                     contentAlignment = Alignment.Center
                 ) {
@@ -753,7 +915,7 @@ fun ContinueWatchingRowItem(
                 LinearProgressIndicator(
                     progress = { progressFraction },
                     color = PrimaryRed,
-                    trackColor = Color(0x66000000),
+                    trackColor = Color(0x55000000),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(3.5.dp)

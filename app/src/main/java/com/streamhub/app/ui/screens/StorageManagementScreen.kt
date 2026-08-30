@@ -94,7 +94,6 @@ fun StorageManagementScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(BackgroundDark)
-            .statusBarsPadding()
     ) {
         Column(
             modifier = Modifier

@@ -80,7 +80,7 @@ object PlayerSettingsManager {
             Log.w(TAG, "updateNextEpisodeThreshold called before init — no-op")
             return
         }
-        val clamped = seconds.coerceIn(5, 90)
+        val clamped = seconds.coerceIn(0, 90)
         _settingsFlow.update { it.copy(nextEpisodeThresholdSeconds = clamped) }
         getPrefs().edit().putInt(KEY_NEXT_EPISODE_THRESHOLD, clamped).apply()
     }

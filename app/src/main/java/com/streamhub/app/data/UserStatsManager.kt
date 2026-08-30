@@ -11,24 +11,22 @@ import java.util.Locale
 
 /**
  * User Engagement & Analytics Manager:
- * - All-time watch duration (in seconds/hours)
- * - Today's watch duration (in seconds/minutes)
+ * - All-time watch duration (in milliseconds / hours)
+ * - Today's watch duration (in milliseconds / minutes / hours)
  * - Active daily watch streak counter
  * - Category Watch Breakdown (% Anime, % Movies, % Web Series)
- *
- * FIX: All default values are now HONEST — a fresh install shows 0.0h, 0m, 0-day streak.
- * No fabricated engagement metrics.
  */
 object UserStatsManager {
 
     private const val PREFS_NAME = "streamhub_user_stats"
-    private const val KEY_TOTAL_WATCH_SECONDS = "total_watch_seconds"
-    private const val KEY_DAILY_WATCH_SECONDS = "daily_watch_seconds"
+    private const val KEY_TOTAL_WATCH_MS = "total_watch_millis"
+    private const val KEY_DAILY_WATCH_MS = "daily_watch_millis"
     private const val KEY_LAST_WATCH_DATE = "last_watch_date"
     private const val KEY_STREAK_COUNT = "streak_count"
     private const val KEY_ANIME_SECONDS = "anime_watch_seconds"
     private const val KEY_MOVIE_SECONDS = "movie_watch_seconds"
     private const val KEY_SERIES_SECONDS = "series_watch_seconds"
+    private const val KEY_CLEANED_CORRUPTED_STATS_V2 = "cleaned_corrupted_stats_v2"
 
     private var prefs: SharedPreferences? = null
 
@@ -53,15 +51,30 @@ object UserStatsManager {
     fun init(context: Context) {
         if (prefs != null) return
         prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        sanitizeCorruptedLegacyData()
         loadStats()
+    }
+
+    private fun sanitizeCorruptedLegacyData() {
+        val p = prefs ?: return
+        if (!p.getBoolean(KEY_CLEANED_CORRUPTED_STATS_V2, false)) {
+            // Reset the old 1000x inflated values once
+            p.edit()
+                .putLong(KEY_TOTAL_WATCH_MS, 0L)
+                .putLong(KEY_DAILY_WATCH_MS, 0L)
+                .putLong(KEY_ANIME_SECONDS, 0L)
+                .putLong(KEY_MOVIE_SECONDS, 0L)
+                .putLong(KEY_SERIES_SECONDS, 0L)
+                .putBoolean(KEY_CLEANED_CORRUPTED_STATS_V2, true)
+                .apply()
+        }
     }
 
     @Synchronized
     private fun loadStats() {
         val p = prefs ?: return
-        // FIX #1: All defaults are 0 — no fabricated engagement on fresh install
-        val totalSec = p.getLong(KEY_TOTAL_WATCH_SECONDS, 0L)
-        val dailySec = p.getLong(KEY_DAILY_WATCH_SECONDS, 0L)
+        val totalMs = p.getLong(KEY_TOTAL_WATCH_MS, 0L)
+        val dailyMs = p.getLong(KEY_DAILY_WATCH_MS, 0L)
         val lastDate = p.getString(KEY_LAST_WATCH_DATE, "") ?: ""
         val streak = p.getInt(KEY_STREAK_COUNT, 0)
 
@@ -71,8 +84,7 @@ object UserStatsManager {
 
         val todayStr = getTodayDateString()
 
-        val currentDailySec = if (lastDate == todayStr) dailySec else 0L
-        // FIX #4: Blank lastDate = 0 streak (never watched), not 3
+        val currentDailyMs = if (lastDate == todayStr) dailyMs else 0L
         val currentStreak = when {
             lastDate.isBlank() -> 0
             lastDate == todayStr -> streak.coerceAtLeast(1)
@@ -80,17 +92,13 @@ object UserStatsManager {
             else -> 0
         }
 
-        _totalWatchHours.value = String.format(Locale.US, "%.1fh", totalSec / 3600.0)
-        _dailyWatchFormatted.value = formatMinutes(currentDailySec)
+        _totalWatchHours.value = String.format(Locale.US, "%.1fh", totalMs / (3600.0 * 1000.0))
+        _dailyWatchFormatted.value = formatMillis(currentDailyMs)
         _streakDays.value = currentStreak
 
         calculateCategoryPercentages(animeSec, movieSec, seriesSec)
     }
 
-    /**
-     * FIX #2: Removed coerceIn(10, 80) — percentages now reflect actual data honestly.
-     * If a user only watches movies, anime shows 0%. No artificial floors or ceilings.
-     */
     private fun calculateCategoryPercentages(animeSec: Long, movieSec: Long, seriesSec: Long) {
         val sum = animeSec + movieSec + seriesSec
         if (sum == 0L) {
@@ -106,40 +114,44 @@ object UserStatsManager {
 
     @Synchronized
     fun addWatchTime(seconds: Long, category: String = "ANIME") {
-        if (seconds <= 0L) return
-        val safeSeconds = seconds.coerceAtMost(86400L)
+        addWatchTimeMillis(seconds * 1000L, category)
+    }
+
+    @Synchronized
+    fun addWatchTimeMillis(millis: Long, category: String = "ANIME") {
+        if (millis <= 0L) return
+        val safeMillis = millis.coerceAtMost(60_000L) // max 1 min step
 
         val p = prefs ?: return
         val todayStr = getTodayDateString()
         val lastDate = p.getString(KEY_LAST_WATCH_DATE, "") ?: ""
         var streak = p.getInt(KEY_STREAK_COUNT, 0)
 
-        // FIX #1: Read with honest defaults (0L, 0)
-        val totalSec = p.getLong(KEY_TOTAL_WATCH_SECONDS, 0L) + safeSeconds
-        val prevDailySec = if (lastDate == todayStr) p.getLong(KEY_DAILY_WATCH_SECONDS, 0L) else 0L
-        val newDailySec = prevDailySec + safeSeconds
+        val totalMs = p.getLong(KEY_TOTAL_WATCH_MS, 0L) + safeMillis
+        val prevDailyMs = if (lastDate == todayStr) p.getLong(KEY_DAILY_WATCH_MS, 0L) else 0L
+        val newDailyMs = prevDailyMs + safeMillis
 
         var animeSec = p.getLong(KEY_ANIME_SECONDS, 0L)
         var movieSec = p.getLong(KEY_MOVIE_SECONDS, 0L)
         var seriesSec = p.getLong(KEY_SERIES_SECONDS, 0L)
 
+        val addedSec = safeMillis / 1000L
         when (category.uppercase()) {
-            "ANIME" -> animeSec += seconds
-            "MOVIE" -> movieSec += seconds
-            "WEB_SERIES", "SERIES" -> seriesSec += seconds
-            else -> { /* Ignore unknown categories */ }
+            "ANIME" -> animeSec += addedSec
+            "MOVIE" -> movieSec += addedSec
+            "WEB_SERIES", "SERIES" -> seriesSec += addedSec
+            else -> { /* Ignore */ }
         }
 
         if (lastDate != todayStr) {
-            // FIX #4: Blank lastDate with new watch = streak of 1, not inherited from fabricated default
             streak = if (lastDate.isBlank()) 1
                      else if (isYesterday(lastDate)) streak + 1
                      else 1
         }
 
         p.edit()
-            .putLong(KEY_TOTAL_WATCH_SECONDS, totalSec)
-            .putLong(KEY_DAILY_WATCH_SECONDS, newDailySec)
+            .putLong(KEY_TOTAL_WATCH_MS, totalMs)
+            .putLong(KEY_DAILY_WATCH_MS, newDailyMs)
             .putString(KEY_LAST_WATCH_DATE, todayStr)
             .putInt(KEY_STREAK_COUNT, streak)
             .putLong(KEY_ANIME_SECONDS, animeSec)
@@ -147,15 +159,16 @@ object UserStatsManager {
             .putLong(KEY_SERIES_SECONDS, seriesSec)
             .apply()
 
-        _totalWatchHours.value = String.format(Locale.US, "%.1fh", totalSec / 3600.0)
-        _dailyWatchFormatted.value = formatMinutes(newDailySec)
+        _totalWatchHours.value = String.format(Locale.US, "%.1fh", totalMs / (3600.0 * 1000.0))
+        _dailyWatchFormatted.value = formatMillis(newDailyMs)
         _streakDays.value = streak
 
         calculateCategoryPercentages(animeSec, movieSec, seriesSec)
     }
 
-    private fun formatMinutes(seconds: Long): String {
-        val mins = seconds / 60
+    private fun formatMillis(millis: Long): String {
+        val totalSec = millis / 1000
+        val mins = totalSec / 60
         return if (mins >= 60) {
             val hrs = mins / 60
             val remMins = mins % 60

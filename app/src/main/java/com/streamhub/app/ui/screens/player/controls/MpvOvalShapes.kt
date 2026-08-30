@@ -21,6 +21,11 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -103,51 +108,92 @@ object LeftSideOvalShape : Shape {
 }
 
 /**
- * Animated triple chevrons for double tap seeking.
+ * Animated triple chevrons for double tap seeking with staggered travelling wave.
  */
 @Composable
 fun DoubleTapSeekChevrons(
     isForward: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val alpha1 = remember { Animatable(0f) }
-    val alpha2 = remember { Animatable(0f) }
-    val alpha3 = remember { Animatable(0f) }
+    val alpha1 = remember { Animatable(0.2f) }
+    val alpha2 = remember { Animatable(0.2f) }
+    val alpha3 = remember { Animatable(0.2f) }
+    val scale1 = remember { Animatable(0.85f) }
+    val scale2 = remember { Animatable(0.85f) }
+    val scale3 = remember { Animatable(0.85f) }
 
     LaunchedEffect(isForward) {
         while (true) {
-            alpha1.animateTo(1f, animationSpec = tween(150))
-            alpha2.animateTo(1f, animationSpec = tween(150))
-            alpha3.animateTo(1f, animationSpec = tween(150))
-            alpha1.animateTo(0.2f, animationSpec = tween(150))
-            alpha2.animateTo(0.2f, animationSpec = tween(150))
-            alpha3.animateTo(0.2f, animationSpec = tween(150))
+            // Wave step 1: First chevron pops
+            launch {
+                alpha1.animateTo(1f, tween(110))
+                scale1.animateTo(1.15f, tween(110))
+                alpha1.animateTo(0.3f, tween(180))
+                scale1.animateTo(0.9f, tween(180))
+            }
+            delay(70)
+
+            // Wave step 2: Second chevron pops
+            launch {
+                alpha2.animateTo(1f, tween(110))
+                scale2.animateTo(1.15f, tween(110))
+                alpha2.animateTo(0.3f, tween(180))
+                scale2.animateTo(0.9f, tween(180))
+            }
+            delay(70)
+
+            // Wave step 3: Third chevron pops
+            launch {
+                alpha3.animateTo(1f, tween(110))
+                scale3.animateTo(1.15f, tween(110))
+                alpha3.animateTo(0.3f, tween(180))
+                scale3.animateTo(0.9f, tween(180))
+            }
+            delay(200)
         }
     }
 
     val rotation = if (isForward) 0f else 180f
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy((-4).dp),
+        horizontalArrangement = Arrangement.spacedBy((-6).dp),
         modifier = modifier.rotate(rotation)
     ) {
         Icon(
             imageVector = Icons.Default.PlayArrow,
             contentDescription = null,
-            modifier = Modifier.size(22.dp).alpha(alpha1.value),
-            tint = Color.White
+            modifier = Modifier
+                .size(24.dp)
+                .graphicsLayer {
+                    scaleX = scale1.value
+                    scaleY = scale1.value
+                }
+                .alpha(alpha1.value),
+            tint = Color(0xFF00E5FF)
         )
         Icon(
             imageVector = Icons.Default.PlayArrow,
             contentDescription = null,
-            modifier = Modifier.size(22.dp).alpha(alpha2.value),
-            tint = Color.White
+            modifier = Modifier
+                .size(24.dp)
+                .graphicsLayer {
+                    scaleX = scale2.value
+                    scaleY = scale2.value
+                }
+                .alpha(alpha2.value),
+            tint = Color(0xFF00E5FF)
         )
         Icon(
             imageVector = Icons.Default.PlayArrow,
             contentDescription = null,
-            modifier = Modifier.size(22.dp).alpha(alpha3.value),
-            tint = Color.White
+            modifier = Modifier
+                .size(24.dp)
+                .graphicsLayer {
+                    scaleX = scale3.value
+                    scaleY = scale3.value
+                }
+                .alpha(alpha3.value),
+            tint = Color(0xFF00E5FF)
         )
     }
 }
@@ -164,8 +210,8 @@ fun DoubleTapSeekRippleOverlay(
 ) {
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(animationSpec = tween(150)),
-        exit = fadeOut(animationSpec = tween(300)),
+        enter = fadeIn(animationSpec = tween(120)) + scaleIn(initialScale = 0.92f, animationSpec = tween(120)),
+        exit = fadeOut(animationSpec = tween(280)) + scaleOut(targetScale = 0.95f, animationSpec = tween(280)),
         modifier = modifier.fillMaxSize()
     ) {
         Box(
@@ -175,11 +221,19 @@ fun DoubleTapSeekRippleOverlay(
             val shape = if (isForward) RightSideOvalShape else LeftSideOvalShape
             val gradient = if (isForward) {
                 Brush.horizontalGradient(
-                    colors = listOf(Color(0x00D0BCFF), Color(0x33D0BCFF), Color(0x55D0BCFF))
+                    colors = listOf(
+                        Color(0x0000E5FF),
+                        Color(0x2200E5FF),
+                        Color(0x5500E5FF)
+                    )
                 )
             } else {
                 Brush.horizontalGradient(
-                    colors = listOf(Color(0x55D0BCFF), Color(0x33D0BCFF), Color(0x00D0BCFF))
+                    colors = listOf(
+                        Color(0x5500E5FF),
+                        Color(0x2200E5FF),
+                        Color(0x0000E5FF)
+                    )
                 )
             }
 
@@ -197,14 +251,22 @@ fun DoubleTapSeekRippleOverlay(
                     modifier = Modifier.padding(horizontal = 24.dp)
                 ) {
                     DoubleTapSeekChevrons(isForward = isForward)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = seekSecondsText,
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xD90A0A14),
+                        border = BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.8f)),
+                        shadowElevation = 8.dp
+                    ) {
+                        Text(
+                            text = seekSecondsText,
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                        )
+                    }
                 }
             }
         }
@@ -223,7 +285,7 @@ fun CenterPlayPauseRippleOverlay(
     AnimatedVisibility(
         visible = visible,
         enter = scaleIn(initialScale = 0.6f, animationSpec = tween(150)) + fadeIn(animationSpec = tween(120)),
-        exit = scaleOut(targetScale = 1.3f, animationSpec = tween(220)) + fadeOut(animationSpec = tween(220)),
+        exit = scaleOut(targetScale = 1.35f, animationSpec = tween(240)) + fadeOut(animationSpec = tween(240)),
         modifier = modifier.fillMaxSize()
     ) {
         Box(
@@ -232,10 +294,10 @@ fun CenterPlayPauseRippleOverlay(
         ) {
             Surface(
                 shape = CircleShape,
-                color = Color(0xCC1E1E2C),
-                border = BorderStroke(2.dp, Color(0xFFD0BCFF)),
-                shadowElevation = 16.dp,
-                modifier = Modifier.size(80.dp)
+                color = Color(0xCC0E0E1A),
+                border = BorderStroke(2.dp, Brush.linearGradient(listOf(Color(0xFFE50914), Color(0xFF00E5FF)))),
+                shadowElevation = 18.dp,
+                modifier = Modifier.size(84.dp)
             ) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -244,8 +306,8 @@ fun CenterPlayPauseRippleOverlay(
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.PlayArrow else Icons.Default.Pause,
                         contentDescription = null,
-                        tint = Color(0xFFD0BCFF),
-                        modifier = Modifier.size(44.dp)
+                        tint = Color(0xFF00E5FF),
+                        modifier = Modifier.size(46.dp)
                     )
                 }
             }

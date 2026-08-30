@@ -110,12 +110,28 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     ACTION_PIP_NEXT -> {
-                        val player = StreamPlayerViewModel.currentPlayer
-                        player?.seekToNextMediaItem()
+                        val callback = com.streamhub.app.player.PlayerHolder.onPlayNextAction
+                        if (callback != null) {
+                            callback()
+                        } else {
+                            val player = StreamPlayerViewModel.currentPlayer
+                            player?.let {
+                                val target = (it.currentPosition + 10_000L).coerceAtMost(it.duration.coerceAtLeast(0L))
+                                it.seekTo(target)
+                            }
+                        }
                     }
                     ACTION_PIP_PREV -> {
-                        val player = StreamPlayerViewModel.currentPlayer
-                        player?.seekToPreviousMediaItem()
+                        val callback = com.streamhub.app.player.PlayerHolder.onPlayPrevAction
+                        if (callback != null) {
+                            callback()
+                        } else {
+                            val player = StreamPlayerViewModel.currentPlayer
+                            player?.let {
+                                val target = (it.currentPosition - 10_000L).coerceAtLeast(0L)
+                                it.seekTo(target)
+                            }
+                        }
                     }
                 }
             }
@@ -253,14 +269,10 @@ class MainActivity : ComponentActivity() {
         val player = StreamPlayerViewModel.currentPlayer
         val videoSize = player?.videoSize
         val ratio = if (videoSize != null && videoSize.width > 0 && videoSize.height > 0) {
-            val w = videoSize.width
-            val h = videoSize.height
-            val r = w.toFloat() / h.toFloat()
-            when {
-                r > 2.39f -> Rational(239, 100)
-                r < 0.42f -> Rational(42, 100)
-                else -> Rational(w, h)
-            }
+            val w = videoSize.width.toFloat()
+            val h = videoSize.height.toFloat()
+            val r = (w / h).coerceIn(0.42f, 2.39f)
+            Rational((r * 1000).toInt(), 1000)
         } else {
             Rational(16, 9)
         }

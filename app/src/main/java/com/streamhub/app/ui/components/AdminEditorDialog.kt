@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -173,12 +174,34 @@ fun AdminEditorDialog(
     var fetchedFileName by remember(initialItem) { mutableStateOf(initialItem?.episodes?.firstOrNull()?.fileName ?: "") }
     var fetchedDurationMs by remember(initialItem) { mutableLongStateOf(initialItem?.episodes?.firstOrNull()?.durationMs ?: 0L) }
 
+    // --- State: Smart Batch Parser & Generator ---
+    var batchMode by remember { mutableIntStateOf(0) } // 0: Smart Dump / F2L / Text, 1: Sequential Pattern Generator
+    var seqStartEp by remember { mutableStateOf("1") }
+    var seqEndEp by remember { mutableStateOf("12") }
+    var seqUrlTemplate by remember { mutableStateOf("") }
+    var seqTitleTemplate by remember { mutableStateOf("Episode {n}") }
+
     // --- State: UI Feedback ---
     var isFetchingApi by remember { mutableStateOf(false) }
     var fetchError by remember { mutableStateOf<String?>(null) }
     var batchError by remember { mutableStateOf<String?>(null) }
     var validationError by remember { mutableStateOf<String?>(null) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showBulkImportDialog by remember { mutableStateOf(false) }
+
+    if (showBulkImportDialog) {
+        BulkImportDialog(
+            existingCatalog = emptyList(),
+            onDismiss = { showBulkImportDialog = false },
+            onImportConfirmed = { importedItems, _ ->
+                showBulkImportDialog = false
+                importedItems.forEach { item ->
+                    onSave(item)
+                }
+                onDismiss()
+            }
+        )
+    }
 
     if (showDeleteConfirmDialog && initialItem != null && onDelete != null) {
         AlertDialog(
@@ -252,11 +275,29 @@ fun AdminEditorDialog(
                         )
                     }
 
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(34.dp)
-                    ) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFF8B5CF6).copy(alpha = 0.2f),
+                            border = BorderStroke(1.dp, Color(0xFF8B5CF6)),
+                            modifier = Modifier.clickable { showBulkImportDialog = true }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("🌐 Bulk Sync", color = Color(0xFFC4B5FD), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                        }
                     }
                 }
 
@@ -704,20 +745,20 @@ fun AdminEditorDialog(
                                 }
                             }
                         } else {
-                            // --- SERIES / ANIME FORMAT: SMART F2L & BATCH RANGE INPUT ---
+                            // --- SERIES / ANIME FORMAT: SMART F2L, RAW TEXT PARSER & SEQUENTIAL GENERATOR ---
                             val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
                             val parsedSeasonNum = seasonNumberText.toIntOrNull() ?: 1
 
                             Text("2. Stream Links & Episodes Importer 📺", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "Paste your entire Telegram F2L bot output message, JSON batch, or episode link list. Everything is parsed and sorted automatically!",
+                                "Choose your episode import method: Smart Text Parser (paste any Telegram or link dump) or Auto-Sequential Generator.",
                                 color = TextSecondary,
                                 fontSize = 11.sp,
                                 lineHeight = 15.sp
                             )
 
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
 
                             // Season / Arc configuration for Anime / Sagas
                             Row(
@@ -735,7 +776,7 @@ fun AdminEditorDialog(
                                     value = arcNameText,
                                     onValueChange = { arcNameText = it },
                                     label = { Text("Arc / Saga Name (Optional)", color = TextSecondary) },
-                                    placeholder = { Text("e.g. Chunin Exams", color = TextSecondary) },
+                                    placeholder = { Text("e.g. Shibuya Incident Arc", color = TextSecondary) },
                                     singleLine = true,
                                     modifier = Modifier.weight(2f)
                                 )
@@ -743,68 +784,201 @@ fun AdminEditorDialog(
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            // --- 1-CLICK F2L REST API IMPORTER ---
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFF1E1E2E),
-                                border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.5f)),
-                                modifier = Modifier.fillMaxWidth()
+                            // Sub-mode Segmented Tabs: Smart Dump vs Sequential Generator
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFF161622))
+                                    .padding(3.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.AutoAwesome,
-                                            contentDescription = null,
-                                            tint = Color(0xFF38BDF8),
-                                            modifier = Modifier.size(15.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "1-Click F2L Bot REST API Importer ⚡",
-                                            color = Color(0xFF38BDF8),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        OutlinedTextField(
-                                            value = f2lBatchInput,
-                                            onValueChange = { f2lBatchInput = it; batchError = null },
-                                            label = { Text("F2L Batch ID or URL", color = TextSecondary, fontSize = 11.sp) },
-                                            placeholder = { Text("e.g. eb76ab230b4d...", color = TextSecondary, fontSize = 11.sp) },
-                                            singleLine = true,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        Button(
-                                            onClick = {
-                                                if (f2lBatchInput.isBlank()) {
-                                                    batchError = "Please enter Batch ID or URL"
-                                                    return@Button
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (batchMode == 0) Color(0xFF0284C7) else Color.Transparent)
+                                        .clickable { batchMode = 0 }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("📥 Smart Text / Links / F2L", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (batchMode == 1) Color(0xFF8B5CF6) else Color.Transparent)
+                                        .clickable { batchMode = 1 }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("🔢 Sequential Generator", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            if (batchMode == 0) {
+                                // ==========================================
+                                // SUB-MODE 0: SMART TEXT / TELEGRAM / F2L DUMP
+                                // ==========================================
+
+                                // --- 1-CLICK F2L REST API IMPORTER ---
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFF1E1E2E),
+                                    border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.5f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.AutoAwesome,
+                                                contentDescription = null,
+                                                tint = Color(0xFF38BDF8),
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "1-Click F2L Bot REST API Importer ⚡",
+                                                color = Color(0xFF38BDF8),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            OutlinedTextField(
+                                                value = f2lBatchInput,
+                                                onValueChange = { f2lBatchInput = it; batchError = null },
+                                                label = { Text("F2L Batch ID or URL", color = TextSecondary, fontSize = 11.sp) },
+                                                placeholder = { Text("e.g. eb76ab230b4d...", color = TextSecondary, fontSize = 11.sp) },
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Button(
+                                                onClick = {
+                                                    if (f2lBatchInput.isBlank()) {
+                                                        batchError = "Please enter Batch ID or URL"
+                                                        return@Button
+                                                    }
+                                                    isFetchingF2l = true
+                                                    batchError = null
+                                                    scope.launch {
+                                                        val res = com.streamhub.app.data.api.F2lApiClient.fetchBatch(f2lBatchInput, parsedSeasonNum, arcNameText)
+                                                        res.fold(
+                                                            onSuccess = { eps ->
+                                                                if (eps.isNotEmpty()) {
+                                                                    val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps)
+                                                                    generatedEpisodesText = jsonStr
+                                                                    startBatchLink = jsonStr
+                                                                } else {
+                                                                    batchError = "No episodes returned by F2L API"
+                                                                }
+                                                            },
+                                                            onFailure = { err ->
+                                                                batchError = "F2L API Import Failed: ${err.message}"
+                                                            }
+                                                        )
+                                                        isFetchingF2l = false
+                                                    }
+                                                },
+                                                enabled = f2lBatchInput.isNotBlank() && !isFetchingF2l,
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                                                shape = RoundedCornerShape(10.dp),
+                                                modifier = Modifier.height(50.dp)
+                                            ) {
+                                                if (isFetchingF2l) {
+                                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
+                                                } else {
+                                                    Text("Fetch API", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                                 }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                // Smart F2L Bot Output / JSON / Links Input Area
+                                OutlinedTextField(
+                                    value = generatedEpisodesText.ifBlank { startBatchLink },
+                                    onValueChange = { newText ->
+                                        startBatchLink = newText
+                                        generatedEpisodesText = newText
+                                        batchError = null
+
+                                        val trimmed = newText.trim()
+                                        val isBatchUrl = (trimmed.startsWith("http://") || trimmed.startsWith("https://")) &&
+                                                         (trimmed.contains("/batch/", ignoreCase = true) || trimmed.contains("api/batch", ignoreCase = true))
+                                        if (isBatchUrl && !isFetchingF2l) {
+                                            f2lBatchInput = trimmed
+                                            isFetchingF2l = true
+                                            scope.launch {
+                                                val res = com.streamhub.app.data.api.F2lApiClient.fetchBatch(trimmed, parsedSeasonNum, arcNameText)
+                                                res.fold(
+                                                    onSuccess = { eps ->
+                                                        if (eps.isNotEmpty()) {
+                                                            val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps)
+                                                            generatedEpisodesText = jsonStr
+                                                            startBatchLink = jsonStr
+                                                        }
+                                                    },
+                                                    onFailure = { err ->
+                                                        batchError = "F2L API Import: ${err.message}"
+                                                    }
+                                                )
+                                                isFetchingF2l = false
+                                            }
+                                        }
+                                    },
+                                    label = { Text("⚡ Smart Raw Dump / Episode Links / Telegram Post *", color = TextSecondary) },
+                                    placeholder = { Text("Paste raw links, Telegram posts, or JSON here...\n> Ep 01: https://cdn.example.com/ep01.mp4\n> Ep 02: https://cdn.example.com/ep02.mp4", color = TextSecondary) },
+                                    minLines = 4,
+                                    maxLines = 8,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Color(0xFFFFD700),
+                                        unfocusedBorderColor = Color(0xFF2C2C3E),
+                                        focusedTextColor = TextPrimary
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            batchError = null
+                                            val clipText = clipboardManager.getText()?.text?.trim()
+                                            if (clipText.isNullOrBlank()) {
+                                                batchError = "Clipboard is empty"
+                                                return@Button
+                                            }
+
+                                            val isBatchUrlOrId = clipText.contains("/batch/", ignoreCase = true) ||
+                                                                 clipText.contains("api/batch", ignoreCase = true) ||
+                                                                 (clipText.length in 32..64 && clipText.matches(Regex("^[a-fA-F0-9]+$")))
+
+                                            if (isBatchUrlOrId) {
+                                                f2lBatchInput = clipText
                                                 isFetchingF2l = true
-                                                batchError = null
                                                 scope.launch {
-                                                    val res = com.streamhub.app.data.api.F2lApiClient.fetchBatch(f2lBatchInput, parsedSeasonNum, arcNameText)
+                                                    val res = com.streamhub.app.data.api.F2lApiClient.fetchBatch(clipText, parsedSeasonNum, arcNameText)
                                                     res.fold(
                                                         onSuccess = { eps ->
                                                             if (eps.isNotEmpty()) {
-                                                                val jsonArray = org.json.JSONArray()
-                                                                eps.forEach { ep ->
-                                                                    val obj = org.json.JSONObject()
-                                                                    obj.put("episode_num", ep.episodeNumber)
-                                                                    obj.put("file_name", ep.fileName)
-                                                                    obj.put("file_size", ep.fileSize)
-                                                                    obj.put("direct_stream_url", ep.streamUrl)
-                                                                    obj.put("download_url", ep.mirrorStreamUrl)
-                                                                    jsonArray.put(obj)
-                                                                }
-                                                                generatedEpisodesText = jsonArray.toString(2)
-                                                                startBatchLink = generatedEpisodesText
+                                                                val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps)
+                                                                generatedEpisodesText = jsonStr
+                                                                startBatchLink = jsonStr
                                                             } else {
                                                                 batchError = "No episodes returned by F2L API"
                                                             }
@@ -815,160 +989,142 @@ fun AdminEditorDialog(
                                                     )
                                                     isFetchingF2l = false
                                                 }
-                                            },
-                                            enabled = f2lBatchInput.isNotBlank() && !isFetchingF2l,
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                                            shape = RoundedCornerShape(10.dp),
-                                            modifier = Modifier.height(50.dp)
-                                        ) {
-                                            if (isFetchingF2l) {
-                                                CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
+                                                return@Button
+                                            }
+
+                                            val parsed = com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(clipText, parsedSeasonNum, arcNameText)
+                                            if (parsed.isNotEmpty()) {
+                                                val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(parsed)
+                                                generatedEpisodesText = jsonStr
+                                                startBatchLink = jsonStr
                                             } else {
-                                                Text("Fetch API", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            // Smart F2L Bot Output / JSON / Links Input Area
-                            OutlinedTextField(
-                                value = generatedEpisodesText.ifBlank { startBatchLink },
-                                onValueChange = { newText ->
-                                    startBatchLink = newText
-                                    generatedEpisodesText = newText
-                                    batchError = null
-
-                                    val trimmed = newText.trim()
-                                    val isBatchUrl = (trimmed.startsWith("http://") || trimmed.startsWith("https://")) &&
-                                                     (trimmed.contains("/batch/", ignoreCase = true) || trimmed.contains("api/batch", ignoreCase = true))
-                                    if (isBatchUrl && !isFetchingF2l) {
-                                        f2lBatchInput = trimmed
-                                        isFetchingF2l = true
-                                        scope.launch {
-                                            val res = com.streamhub.app.data.api.F2lApiClient.fetchBatch(trimmed, parsedSeasonNum, arcNameText)
-                                            res.fold(
-                                                onSuccess = { eps ->
-                                                    if (eps.isNotEmpty()) {
-                                                        val jsonArray = org.json.JSONArray()
-                                                        eps.forEach { ep ->
-                                                            val obj = org.json.JSONObject()
-                                                            obj.put("episode_num", ep.episodeNumber)
-                                                            obj.put("file_name", ep.fileName)
-                                                            obj.put("file_size", ep.fileSize)
-                                                            obj.put("direct_stream_url", ep.streamUrl)
-                                                            obj.put("download_url", ep.mirrorStreamUrl)
-                                                            jsonArray.put(obj)
-                                                        }
-                                                        generatedEpisodesText = jsonArray.toString(2)
-                                                        startBatchLink = generatedEpisodesText
-                                                    }
-                                                },
-                                                onFailure = { err ->
-                                                    batchError = "F2L API Import: ${err.message}"
+                                                val fallback = TelegramLinkResolver.parseSmartBotMessageOrLinks(clipText, parsedSeasonNum, arcNameText)
+                                                if (fallback.isNotEmpty()) {
+                                                    val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(fallback)
+                                                    generatedEpisodesText = jsonStr
+                                                    startBatchLink = jsonStr
+                                                } else {
+                                                    batchError = "Could not parse episodes from text."
                                                 }
-                                            )
-                                            isFetchingF2l = false
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0088CC)),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("📋 Paste & Auto-Parse", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    if (startBatchLink.isNotBlank() || generatedEpisodesText.isNotBlank()) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                startBatchLink = ""
+                                                endBatchLink = ""
+                                                generatedEpisodesText = ""
+                                                batchError = null
+                                            },
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryRed),
+                                            border = BorderStroke(1.dp, PrimaryRed)
+                                        ) {
+                                            Icon(Icons.Default.Delete, contentDescription = "Clear", tint = PrimaryRed, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Clear", color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
-                                },
-                                label = { Text("⚡ Smart F2L Bot Output / JSON / Links *", color = TextSecondary) },
-                                placeholder = { Text("Paste entire Telegram bot message here...\n> 🎬 EP - 01 - Undertaker.mkv (447.4 MB)\n> 🔗 Stream: https://...\n> ⬇️ Download: https://...", color = TextSecondary) },
-                                minLines = 4,
-                                maxLines = 8,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Color(0xFFFFD700),
-                                    unfocusedBorderColor = Color(0xFF2C2C3E),
-                                    focusedTextColor = TextPrimary
-                                ),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = {
-                                        batchError = null
-                                        val clipText = clipboardManager.getText()?.text?.trim()
-                                        if (clipText.isNullOrBlank()) {
-                                            batchError = "Clipboard is empty"
-                                            return@Button
-                                        }
-
-                                        val isBatchUrlOrId = clipText.contains("/batch/", ignoreCase = true) ||
-                                                             clipText.contains("api/batch", ignoreCase = true) ||
-                                                             (clipText.length in 32..64 && clipText.matches(Regex("^[a-fA-F0-9]+$")))
-
-                                        if (isBatchUrlOrId) {
-                                            f2lBatchInput = clipText
-                                            isFetchingF2l = true
-                                            scope.launch {
-                                                val res = com.streamhub.app.data.api.F2lApiClient.fetchBatch(clipText, parsedSeasonNum, arcNameText)
-                                                res.fold(
-                                                    onSuccess = { eps ->
-                                                        if (eps.isNotEmpty()) {
-                                                            val jsonArray = org.json.JSONArray()
-                                                            eps.forEach { ep ->
-                                                                val obj = org.json.JSONObject()
-                                                                obj.put("episode_num", ep.episodeNumber)
-                                                                obj.put("file_name", ep.fileName)
-                                                                obj.put("file_size", ep.fileSize)
-                                                                obj.put("direct_stream_url", ep.streamUrl)
-                                                                obj.put("download_url", ep.mirrorStreamUrl)
-                                                                jsonArray.put(obj)
-                                                            }
-                                                            generatedEpisodesText = jsonArray.toString(2)
-                                                            startBatchLink = generatedEpisodesText
-                                                        } else {
-                                                            batchError = "No episodes returned by F2L API"
-                                                        }
-                                                    },
-                                                    onFailure = { err ->
-                                                        batchError = "F2L API Import Failed: ${err.message}"
-                                                    }
-                                                )
-                                                isFetchingF2l = false
-                                            }
-                                            return@Button
-                                        }
-
-                                        startBatchLink = clipText
-                                        generatedEpisodesText = clipText
-                                        val parsed = TelegramLinkResolver.parseSmartBotMessageOrLinks(clipText, parsedSeasonNum, arcNameText)
-                                        if (parsed.isEmpty()) {
-                                            batchError = "Could not parse episodes. Please check format."
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0088CC)),
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("📋 Paste & Auto-Parse", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
+                            } else {
+                                // ==========================================
+                                // SUB-MODE 1: SEQUENTIAL PATTERN GENERATOR
+                                // ==========================================
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFF1E1B2E),
+                                    border = BorderStroke(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.5f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFF8B5CF6), modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Sequential Episode Batch Generator 🔢", color = Color(0xFFC4B5FD), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
 
-                                if (startBatchLink.isNotBlank() || generatedEpisodesText.isNotBlank()) {
-                                    OutlinedButton(
-                                        onClick = {
-                                            startBatchLink = ""
-                                            endBatchLink = ""
-                                            generatedEpisodesText = ""
-                                            batchError = null
-                                        },
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryRed),
-                                        border = BorderStroke(1.dp, PrimaryRed)
-                                    ) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Clear", tint = PrimaryRed, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Clear", color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            OutlinedTextField(
+                                                value = seqStartEp,
+                                                onValueChange = { seqStartEp = it },
+                                                label = { Text("Start Ep #", color = TextSecondary, fontSize = 11.sp) },
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            OutlinedTextField(
+                                                value = seqEndEp,
+                                                onValueChange = { seqEndEp = it },
+                                                label = { Text("End Ep #", color = TextSecondary, fontSize = 11.sp) },
+                                                singleLine = true,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        OutlinedTextField(
+                                            value = seqUrlTemplate,
+                                            onValueChange = { seqUrlTemplate = it },
+                                            label = { Text("Stream URL Template ({n} or {0n})", color = TextSecondary, fontSize = 11.sp) },
+                                            placeholder = { Text("https://my-cdn.com/anime/ep_{0n}.mp4", color = TextSecondary, fontSize = 11.sp) },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        OutlinedTextField(
+                                            value = seqTitleTemplate,
+                                            onValueChange = { seqTitleTemplate = it },
+                                            label = { Text("Episode Title Template", color = TextSecondary, fontSize = 11.sp) },
+                                            placeholder = { Text("Episode {n}", color = TextSecondary, fontSize = 11.sp) },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+
+                                        Spacer(modifier = Modifier.height(10.dp))
+
+                                        Button(
+                                            onClick = {
+                                                val start = seqStartEp.toIntOrNull() ?: 1
+                                                val end = seqEndEp.toIntOrNull() ?: 12
+                                                val generated = com.streamhub.app.data.parser.BatchEpisodeParser.generateSequentialBatch(
+                                                    templateUrl = seqUrlTemplate.trim(),
+                                                    startEp = start,
+                                                    endEp = end,
+                                                    seasonNum = parsedSeasonNum,
+                                                    arcName = arcNameText.trim(),
+                                                    titleTemplate = seqTitleTemplate.trim().ifBlank { "Episode {n}" }
+                                                )
+                                                val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(generated)
+                                                generatedEpisodesText = jsonStr
+                                                startBatchLink = jsonStr
+                                                batchError = null
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6)),
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier.fillMaxWidth().height(46.dp)
+                                        ) {
+                                            Text(
+                                                "⚡ Generate ${(seqEndEp.toIntOrNull() ?: 12) - (seqStartEp.toIntOrNull() ?: 1) + 1} Episodes",
+                                                color = Color.White,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -978,30 +1134,72 @@ fun AdminEditorDialog(
                                 Text(it, color = PrimaryRed, fontSize = 11.sp)
                             }
 
-                            // Live Parsed Episodes Preview
+                            // Live Parsed Episodes Preview & Batch Tools
                             val rawContent = generatedEpisodesText.ifBlank { startBatchLink }
                             if (rawContent.isNotBlank()) {
                                 val parsedList = remember(rawContent, parsedSeasonNum, arcNameText) {
-                                    TelegramLinkResolver.parseSmartBotMessageOrLinks(rawContent, parsedSeasonNum, arcNameText)
+                                    val fromParser = com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(rawContent, parsedSeasonNum, arcNameText)
+                                    if (fromParser.isNotEmpty()) fromParser else TelegramLinkResolver.parseSmartBotMessageOrLinks(rawContent, parsedSeasonNum, arcNameText)
+                                }
+                                val validation = remember(parsedList) {
+                                    com.streamhub.app.data.parser.BatchEpisodeParser.validateEpisodes(parsedList)
                                 }
 
                                 Spacer(modifier = Modifier.height(10.dp))
                                 Surface(
-                                    shape = RoundedCornerShape(10.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     color = Color(0xFF162316),
-                                    border = BorderStroke(1.dp, Color(0xFF4CAF50)),
+                                    border = BorderStroke(1.dp, if (validation.isValid) Color(0xFF4CAF50) else Color(0xFFFF9800)),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(modifier = Modifier.padding(12.dp)) {
-                                        Text(
-                                            "✅ Successfully Parsed ${parsedList.size} Episodes (Auto-Sorted)!",
-                                            color = Color(0xFF81C784),
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                if (validation.isValid) "✅ ${parsedList.size} Episodes Ready (0 Errors)" else "⚠️ ${parsedList.size} Episodes (${validation.warningMessages.size} Warnings)",
+                                                color = if (validation.isValid) Color(0xFF81C784) else Color(0xFFFFB74D),
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+
+                                            // Quick Batch Renumbering Action
+                                            if (parsedList.isNotEmpty()) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = Color(0xFF0284C7).copy(alpha = 0.2f),
+                                                    border = BorderStroke(1.dp, Color(0xFF0284C7)),
+                                                    modifier = Modifier.clickable {
+                                                        val renumbered = parsedList.mapIndexed { idx, ep ->
+                                                            ep.copy(episodeNumber = idx + 1, title = if (ep.title.startsWith("Episode ")) "Episode ${idx + 1}" else ep.title)
+                                                        }
+                                                        val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(renumbered)
+                                                        generatedEpisodesText = jsonStr
+                                                        startBatchLink = jsonStr
+                                                    }
+                                                ) {
+                                                    Text(
+                                                        "🔄 Re-Index 1..N",
+                                                        color = Color(0xFF38BDF8),
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        if (validation.warningMessages.isNotEmpty()) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            validation.warningMessages.forEach { msg ->
+                                                Text("• $msg", color = Color(0xFFFFB74D), fontSize = 10.sp)
+                                            }
+                                        }
 
                                         if (parsedList.isNotEmpty()) {
-                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Spacer(modifier = Modifier.height(8.dp))
                                             Column(
                                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                                                 modifier = Modifier.fillMaxWidth()
@@ -1158,13 +1356,15 @@ fun AdminEditorDialog(
                         MetadataRow(seasonNumberText, { seasonNumberText = it }, "Season # (1, 2, 3...)", seasonTitle, { seasonTitle = it }, "Season/Arc Title (e.g. Arise from the Shadow)")
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        Text("Relation Type", color = TextSecondary, fontSize = 11.sp)
+                        Text("Relation Type & Story Role", color = TextSecondary, fontSize = 11.sp)
                         Spacer(modifier = Modifier.height(4.dp))
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
                         ) {
-                            listOf("Main Story", "Sequel", "Prequel", "Movie", "Side Story").forEach { rel ->
+                            listOf("Main Story", "Sequel", "Prequel", "Movie", "Side Story", "Spin-Off", "OVA", "Special", "ONA").forEach { rel ->
                                 val isSelected = relationType.equals(rel, ignoreCase = true)
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
@@ -1177,7 +1377,7 @@ fun AdminEditorDialog(
                                         color = if (isSelected) Color.White else TextSecondary,
                                         fontSize = 11.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                     )
                                 }
                             }
@@ -1262,8 +1462,14 @@ fun AdminEditorDialog(
                                                 )
                                             )
                                         }
-                                        generatedEpisodesText.isNotBlank() -> TelegramLinkResolver.parseSmartBotMessageOrLinks(generatedEpisodesText, seasonNumber = parsedSeasonNum, arcName = arcNameText)
-                                        startBatchLink.isNotBlank() -> TelegramLinkResolver.parseSmartBotMessageOrLinks(startBatchLink, seasonNumber = parsedSeasonNum, arcName = arcNameText)
+                                        generatedEpisodesText.isNotBlank() -> {
+                                            val fromParser = com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(generatedEpisodesText, defaultSeason = parsedSeasonNum, defaultArc = arcNameText)
+                                            if (fromParser.isNotEmpty()) fromParser else TelegramLinkResolver.parseSmartBotMessageOrLinks(generatedEpisodesText, seasonNumber = parsedSeasonNum, arcName = arcNameText)
+                                        }
+                                        startBatchLink.isNotBlank() -> {
+                                            val fromParser = com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(startBatchLink, defaultSeason = parsedSeasonNum, defaultArc = arcNameText)
+                                            if (fromParser.isNotEmpty()) fromParser else TelegramLinkResolver.parseSmartBotMessageOrLinks(startBatchLink, seasonNumber = parsedSeasonNum, arcName = arcNameText)
+                                        }
                                         else -> initialItem?.episodes ?: emptyList()
                                     }
 

@@ -105,7 +105,6 @@ fun HistoryScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(BackgroundDark)
-            .statusBarsPadding()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Top Bar

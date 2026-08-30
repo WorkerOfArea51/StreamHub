@@ -21,11 +21,16 @@ object PlayerHolder {
             _currentPlayerFlow.value = value
         }
 
+    var onPlayNextAction: (() -> Unit)? = null
+    var onPlayPrevAction: (() -> Unit)? = null
+
     fun setPlayer(player: ExoPlayer?) {
         _currentPlayerFlow.value = player
     }
 
     fun clear() {
         _currentPlayerFlow.value = null
+        onPlayNextAction = null
+        onPlayPrevAction = null
     }
 }

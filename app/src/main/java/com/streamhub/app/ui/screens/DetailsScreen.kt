@@ -620,18 +620,27 @@ fun DetailsScreen(
                                 val tag = com.streamhub.app.data.FranchiseManager.getFranchiseTag(fItem, mediaItem)
                                 val subtitle = com.streamhub.app.data.FranchiseManager.getSeasonCardSubtitle(fItem)
 
+                                val tagColor = when {
+                                    isCurrent -> AccentGold
+                                    tag.startsWith("SEQUEL") -> Color(0xFF00E676)
+                                    tag.startsWith("PREQUEL") -> Color(0xFF7C4DFF)
+                                    tag.startsWith("SIDE STORY") || tag.startsWith("SPIN-OFF") || tag == "OVA" || tag == "ONA" || tag == "SPECIAL" -> Color(0xFF38BDF8)
+                                    tag.startsWith("SEASON") -> Color(0xFFFF9800)
+                                    tag.contains("MOVIE") -> AccentOrange
+                                    else -> PrimaryRed
+                                }
+
+                                val tagTextColor = when {
+                                    isCurrent || tag.startsWith("SEQUEL") || tag.startsWith("SIDE STORY") || tag.startsWith("SPIN-OFF") || tag.startsWith("SEASON") || tag == "OVA" || tag == "ONA" || tag == "SPECIAL" -> Color.Black
+                                    else -> Color.White
+                                }
+
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
                                     color = if (isCurrent) Color(0xFF1F1826) else SurfaceDark,
                                     border = BorderStroke(
                                         width = if (isCurrent) 1.5.dp else 1.dp,
-                                        color = when {
-                                            isCurrent -> AccentGold
-                                            tag == "SEQUEL" -> Color(0xFF00E676)
-                                            tag == "PREQUEL" -> Color(0xFF7C4DFF)
-                                            tag == "MOVIE" -> AccentOrange
-                                            else -> CardBorderDark
-                                        }
+                                        color = if (isCurrent) AccentGold else tagColor.copy(alpha = 0.5f)
                                     ),
                                     modifier = Modifier
                                         .width(135.dp)
@@ -656,24 +665,18 @@ fun DetailsScreen(
                                                 contentScale = ContentScale.Crop,
                                                 modifier = Modifier.fillMaxSize()
                                             )
-                                            // Tag Badge (CURRENT, SEQUEL, PREQUEL, MOVIE)
+                                            // Compound Tag Badge (e.g. CURRENT • TV, SEQUEL • MOVIE, PREQUEL • TV)
                                             Surface(
                                                 shape = RoundedCornerShape(topStart = 0.dp, topEnd = 8.dp, bottomStart = 8.dp, bottomEnd = 0.dp),
-                                                color = when {
-                                                    isCurrent -> AccentGold
-                                                    tag == "SEQUEL" -> Color(0xFF00E676)
-                                                    tag == "PREQUEL" -> Color(0xFF7C4DFF)
-                                                    tag == "MOVIE" -> AccentOrange
-                                                    else -> PrimaryRed
-                                                },
+                                                color = tagColor,
                                                 modifier = Modifier.align(Alignment.TopEnd)
                                             ) {
                                                 Text(
                                                     text = tag,
-                                                    color = if (tag == "SEQUEL" || isCurrent) Color.Black else Color.White,
-                                                    fontSize = 9.sp,
+                                                    color = tagTextColor,
+                                                    fontSize = 8.5.sp,
                                                     fontWeight = FontWeight.Black,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
                                                 )
                                             }
                                         }
@@ -1046,9 +1049,18 @@ fun EpisodeRowItem(
     val rawTitle = if (isMovie) {
         episode.fileName.ifBlank { mediaItem.title }
     } else {
-        episode.title.ifBlank { "Episode ${index + 1}" }
+        episode.title.ifBlank { episode.fileName.ifBlank { "Episode ${index + 1}" } }
     }
-    val displayTitle = rawTitle.replace(Regex("""\.(?i)(mkv|mp4|webm|avi|ts|flv|mov|m4v|3gp|wmv|m2ts|vob)$"""), "")
+    val cleanedTitle = com.streamhub.app.data.TelegramLinkResolver.cleanEpisodeTitle(rawTitle, episode.episodeNumber)
+    val displayTitle = if (isMovie) {
+        cleanedTitle.ifBlank { mediaItem.title }
+    } else {
+        if (episode.arcName.isNotBlank() && !cleanedTitle.startsWith(episode.arcName, ignoreCase = true)) {
+            "${episode.arcName} - $cleanedTitle"
+        } else {
+            cleanedTitle.ifBlank { "Episode ${episode.episodeNumber}" }
+        }
+    }
 
     val metaDetails = buildList {
         if (isMovie) {
@@ -1138,7 +1150,21 @@ fun EpisodeRowItem(
                             if (h > 0) String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, s)
                             else String.format(java.util.Locale.US, "%02d:%02d", m, s)
                         }
-                        mediaItem.duration.isNotBlank() -> mediaItem.duration
+                        mediaItem.duration.isNotBlank() -> {
+                            val raw = mediaItem.duration.trim()
+                            val cleaned = raw
+                                .replace("per ep.", "", ignoreCase = true)
+                                .replace("per episode", "", ignoreCase = true)
+                                .replace("per ep", "", ignoreCase = true)
+                                .replace(".", "")
+                                .trim()
+                            when {
+                                cleaned.endsWith("min", ignoreCase = true) -> "${cleaned.removeSuffix("min").trim()}m"
+                                cleaned.endsWith("m", ignoreCase = true) -> cleaned
+                                cleaned.isNotBlank() && cleaned.all { it.isDigit() } -> "${cleaned}m"
+                                else -> cleaned
+                            }
+                        }
                         else -> ""
                     }
                     if (durationLabel.isNotBlank()) {

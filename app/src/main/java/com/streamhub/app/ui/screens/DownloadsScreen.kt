@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,12 +25,14 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SdCard
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -62,6 +65,7 @@ fun DownloadsScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val downloadsList by DownloadManager.downloads.collectAsState()
+    val downloadSettings by com.streamhub.app.data.DownloadSettingsManager.settingsFlow.collectAsState()
     val totalMbUsed = downloadsList.filter { it.isCompleted }.sumOf { it.fileSizeMb }
     val primaryColor = MaterialTheme.colorScheme.primary
 
@@ -201,7 +205,73 @@ fun DownloadsScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Quick Download & Network Preferences Row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Auto-Resume on Wi-Fi Toggle Pill
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = if (downloadSettings.autoResumeOnWifi) Color(0x2610B981) else SurfaceDark,
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    if (downloadSettings.autoResumeOnWifi) Color(0xFF10B981) else CardBorderDark
+                ),
+                modifier = Modifier.clickable {
+                    com.streamhub.app.data.DownloadSettingsManager.updateAutoResumeOnWifi(!downloadSettings.autoResumeOnWifi)
+                }
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Wifi,
+                        contentDescription = null,
+                        tint = if (downloadSettings.autoResumeOnWifi) Color(0xFF10B981) else TextSecondary,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (downloadSettings.autoResumeOnWifi) "Auto-Resume: ON" else "Auto-Resume: OFF",
+                        color = if (downloadSettings.autoResumeOnWifi) Color(0xFF10B981) else TextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // Wi-Fi Only Toggle Pill
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = if (downloadSettings.downloadOverWifiOnly) primaryColor.copy(alpha = 0.2f) else SurfaceDark,
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    if (downloadSettings.downloadOverWifiOnly) primaryColor else CardBorderDark
+                ),
+                modifier = Modifier.clickable {
+                    com.streamhub.app.data.DownloadSettingsManager.updateDownloadOverWifiOnly(!downloadSettings.downloadOverWifiOnly)
+                }
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = if (downloadSettings.downloadOverWifiOnly) "Wi-Fi Only: ON" else "Wi-Fi Only: OFF",
+                        color = if (downloadSettings.downloadOverWifiOnly) primaryColor else TextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
 
         if (downloadsList.isEmpty()) {
             Box(

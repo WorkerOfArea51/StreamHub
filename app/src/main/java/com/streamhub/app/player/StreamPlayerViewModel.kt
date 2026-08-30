@@ -78,7 +78,10 @@ data class PlayerUiState(
     val isBackgroundAudioEnabled: Boolean = false,
     val abLoopA: Long? = null,
     val abLoopB: Long? = null,
-    val isABLoopExpanded: Boolean = false
+    val isABLoopExpanded: Boolean = false,
+    val isReconnecting: Boolean = false,
+    val reconnectAttempt: Int = 0,
+    val streamRestoredToast: Boolean = false
 )
 
 @OptIn(UnstableApi::class)
@@ -278,33 +281,37 @@ class StreamPlayerViewModel : ViewModel() {
                 }
 
                 override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                    Log.e("StreamPlayerViewModel", "ExoPlayer error", error)
+                    Log.e("StreamPlayerViewModel", "ExoPlayer error occurred (errorCode=${error.errorCode})", error)
                     val errorInfo = classifyError(error)
-                    val isMidPlayback = _uiState.value.currentPositionMs > 5_000L
+                    val currentPos = _uiState.value.currentPositionMs
 
-                    // Auto-evict cached resource on playback error to clear stale data from replaced files
+                    // Auto-evict cached resource on playback error to clear stale/corrupted chunks
                     _uiState.value.resolvedStreamUrl.let { currentUrl ->
                         if (currentUrl.isNotBlank()) {
                             StreamCacheManager.removeResource(currentUrl)
                         }
                     }
 
-                    // On initial playback startup, auto-retry seamlessly up to 3 times with mirror failover
-                    if (errorInfo.canRetry && !isMidPlayback && autoRetryCount < 3) {
+                    // Smart Auto-Reconnect: Seamlessly reconnect up to 3 times with backoff & position preservation
+                    if (errorInfo.canRetry && autoRetryCount < 3) {
+                        autoRetryCount++
                         _uiState.update {
                             it.copy(
                                 isBuffering = true,
                                 isPlaying = false,
+                                isReconnecting = true,
+                                reconnectAttempt = autoRetryCount,
                                 playerError = null,
                                 playerErrorInfo = null
                             )
                         }
-                        scheduleAutoRetry()
+                        scheduleAutoReconnect(currentPos)
                     } else {
                         _uiState.update {
                             it.copy(
                                 isBuffering = false,
                                 isPlaying = false,
+                                isReconnecting = false,
                                 playerError = errorInfo.message,
                                 playerErrorInfo = errorInfo
                             )
@@ -349,6 +356,8 @@ class StreamPlayerViewModel : ViewModel() {
         } else {
             playEpisode(targetEpisodeIndex, 0L)
         }
+        PlayerHolder.onPlayNextAction = { playNextEpisode() }
+        PlayerHolder.onPlayPrevAction = { playPreviousEpisode() }
         startPositionTracker()
     }
 
@@ -493,6 +502,16 @@ class StreamPlayerViewModel : ViewModel() {
         }
     }
 
+    fun playPreviousEpisode() {
+        val currentState = _uiState.value
+        val prevIndex = currentState.currentEpisodeIndex - 1
+        if (prevIndex in episodesList.indices) {
+            playEpisode(prevIndex, 0L)
+        } else {
+            exoPlayer?.seekTo(0L)
+        }
+    }
+
     fun playEpisode(index: Int, startPositionMs: Long = 0L) {
         if (episodesList.isEmpty() || index !in episodesList.indices) return
         val episode = episodesList[index]
@@ -514,6 +533,11 @@ class StreamPlayerViewModel : ViewModel() {
                 playerErrorInfo = null,
                 durationMs = if (fallbackDurationMs > 0) fallbackDurationMs else it.durationMs
             )
+        }
+
+        val watchingTitle = currentMediaItem?.title ?: episode.title
+        if (watchingTitle.isNotBlank()) {
+            com.streamhub.app.data.UserTelemetryManager.updateCurrentActivity("Watching $watchingTitle")
         }
 
         // FIX: Cancel previous preload job when starting a new episode — preloader will be eligible again.
@@ -1036,9 +1060,7 @@ class StreamPlayerViewModel : ViewModel() {
                             }
                         }
 
-                        // FIX: Watch time was 5x under-reported (added 1ms every 200ms instead of 200ms).
-                        // Now adds 200ms per iteration (correct 1:1 wall-clock rate).
-                        com.streamhub.app.data.UserStatsManager.addWatchTime(
+                        com.streamhub.app.data.UserStatsManager.addWatchTimeMillis(
                             200L,
                             currentMediaItem?.category ?: "ANIME"
                         )
@@ -1081,19 +1103,35 @@ class StreamPlayerViewModel : ViewModel() {
     private var autoRetryCount: Int = 0
     private var autoRetryJob: Job? = null
 
-    private fun scheduleAutoRetry() {
-        if (autoRetryCount >= 3) {
-            Log.w("StreamPlayerViewModel", "Auto-retry exhausted ($autoRetryCount attempts) — giving up")
-            return
-        }
-        autoRetryCount++
-        val backoffMs = if (autoRetryCount == 1) 500L else 1200L
-        Log.i("StreamPlayerViewModel", "Scheduling auto-retry #$autoRetryCount in ${backoffMs}ms")
+    private fun scheduleAutoReconnect(savedPositionMs: Long) {
         autoRetryJob?.cancel()
+        val backoffMs = when (autoRetryCount) {
+            1 -> 600L
+            2 -> 1500L
+            else -> 3000L
+        }
+        Log.i("StreamPlayerViewModel", "Scheduling smart auto-reconnect #$autoRetryCount in ${backoffMs}ms at position ${savedPositionMs}ms")
+
         autoRetryJob = viewModelScope.launch {
             delay(backoffMs)
+            val snapshot = _uiState.value
+            val ep = episodesList.getOrNull(snapshot.currentEpisodeIndex)
+
             _uiState.update { it.copy(isBuffering = true, playerError = null, playerErrorInfo = null) }
-            retryCurrentEpisode()
+
+            // If primary stream failed on attempt >= 2, swap to alternative mirror URL if available
+            if (autoRetryCount >= 2 && ep != null) {
+                val currentUrl = snapshot.resolvedStreamUrl
+                val mirrorUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.mirrorStreamUrl)
+                if (mirrorUrl.isNotBlank() && mirrorUrl != currentUrl && !mirrorUrl.contains("/stream/", ignoreCase = true)) {
+                    Log.i("StreamPlayerViewModel", "Auto-reconnecting using failover mirror URL: $mirrorUrl")
+                    playEpisodeWithExplicitUrl(snapshot.currentEpisodeIndex, mirrorUrl, savedPositionMs)
+                    return@launch
+                }
+            }
+
+            // Reconnect stream preserving exact playback timestamp
+            playEpisode(snapshot.currentEpisodeIndex, savedPositionMs)
         }
     }
 
@@ -1101,13 +1139,23 @@ class StreamPlayerViewModel : ViewModel() {
      * Reset retry counter on successful playback start — call from onPlaybackStateChanged STATE_READY
      */
     private fun resetRetryCounter() {
+        val hadReconnected = _uiState.value.isReconnecting
         autoRetryCount = 0
         autoRetryJob?.cancel()
         autoRetryJob = null
-        // FIX: Clear error state when playback succeeds — the error overlay is no longer needed.
         _uiState.update {
-            it.copy(playerError = null, playerErrorInfo = null)
+            it.copy(
+                isReconnecting = false,
+                reconnectAttempt = 0,
+                playerError = null,
+                playerErrorInfo = null,
+                streamRestoredToast = hadReconnected
+            )
         }
+    }
+
+    fun clearStreamRestoredToast() {
+        _uiState.update { it.copy(streamRestoredToast = false) }
     }
 
     fun acceptResume() {
@@ -1207,11 +1255,14 @@ class StreamPlayerViewModel : ViewModel() {
         playerListener = null
         exoPlayer = null
         currentPlayer = null
+        PlayerHolder.onPlayNextAction = null
+        PlayerHolder.onPlayPrevAction = null
         trackSelector = null
         pendingSeekTargetMs = null
         lastBufferedBytes = 0L
         lastSpeedSampleMs = 0L
         speedSamples.clear()
+        com.streamhub.app.data.UserTelemetryManager.updateCurrentActivity("Browsing Catalog")
     }
 
     override fun onCleared() {

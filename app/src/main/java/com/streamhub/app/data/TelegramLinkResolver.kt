@@ -79,29 +79,26 @@ object TelegramLinkResolver {
         // > ⬇️ Download:
         // https://streamhub69.alwaysdata.net/dl/xyz...
         val blockRegex = Regex(
-            """(?s)(?:>\s*🎬\s*|🎬\s*)?(?:EP|Episode)\s*[-:]?\s*0*(\d+)\s*[-:]?\s*(.+?)(?:\s*\(([\d.]+\s*[KMGT]?B)\))?\s*\n.*?(?:Stream:?|🔗)\s*\n\s*(https?://\S+)(?:.*?(?:Download:?|⬇️|Mirror:?)\s*\n\s*(https?://\S+))?""",
+            """(?s)(?:>\s*🎬\s*|🎬\s*)?((?:EP|Episode)\s*[-:]?\s*0*(\d+)\s*[-:]?\s*(.+?))(?:\s*\(([\d.]+\s*[KMGT]?B)\))?\s*\n.*?(?:Stream:?|🔗)\s*\n\s*(https?://\S+)(?:.*?(?:Download:?|⬇️|Mirror:?)\s*\n\s*(https?://\S+))?""",
             RegexOption.IGNORE_CASE
         )
 
         val matches = blockRegex.findAll(trimmed).toList()
         if (matches.isNotEmpty()) {
             return matches.map { match ->
-                val epNum = match.groupValues[1].toIntOrNull() ?: 1
-                val rawTitle = match.groupValues[2].trim()
-                val size = match.groupValues[3].trim()
-                val streamUrl = match.groupValues[4].trim()
-                val dlUrl = match.groupValues.getOrNull(5)?.trim()?.ifBlank { null } ?: streamUrl
+                val fullRawTitle = match.groupValues[1].trim()
+                val epNum = match.groupValues[2].toIntOrNull() ?: 1
+                val size = match.groupValues[4].trim()
+                val streamUrl = match.groupValues[5].trim()
+                val dlUrl = match.groupValues.getOrNull(6)?.trim()?.ifBlank { null } ?: streamUrl
 
-                // Clean title: strip .mkv, .mp4, trailing brackets
-                val cleanTitle = rawTitle
-                    .replace(Regex("""\.(mkv|mp4|avi|webm)$""", RegexOption.IGNORE_CASE), "")
-                    .replace(Regex("""^\s*-\s*"""), "")
-                    .trim()
+                // Clean title: strip .mkv, bot icons, underscores
+                val cleanTitle = cleanEpisodeTitle(fullRawTitle, epNum)
 
                 val finalTitle = when {
-                    cleanTitle.isNotBlank() && arcName.isNotBlank() -> "$arcName - Ep $epNum: $cleanTitle"
-                    cleanTitle.isNotBlank() -> "Ep $epNum: $cleanTitle"
-                    arcName.isNotBlank() -> "$arcName - Ep $epNum"
+                    cleanTitle.isNotBlank() && arcName.isNotBlank() -> "$arcName - $cleanTitle"
+                    cleanTitle.isNotBlank() -> cleanTitle
+                    arcName.isNotBlank() -> "$arcName - Episode $epNum"
                     else -> "Episode $epNum"
                 }
 
@@ -116,7 +113,7 @@ object TelegramLinkResolver {
                     streamUrl = sanitizePlayableUrl(directPlayUrl),
                     mirrorStreamUrl = sanitizePlayableUrl(fallbackMirrorUrl),
                     fileSize = size,
-                    fileName = if (rawTitle.isNotBlank()) rawTitle else "Episode $epNum.mkv",
+                    fileName = if (fullRawTitle.isNotBlank()) "$fullRawTitle.mkv" else "Episode $epNum.mkv",
                     telegramFileId = extractTelegramMessageOrFileId(directPlayUrl)
                 )
             }.sortedBy { it.episodeNumber }
@@ -124,6 +121,55 @@ object TelegramLinkResolver {
 
         // 3. Fallback: Parse Line by Line
         return parseAndGroupTelegramLinks(trimmed, seasonNumber, arcName)
+    }
+
+    /**
+     * Extracts decimal or explicit episode numbers from filename/title (e.g. "11.5" from "EP - 11.5 - ...", "12" from "EP - 12 - ...")
+     */
+    fun extractEpisodeDisplayLabel(rawText: String, fallbackNumber: Int): String {
+        // 1. Check for decimal episodes like 11.5, 0.5
+        val decimalMatch = Regex("""(?i)\b(?:EP|Episode|E)?\s*[-_.:]?\s*(\d+\.\d+)\b""").find(rawText)
+        if (decimalMatch != null) {
+            return decimalMatch.groupValues[1]
+        }
+
+        // 2. Check for explicit episode number in filename (e.g. "EP - 12 - ", "EP 12 - ", "Episode 12 - ")
+        val explicitEpMatch = Regex("""(?i)\b(?:EP|Episode|E)\s*[-_.:]?\s*0*(\d+)\b""").find(rawText)
+        if (explicitEpMatch != null) {
+            val num = explicitEpMatch.groupValues[1].toIntOrNull()
+            if (num != null && num > 0) return num.toString()
+        }
+
+        return if (fallbackNumber > 0) fallbackNumber.toString() else "1"
+    }
+
+    /**
+     * Cleans raw episode title / filename by stripping file extensions, bot icons,
+     * while preserving the exact title and casing given by the creator.
+     */
+    fun cleanEpisodeTitle(rawText: String, episodeNumber: Int = 1): String {
+        var title = rawText.trim()
+        if (title.isBlank()) return ""
+
+        // 1. Strip file extension (.mkv, .mp4, etc.)
+        title = title.replace(Regex("""\.(?i)(mkv|mp4|avi|webm|ts|flv|mov|m4v|3gp|wmv|m2ts|vob)$"""), "")
+
+        // 2. Strip leading bot markdown icons (e.g. "> 🎬 " or "🎬 ")
+        title = title.replace(Regex("""^(?:>\s*🎬\s*|🎬\s*)"""), "")
+
+        // 3. If the string contains underscores instead of spaces, convert underscores to spaces
+        if (title.contains("_") && !title.contains(" ")) {
+            title = title.replace("_", " ")
+        }
+
+        // 4. Clean leading and trailing punctuation & excess whitespace
+        title = title.replace(Regex("""\s+"""), " ").trim()
+
+        return if (title.isBlank() || title.equals("mkv", ignoreCase = true) || title.equals("mp4", ignoreCase = true)) {
+            ""
+        } else {
+            title
+        }
     }
 
     /**
@@ -156,32 +202,61 @@ object TelegramLinkResolver {
                     ?: item.get("fileName")?.asString
                     ?: ""
                 val streamUrl = item.get("direct_stream_url")?.asString
+                    ?: item.get("stream_link")?.asString
                     ?: item.get("stream_url")?.asString
                     ?: item.get("streamUrl")?.asString
+                    ?: item.get("dl_link")?.asString
                     ?: item.get("url")?.asString
                     ?: ""
                 val dlUrl = item.get("download_url")?.asString
+                    ?: item.get("dl_link")?.asString
                     ?: item.get("downloadUrl")?.asString
                     ?: streamUrl
                 val size = item.get("size_formatted")?.asString
                     ?: item.get("file_size_formatted")?.asString
-                    ?: item.get("file_size")?.asString
+                    ?: item.get("file_size")?.let { elem ->
+                        if (elem.isJsonPrimitive && elem.asJsonPrimitive.isNumber) {
+                            formatBytesToReadable(elem.asLong)
+                        } else {
+                            val str = elem.asString
+                            val numeric = str.toLongOrNull()
+                            if (numeric != null && numeric > 10000) formatBytesToReadable(numeric) else str
+                        }
+                    }
                     ?: item.get("fileSize")?.asString
                     ?: ""
-                val rawTitle = item.get("title")?.asString
-                    ?: fileName.replace(Regex("""\.(mkv|mp4|avi|webm)$""", RegexOption.IGNORE_CASE), "")
-                        .replace(Regex("""(?i)^(?:>\s*🎬\s*|🎬\s*)?(?:EP|Episode)\s*[-:]?\s*0*\d+\s*[-:]?\s*"""), "")
-                        .trim()
+                val rawTitleInput = item.get("title")?.asString ?: fileName
+                val cleanedTitle = cleanEpisodeTitle(rawTitleInput, epNum)
                 val code = item.get("code")?.asString ?: item.get("id")?.asString ?: ""
+
+                val durationMs = when {
+                    item.has("duration_ms") -> item.get("duration_ms").asLong
+                    item.has("duration_sec") -> (item.get("duration_sec").asDouble.toLong()) * 1000L
+                    item.has("duration") && item.get("duration").isJsonPrimitive -> {
+                        val prim = item.get("duration").asJsonPrimitive
+                        val d = if (prim.isNumber) prim.asDouble.toLong() else prim.asString.toDoubleOrNull()?.toLong() ?: 0L
+                        if (d > 10000) d else d * 1000L
+                    }
+                    item.has("duration_formatted") -> {
+                        val str = item.get("duration_formatted").asString
+                        val parts = str.split(":").mapNotNull { it.toLongOrNull() }
+                        when (parts.size) {
+                            2 -> (parts[0] * 60 + parts[1]) * 1000L
+                            3 -> (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000L
+                            else -> 0L
+                        }
+                    }
+                    else -> 0L
+                }
 
                 val primaryPlayUrl = sanitizePlayableUrl(streamUrl.ifBlank { dlUrl })
                 val mirrorUrl = sanitizePlayableUrl(dlUrl.ifBlank { streamUrl })
 
                 if (primaryPlayUrl.isNotBlank()) {
                     val finalTitle = when {
-                        rawTitle.isNotBlank() && arcName.isNotBlank() -> "$arcName - Ep $epNum: $rawTitle"
-                        rawTitle.isNotBlank() -> "Ep $epNum: $rawTitle"
-                        arcName.isNotBlank() -> "$arcName - Ep $epNum"
+                        cleanedTitle.isNotBlank() && arcName.isNotBlank() -> "$arcName - $cleanedTitle"
+                        cleanedTitle.isNotBlank() -> cleanedTitle
+                        arcName.isNotBlank() -> "$arcName - Episode $epNum"
                         else -> "Episode $epNum"
                     }
                     episodes.add(
@@ -193,7 +268,8 @@ object TelegramLinkResolver {
                             streamUrl = primaryPlayUrl,
                             mirrorStreamUrl = mirrorUrl,
                             fileSize = size,
-                            fileName = fileName,
+                            fileName = fileName.ifBlank { "Episode $epNum.mkv" },
+                            durationMs = durationMs,
                             telegramFileId = code.ifBlank { extractTelegramMessageOrFileId(primaryPlayUrl) }
                         )
                     )
@@ -278,5 +354,15 @@ object TelegramLinkResolver {
         val msgRegex = Regex("""(?:t\.me/(?:c/\d+|[^/]+)/|watch/|dl/|stream/)([\w-]+)""")
         val match = msgRegex.find(url)
         return match?.groupValues?.get(1) ?: url.hashCode().toString()
+    }
+
+    fun formatBytesToReadable(bytes: Long): String {
+        if (bytes <= 0) return ""
+        val mb = bytes / (1024.0 * 1024.0)
+        return if (mb >= 1000.0) {
+            String.format(java.util.Locale.US, "%.2f GB", mb / 1024.0)
+        } else {
+            String.format(java.util.Locale.US, "%.2f MB", mb)
+        }
     }
 }

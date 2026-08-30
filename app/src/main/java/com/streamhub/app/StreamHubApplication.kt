@@ -27,10 +27,29 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-class StreamHubApplication : Application() {
+class StreamHubApplication : Application(), coil.ImageLoaderFactory {
 
     companion object {
         private const val TAG = "StreamHubApplication"
+    }
+
+    override fun newImageLoader(): coil.ImageLoader {
+        return coil.ImageLoader.Builder(this)
+            .memoryCache {
+                coil.memory.MemoryCache.Builder(this)
+                    .maxSizePercent(0.25)
+                    .strongReferencesEnabled(true)
+                    .build()
+            }
+            .diskCache {
+                coil.disk.DiskCache.Builder()
+                    .directory(cacheDir.resolve("image_cache"))
+                    .maxSizeBytes(250L * 1024 * 1024)
+                    .build()
+            }
+            .crossfade(true)
+            .respectCacheHeaders(false)
+            .build()
     }
 
     private val initScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -91,6 +110,7 @@ class StreamHubApplication : Application() {
             Log.w(TAG, "Low memory detected (level=$level) — evicting thumbnail & image caches")
             runCatching { VideoThumbnailHelper.release() }
             runCatching { coil.Coil.imageLoader(this).memoryCache?.clear() }
+            runCatching { com.streamhub.app.data.ThumbnailPrefetchManager.clearHistory() }
             System.gc()
         }
     }
@@ -119,12 +139,16 @@ class StreamHubApplication : Application() {
             .onFailure { Log.e(TAG, "MyListManager.init failed", it) }
         runCatching { WatchHistoryManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "WatchHistoryManager.init failed", it) }
+        runCatching { com.streamhub.app.data.SearchHistoryManager.init(applicationContext) }
+            .onFailure { Log.e(TAG, "SearchHistoryManager.init failed", it) }
         runCatching { SubtitleSettingsManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "SubtitleSettingsManager.init failed", it) }
         runCatching { HomeScreenLayoutManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "HomeScreenLayoutManager.init failed", it) }
         runCatching { DownloadManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "DownloadManager.init failed", it) }
+        runCatching { com.streamhub.app.data.DownloadSettingsManager.init(applicationContext) }
+            .onFailure { Log.e(TAG, "DownloadSettingsManager.init failed", it) }
         runCatching { UserStatsManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "UserStatsManager.init failed", it) }
         runCatching { YoutubeStreamExtractor.init(applicationContext) }
@@ -135,6 +159,10 @@ class StreamHubApplication : Application() {
             .onFailure { Log.e(TAG, "AdPassManager.init failed", it) }
         runCatching { com.streamhub.app.data.ads.UnityAdsManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "UnityAdsManager.init failed", it) }
+        runCatching { com.streamhub.app.data.UserTelemetryManager.init(applicationContext) }
+            .onFailure { Log.e(TAG, "UserTelemetryManager.init failed", it) }
+        runCatching { com.streamhub.app.data.UserProfileManager.init(applicationContext) }
+            .onFailure { Log.e(TAG, "UserProfileManager.init failed", it) }
     }
 
     private fun startBackgroundServices() {

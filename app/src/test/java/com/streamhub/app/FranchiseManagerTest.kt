@@ -50,4 +50,34 @@ class FranchiseManagerTest {
         assertEquals("s2 should be second", "s2", franchiseGroup[1].id)
         assertEquals("s3 should be third", "s3", franchiseGroup[2].id)
     }
+
+    @Test
+    fun getFranchiseTag_compoundMultiRelationLabels() {
+        val tvSeries = MediaItem(
+            id = "anohana_tv",
+            title = "Anohana: The Flower We Saw That Day",
+            type = "SERIES",
+            category = "Anime",
+            releaseYear = "2011",
+            seasonNumber = 1
+        )
+
+        val sequelMovie = MediaItem(
+            id = "anohana_movie",
+            title = "Anohana: The Flower We Saw That Day The Movie",
+            type = "MOVIE",
+            category = "Movie",
+            relationType = "Sequel",
+            releaseYear = "2013",
+            seasonNumber = 0
+        )
+
+        // When viewing TV Series:
+        assertEquals("CURRENT • TV", FranchiseManager.getFranchiseTag(tvSeries, tvSeries))
+        assertEquals("SEQUEL • MOVIE", FranchiseManager.getFranchiseTag(sequelMovie, tvSeries))
+
+        // When viewing Sequel Movie:
+        assertEquals("CURRENT • MOVIE", FranchiseManager.getFranchiseTag(sequelMovie, sequelMovie))
+        assertEquals("PREQUEL • TV", FranchiseManager.getFranchiseTag(tvSeries, sequelMovie))
+    }
 }

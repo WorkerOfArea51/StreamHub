@@ -2,12 +2,18 @@ package com.streamhub.app.ui.screens.player
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -23,6 +29,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -54,9 +61,11 @@ import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.LinkOff
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.ui.text.style.TextAlign
 import com.streamhub.app.player.PlayerErrorInfo
@@ -593,6 +602,220 @@ fun SmartResumePill(
                         tint = TextSecondary,
                         modifier = Modifier.size(16.dp)
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ReconnectingStreamHud(
+    visible: Boolean,
+    attempt: Int,
+    maxAttempts: Int = 3,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "spin")
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotation"
+    )
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(200)) + scaleIn(tween(200), initialScale = 0.85f),
+        exit = fadeOut(tween(250)) + scaleOut(tween(250), targetScale = 0.85f),
+        modifier = modifier
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = Color(0xF0141420),
+            border = BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.7f)),
+            shadowElevation = 10.dp
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "Reconnecting",
+                    tint = Color(0xFF00E5FF),
+                    modifier = Modifier
+                        .size(18.dp)
+                        .graphicsLayer { rotationZ = rotation }
+                )
+                Text(
+                    text = "Reconnecting stream... ($attempt/$maxAttempts)",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun StreamRestoredPill(
+    visible: Boolean,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(200)) + scaleIn(tween(200), initialScale = 0.9f),
+        exit = fadeOut(tween(500)),
+        modifier = modifier
+    ) {
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = Color(0xEB0A2A1E),
+            border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.8f)),
+            shadowElevation = 8.dp
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+            ) {
+                Text("✨", fontSize = 14.sp)
+                Text(
+                    text = "Stream Restored",
+                    color = Color(0xFF00E676),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun NextEpisodeCountdownCard(
+    visible: Boolean,
+    nextEpisodeTitle: String,
+    remainingSeconds: Int,
+    thresholdSeconds: Int,
+    onPlayNext: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val progress = if (thresholdSeconds > 0) {
+        ((thresholdSeconds - remainingSeconds).toFloat() / thresholdSeconds.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(250)) + scaleIn(tween(250), initialScale = 0.88f),
+        exit = fadeOut(tween(200)) + scaleOut(tween(200), targetScale = 0.88f),
+        modifier = modifier
+    ) {
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = Color(0xF212121E),
+            border = BorderStroke(1.dp, Brush.linearGradient(listOf(Color(0xFFE50914), Color(0xFF00E5FF)))),
+            shadowElevation = 14.dp,
+            modifier = Modifier.widthIn(min = 280.dp, max = 340.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SkipNext,
+                            contentDescription = null,
+                            tint = Color(0xFF00E5FF),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = "Next Episode in ${remainingSeconds}s",
+                            color = Color(0xFF00E5FF),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .clickable { onDismiss() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Dismiss",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                Text(
+                    text = nextEpisodeTitle,
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
+                )
+
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(2.dp)),
+                    color = Color(0xFF00E5FF),
+                    trackColor = Color(0x33FFFFFF)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFE50914),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { onPlayNext() }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Play",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Play Now",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
             }
         }

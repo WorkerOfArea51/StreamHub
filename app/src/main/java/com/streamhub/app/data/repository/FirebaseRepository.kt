@@ -157,9 +157,27 @@ class FirebaseRepository private constructor() {
                                     COLLECTION_SERIES -> "Series"
                                     else -> "Movie"
                                 }
+                                val createdAt = if (item.createdAt > 0L) {
+                                    item.createdAt
+                                } else {
+                                    doc.getLong("createdAt")
+                                        ?: doc.getTimestamp("createdAt")?.toDate()?.time
+                                        ?: doc.getLong("timestamp")
+                                        ?: doc.getTimestamp("timestamp")?.toDate()?.time
+                                        ?: 0L
+                                }
+                                val updatedAt = if (item.updatedAt > 0L) {
+                                    item.updatedAt
+                                } else {
+                                    doc.getLong("updatedAt")
+                                        ?: doc.getTimestamp("updatedAt")?.toDate()?.time
+                                        ?: createdAt
+                                }
                                 (if (item.id.isBlank()) item.copy(id = doc.id) else item).copy(
                                     category = finalCategory,
-                                    type = finalType
+                                    type = finalType,
+                                    createdAt = createdAt,
+                                    updatedAt = updatedAt
                                 )
                             }
                         } catch (e: Exception) {
@@ -196,32 +214,36 @@ class FirebaseRepository private constructor() {
     fun saveMediaItem(item: MediaItem) {
         _adminOperationState.value = AdminOperationState.Loading
 
+        val finalCreatedAt = if (item.createdAt > 0L) item.createdAt else System.currentTimeMillis()
+        val finalUpdatedAt = System.currentTimeMillis()
+        val itemToSave = item.copy(createdAt = finalCreatedAt, updatedAt = finalUpdatedAt)
+
         // 1. Optimistic instant UI update
         _mediaCatalog.update { current ->
             val list = current.toMutableList()
-            val index = list.indexOfFirst { it.id == item.id }
-            if (index >= 0) list[index] = item else list.add(0, item)
+            val index = list.indexOfFirst { it.id == itemToSave.id }
+            if (index >= 0) list[index] = itemToSave else list.add(0, itemToSave)
             list
         }
         _catalogState.value = CatalogState.Ready
 
         val db = firestore
         if (db == null) {
-            Log.e(TAG, "CRITICAL: Cannot save media item ${item.id} because Firestore instance is null!")
+            Log.e(TAG, "CRITICAL: Cannot save media item ${itemToSave.id} because Firestore instance is null!")
             _adminOperationState.value = AdminOperationState.Error("Firebase database not initialized")
             return
         }
 
-        val targetCollection = getCollectionForCategory(item.category, item.type)
-        val docMap = mediaItemToMap(item)
-        Log.d(TAG, "Writing media item ${item.id} to Firestore collection '$targetCollection'...")
+        val targetCollection = getCollectionForCategory(itemToSave.category, itemToSave.type)
+        val docMap = mediaItemToMap(itemToSave)
+        Log.d(TAG, "Writing media item ${itemToSave.id} to Firestore collection '$targetCollection'...")
 
         // Primary collection write (movies, animes, web_series)
         db.collection(targetCollection)
-            .document(item.id)
+            .document(itemToSave.id)
             .set(docMap)
             .addOnSuccessListener {
-                Log.d(TAG, "Successfully synced media item to Firestore collection '$targetCollection': ${item.id}")
+                Log.d(TAG, "Successfully synced media item to Firestore collection '$targetCollection': ${itemToSave.id}")
                 _adminOperationState.value = AdminOperationState.Success()
             }
             .addOnFailureListener { e ->
@@ -289,6 +311,8 @@ class FirebaseRepository private constructor() {
             "seasonTitle" to item.seasonTitle,
             "relationType" to item.relationType,
             "relatedMediaIds" to item.relatedMediaIds,
+            "createdAt" to item.createdAt,
+            "updatedAt" to item.updatedAt,
             "mediaInfo" to mapOf(
                 "resolution" to item.mediaInfo.resolution,
                 "videoCodec" to item.mediaInfo.videoCodec,

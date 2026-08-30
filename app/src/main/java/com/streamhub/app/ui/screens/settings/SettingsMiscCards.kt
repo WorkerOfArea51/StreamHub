@@ -458,51 +458,44 @@ fun AppUpdateCard() {
 }
 
 @Composable
-fun AboutCard(onSecretAdminTap: () -> Unit = {}) {
-    var tapCount by remember { androidx.compose.runtime.mutableIntStateOf(0) }
-    var lastTapTime by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
-
+fun AboutCard(
+    onClick: () -> Unit = {}
+) {
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = SurfaceDark),
         modifier = Modifier
             .fillMaxWidth()
             .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
-            .clickable {
-                val now = System.currentTimeMillis()
-                if (now - lastTapTime > 3000L) {
-                    tapCount = 1
-                } else {
-                    tapCount++
-                }
-                lastTapTime = now
-
-                if (tapCount >= 5) {
-                    tapCount = 0
-                    onSecretAdminTap()
-                }
-            }
+            .clickable { onClick() }
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF38BDF8).copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Info, contentDescription = "About", tint = Color(0xFF38BDF8), modifier = Modifier.size(20.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF38BDF8).copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Info, contentDescription = "About", tint = Color(0xFF38BDF8), modifier = Modifier.size(20.dp))
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text("About StreamHub ℹ️", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("Developer info, Telegram Bot & Tech Stack", color = TextSecondary, fontSize = 11.sp)
+                    }
                 }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text("About StreamHub ℹ️", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text("High-performance native streaming platform", color = TextSecondary, fontSize = 11.sp)
-                }
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open", tint = TextSecondary)
             }
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "StreamHub is a high-performance native Android media streaming application built with Jetpack Compose, Material 3, AndroidX Media3 ExoPlayer, and Cloud Firestore.",
+                text = "StreamHub is a high-performance native Android media streaming application built with Jetpack Compose, Material 3, AndroidX Media3 ExoPlayer, and native TDLib MTProto streaming.",
                 color = TextSecondary,
                 fontSize = 12.sp,
                 lineHeight = 16.sp

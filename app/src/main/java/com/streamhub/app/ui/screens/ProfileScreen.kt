@@ -31,15 +31,24 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ElectricBolt
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import com.streamhub.app.data.UserProfileManager
+import com.streamhub.app.ui.components.EditProfileDialog
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -78,6 +87,7 @@ import com.streamhub.app.data.UserStatsManager
 import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.components.AdminEditorDialog
+import com.streamhub.app.ui.components.BulkImportDialog
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
@@ -116,7 +126,12 @@ fun ProfileScreen(
 
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
     var showAddContentDialog by remember { mutableStateOf(false) }
+    var showBulkImportDialog by remember { mutableStateOf(false) }
     var showAdPassDialog by remember { mutableStateOf(false) }
+    var showLiveTelemetryDialog by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
+    var showWhatsNewDialog by remember { mutableStateOf(false) }
+    var showEditProfileDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier
@@ -154,7 +169,20 @@ fun ProfileScreen(
                     AdminManager.disableAdmin()
                     Toast.makeText(context, "Admin mode locked", Toast.LENGTH_SHORT).show()
                 },
-                onOpenPassDialog = { showAdPassDialog = true }
+                onOpenPassDialog = { showAdPassDialog = true },
+                onEditProfile = { showEditProfileDialog = true }
+            )
+        }
+
+        // ── App Activity Section Header ──
+        item(key = "section_header_activity") {
+            Text(
+                text = "APP ACTIVITY & METRICS",
+                color = TextSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp, start = 4.dp)
             )
         }
 
@@ -203,6 +231,32 @@ fun ProfileScreen(
             )
         }
 
+        // Owner Exclusive: Live Real-Time Audience & Telemetry Dashboard & Bulk Sync
+        if (isAdminMode) {
+            item(key = "settings_live_telemetry") {
+                val liveMetrics by com.streamhub.app.data.UserTelemetryManager.liveMetrics.collectAsState()
+                ProfileSettingsItem(
+                    icon = Icons.Default.Sensors,
+                    iconTint = Color(0xFF00E676),
+                    title = "Live Audience & Telemetry",
+                    subtitle = "Real-time active users, VIP vs Ad pass breakdown & live streams",
+                    badge = "LIVE 🟢 (${liveMetrics.totalOnline})",
+                    onClick = { showLiveTelemetryDialog = true }
+                )
+            }
+
+            item(key = "settings_bulk_sync") {
+                ProfileSettingsItem(
+                    icon = Icons.Default.CloudDownload,
+                    iconTint = Color(0xFF8B5CF6),
+                    title = "Multi-URL Bulk Sync & Import",
+                    subtitle = "Fetch multiple JSON links or F2L batches in parallel with preview",
+                    badge = "Bulk ⚡",
+                    onClick = { showBulkImportDialog = true }
+                )
+            }
+        }
+
         item(key = "settings_watch_history") {
             val historyMap by WatchHistoryManager.historyFlow.collectAsState()
             ProfileSettingsItem(
@@ -237,6 +291,42 @@ fun ProfileScreen(
                 onClick = onNavigateToSettings
             )
         }
+
+        item(key = "settings_about_streamhub") {
+            ProfileSettingsItem(
+                icon = Icons.Default.Info,
+                iconTint = Color(0xFF38BDF8),
+                title = "About StreamHub & Telegram Bot",
+                subtitle = "v2.4.0 • Developer info, @Fil3Stor3_bot & Tech Stack",
+                badge = "About ℹ️",
+                onClick = { showAboutDialog = true }
+            )
+        }
+    }
+
+    // App About Dialog
+    if (showAboutDialog) {
+        com.streamhub.app.ui.components.AppAboutDialog(
+            onDismiss = { showAboutDialog = false },
+            onOpenWhatsNew = {
+                showAboutDialog = false
+                showWhatsNewDialog = true
+            }
+        )
+    }
+
+    // What's New Dialog
+    if (showWhatsNewDialog) {
+        com.streamhub.app.ui.components.WhatsNewDialog(
+            onDismiss = { showWhatsNewDialog = false }
+        )
+    }
+
+    // Live Audience & Telemetry Dialog
+    if (showLiveTelemetryDialog) {
+        com.streamhub.app.ui.components.LiveAudienceTelemetryDialog(
+            onDismiss = { showLiveTelemetryDialog = false }
+        )
     }
 
     // Master Password Verification Dialog (Triggered only via 5-tap gesture or secret code)
@@ -263,6 +353,38 @@ fun ProfileScreen(
         )
     }
 
+    // Bulk Catalog Importer & Multi-URL Sync Dialog
+    if (showBulkImportDialog) {
+        val catalog by repository.mediaCatalog.collectAsState()
+        BulkImportDialog(
+            existingCatalog = catalog,
+            onDismiss = { showBulkImportDialog = false },
+            onImportConfirmed = { items: List<com.streamhub.app.data.models.MediaItem>, strategy: com.streamhub.app.data.importer.ConflictStrategy ->
+                showBulkImportDialog = false
+                val (updatedCatalog, summary) = com.streamhub.app.data.importer.BulkCatalogImporter.applyImport(
+                    itemsToImport = items,
+                    existingCatalog = catalog,
+                    strategy = strategy
+                )
+                items.forEach { item ->
+                    repository.saveMediaItem(item)
+                }
+                Toast.makeText(
+                    context,
+                    "🎉 Successfully imported ${summary.importedCount} shows (${summary.totalEpisodesAdded} episodes)!",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        )
+    }
+
+    // Edit Profile & VIP Persona Dialog
+    if (showEditProfileDialog) {
+        EditProfileDialog(
+            onDismiss = { showEditProfileDialog = false }
+        )
+    }
+
     // 12-Hour Access Pass Dialog
     if (showAdPassDialog) {
         com.streamhub.app.ui.components.AdPassGateDialog(
@@ -281,9 +403,12 @@ private fun StreamHubUserProfileCard(
     onSecretTapUnlock: () -> Unit,
     onOpenStudio: () -> Unit,
     onLockAdmin: () -> Unit,
-    onOpenPassDialog: () -> Unit
+    onOpenPassDialog: () -> Unit,
+    onEditProfile: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val userProfile by UserProfileManager.profileFlow.collectAsState()
+
     var tapCount by remember { mutableIntStateOf(0) }
     var lastTapTime by remember { mutableLongStateOf(0L) }
 
@@ -358,6 +483,9 @@ private fun StreamHubUserProfileCard(
         }
     }
 
+    val finalName = if (userProfile.customName.isNotBlank()) userProfile.customName else titleText
+    val finalTagline = if (userProfile.customTagline.isNotBlank()) userProfile.customTagline else subtitleText
+
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF12121E)),
@@ -372,7 +500,7 @@ private fun StreamHubUserProfileCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp)
+                .padding(18.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -381,10 +509,18 @@ private fun StreamHubUserProfileCard(
                 // Avatar with 5-tap secret easter egg trigger
                 Box(
                     modifier = Modifier
-                        .size(64.dp)
+                        .size(66.dp)
                         .scale(pulseScale)
                         .clip(CircleShape)
-                        .background(Brush.linearGradient(avatarColors))
+                        .background(
+                            if (userProfile.avatarPresetIndex > 0 && userProfile.avatarUri.isBlank()) {
+                                val preset = UserProfileManager.PRESET_AVATARS.getOrElse(userProfile.avatarPresetIndex) { UserProfileManager.PRESET_AVATARS[0] }
+                                Brush.linearGradient(preset.gradientColors.map { Color(it) })
+                            } else {
+                                Brush.linearGradient(avatarColors)
+                            }
+                        )
+                        .border(1.5.dp, Brush.linearGradient(cardBorderColors), CircleShape)
                         .clickable {
                             val now = System.currentTimeMillis()
                             if (now - lastTapTime > 3000L) {
@@ -401,15 +537,27 @@ private fun StreamHubUserProfileCard(
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = avatarIcon,
-                        contentDescription = "Avatar",
-                        tint = Color.White,
-                        modifier = Modifier.size(36.dp)
-                    )
+                    if (userProfile.avatarUri.isNotBlank()) {
+                        AsyncImage(
+                            model = userProfile.avatarUri,
+                            contentDescription = "Avatar",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else if (userProfile.avatarPresetIndex > 0) {
+                        val preset = UserProfileManager.PRESET_AVATARS.getOrElse(userProfile.avatarPresetIndex) { UserProfileManager.PRESET_AVATARS[0] }
+                        Text(preset.emoji, fontSize = 32.sp)
+                    } else {
+                        Icon(
+                            imageVector = avatarIcon,
+                            contentDescription = "Avatar",
+                            tint = Color.White,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(14.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
                     Row(
@@ -418,10 +566,11 @@ private fun StreamHubUserProfileCard(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = titleText,
+                            text = finalName,
                             color = TextPrimary,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 17.sp
+                            fontSize = 17.sp,
+                            maxLines = 1
                         )
 
                         // Tier Badge Pill (👑 Owner / ✅ Verified / 🎬 12h Pass / 👤 Free Tier)
@@ -444,17 +593,65 @@ private fun StreamHubUserProfileCard(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
-                        text = subtitleText,
+                        text = finalTagline,
                         color = TextSecondary,
                         fontSize = 12.sp,
-                        lineHeight = 16.sp
+                        lineHeight = 16.sp,
+                        maxLines = 2
                     )
+                }
+            }
+
+            // Persona & Member ID Footer Row
+            Spacer(modifier = Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Member ID Pill with copy action
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF1B1B2C),
+                    border = BorderStroke(0.5.dp, Color(0x33FFFFFF)),
+                    modifier = Modifier.clickable {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                        clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("StreamHub Member ID", userProfile.memberId))
+                        Toast.makeText(context, "Copied Member ID: ${userProfile.memberId} 📋", Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("ID:", color = TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        Text(userProfile.memberId, color = TextPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = TextSecondary, modifier = Modifier.size(10.dp))
+                    }
+                }
+
+                // Customize Persona Button
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = primaryColor.copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.4f)),
+                    modifier = Modifier.clickable { onEditProfile() }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = primaryColor, modifier = Modifier.size(11.dp))
+                        Text("Edit Persona ✏️", color = primaryColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
             // ONLY visible when Admin is unlocked on this device!
             if (isAdmin) {
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 Surface(
                     shape = RoundedCornerShape(14.dp),

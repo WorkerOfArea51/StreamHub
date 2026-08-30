@@ -25,9 +25,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+
+sealed class StorageCheckResult {
+    data class Available(val freeMb: Double, val totalMb: Double) : StorageCheckResult()
+    data class Insufficient(val freeMb: Double, val requiredMb: Double) : StorageCheckResult()
+    data class Error(val message: String) : StorageCheckResult()
+}
 
 data class DownloadedItem(
     val mediaId: String,
@@ -278,6 +285,35 @@ object DownloadManager {
         return defaultDir
     }
 
+    /**
+     * Storage Pre-Allocation & Headroom Check:
+     * Validates if there is enough free disk space for the download plus a 150 MB safety margin.
+     */
+    fun checkStorageAvailability(context: Context, requiredMb: Double = 350.0): StorageCheckResult {
+        return try {
+            val downloadsDir = getEffectiveDownloadDir(context)
+            if (!downloadsDir.exists() && !downloadsDir.mkdirs()) {
+                return StorageCheckResult.Error("Cannot access download storage directory")
+            }
+            val stat = StatFs(downloadsDir.absolutePath)
+            val freeBytes = stat.availableBlocksLong * stat.blockSizeLong
+            val totalBytes = stat.blockCountLong * stat.blockSizeLong
+            val freeMb = freeBytes / (1024.0 * 1024.0)
+            val totalMb = totalBytes / (1024.0 * 1024.0)
+
+            val safetyThresholdMb = requiredMb + 150.0
+
+            if (freeMb < safetyThresholdMb) {
+                StorageCheckResult.Insufficient(freeMb = freeMb, requiredMb = safetyThresholdMb)
+            } else {
+                StorageCheckResult.Available(freeMb = freeMb, totalMb = totalMb)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Storage check failed", e)
+            StorageCheckResult.Error(e.message ?: "Unknown storage error")
+        }
+    }
+
     fun getEffectiveScreenshotDir(context: Context): File {
         val custom = _customScreenshotPath.value
         if (custom.isNotBlank() && !custom.startsWith("content://")) {
@@ -384,23 +420,38 @@ object DownloadManager {
                 return@launch
             }
 
-            val downloadsDir = getEffectiveDownloadDir(context)
-            // FIX: Verify disk space before starting (reject if <50 MB free).
-            val stat = StatFs(downloadsDir.absolutePath)
-            val freeBytes = stat.availableBlocksLong * stat.blockSizeLong
-            if (freeBytes < 50L * 1024 * 1024) {
-                Log.e(TAG, "Insufficient disk space: ${freeBytes / (1024 * 1024)} MB free")
-                appContext?.let {
-                    android.widget.Toast.makeText(
-                        it, "Not enough disk space to download", android.widget.Toast.LENGTH_LONG
-                    ).show()
-                }
-                return@launch
-            }
-
             val isMovie = mediaItem.category.equals("Movie", ignoreCase = true) ||
                           mediaItem.category.equals("Movies", ignoreCase = true) ||
                           mediaItem.type.equals("Movie", ignoreCase = true)
+            val estimatedMb = if (isMovie) 900.0 else 350.0
+
+            // Pre-Allocation & Free Space Validation
+            when (val storageCheck = checkStorageAvailability(context, estimatedMb)) {
+                is StorageCheckResult.Insufficient -> {
+                    val msg = "⚠️ Low Storage: Only ${storageCheck.freeMb.toInt()} MB free. At least ${storageCheck.requiredMb.toInt()} MB required."
+                    Log.e(TAG, msg)
+                    withContext(Dispatchers.Main) {
+                        appContext?.let {
+                            android.widget.Toast.makeText(it, msg, android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    return@launch
+                }
+                is StorageCheckResult.Error -> {
+                    Log.e(TAG, "Storage validation error: ${storageCheck.message}")
+                    withContext(Dispatchers.Main) {
+                        appContext?.let {
+                            android.widget.Toast.makeText(it, "Storage Error: ${storageCheck.message}", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    return@launch
+                }
+                is StorageCheckResult.Available -> {
+                    Log.i(TAG, "Storage pre-allocated & verified: ${storageCheck.freeMb.toInt()} MB free (Estimated: ${estimatedMb.toInt()} MB)")
+                }
+            }
+
+            val downloadsDir = getEffectiveDownloadDir(context)
             val fileExt = extractFileExtension(resolvedUrl, rawUrl, mediaItem.title)
             val cleanTitle = mediaItem.title
                 .removeSuffix(".mkv").removeSuffix(".mp4").removeSuffix(".webm").removeSuffix(".avi")
@@ -566,6 +617,19 @@ object DownloadManager {
             return
         }
 
+        // Storage verification before resume
+        val remainingMb = if (item.fileSizeMb > 0) (item.fileSizeMb - (item.resumeFromBytes / (1024.0 * 1024.0))).coerceAtLeast(50.0) else 150.0
+        val storageCheck = checkStorageAvailability(ctx, remainingMb)
+        if (storageCheck is StorageCheckResult.Insufficient) {
+            val msg = "⚠️ Low Storage: Only ${storageCheck.freeMb.toInt()} MB free to resume ${item.mediaTitle}."
+            Log.w(TAG, msg)
+            appContext?.let {
+                android.widget.Toast.makeText(it, msg, android.widget.Toast.LENGTH_SHORT).show()
+            }
+            markAsPaused(item)
+            return
+        }
+
         val targetFile = File(item.localFilePath)
 
         try {
@@ -705,11 +769,23 @@ object DownloadManager {
         }
     }
 
+    fun pauseAllActiveDownloads() {
+        val active = _downloads.value.filter { !it.isCompleted && !it.isPaused && !it.isCanceled }
+        Log.i(TAG, "Pausing ${active.size} active downloads for cellular connection")
+        active.forEach { pauseDownload(it) }
+    }
+
     fun resumeDownloadByKeys(mediaId: String, episodeIndex: Int, context: Context? = null) {
         val item = _downloads.value.firstOrNull { it.mediaId == mediaId && it.episodeIndex == episodeIndex }
         if (item != null) {
             resumeDownload(item, context)
         }
+    }
+
+    fun resumeAllInterruptedDownloads(context: Context) {
+        val pausedOrPending = _downloads.value.filter { !it.isCompleted && !it.isCanceled }
+        Log.i(TAG, "Auto-resuming ${pausedOrPending.size} pending/paused downloads on Wi-Fi connection")
+        pausedOrPending.forEach { resumeDownload(it, context) }
     }
 
     fun cancelDownloadByKeys(mediaId: String, episodeIndex: Int) {
