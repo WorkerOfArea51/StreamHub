@@ -155,17 +155,7 @@ fun AdminEditorDialog(
             val ep = eps.first()
             mutableStateOf(ep.streamUrl.ifBlank { ep.mirrorStreamUrl })
         } else {
-            val jsonArray = org.json.JSONArray()
-            eps.forEach { ep ->
-                val obj = org.json.JSONObject()
-                obj.put("episode_num", ep.episodeNumber)
-                obj.put("file_name", ep.fileName)
-                obj.put("file_size", ep.fileSize)
-                obj.put("direct_stream_url", ep.streamUrl)
-                obj.put("download_url", ep.mirrorStreamUrl)
-                jsonArray.put(obj)
-            }
-            mutableStateOf(jsonArray.toString(2))
+            mutableStateOf(com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps))
         }
     }
     var f2lBatchInput by remember { mutableStateOf("") }
@@ -874,7 +864,14 @@ fun AdminEditorDialog(
                                                         res.fold(
                                                             onSuccess = { eps ->
                                                                 if (eps.isNotEmpty()) {
-                                                                    val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps)
+                                                                    val existingDump = generatedEpisodesText.ifBlank { startBatchLink }
+                                                                    val existingEps = if (existingDump.isNotBlank()) {
+                                                                        com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(existingDump)
+                                                                            .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(existingDump) }
+                                                                    } else emptyList()
+                                                                    val otherSeasons = existingEps.filterNot { it.seasonNumber == parsedSeasonNum }
+                                                                    val merged = (otherSeasons + eps).sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+                                                                    val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(merged)
                                                                     generatedEpisodesText = jsonStr
                                                                     startBatchLink = jsonStr
                                                                 } else {
@@ -924,7 +921,14 @@ fun AdminEditorDialog(
                                                 res.fold(
                                                     onSuccess = { eps ->
                                                         if (eps.isNotEmpty()) {
-                                                            val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps)
+                                                            val existingDump = generatedEpisodesText.ifBlank { startBatchLink }
+                                                            val existingEps = if (existingDump.isNotBlank()) {
+                                                                com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(existingDump)
+                                                                    .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(existingDump) }
+                                                            } else emptyList()
+                                                            val otherSeasons = existingEps.filterNot { it.seasonNumber == parsedSeasonNum }
+                                                            val merged = (otherSeasons + eps).sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+                                                            val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(merged)
                                                             generatedEpisodesText = jsonStr
                                                             startBatchLink = jsonStr
                                                         }
@@ -976,7 +980,14 @@ fun AdminEditorDialog(
                                                     res.fold(
                                                         onSuccess = { eps ->
                                                             if (eps.isNotEmpty()) {
-                                                                val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps)
+                                                                val existingDump = generatedEpisodesText.ifBlank { startBatchLink }
+                                                                val existingEps = if (existingDump.isNotBlank()) {
+                                                                    com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(existingDump)
+                                                                        .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(existingDump) }
+                                                                } else emptyList()
+                                                                val otherSeasons = existingEps.filterNot { it.seasonNumber == parsedSeasonNum }
+                                                                val merged = (otherSeasons + eps).sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+                                                                val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(merged)
                                                                 generatedEpisodesText = jsonStr
                                                                 startBatchLink = jsonStr
                                                             } else {
@@ -994,13 +1005,27 @@ fun AdminEditorDialog(
 
                                             val parsed = com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(clipText, parsedSeasonNum, arcNameText)
                                             if (parsed.isNotEmpty()) {
-                                                val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(parsed)
+                                                val existingDump = generatedEpisodesText.ifBlank { startBatchLink }
+                                                val existingEps = if (existingDump.isNotBlank()) {
+                                                    com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(existingDump)
+                                                        .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(existingDump) }
+                                                } else emptyList()
+                                                val otherSeasons = existingEps.filterNot { it.seasonNumber == parsedSeasonNum }
+                                                val merged = (otherSeasons + parsed).sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+                                                val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(merged)
                                                 generatedEpisodesText = jsonStr
                                                 startBatchLink = jsonStr
                                             } else {
                                                 val fallback = TelegramLinkResolver.parseSmartBotMessageOrLinks(clipText, parsedSeasonNum, arcNameText)
                                                 if (fallback.isNotEmpty()) {
-                                                    val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(fallback)
+                                                    val existingDump = generatedEpisodesText.ifBlank { startBatchLink }
+                                                    val existingEps = if (existingDump.isNotBlank()) {
+                                                        com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(existingDump)
+                                                            .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(existingDump) }
+                                                    } else emptyList()
+                                                    val otherSeasons = existingEps.filterNot { it.seasonNumber == parsedSeasonNum }
+                                                    val merged = (otherSeasons + fallback).sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+                                                    val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(merged)
                                                     generatedEpisodesText = jsonStr
                                                     startBatchLink = jsonStr
                                                 } else {
@@ -1031,7 +1056,7 @@ fun AdminEditorDialog(
                                         ) {
                                             Icon(Icons.Default.Delete, contentDescription = "Clear", tint = PrimaryRed, modifier = Modifier.size(16.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Clear", color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            Text("Clear All", color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
@@ -1109,7 +1134,14 @@ fun AdminEditorDialog(
                                                     arcName = arcNameText.trim(),
                                                     titleTemplate = seqTitleTemplate.trim().ifBlank { "Episode {n}" }
                                                 )
-                                                val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(generated)
+                                                val existingDump = generatedEpisodesText.ifBlank { startBatchLink }
+                                                val existingEps = if (existingDump.isNotBlank()) {
+                                                    com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(existingDump)
+                                                        .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(existingDump) }
+                                                } else emptyList()
+                                                val otherSeasons = existingEps.filterNot { it.seasonNumber == parsedSeasonNum }
+                                                val merged = (otherSeasons + generated).sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+                                                val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(merged)
                                                 generatedEpisodesText = jsonStr
                                                 startBatchLink = jsonStr
                                                 batchError = null
@@ -1144,6 +1176,12 @@ fun AdminEditorDialog(
                                 val validation = remember(parsedList) {
                                     com.streamhub.app.data.parser.BatchEpisodeParser.validateEpisodes(parsedList)
                                 }
+                                val seasonGroups = remember(parsedList) { parsedList.groupBy { it.seasonNumber } }
+                                val seasonSummary = remember(seasonGroups) {
+                                    if (seasonGroups.size > 1) {
+                                        " (" + seasonGroups.entries.sortedBy { it.key }.joinToString(" • ") { "S${it.key}: ${it.value.size} Eps" } + ")"
+                                    } else ""
+                                }
 
                                 Spacer(modifier = Modifier.height(10.dp))
                                 Surface(
@@ -1159,10 +1197,11 @@ fun AdminEditorDialog(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
-                                                if (validation.isValid) "✅ ${parsedList.size} Episodes Ready (0 Errors)" else "⚠️ ${parsedList.size} Episodes (${validation.warningMessages.size} Warnings)",
+                                                text = if (validation.isValid) "✅ ${parsedList.size} Episodes Ready$seasonSummary" else "⚠️ ${parsedList.size} Episodes$seasonSummary (${validation.warningMessages.size} Warnings)",
                                                 color = if (validation.isValid) Color(0xFF81C784) else Color(0xFFFFB74D),
                                                 fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.weight(1f)
                                             )
 
                                             // Quick Batch Renumbering Action
@@ -1172,8 +1211,13 @@ fun AdminEditorDialog(
                                                     color = Color(0xFF0284C7).copy(alpha = 0.2f),
                                                     border = BorderStroke(1.dp, Color(0xFF0284C7)),
                                                     modifier = Modifier.clickable {
-                                                        val renumbered = parsedList.mapIndexed { idx, ep ->
-                                                            ep.copy(episodeNumber = idx + 1, title = if (ep.title.startsWith("Episode ")) "Episode ${idx + 1}" else ep.title)
+                                                        val renumbered = parsedList.groupBy { it.seasonNumber }.flatMap { (_, epList) ->
+                                                            epList.mapIndexed { idx, ep ->
+                                                                ep.copy(
+                                                                    episodeNumber = idx + 1,
+                                                                    title = if (ep.title.matches(Regex("^Episode \\d+$", RegexOption.IGNORE_CASE))) "Episode ${idx + 1}" else ep.title
+                                                                )
+                                                            }
                                                         }
                                                         val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(renumbered)
                                                         generatedEpisodesText = jsonStr
@@ -1204,17 +1248,22 @@ fun AdminEditorDialog(
                                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                                                 modifier = Modifier.fillMaxWidth()
                                             ) {
-                                                parsedList.take(6).forEach { ep ->
+                                                parsedList.take(8).forEach { ep ->
                                                     Row(
                                                         verticalAlignment = Alignment.CenterVertically,
                                                         modifier = Modifier.fillMaxWidth()
                                                     ) {
+                                                        val epPrefix = if (seasonGroups.size > 1) {
+                                                            "S${ep.seasonNumber} E${ep.episodeNumber.toString().padStart(2, '0')}:"
+                                                        } else {
+                                                            "EP ${ep.episodeNumber.toString().padStart(2, '0')}:"
+                                                        }
                                                         Text(
-                                                            text = "EP ${ep.episodeNumber.toString().padStart(2, '0')}:",
+                                                            text = epPrefix,
                                                             color = Color(0xFFFFD700),
                                                             fontSize = 10.sp,
                                                             fontWeight = FontWeight.Bold,
-                                                            modifier = Modifier.width(45.dp)
+                                                            modifier = Modifier.width(if (seasonGroups.size > 1) 56.dp else 45.dp)
                                                         )
                                                         Text(
                                                             text = ep.title.removePrefix("Ep ${ep.episodeNumber}: ").ifBlank { ep.fileName },
