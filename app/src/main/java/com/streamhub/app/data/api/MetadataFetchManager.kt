@@ -378,7 +378,11 @@ object MetadataFetchManager {
                             }
 
                             // Multi-Season Specific Overrides (Poster, Synopsis, Release Date, Trailer)
-                            if (!isMovie && effectiveSeason > 1) {
+                            val hasExplicitSeason = cleanQuery.contains("Season", ignoreCase = true) || 
+                                                    cleanQuery.contains(Regex("(?i)\\bS\\d+\\b")) ||
+                                                    targetSeason > 1
+
+                            if (!isMovie && (effectiveSeason > 1 || (effectiveSeason == 1 && hasExplicitSeason))) {
                                 val seasonsArr = dJson.optJSONArray("seasons")
                                 var seasonObj: JSONObject? = null
                                 if (seasonsArr != null) {
@@ -412,7 +416,7 @@ object MetadataFetchManager {
                                     } else {
                                         "$baseShowTitle: $sName"
                                     }
-                                } else {
+                                } else if (effectiveSeason > 1) {
                                     title = if (cleanQuery.contains("Season", ignoreCase = true)) cleanQuery else "$baseShowTitle: Season $effectiveSeason"
                                 }
 
