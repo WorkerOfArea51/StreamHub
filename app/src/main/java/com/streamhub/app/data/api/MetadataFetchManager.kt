@@ -60,13 +60,17 @@ object MetadataFetchManager {
     private val movieGenreMap = ConcurrentHashMap<Int, String>()
     private val tvGenreMap = ConcurrentHashMap<Int, String>()
 
-    suspend fun fetchMetadata(titleQuery: String, category: String): Result<FetchedMetadata> {
+    suspend fun fetchMetadata(
+        titleQuery: String,
+        category: String,
+        targetSeason: Int = 1
+    ): Result<FetchedMetadata> {
         return withContext(Dispatchers.IO) {
             try {
                 if (category.equals("Anime", ignoreCase = true)) {
                     fetchFromMAL(titleQuery)
                 } else {
-                    fetchFromTMDB(titleQuery, category)
+                    fetchFromTMDB(titleQuery, category, targetSeason)
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -106,7 +110,11 @@ object MetadataFetchManager {
         }
     }
 
-    private suspend fun fetchFromTMDB(query: String, category: String): Result<FetchedMetadata> {
+    private suspend fun fetchFromTMDB(
+        query: String,
+        category: String,
+        targetSeason: Int = 1
+    ): Result<FetchedMetadata> {
         val apiKey = Secrets.TMDB_API_KEY
         if (apiKey.isBlank()) {
             return Result.failure(Exception("TMDB API Key is missing. Add STREAMHUB_TMDB_API_KEY secret."))
@@ -118,6 +126,9 @@ object MetadataFetchManager {
         val detailType = if (isMovie) "movie" else "tv"
 
         val cleanQuery = query.trim()
+        val detectedFromQuery = if (!isMovie) com.streamhub.app.data.FranchiseManager.detectSeasonNumber(cleanQuery) else 1
+        val effectiveSeason = if (detectedFromQuery > 1) detectedFromQuery else if (targetSeason > 1) targetSeason else 1
+
         val directTmdbId = when {
             cleanQuery.toIntOrNull() != null -> cleanQuery.toInt()
             cleanQuery.contains("themoviedb.org/movie/") -> cleanQuery.substringAfter("themoviedb.org/movie/").substringBefore("-").substringBefore("/").substringBefore("?").toIntOrNull()
@@ -136,7 +147,16 @@ object MetadataFetchManager {
         val genreIdsList = mutableListOf<Int>()
 
         if (directTmdbId == null) {
-            val encodedQuery = URLEncoder.encode(cleanQuery, Charsets.UTF_8.name())
+            val searchCleanTerm = if (!isMovie && effectiveSeason > 1) {
+                cleanQuery
+                    .replace(Regex("(?i)(?::|\\b|-)?\\s*(?:season|s)\\s*\\d+.*$"), "")
+                    .replace(Regex("(?i)\\s*\\(\\s*season\\s*\\d+\\s*\\)"), "")
+                    .replace(Regex("(?i)\\s*\\b(?:2nd|3rd|4th|5th)\\s+season\\b.*$"), "")
+                    .trim()
+                    .ifBlank { cleanQuery }
+            } else cleanQuery
+
+            val encodedQuery = URLEncoder.encode(searchCleanTerm, Charsets.UTF_8.name())
             val searchUrl = "$TMDB_BASE/$endpoint?query=$encodedQuery&include_adult=false"
 
             val request = Request.Builder()
@@ -157,7 +177,18 @@ object MetadataFetchManager {
             }
 
             val json = JSONObject(body)
-            val results = json.optJSONArray("results")
+            var results = json.optJSONArray("results")
+            if ((results == null || results.length() == 0) && searchCleanTerm != cleanQuery) {
+                val fallbackEncoded = URLEncoder.encode(cleanQuery, Charsets.UTF_8.name())
+                val fallbackReq = Request.Builder().url("$TMDB_BASE/$endpoint?query=$fallbackEncoded&include_adult=false").build()
+                httpClient.newCall(fallbackReq).execute().use { fResp ->
+                    val fBody = fResp.body?.string()
+                    if (!fBody.isNullOrBlank()) {
+                        results = JSONObject(fBody).optJSONArray("results")
+                    }
+                }
+            }
+
             if (results == null || results.length() == 0) {
                 return Result.failure(Exception("No results found on TMDB for '$query'"))
             }
@@ -180,218 +211,299 @@ object MetadataFetchManager {
             }
         }
 
-            val releaseYear = if (releaseDate.length >= 4) {
-                releaseDate.substring(0, 4).toIntOrNull() ?: 0
-            } else 0
+        ensureGenreCache(apiKey, isMovie)
+        val genreMap = if (isMovie) movieGenreMap else tvGenreMap
+        val genresList = mutableListOf<String>()
+        for (id in genreIdsList) {
+            genreMap[id]?.let { genresList.add(it) }
+        }
+        if (genresList.isEmpty() && genreIdsList.isEmpty()) {
+            genresList.add(if (isMovie) "Movie" else "TV Series")
+        }
 
-            val posterUrl = if (posterPath.isNotBlank()) "https://image.tmdb.org/t/p/w500$posterPath" else ""
-            val backdropUrl = if (backdropPath.isNotBlank()) "https://image.tmdb.org/t/p/w1280$backdropPath" else posterUrl
-            val rating = if (voteAverage > 0) String.format(java.util.Locale.US, "%.1f", voteAverage) else ""
+        // Detailed lookup for extra metadata (trailer, producers, cast, status, maturity rating, season specifics)
+        var studio = ""
+        var producers = ""
+        var duration = ""
+        var status = ""
+        var totalEpisodes = ""
+        var youtubeTrailerId = ""
+        var castList = ""
+        var maturityRating = ""
 
-            ensureGenreCache(apiKey, isMovie)
-            val genreMap = if (isMovie) movieGenreMap else tvGenreMap
-            val genresList = mutableListOf<String>()
-            for (id in genreIdsList) {
-                genreMap[id]?.let { genresList.add(it) }
-            }
-            if (genresList.isEmpty() && genreIdsList.isEmpty()) {
-                genresList.add(if (isMovie) "Movie" else "TV Series")
-            }
+        if (tmdbIdNum > 0) {
+            try {
+                val appendParams = if (isMovie) "credits,videos,release_dates" else "credits,videos,content_ratings"
+                val detailUrl = "$TMDB_BASE/$detailType/$tmdbIdNum?append_to_response=$appendParams"
+                val detailReq = Request.Builder().url(detailUrl).header("Accept", "application/json").build()
 
-            // Detailed lookup for extra metadata (trailer, producers, cast, status, maturity rating)
-            var studio = ""
-            var producers = ""
-            var duration = ""
-            var status = ""
-            var totalEpisodes = ""
-            var youtubeTrailerId = ""
-            var castList = ""
-            var maturityRating = ""
+                httpClient.newCall(detailReq).execute().use { dResp ->
+                    if (dResp.isSuccessful) {
+                        val dBody = dResp.body?.string()
+                        if (!dBody.isNullOrBlank()) {
+                            val dJson = JSONObject(dBody)
+                            val baseShowTitle = if (isMovie) dJson.optString("title", title) else dJson.optString("name", title)
+                            if (directTmdbId != null) {
+                                title = baseShowTitle
+                                originalTitle = if (isMovie) dJson.optString("original_title", "") else dJson.optString("original_name", "")
+                                overview = dJson.optString("overview", overview)
+                                posterPath = dJson.optString("poster_path", posterPath)
+                                backdropPath = dJson.optString("backdrop_path", backdropPath)
+                                releaseDate = if (isMovie) dJson.optString("release_date", "") else dJson.optString("first_air_date", "")
+                                voteAverage = dJson.optDouble("vote_average", voteAverage)
+                                val dGenres = dJson.optJSONArray("genres")
+                                if (dGenres != null && genresList.isEmpty()) {
+                                    for (gi in 0 until dGenres.length()) {
+                                        val gName = dGenres.getJSONObject(gi).optString("name", "")
+                                        if (gName.isNotBlank()) genresList.add(gName)
+                                    }
+                                }
+                            }
 
-            if (tmdbIdNum > 0) {
-                try {
-                    val appendParams = if (isMovie) "credits,videos,release_dates" else "credits,videos,content_ratings"
-                    val detailUrl = "$TMDB_BASE/$detailType/$tmdbIdNum?append_to_response=$appendParams"
-                    val detailReq = Request.Builder().url(detailUrl).header("Accept", "application/json").build()
+                            status = dJson.optString("status", "")
 
-                    httpClient.newCall(detailReq).execute().use { dResp ->
-                        if (dResp.isSuccessful) {
-                            val dBody = dResp.body?.string()
-                            if (!dBody.isNullOrBlank()) {
-                                val dJson = JSONObject(dBody)
-                                if (directTmdbId != null) {
-                                    title = if (isMovie) dJson.optString("title", title) else dJson.optString("name", title)
-                                    originalTitle = if (isMovie) dJson.optString("original_title", "") else dJson.optString("original_name", "")
-                                    overview = dJson.optString("overview", overview)
-                                    posterPath = dJson.optString("poster_path", posterPath)
-                                    backdropPath = dJson.optString("backdrop_path", backdropPath)
-                                    releaseDate = if (isMovie) dJson.optString("release_date", "") else dJson.optString("first_air_date", "")
-                                    voteAverage = dJson.optDouble("vote_average", voteAverage)
-                                    val dGenres = dJson.optJSONArray("genres")
-                                    if (dGenres != null && genresList.isEmpty()) {
-                                        for (gi in 0 until dGenres.length()) {
-                                            val gName = dGenres.getJSONObject(gi).optString("name", "")
-                                            if (gName.isNotBlank()) genresList.add(gName)
+                            if (isMovie) {
+                                val runtime = dJson.optInt("runtime", 0)
+                                if (runtime > 0) duration = "${runtime}m"
+                            } else {
+                                val epRuntimes = dJson.optJSONArray("episode_run_time")
+                                if (epRuntimes != null && epRuntimes.length() > 0) {
+                                    duration = "${epRuntimes.getInt(0)}m"
+                                }
+                                val numEps = dJson.optInt("number_of_episodes", 0)
+                                if (numEps > 0) totalEpisodes = numEps.toString()
+                            }
+
+                            val prodCompanies = dJson.optJSONArray("production_companies")
+                            if (prodCompanies != null && prodCompanies.length() > 0) {
+                                studio = prodCompanies.getJSONObject(0).optString("name", "")
+                                val pList = mutableListOf<String>()
+                                for (ci in 0 until prodCompanies.length()) {
+                                    val pName = prodCompanies.getJSONObject(ci).optString("name", "")
+                                    if (pName.isNotBlank()) pList.add(pName)
+                                }
+                                producers = pList.take(3).joinToString(", ")
+                            }
+
+                            // Cast List
+                            val credits = dJson.optJSONObject("credits")
+                            val castArr = credits?.optJSONArray("cast")
+                            if (castArr != null) {
+                                val topCast = mutableListOf<String>()
+                                for (ci in 0 until minOf(5, castArr.length())) {
+                                    val actorName = castArr.getJSONObject(ci).optString("name", "")
+                                    if (actorName.isNotBlank()) topCast.add(actorName)
+                                }
+                                castList = topCast.joinToString(", ")
+                            }
+
+                            // Maturity / Content Certification
+                            if (isMovie) {
+                                val releaseDates = dJson.optJSONObject("release_dates")
+                                val resultsArr = releaseDates?.optJSONArray("results")
+                                if (resultsArr != null) {
+                                    var usRating = ""
+                                    var fallbackRating = ""
+                                    for (ri in 0 until resultsArr.length()) {
+                                        val rObj = resultsArr.getJSONObject(ri)
+                                        val country = rObj.optString("iso_3166_1", "")
+                                        val dates = rObj.optJSONArray("release_dates")
+                                        if (dates != null) {
+                                            for (di in 0 until dates.length()) {
+                                                val cert = dates.getJSONObject(di).optString("certification", "").trim()
+                                                if (cert.isNotBlank()) {
+                                                    if (country.equals("US", ignoreCase = true) && usRating.isBlank()) {
+                                                        usRating = cert
+                                                    } else if (fallbackRating.isBlank()) {
+                                                        fallbackRating = cert
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    maturityRating = if (usRating.isNotBlank()) usRating else fallbackRating
+                                }
+                            } else {
+                                val contentRatings = dJson.optJSONObject("content_ratings")
+                                val resultsArr = contentRatings?.optJSONArray("results")
+                                if (resultsArr != null) {
+                                    var usRating = ""
+                                    var fallbackRating = ""
+                                    for (ri in 0 until resultsArr.length()) {
+                                        val rObj = resultsArr.getJSONObject(ri)
+                                        val country = rObj.optString("iso_3166_1", "")
+                                        val rating = rObj.optString("rating", "").trim()
+                                        if (rating.isNotBlank()) {
+                                            if (country.equals("US", ignoreCase = true) && usRating.isBlank()) {
+                                                usRating = rating
+                                            } else if (fallbackRating.isBlank()) {
+                                                fallbackRating = rating
+                                            }
+                                        }
+                                    }
+                                    maturityRating = if (usRating.isNotBlank()) usRating else fallbackRating
+                                }
+                            }
+
+                            // YouTube Trailer ID
+                            val videos = dJson.optJSONObject("videos")
+                            val videoResults = videos?.optJSONArray("results")
+                            if (videoResults != null) {
+                                var officialTrailer = ""
+                                var anyTrailer = ""
+                                var teaserOrClip = ""
+                                for (vi in 0 until videoResults.length()) {
+                                    val vObj = videoResults.getJSONObject(vi)
+                                    val site = vObj.optString("site", "")
+                                    val typeStr = vObj.optString("type", "")
+                                    val keyStr = vObj.optString("key", "")
+                                    val isOfficial = vObj.optBoolean("official", false)
+                                    if (site.equals("YouTube", ignoreCase = true) && keyStr.isNotBlank()) {
+                                        if (typeStr.equals("Trailer", ignoreCase = true)) {
+                                            if (isOfficial && officialTrailer.isBlank()) {
+                                                officialTrailer = keyStr
+                                            } else if (anyTrailer.isBlank()) {
+                                                anyTrailer = keyStr
+                                            }
+                                        } else if (typeStr.equals("Teaser", ignoreCase = true) || typeStr.equals("Clip", ignoreCase = true)) {
+                                            if (teaserOrClip.isBlank()) teaserOrClip = keyStr
+                                        }
+                                    }
+                                }
+                                youtubeTrailerId = when {
+                                    officialTrailer.isNotBlank() -> officialTrailer
+                                    anyTrailer.isNotBlank() -> anyTrailer
+                                    else -> teaserOrClip
+                                }
+                            }
+
+                            // Multi-Season Specific Overrides (Poster, Synopsis, Release Date, Trailer)
+                            if (!isMovie && effectiveSeason > 1) {
+                                val seasonsArr = dJson.optJSONArray("seasons")
+                                var seasonObj: JSONObject? = null
+                                if (seasonsArr != null) {
+                                    for (si in 0 until seasonsArr.length()) {
+                                        val s = seasonsArr.getJSONObject(si)
+                                        if (s.optInt("season_number", 0) == effectiveSeason) {
+                                            seasonObj = s
+                                            break
                                         }
                                     }
                                 }
 
-                                status = dJson.optString("status", "")
+                                if (seasonObj != null) {
+                                    val sOverview = seasonObj.optString("overview", "").trim()
+                                    if (sOverview.isNotBlank()) overview = sOverview
 
-                                if (isMovie) {
-                                    val runtime = dJson.optInt("runtime", 0)
-                                    if (runtime > 0) duration = "${runtime}m"
+                                    val sPoster = seasonObj.optString("poster_path", "").trim()
+                                    if (sPoster.isNotBlank()) posterPath = sPoster
+
+                                    val sAirDate = seasonObj.optString("air_date", "").trim()
+                                    if (sAirDate.length >= 4) releaseDate = sAirDate
+
+                                    val sEpCount = seasonObj.optInt("episode_count", 0)
+                                    if (sEpCount > 0) totalEpisodes = sEpCount.toString()
+
+                                    val sName = seasonObj.optString("name", "Season $effectiveSeason").trim()
+                                    title = if (cleanQuery.contains("Season", ignoreCase = true) || cleanQuery.contains("S$effectiveSeason", ignoreCase = true)) {
+                                        cleanQuery
+                                    } else if (sName.startsWith("Season", ignoreCase = true)) {
+                                        "$baseShowTitle: $sName"
+                                    } else {
+                                        "$baseShowTitle: $sName"
+                                    }
                                 } else {
-                                    val epRuntimes = dJson.optJSONArray("episode_run_time")
-                                    if (epRuntimes != null && epRuntimes.length() > 0) {
-                                        duration = "${epRuntimes.getInt(0)}m"
-                                    }
-                                    val numEps = dJson.optInt("number_of_episodes", 0)
-                                    if (numEps > 0) totalEpisodes = numEps.toString()
+                                    title = if (cleanQuery.contains("Season", ignoreCase = true)) cleanQuery else "$baseShowTitle: Season $effectiveSeason"
                                 }
 
-                                val prodCompanies = dJson.optJSONArray("production_companies")
-                                if (prodCompanies != null && prodCompanies.length() > 0) {
-                                    studio = prodCompanies.getJSONObject(0).optString("name", "")
-                                    val pList = mutableListOf<String>()
-                                    for (ci in 0 until prodCompanies.length()) {
-                                        val pName = prodCompanies.getJSONObject(ci).optString("name", "")
-                                        if (pName.isNotBlank()) pList.add(pName)
-                                    }
-                                    producers = pList.take(3).joinToString(", ")
-                                }
-
-                                // Cast List
-                                val credits = dJson.optJSONObject("credits")
-                                val castArr = credits?.optJSONArray("cast")
-                                if (castArr != null) {
-                                    val topCast = mutableListOf<String>()
-                                    for (ci in 0 until minOf(5, castArr.length())) {
-                                        val actorName = castArr.getJSONObject(ci).optString("name", "")
-                                        if (actorName.isNotBlank()) topCast.add(actorName)
-                                    }
-                                    castList = topCast.joinToString(", ")
-                                }
-
-                                // Maturity / Content Certification
-                                if (isMovie) {
-                                    val releaseDates = dJson.optJSONObject("release_dates")
-                                    val resultsArr = releaseDates?.optJSONArray("results")
-                                    if (resultsArr != null) {
-                                        var usRating = ""
-                                        var fallbackRating = ""
-                                        for (ri in 0 until resultsArr.length()) {
-                                            val rObj = resultsArr.getJSONObject(ri)
-                                            val country = rObj.optString("iso_3166_1", "")
-                                            val dates = rObj.optJSONArray("release_dates")
-                                            if (dates != null) {
-                                                for (di in 0 until dates.length()) {
-                                                    val cert = dates.getJSONObject(di).optString("certification", "").trim()
-                                                    if (cert.isNotBlank()) {
-                                                        if (country.equals("US", ignoreCase = true) && usRating.isBlank()) {
-                                                            usRating = cert
-                                                        } else if (fallbackRating.isBlank()) {
-                                                            fallbackRating = cert
+                                // Fetch season-specific YouTube trailer
+                                try {
+                                    val sVideoUrl = "$TMDB_BASE/tv/$tmdbIdNum/season/$effectiveSeason/videos"
+                                    val sVideoReq = Request.Builder().url(sVideoUrl).header("Accept", "application/json").build()
+                                    httpClient.newCall(sVideoReq).execute().use { sVideoResp ->
+                                        if (sVideoResp.isSuccessful) {
+                                            val sVideoBody = sVideoResp.body?.string()
+                                            if (!sVideoBody.isNullOrBlank()) {
+                                                val sVideoJson = JSONObject(sVideoBody)
+                                                val sResults = sVideoJson.optJSONArray("results")
+                                                if (sResults != null && sResults.length() > 0) {
+                                                    for (vi in 0 until sResults.length()) {
+                                                        val vObj = sResults.getJSONObject(vi)
+                                                        val site = vObj.optString("site", "")
+                                                        val typeStr = vObj.optString("type", "")
+                                                        val keyStr = vObj.optString("key", "")
+                                                        if (site.equals("YouTube", ignoreCase = true) && keyStr.isNotBlank()) {
+                                                            if (typeStr.equals("Trailer", ignoreCase = true)) {
+                                                                youtubeTrailerId = keyStr
+                                                                break
+                                                            } else if (youtubeTrailerId.isBlank()) {
+                                                                youtubeTrailerId = keyStr
+                                                            }
                                                         }
                                                     }
                                                 }
                                             }
                                         }
-                                        maturityRating = if (usRating.isNotBlank()) usRating else fallbackRating
                                     }
-                                } else {
-                                    val contentRatings = dJson.optJSONObject("content_ratings")
-                                    val resultsArr = contentRatings?.optJSONArray("results")
-                                    if (resultsArr != null) {
-                                        var usRating = ""
-                                        var fallbackRating = ""
-                                        for (ri in 0 until resultsArr.length()) {
-                                            val rObj = resultsArr.getJSONObject(ri)
-                                            val country = rObj.optString("iso_3166_1", "")
-                                            val rating = rObj.optString("rating", "").trim()
-                                            if (rating.isNotBlank()) {
-                                                if (country.equals("US", ignoreCase = true) && usRating.isBlank()) {
-                                                    usRating = rating
-                                                } else if (fallbackRating.isBlank()) {
-                                                    fallbackRating = rating
-                                                }
-                                            }
-                                        }
-                                        maturityRating = if (usRating.isNotBlank()) usRating else fallbackRating
-                                    }
-                                }
-
-                                // YouTube Trailer ID
-                                val videos = dJson.optJSONObject("videos")
-                                val videoResults = videos?.optJSONArray("results")
-                                if (videoResults != null) {
-                                    var officialTrailer = ""
-                                    var anyTrailer = ""
-                                    var teaserOrClip = ""
-                                    for (vi in 0 until videoResults.length()) {
-                                        val vObj = videoResults.getJSONObject(vi)
-                                        val site = vObj.optString("site", "")
-                                        val typeStr = vObj.optString("type", "")
-                                        val keyStr = vObj.optString("key", "")
-                                        val isOfficial = vObj.optBoolean("official", false)
-                                        if (site.equals("YouTube", ignoreCase = true) && keyStr.isNotBlank()) {
-                                            if (typeStr.equals("Trailer", ignoreCase = true)) {
-                                                if (isOfficial && officialTrailer.isBlank()) {
-                                                    officialTrailer = keyStr
-                                                } else if (anyTrailer.isBlank()) {
-                                                    anyTrailer = keyStr
-                                                }
-                                            } else if (typeStr.equals("Teaser", ignoreCase = true) || typeStr.equals("Clip", ignoreCase = true)) {
-                                                if (teaserOrClip.isBlank()) teaserOrClip = keyStr
-                                            }
-                                        }
-                                    }
-                                    youtubeTrailerId = when {
-                                        officialTrailer.isNotBlank() -> officialTrailer
-                                        anyTrailer.isNotBlank() -> anyTrailer
-                                        else -> teaserOrClip
-                                    }
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Failed to fetch season $effectiveSeason trailer: ${e.message}")
                                 }
                             }
                         }
                     }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to fetch TMDB detail specs: ${e.message}")
                 }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to fetch TMDB detail specs: ${e.message}")
             }
+        }
 
-            val detectedSeason = com.streamhub.app.data.FranchiseManager.detectSeasonNumber(title)
-            val detectedFranchiseId = com.streamhub.app.data.FranchiseManager.getFranchiseId(com.streamhub.app.data.models.MediaItem(title = title))
-            val detectedFranchiseTitle = com.streamhub.app.data.FranchiseManager.getFranchiseTitle(com.streamhub.app.data.models.MediaItem(title = title))
-            val detectedRelation = if (isMovie) "Movie" else if (detectedSeason > 1) "Sequel" else "Main Story"
+        val releaseYear = if (releaseDate.length >= 4) {
+            releaseDate.substring(0, 4).toIntOrNull() ?: 0
+        } else 0
 
-            val fetched = FetchedMetadata(
-                title = title,
-                synopsis = overview,
-                posterUrl = posterUrl,
-                backdropUrl = backdropUrl,
-                releaseYear = releaseYear,
-                rating = rating,
-                maturityRating = maturityRating,
-                category = if (isMovie) "Movies" else "Series",
-                genres = genresList.take(5),
-                studio = studio,
-                producers = producers,
-                duration = duration,
-                status = status,
-                totalEpisodes = totalEpisodes,
-                alternativeTitles = if (originalTitle.isNotBlank() && !originalTitle.equals(title, ignoreCase = true)) originalTitle else "",
-                tmdbId = if (tmdbIdNum > 0) tmdbIdNum.toString() else "",
-                castList = castList,
-                youtubeTrailerId = youtubeTrailerId,
-                aired = releaseDate,
-                franchiseId = detectedFranchiseId,
-                franchiseTitle = detectedFranchiseTitle,
-                seasonNumber = detectedSeason,
-                seasonTitle = if (detectedSeason > 1) "Season $detectedSeason" else "",
-                relationType = detectedRelation
-            )
-            return Result.success(fetched)
+        val posterUrl = if (posterPath.isNotBlank()) "https://image.tmdb.org/t/p/w500$posterPath" else ""
+        val backdropUrl = if (backdropPath.isNotBlank()) "https://image.tmdb.org/t/p/w1280$backdropPath" else posterUrl
+        val rating = if (voteAverage > 0) String.format(java.util.Locale.US, "%.1f", voteAverage) else ""
+
+        val franchiseBaseTitle = if (!isMovie) {
+            cleanQuery.replace(Regex("(?i)(?::|\\b|-)?\\s*(?:season|s)\\s*\\d+.*$"), "")
+                .replace(Regex("(?i)\\s*\\(\\s*season\\s*\\d+\\s*\\)"), "")
+                .trim()
+                .ifBlank { title.substringBefore(":").trim() }
+        } else title
+
+        val detectedFranchiseId = com.streamhub.app.data.FranchiseManager.getFranchiseId(com.streamhub.app.data.models.MediaItem(title = franchiseBaseTitle))
+        val detectedFranchiseTitle = com.streamhub.app.data.FranchiseManager.getFranchiseTitle(com.streamhub.app.data.models.MediaItem(title = franchiseBaseTitle))
+        val detectedSeason = effectiveSeason
+        val detectedRelation = if (isMovie) "Movie" else if (detectedSeason > 1) "Sequel" else "Main Story"
+
+        val fetched = FetchedMetadata(
+            title = title,
+            synopsis = overview,
+            posterUrl = posterUrl,
+            backdropUrl = backdropUrl,
+            releaseYear = releaseYear,
+            rating = rating,
+            maturityRating = maturityRating,
+            category = if (isMovie) "Movies" else "Series",
+            genres = genresList.take(5),
+            studio = studio,
+            producers = producers,
+            duration = duration,
+            status = status,
+            totalEpisodes = totalEpisodes,
+            alternativeTitles = if (originalTitle.isNotBlank() && !originalTitle.equals(title, ignoreCase = true)) originalTitle else "",
+            tmdbId = if (tmdbIdNum > 0) tmdbIdNum.toString() else "",
+            castList = castList,
+            youtubeTrailerId = youtubeTrailerId,
+            aired = releaseDate,
+            franchiseId = detectedFranchiseId,
+            franchiseTitle = detectedFranchiseTitle,
+            seasonNumber = detectedSeason,
+            seasonTitle = if (detectedSeason > 1) "Season $detectedSeason" else "",
+            relationType = detectedRelation
+        )
+        return Result.success(fetched)
         }
 
     /**

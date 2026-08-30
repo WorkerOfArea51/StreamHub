@@ -475,7 +475,8 @@ fun AdminEditorDialog(
                                 isFetchingApi = true
                                 fetchError = null
                                 scope.launch {
-                                    val result = MetadataFetchManager.fetchMetadata(title, category)
+                                    val parsedSeason = seasonNumberText.toIntOrNull() ?: 1
+                                    val result = MetadataFetchManager.fetchMetadata(title, category, targetSeason = parsedSeason)
                                     result.fold(
                                         onSuccess = { meta ->
                                             title = meta.title
