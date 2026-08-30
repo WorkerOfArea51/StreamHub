@@ -305,7 +305,7 @@ fun ProfileScreen(
                 icon = Icons.Default.Info,
                 iconTint = Color(0xFF38BDF8),
                 title = "About StreamHub",
-                subtitle = "Version ${com.streamhub.app.BuildConfig.VERSION_NAME} • App details, license & credits",
+                subtitle = "App information, open source licenses & credits",
                 badge = "v${com.streamhub.app.BuildConfig.VERSION_NAME}",
                 onClick = { showAboutScreen = true }
             )
