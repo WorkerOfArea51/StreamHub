@@ -33,7 +33,6 @@ import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ElectricBolt
 import androidx.compose.material.icons.filled.History
@@ -139,7 +138,6 @@ fun ProfileScreen(
     var showAdPassDialog by remember { mutableStateOf(false) }
     var showLiveTelemetryDialog by remember { mutableStateOf(false) }
     var showAboutScreen by remember { mutableStateOf(false) }
-    var showCustomizeHomeDialog by remember { mutableStateOf(false) }
     var showWhatsNewDialog by remember { mutableStateOf(false) }
     var showEditProfileDialog by remember { mutableStateOf(false) }
 
@@ -291,17 +289,6 @@ fun ProfileScreen(
             )
         }
 
-        item(key = "settings_customize_home") {
-            ProfileSettingsItem(
-                icon = Icons.Default.DashboardCustomize,
-                iconTint = AccentOrange,
-                title = "Customize Home Screen Layout",
-                subtitle = "Toggle hero carousel, recommendations, continue watching & shelves",
-                badge = "Layout 🎛️",
-                onClick = { showCustomizeHomeDialog = true }
-            )
-        }
-
         item(key = "settings_all_prefs") {
             ProfileSettingsItem(
                 icon = Icons.Default.Settings,
@@ -317,19 +304,12 @@ fun ProfileScreen(
             ProfileSettingsItem(
                 icon = Icons.Default.Info,
                 iconTint = Color(0xFF38BDF8),
-                title = "About StreamHub & Telegram Bot",
-                subtitle = "StreamHub v${com.streamhub.app.BuildConfig.VERSION_NAME} • Ultra-fast Media3 & TDLib MTProto streaming ecosystem",
-                badge = "About ℹ️",
+                title = "About StreamHub",
+                subtitle = "Version ${com.streamhub.app.BuildConfig.VERSION_NAME} • App details, license & credits",
+                badge = "v${com.streamhub.app.BuildConfig.VERSION_NAME}",
                 onClick = { showAboutScreen = true }
             )
         }
-    }
-
-    // Customize Home Screen Layout Dialog
-    if (showCustomizeHomeDialog) {
-        com.streamhub.app.ui.components.CustomizeHomeLayoutDialog(
-            onDismiss = { showCustomizeHomeDialog = false }
-        )
     }
 
     // Dedicated About Screen (Full Screen View)

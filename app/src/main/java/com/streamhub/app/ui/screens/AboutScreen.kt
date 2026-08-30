@@ -189,26 +189,26 @@ fun AboutScreen(
                         )
 
                         Text(
-                            text = "Ultra-Fast Anime & Cinema Streaming Ecosystem",
+                            text = "Ultra-Fast Anime & Cinema Streaming",
                             color = AccentGold,
-                            fontSize = 12.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(top = 4.dp)
                         )
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
                         // App Overview Description
                         Text(
-                            text = "StreamHub is a cutting-edge Android media streaming platform engineered with Jetpack Compose, Media3 ExoPlayer, and native TDLib MTProto integration for instantaneous, zero-buffering playback across huge libraries.",
+                            text = "A high-performance Android media streaming app powered by Jetpack Compose and Media3 ExoPlayer with direct cloud streaming for zero buffering.",
                             color = TextSecondary,
                             fontSize = 13.sp,
-                            lineHeight = 19.sp,
+                            lineHeight = 18.sp,
                             textAlign = TextAlign.Center
                         )
 
-                        Spacer(modifier = Modifier.height(18.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
 
                         Button(
                             onClick = { showWhatsNewDialog = true },
