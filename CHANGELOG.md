@@ -4,6 +4,46 @@ All notable changes, architectural milestones, and performance optimizations for
 
 ---
 
+## 🌟 [v2.5.0] - 2026-08-30 (Ultra Reliability & Bulk Sync Release)
+
+### 🚀 Major Upgrades & Features
+
+- **Multi-URL Parallel Bulk Sync & Import Engine (Creator Studio)**:
+  - **Concurrent Parallel Fetching**: Concurrently downloads and parses multiple JSON endpoints or F2L batch IDs across background I/O threads using coroutine concurrency (`async` / `awaitAll`).
+  - **Interactive Visual Preview Grid**: High-impact cards with poster thumbnails, categories, ratings, episode badges, and individual checkbox selection controls.
+  - **3-Way Smart Conflict Engine**: Support for `Merge New Episodes` (preserves existing show, merges non-duplicate episodes), `Overwrite Entire Show`, and `Skip Duplicates`.
+  - **Full Library JSON Backup**: 1-click complete catalog export.
+
+- **Intelligent Batch Episode Formatter & Parser**:
+  - **Smart Raw Dump Parser**: Extracts episode numbers, direct stream links, download mirrors, resolutions (`4K`, `1080p`, `720p`), and file sizes from arbitrary text dumps or Telegram channel posts.
+  - **Sequential Batch Pattern Generator**: Generates $1 \rightarrow N$ episode sequences with placeholder substitutions (`{n}`, `{0n}`, `{ep}`).
+  - **Live Duplicate & Error Validator**: Real-time validation warning badges with 1-tap `🔄 Re-Index 1..N` sequential renumbering tool.
+
+- **Smart Multi-Relation Format Badging**:
+  - **Compound Relation & Format Badges**: Franchise cards dynamically compute and display both relation role and format type (`CURRENT • TV`, `SEQUEL • MOVIE`, `PREQUEL • TV`, `SIDE STORY • OVA`, `SPECIAL`).
+  - **Color-Coded Badges**: Gold for `CURRENT`, Emerald Green for `SEQUEL`, Deep Purple for `PREQUEL`, Sunset Orange for `SEASON X`, Neon Cyan for `SIDE STORY/OVA/SPECIAL`.
+  - **Expanded Creator Studio Relation Picker**: 1-tap chips for `Main Story`, `Sequel`, `Prequel`, `Movie`, `Side Story`, `Spin-Off`, `OVA`, `Special`, `ONA`.
+
+- **Playback Reliability & Visual Polish**:
+  - **Smart Auto-Reconnect & Stream Recovery**: Exponential backoff reconnect engine for dropped streams without restarting playback from scratch.
+  - **Netflix-Style "Next Episode" Countdown Overlay**: Floating circular countdown overlay on episode endings with configurable trigger timer toggle in Video Settings.
+  - **Picture-in-Picture (PiP) Aspect Ratio Locking**: PiP aspect ratio automatically matches the active video with Next / Previous media actions.
+  - **Glowing Double-Tap Ripple Feedback**: Vibrant seeking animations with subtle tactile haptic responses.
+
+- **Home & Media Loading Performance**:
+  - **Dynamic "Continue Watching" Top Rail**: Instant resume progress rail at the top of the Home screen.
+  - **Coil Thumbnail Prefetching Engine**: Background prefetching for butter-smooth 120Hz scrolling.
+
+- **Search & Discovery Engine**:
+  - **Instant Multi-Tag Filter Chips**: Real-time filtering by genre, resolution (`4K`, `1080p`), and audio tags.
+  - **Recent Search History & Popular Queries**: Search query suggestions with 1-tap delete and clear history.
+
+- **Offline Engine & Storage Reliability**:
+  - **Wi-Fi Auto-Resume for Downloads**: Automatically resumes paused downloads when connecting to Wi-Fi, with full user toggle controls.
+  - **150 MB Storage Headroom Safety Check**: Pre-allocates and validates storage space to prevent incomplete downloads and device freeze crashes.
+
+---
+
 ## 🌟 [v2.4.0] - 2026-08-30 (Master Release)
 
 ### 🚀 Major Upgrades & Features

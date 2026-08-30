@@ -69,39 +69,46 @@ fun WhatsNewDialog(
 
     val features = listOf(
         FeatureItem(
-            title = "Upgraded My List & VIP Watchlist",
-            description = "Track watch progress % on started titles, filter by status (In Progress, Watch Later, Favorites, Completed), build custom folder collections (e.g. 'Date Night', 'Rewatch'), and toggle between Grid and List views.",
-            icon = Icons.Default.Bookmark,
-            badge = "MAJOR UPGRADE",
-            badgeColor = Color(0xFFFF5252)
+            title = "Smart Multi-URL Bulk Sync & Batch Importer",
+            description = "Parallel fetch multiple JSON endpoints or F2L batch IDs concurrently. Interactive card grid preview with conflict resolution (Merge, Overwrite, Skip) and 1-tap bulk catalog import.",
+            icon = Icons.Default.RocketLaunch,
+            badge = "CREATOR STUDIO",
+            badgeColor = Color(0xFF8B5CF6)
         ),
         FeatureItem(
-            title = "Live Audience & Telemetry Tracker",
-            description = "Owner-exclusive real-time monitor on Profile screen showing active users online, VIP vs Ad-pass subscriber distribution, and live watching feeds across devices.",
+            title = "Next Episode Overlay & Auto-Reconnect",
+            description = "Netflix-style circular countdown overlay on episode endings with configurable trigger timer, plus seamless exponential backoff stream recovery on network drops.",
             icon = Icons.Default.LiveTv,
-            badge = "REAL-TIME",
+            badge = "PLAYER ENGINE",
             badgeColor = Color(0xFF00E676)
         ),
         FeatureItem(
-            title = "Smart F2L Duration & Direct Seek Engine",
-            description = "Automatically extracts episode duration (e.g. '23:41') and converts web stream URLs into raw binary byte streams for instant, zero-lag ExoPlayer seeking.",
-            icon = Icons.Default.ElectricBolt,
-            badge = "STREAM ENGINE",
+            title = "Dynamic Continue Watching & 120Hz Prefetch",
+            description = "Instant top-rail continue watching carousel with exact resume timestamps, powered by high-speed thumbnail prefetching for butter-smooth 120Hz scrolling.",
+            icon = Icons.Default.Speed,
+            badge = "HOME & SPEED",
             badgeColor = AccentGold
         ),
         FeatureItem(
-            title = "Custom Theme Accents & Home Layout",
-            description = "Personalize your app with Netflix Red, Crunchyroll Orange, Cyberpunk Cyan, Emerald Green, and Neon Purple accents, plus customize and reorder your Home screen sections.",
-            icon = Icons.Default.ColorLens,
-            badge = "AESTHETICS",
+            title = "Multi-Tag Instant Search & Recent History",
+            description = "Tokenized multi-field search with instant interactive filter chips (4K, 1080p, Anime, Movies) and persistent search query history with 1-tap delete.",
+            icon = Icons.Default.Bookmark,
+            badge = "SEARCH",
             badgeColor = Color(0xFF38BDF8)
         ),
         FeatureItem(
-            title = "Accurate Watch Activity & Top Alignments",
-            description = "Millisecond-precise watch time metrics, auto-healed activity counters, and perfectly aligned headers across Watch History, Storage & Settings.",
-            icon = Icons.Default.Timer,
-            badge = "OPTIMIZED",
+            title = "Smart Multi-Relation Format Badges",
+            description = "Franchise cards now display compound relation and format tags (CURRENT • TV, SEQUEL • MOVIE, PREQUEL • TV, SIDE STORY • OVA) with glowing color accents.",
+            icon = Icons.Default.ColorLens,
+            badge = "FRANCHISE",
             badgeColor = Color(0xFFA78BFA)
+        ),
+        FeatureItem(
+            title = "Wi-Fi Auto-Resume & Storage Protection",
+            description = "Auto-resume downloads when connecting to Wi-Fi with customizable user settings, protected by a 150 MB safety margin against low-disk crashes.",
+            icon = Icons.Default.Timer,
+            badge = "OFFLINE ENGINE",
+            badgeColor = Color(0xFFFF5252)
         )
     )
 
@@ -158,7 +165,7 @@ fun WhatsNewDialog(
                 )
 
                 Text(
-                    text = "Version 2.4.0 • Master Release",
+                    text = "Version 2.5.0 • Ultra Reliability & Bulk Sync Release",
                     color = primaryColor,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold
