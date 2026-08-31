@@ -14,11 +14,14 @@ data class PlayerSettings(
     val autoPlayNextEpisode: Boolean = true,
     val volumeOnRight: Boolean = true, // Volume on right (Anim on left) vs Volume on left (Anim on right)
     val defaultAspectRatioId: String = "FIT",
-    val rememberAspectRatio: Boolean = true
+    val rememberAspectRatio: Boolean = true,
+    val isAmbientEnabled: Boolean = true,
+    val ambientMoodId: String = "COZY_CINEMA",
+    val ambientIntensity: Float = 0.15f // 0.05f to 0.50f (Default: 0.15f cozy)
 )
 
 /**
- * Persists player preferences (skip intro duration, next-ep threshold, etc.)
+ * Persists player preferences (skip intro duration, next-ep threshold, ambient lighting, etc.)
  * in SharedPreferences.
  *
  * Initialized once by StreamHubApplication.onCreate(). Callers do NOT pass
@@ -34,6 +37,9 @@ object PlayerSettingsManager {
     private const val KEY_VOLUME_ON_RIGHT = "volume_on_right"
     private const val KEY_DEFAULT_ASPECT_RATIO = "default_aspect_ratio_id"
     private const val KEY_REMEMBER_ASPECT_RATIO = "remember_aspect_ratio"
+    private const val KEY_AMBIENT_ENABLED = "ambient_enabled"
+    private const val KEY_AMBIENT_MOOD_ID = "ambient_mood_id"
+    private const val KEY_AMBIENT_INTENSITY = "ambient_intensity"
 
     private lateinit var appContext: Context
 
@@ -55,7 +61,10 @@ object PlayerSettingsManager {
                 autoPlayNextEpisode = prefs.getBoolean(KEY_AUTO_PLAY, true),
                 volumeOnRight = prefs.getBoolean(KEY_VOLUME_ON_RIGHT, true),
                 defaultAspectRatioId = prefs.getString(KEY_DEFAULT_ASPECT_RATIO, "FIT") ?: "FIT",
-                rememberAspectRatio = prefs.getBoolean(KEY_REMEMBER_ASPECT_RATIO, true)
+                rememberAspectRatio = prefs.getBoolean(KEY_REMEMBER_ASPECT_RATIO, true),
+                isAmbientEnabled = prefs.getBoolean(KEY_AMBIENT_ENABLED, true),
+                ambientMoodId = prefs.getString(KEY_AMBIENT_MOOD_ID, "COZY_CINEMA") ?: "COZY_CINEMA",
+                ambientIntensity = prefs.getFloat(KEY_AMBIENT_INTENSITY, 0.15f)
             )
         } catch (e: Exception) {
             prefs.edit().clear().apply()
@@ -123,6 +132,37 @@ object PlayerSettingsManager {
         }
         _settingsFlow.update { it.copy(rememberAspectRatio = remember) }
         getPrefs().edit().putBoolean(KEY_REMEMBER_ASPECT_RATIO, remember).apply()
+    }
+
+    @Synchronized
+    fun updateAmbientEnabled(enabled: Boolean) {
+        if (!::appContext.isInitialized) {
+            Log.w(TAG, "updateAmbientEnabled called before init — no-op")
+            return
+        }
+        _settingsFlow.update { it.copy(isAmbientEnabled = enabled) }
+        getPrefs().edit().putBoolean(KEY_AMBIENT_ENABLED, enabled).apply()
+    }
+
+    @Synchronized
+    fun updateAmbientMood(moodId: String) {
+        if (!::appContext.isInitialized) {
+            Log.w(TAG, "updateAmbientMood called before init — no-op")
+            return
+        }
+        _settingsFlow.update { it.copy(ambientMoodId = moodId) }
+        getPrefs().edit().putString(KEY_AMBIENT_MOOD_ID, moodId).apply()
+    }
+
+    @Synchronized
+    fun updateAmbientIntensity(intensity: Float) {
+        if (!::appContext.isInitialized) {
+            Log.w(TAG, "updateAmbientIntensity called before init — no-op")
+            return
+        }
+        val clamped = intensity.coerceIn(0.05f, 0.50f)
+        _settingsFlow.update { it.copy(ambientIntensity = clamped) }
+        getPrefs().edit().putFloat(KEY_AMBIENT_INTENSITY, clamped).apply()
     }
 
     private fun getPrefs(): SharedPreferences {

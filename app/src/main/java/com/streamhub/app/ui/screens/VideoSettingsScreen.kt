@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Gesture
@@ -29,12 +30,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import com.streamhub.app.ui.screens.player.sheets.AmbientMoodPresets
+import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -141,6 +146,90 @@ fun VideoSettingsScreen(
                             isSelected = !playerSettings.volumeOnRight,
                             onClick = { PlayerSettingsManager.updateVolumeSide(false) }
                         )
+                    }
+                }
+            }
+
+            // Cinema Ambient Lighting & Moods
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, currentAccent.color.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.AutoAwesome, contentDescription = "Ambient", tint = currentAccent.color)
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text("Cinema Ambient Lighting", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
+                            Switch(
+                                checked = playerSettings.isAmbientEnabled,
+                                onCheckedChange = { PlayerSettingsManager.updateAmbientEnabled(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = currentAccent.color,
+                                    uncheckedThumbColor = TextSecondary,
+                                    uncheckedTrackColor = Color(0xFF2A2A3A)
+                                )
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            "Atmospheric diffused cinema backlight glow tailored for eye comfort at night.",
+                            color = TextSecondary,
+                            fontSize = 11.sp
+                        )
+
+                        if (playerSettings.isAmbientEnabled) {
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            // Intensity Slider
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Glow Intensity", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text("${(playerSettings.ambientIntensity * 100).roundToInt()}%", color = currentAccent.color, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Slider(
+                                value = playerSettings.ambientIntensity,
+                                onValueChange = { PlayerSettingsManager.updateAmbientIntensity(it) },
+                                valueRange = 0.05f..0.50f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = currentAccent.color,
+                                    activeTrackColor = currentAccent.color,
+                                    inactiveTrackColor = Color(0xFF2A2A3A)
+                                )
+                            )
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Mood Presets
+                            Text("MOOD PRESET", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            AmbientMoodPresets.forEach { preset ->
+                                val isSelected = playerSettings.ambientMoodId == preset.id
+                                GestureOptionCard(
+                                    title = preset.title,
+                                    subtitle = preset.subtitle,
+                                    isSelected = isSelected,
+                                    onClick = {
+                                        PlayerSettingsManager.updateAmbientMood(preset.id)
+                                        PlayerSettingsManager.updateAmbientIntensity(preset.defaultIntensity)
+                                    }
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                            }
+                        }
                     }
                 }
             }

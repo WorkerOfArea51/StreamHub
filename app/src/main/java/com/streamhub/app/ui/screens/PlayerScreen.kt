@@ -185,7 +185,9 @@ import com.streamhub.app.ui.screens.player.controls.MpvSeekbar
 import com.streamhub.app.ui.screens.player.controls.SlideToUnlock
 import com.streamhub.app.ui.screens.player.controls.VolumeSliderCard
 import com.streamhub.app.ui.screens.player.controls.formatMpvTime
+import com.streamhub.app.ui.screens.player.sheets.AmbientMoodPresets
 import com.streamhub.app.ui.screens.player.sheets.DefaultAspectPresets
+import com.streamhub.app.ui.screens.player.sheets.MpvAmbientMoodSheet
 import com.streamhub.app.ui.screens.player.sheets.MpvAspectRatioItem
 import com.streamhub.app.ui.screens.player.sheets.MpvAspectRatioSheet
 import com.streamhub.app.ui.screens.player.sheets.MpvAudioDelaySheet
@@ -332,10 +334,12 @@ fun PlayerScreen(
     var showSubtitleSettingsDrawer by remember { mutableStateOf(false) }
     var showMoreSheet by remember { mutableStateOf(false) }
     var showStatsForNerds by remember { mutableStateOf(false) }
+    var showAmbientSheet by remember { mutableStateOf(false) }
 
     val isAnySheetOpen = showAspectRatioSheet || showSpeedSheet || showZoomSheet ||
                          showPlaylistSheet || showAudioSheet || showSubtitleSheet ||
                          showSubtitleSettingsDrawer || showMoreSheet || showStatsForNerds ||
+                         showAmbientSheet ||
                          uiState.showAudioDialog || uiState.showSubtitleDialog || uiState.playerErrorInfo != null
 
     var showFrameNavSheet by remember { mutableStateOf(false) }
@@ -355,7 +359,7 @@ fun PlayerScreen(
                   showPlaylistSheet || showAudioSheet || showSubtitleSheet ||
                   showSubtitleSettingsDrawer || showMoreSheet || showStatsForNerds ||
                   showFrameNavSheet || showAudioDelaySheet || showSubtitleDelaySheet ||
-                  showVideoFiltersSheet || showOnlineSubSearchSheet
+                  showVideoFiltersSheet || showOnlineSubSearchSheet || showAmbientSheet
     ) {
         showAspectRatioSheet = false
         showSpeedSheet = false
@@ -371,11 +375,11 @@ fun PlayerScreen(
         showSubtitleDelaySheet = false
         showVideoFiltersSheet = false
         showOnlineSubSearchSheet = false
+        showAmbientSheet = false
     }
 
     // Pro Feature States
     var isMuted by remember { mutableStateOf(false) }
-    var isAmbientMode by remember { mutableStateOf(true) }
     var isNightShield by remember { mutableStateOf(false) }
 
     // Gesture Animation States
@@ -580,26 +584,32 @@ fun PlayerScreen(
         // ──────────────────────────────────────────────────────────────
         // Atmospheric Cinema Ambient Glow (Ultra-Smooth Diffused Ambilight)
         // ──────────────────────────────────────────────────────────────
-        if (isAmbientMode) {
+        if (playerSettings.isAmbientEnabled) {
+            val currentMood = AmbientMoodPresets.find { it.id == playerSettings.ambientMoodId } ?: AmbientMoodPresets.first()
+            val baseIntensity = playerSettings.ambientIntensity.coerceIn(0.05f, 0.50f)
+
             val ambientTransition = rememberInfiniteTransition(label = "ambient_cinema_aura")
             val ambientAlpha by ambientTransition.animateFloat(
-                initialValue = 0.35f,
-                targetValue = 0.70f,
+                initialValue = baseIntensity * 0.70f,
+                targetValue = baseIntensity * 1.15f,
                 animationSpec = infiniteRepeatable(
-                    animation = tween(3200, easing = FastOutSlowInEasing),
+                    animation = tween(8000, easing = FastOutSlowInEasing),
                     repeatMode = RepeatMode.Reverse
                 ),
                 label = "ambient_alpha"
             )
             val ambientScale by ambientTransition.animateFloat(
-                initialValue = 0.92f,
-                targetValue = 1.12f,
+                initialValue = 0.96f,
+                targetValue = 1.04f,
                 animationSpec = infiniteRepeatable(
-                    animation = tween(4000, easing = FastOutSlowInEasing),
+                    animation = tween(9000, easing = FastOutSlowInEasing),
                     repeatMode = RepeatMode.Reverse
                 ),
                 label = "ambient_scale"
             )
+
+            val primaryGlow = currentMood.gradientColors.firstOrNull() ?: Color(0xFF7C4DFF)
+            val secondaryGlow = currentMood.gradientColors.getOrNull(1) ?: Color(0xFF00E5FF)
 
             Box(
                 modifier = Modifier
@@ -607,15 +617,15 @@ fun PlayerScreen(
                     .drawBehind {
                         val centerX = size.width / 2f
                         val centerY = size.height / 2f
-                        val glowRadius = maxOf(size.width, size.height) * 0.62f * ambientScale
+                        val glowRadius = maxOf(size.width, size.height) * 0.65f * ambientScale
 
-                        // 1. Core Soft Radial Backlight Bloom
+                        // 1. Core Soft Radial Backlight Bloom (seamlessly fading to black)
                         drawRect(
                             brush = Brush.radialGradient(
                                 colors = listOf(
-                                    Color(0x447C4DFF).copy(alpha = ambientAlpha * 0.65f),
-                                    Color(0x2800E5FF).copy(alpha = ambientAlpha * 0.40f),
-                                    Color(0x121A1A2E).copy(alpha = ambientAlpha * 0.25f),
+                                    primaryGlow.copy(alpha = ambientAlpha),
+                                    secondaryGlow.copy(alpha = ambientAlpha * 0.55f),
+                                    Color(0xFF0D0D15).copy(alpha = ambientAlpha * 0.25f),
                                     Color.Transparent
                                 ),
                                 center = androidx.compose.ui.geometry.Offset(centerX, centerY),
@@ -623,24 +633,24 @@ fun PlayerScreen(
                             )
                         )
 
-                        // 2. Diffused Top/Bottom Letterbox Glow
+                        // 2. Diffused Top/Bottom Letterbox Soft Aura
                         drawRect(
                             brush = Brush.verticalGradient(
                                 colors = listOf(
-                                    Color(0x387C4DFF).copy(alpha = ambientAlpha * 0.5f),
+                                    primaryGlow.copy(alpha = ambientAlpha * 0.40f),
                                     Color.Transparent,
-                                    Color(0x387C4DFF).copy(alpha = ambientAlpha * 0.5f)
+                                    primaryGlow.copy(alpha = ambientAlpha * 0.40f)
                                 )
                             )
                         )
 
-                        // 3. Diffused Left/Right Pillarbox Glow
+                        // 3. Diffused Left/Right Pillarbox Soft Aura
                         drawRect(
                             brush = Brush.horizontalGradient(
                                 colors = listOf(
-                                    Color(0x3000E5FF).copy(alpha = ambientAlpha * 0.4f),
+                                    secondaryGlow.copy(alpha = ambientAlpha * 0.30f),
                                     Color.Transparent,
-                                    Color(0x3000E5FF).copy(alpha = ambientAlpha * 0.4f)
+                                    secondaryGlow.copy(alpha = ambientAlpha * 0.30f)
                                 )
                             )
                         )
@@ -1401,20 +1411,26 @@ fun PlayerScreen(
                                 )
                             }
 
-                            // Ambient Mode (Disco Aura Button - Photo 3 Parity)
+                            // Ambient Mode (Click to Toggle & Long-Click for Mood Sheet)
+                            val isAmbOn = playerSettings.isAmbientEnabled
+                            val currentMoodName = AmbientMoodPresets.find { it.id == playerSettings.ambientMoodId }?.title ?: "Cozy Cinema"
                             ControlsButton(
                                 customIcon = {
-                                    AmbientDiscoIcon(tint = if (isAmbientMode) Color(0xFFD0BCFF) else Color.White)
+                                    AmbientDiscoIcon(tint = if (isAmbOn) Color(0xFFD0BCFF) else Color.White)
                                 },
                                 onClick = {
-                                    isAmbientMode = !isAmbientMode
-                                    triggerHudPill(if (isAmbientMode) "Ambience Mode: ON" else "Ambience Mode: OFF", Icons.Default.AutoAwesome)
+                                    val newState = !playerSettings.isAmbientEnabled
+                                    PlayerSettingsManager.updateAmbientEnabled(newState)
+                                    triggerHudPill(if (newState) "Ambience: $currentMoodName" else "Ambience: OFF", Icons.Default.AutoAwesome)
+                                },
+                                onLongClick = {
+                                    showAmbientSheet = true
                                 },
                                 title = "Ambience Mode",
                                 size = 45.dp,
-                                color = if (isAmbientMode) Color(0xFFD0BCFF) else Color.White,
-                                backgroundColor = if (isAmbientMode) Color(0x33D0BCFF) else Color(0x661A1A24),
-                                borderColor = if (isAmbientMode) Color(0xFFD0BCFF) else Color(0x33FFFFFF)
+                                color = if (isAmbOn) Color(0xFFD0BCFF) else Color.White,
+                                backgroundColor = if (isAmbOn) Color(0x33D0BCFF) else Color(0x661A1A24),
+                                borderColor = if (isAmbOn) Color(0xFFD0BCFF) else Color(0x33FFFFFF)
                             )
 
                             // More Options
@@ -1956,6 +1972,10 @@ fun PlayerScreen(
                     showMoreSheet = false
                     showVideoFiltersSheet = true
                 },
+                onOpenAmbientSheet = {
+                    showMoreSheet = false
+                    showAmbientSheet = true
+                },
                 onDismiss = { showMoreSheet = false }
             )
         }
@@ -2066,6 +2086,13 @@ fun PlayerScreen(
                     showOnlineSubSearchSheet = false
                 },
                 onDismiss = { showOnlineSubSearchSheet = false }
+            )
+        }
+
+        // 14. Cinema Ambient Glow & Moods Modal Sheet
+        if (showAmbientSheet) {
+            MpvAmbientMoodSheet(
+                onDismiss = { showAmbientSheet = false }
             )
         }
 
