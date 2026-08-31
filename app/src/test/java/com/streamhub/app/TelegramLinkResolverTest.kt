@@ -42,7 +42,7 @@ class TelegramLinkResolverTest {
         assertEquals(1, episodes[0].episodeNumber)
         assertEquals("EP - 01 - Undertaker", episodes[0].title)
         assertEquals("447.4 MB", episodes[0].fileSize)
-        assertEquals("https://streamhub69.alwaysdata.net/stream/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc", episodes[0].streamUrl)
+        assertEquals("https://streamhub69.alwaysdata.net/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc", episodes[0].streamUrl)
         assertEquals("https://streamhub69.alwaysdata.net/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc", episodes[0].mirrorStreamUrl)
 
         // Ep 2
@@ -94,29 +94,27 @@ class TelegramLinkResolverTest {
 
         assertEquals(2, episodes.size)
         assertEquals(1, episodes[0].episodeNumber)
-        assertEquals("https://streamhub69.alwaysdata.net/stream/eb76ab1", episodes[0].streamUrl)
+        assertEquals("https://streamhub69.alwaysdata.net/dl/eb76ab1", episodes[0].streamUrl)
         assertEquals("https://streamhub69.alwaysdata.net/dl/eb76ab1", episodes[0].mirrorStreamUrl)
         assertEquals(2, episodes[1].episodeNumber)
     }
 
     @Test
-    fun sanitizePlayableUrl_keepsRouteSemantics_andDerivesMirrorTwins() {
+    fun sanitizePlayableUrl_resolvesStreamToDirectMediaDlRoute() {
         val stream = "https://streamhub69.alwaysdata.net/stream/abc123"
         val dl = "https://streamhub69.alwaysdata.net/dl/abc123"
 
-        // Player sanitizer must NOT change routes anymore
-        assertEquals(stream, TelegramLinkResolver.sanitizePlayableUrl(stream))
+        // /stream/ web landing page must be sanitized to /dl/ direct media stream for ExoPlayer
+        assertEquals(dl, TelegramLinkResolver.sanitizePlayableUrl(stream))
         assertEquals(dl, TelegramLinkResolver.sanitizePlayableUrl(dl))
 
-        // Downloads get the /dl/ twin; failover derives the opposite route
+        // Downloads also target the /dl/ twin
         assertEquals(dl, TelegramLinkResolver.toDownloadUrl(stream))
-        assertEquals(dl, TelegramLinkResolver.deriveMirrorUrl(stream))
-        assertEquals(stream, TelegramLinkResolver.deriveMirrorUrl(dl))
+        assertEquals(dl, TelegramLinkResolver.toDownloadUrl(dl))
 
         // Non-F2L URLs are never rewritten
         val foreign = "https://example.com/stream/video.mkv"
         assertEquals(foreign, TelegramLinkResolver.toDownloadUrl(foreign))
-        assertEquals("", TelegramLinkResolver.deriveMirrorUrl(foreign))
     }
 
     @Test

@@ -322,13 +322,19 @@ object TelegramLinkResolver {
     }
 
     /**
-     * Sanitizes a URL for playback WITHOUT changing its route semantics.
+     * Sanitizes a URL for playback.
      *
-     * Preserves primary = /stream/ (inline, Range-capable) and mirror = /dl/ (attachment).
-     * Performs cosmetic cleanup (trim + strip invisible/zero-width characters that break Uri.parse).
+     * Ensures any web-player landing page route (`/stream/`) on the F2L bot backend
+     * is resolved to the direct binary media stream route (`/dl/`), which serves
+     * HTTP 206 Partial Content (Accept-Ranges: bytes, video/x-matroska/mp4).
+     * Also performs cosmetic cleanup (trim + strip invisible/zero-width characters).
      */
     fun sanitizePlayableUrl(url: String): String {
-        return url.trim().replace(Regex("""[\s\u200B-\u200D\uFEFF]"""), "")
+        val cleaned = url.trim().replace(Regex("""[\s\u200B-\u200D\uFEFF]"""), "")
+        if (cleaned.contains("alwaysdata.net/stream/", ignoreCase = true)) {
+            return cleaned.replace(Regex("""(?i)alwaysdata\.net/stream/"""), "alwaysdata.net/dl/")
+        }
+        return cleaned
     }
 
     /**
