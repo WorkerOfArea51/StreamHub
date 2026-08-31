@@ -180,13 +180,14 @@ class StreamPlayerViewModel : ViewModel() {
                     .build()
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        25_000,     // minBufferMs (keep steady 25s buffer ahead for rock-solid stability)
-                        120_000,    // maxBufferMs (buffer up to 2 minutes ahead in memory)
-                        1_000,      // bufferForPlaybackMs (1s smooth instant start)
-                        2_000       // bufferForPlaybackAfterRebufferMs (2s fast recovery)
+                        60_000,         // minBufferMs (keep steady 60s minimum ahead)
+                        14_400_000,     // maxBufferMs (up to 4 hours / whole movie buffer ahead without stopping)
+                        1_000,          // bufferForPlaybackMs (1s smooth instant start)
+                        2_000           // bufferForPlaybackAfterRebufferMs (2s fast recovery)
                     )
                     .setBackBuffer(30_000, false) // 30s back buffer in RAM (disk SimpleCache handles full movie persistence)
                     .setPrioritizeTimeOverSizeThresholds(true) // Crucial: prioritize time so buffering is never throttled by byte threshold
+                    .setTargetBufferBytes(androidx.media3.common.C.LENGTH_UNSET)
                     .build()
                 val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
                     .setConstantBitrateSeekingEnabled(true)
