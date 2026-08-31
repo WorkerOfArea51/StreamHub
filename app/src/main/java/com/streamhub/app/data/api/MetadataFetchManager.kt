@@ -519,7 +519,7 @@ object MetadataFetchManager {
         val detectedFranchiseId = com.streamhub.app.data.FranchiseManager.getFranchiseId(com.streamhub.app.data.models.MediaItem(title = franchiseBaseTitle))
         val detectedFranchiseTitle = com.streamhub.app.data.FranchiseManager.getFranchiseTitle(com.streamhub.app.data.models.MediaItem(title = franchiseBaseTitle))
         val detectedSeason = effectiveSeason
-        val detectedRelation = if (isMovie) "Movie" else if (detectedSeason > 1) "Sequel" else "Main Story"
+        val detectedRelation = if (isMovie) "Movie" else if (detectedSeason > 1) "Sequel • TV" else "TV"
 
         val fetched = FetchedMetadata(
             title = title,
@@ -710,7 +710,21 @@ object MetadataFetchManager {
             }
             val detectedFranchiseId = com.streamhub.app.data.FranchiseManager.getFranchiseId(com.streamhub.app.data.models.MediaItem(title = finalTitle))
             val detectedFranchiseTitle = com.streamhub.app.data.FranchiseManager.getFranchiseTitle(com.streamhub.app.data.models.MediaItem(title = finalTitle))
-            val detectedRelation = if (detectedSeason > 1) "Sequel" else "Main Story"
+            val rawMediaType = node.optString("media_type", "").lowercase(java.util.Locale.ROOT)
+            val detectedFormat = when {
+                rawMediaType == "special" || finalTitle.contains("special", ignoreCase = true) -> "TV Special"
+                rawMediaType == "ova" || finalTitle.contains("ova", ignoreCase = true) -> "OVA"
+                rawMediaType == "ona" || finalTitle.contains("ona", ignoreCase = true) -> "ONA"
+                rawMediaType == "movie" || finalTitle.contains("movie", ignoreCase = true) -> "Movie"
+                else -> "TV"
+            }
+            val detectedRelation = when {
+                detectedFormat == "Movie" -> "Movie"
+                detectedFormat == "OVA" -> "Side Story • OVA"
+                detectedSeason > 1 && detectedFormat == "TV Special" -> "Sequel • TV Special"
+                detectedSeason > 1 -> "Sequel • TV"
+                else -> detectedFormat
+            }
 
             // Fetch YouTube Trailer ID & Cast List via TMDB fallback if needed
             var youtubeTrailerId = ""

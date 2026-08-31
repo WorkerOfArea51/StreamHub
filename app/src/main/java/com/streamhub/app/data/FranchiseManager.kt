@@ -142,11 +142,12 @@ object FranchiseManager {
         val typeUpper = item.type.trim().uppercase(Locale.ROOT)
         val titleUpper = item.title.trim().uppercase(Locale.ROOT)
 
-        if (relUpper == "OVA" || titleUpper.contains(" OVA") || titleUpper.endsWith("OVA")) return "OVA"
-        if (relUpper == "ONA" || titleUpper.contains(" ONA") || titleUpper.endsWith("ONA")) return "ONA"
-        if (relUpper == "SPECIAL" || titleUpper.contains(" SPECIAL") || titleUpper.endsWith("SPECIAL")) return "SPECIAL"
+        if (relUpper.contains("TV SPECIAL") || titleUpper.contains("TV SPECIAL") || relUpper.contains("TV-SPECIAL")) return "TV SPECIAL"
+        if (relUpper.contains("OVA") || titleUpper.contains(" OVA") || titleUpper.endsWith("OVA")) return "OVA"
+        if (relUpper.contains("ONA") || titleUpper.contains(" ONA") || titleUpper.endsWith("ONA")) return "ONA"
+        if (relUpper.contains("SPECIAL") || titleUpper.contains(" SPECIAL") || titleUpper.endsWith("SPECIAL")) return "SPECIAL"
 
-        val isExplicitMovie = relUpper == "MOVIE" ||
+        val isExplicitMovie = relUpper.contains("MOVIE") ||
                 catUpper == "MOVIE" ||
                 catUpper == "MOVIES" ||
                 typeUpper == "MOVIE" ||
@@ -163,7 +164,7 @@ object FranchiseManager {
             return "MOVIE"
         }
 
-        if (item.seasonNumber > 1 || titleUpper.contains("SEASON")) {
+        if (item.seasonNumber > 1 || titleUpper.contains("SEASON") || relUpper.contains("TV")) {
             return "TV"
         }
 
@@ -172,8 +173,8 @@ object FranchiseManager {
 
     /**
      * Formats a relation tag for displaying on season cards.
-     * Combines relation role (CURRENT, SEQUEL, PREQUEL, SIDE STORY, MAIN STORY, SEASON X)
-     * with format type (TV, MOVIE, OVA, ONA, SPECIAL).
+     * Combines relation role (CURRENT, SEQUEL, PREQUEL, SIDE STORY, SPIN-OFF)
+     * with format type (TV, TV SPECIAL, MOVIE, OVA, ONA, SPECIAL).
      *
      * Relative to [currentItem]:
      * - Past releases (lower season / earlier release year) -> PREQUEL
@@ -190,13 +191,12 @@ object FranchiseManager {
 
         val explicitRelation = candidate.relationType.trim().uppercase(Locale.ROOT)
         val role = when {
-            // Non-linear / Side stories / Spin-offs / OVAs maintain their distinct non-linear role
-            explicitRelation in listOf("SIDE STORY", "SPIN-OFF", "SPINOFF", "ALTERNATIVE", "PARODY", "RECAP") -> {
-                if (explicitRelation == "SPINOFF") "SPIN-OFF" else explicitRelation
-            }
-            explicitRelation in listOf("OVA", "ONA", "SPECIAL") -> {
-                explicitRelation
-            }
+            // Non-linear / Side stories / Spin-offs maintain their distinct non-linear role
+            explicitRelation.contains("SIDE STORY") -> "SIDE STORY"
+            explicitRelation.contains("SPIN-OFF") || explicitRelation.contains("SPINOFF") -> "SPIN-OFF"
+            explicitRelation.contains("ALTERNATIVE") -> "ALTERNATIVE"
+            explicitRelation.contains("PARODY") -> "PARODY"
+            explicitRelation.contains("RECAP") -> "RECAP"
             else -> {
                 val candidateScore = getChronologicalScore(candidate)
                 val currentScore = getChronologicalScore(currentItem)
@@ -210,7 +210,6 @@ object FranchiseManager {
 
         return when {
             role == format -> role
-            role in listOf("OVA", "ONA", "SPECIAL") -> role
             role == "RELATED" -> format
             else -> "$role • $format"
         }

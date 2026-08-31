@@ -624,14 +624,15 @@ fun DetailsScreen(
                                     isCurrent -> AccentGold
                                     tag.startsWith("SEQUEL") -> Color(0xFF00E676)
                                     tag.startsWith("PREQUEL") -> Color(0xFF7C4DFF)
-                                    tag.startsWith("SIDE STORY") || tag.startsWith("SPIN-OFF") || tag == "OVA" || tag == "ONA" || tag == "SPECIAL" -> Color(0xFF38BDF8)
+                                    tag.startsWith("SIDE STORY") || tag.startsWith("SPIN-OFF") || tag.contains("OVA") || tag.contains("ONA") || tag.contains("SPECIAL") -> Color(0xFF38BDF8)
                                     tag.startsWith("SEASON") -> Color(0xFFFF9800)
                                     tag.contains("MOVIE") -> AccentOrange
                                     else -> PrimaryRed
                                 }
 
                                 val tagTextColor = when {
-                                    isCurrent || tag.startsWith("SEQUEL") || tag.startsWith("SIDE STORY") || tag.startsWith("SPIN-OFF") || tag.startsWith("SEASON") || tag == "OVA" || tag == "ONA" || tag == "SPECIAL" -> Color.Black
+                                    tag.startsWith("PREQUEL") || tag.contains("MOVIE") -> Color.White
+                                    isCurrent || tag.startsWith("SEQUEL") || tag.startsWith("SIDE STORY") || tag.startsWith("SPIN-OFF") || tag.startsWith("SEASON") || tag.contains("SPECIAL") || tag.contains("OVA") || tag.contains("ONA") -> Color.Black
                                     else -> Color.White
                                 }
 

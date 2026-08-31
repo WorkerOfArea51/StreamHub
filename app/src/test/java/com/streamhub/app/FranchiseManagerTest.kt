@@ -117,4 +117,47 @@ class FranchiseManagerTest {
         assertEquals("PREQUEL • TV", FranchiseManager.getFranchiseTag(s2, s3))
         assertEquals("CURRENT • TV", FranchiseManager.getFranchiseTag(s3, s3))
     }
+
+    @Test
+    fun getFranchiseTag_tvSpecialAndOvaCompoundRelations() {
+        val s4Part2 = MediaItem(
+            id = "aot_s4p2",
+            title = "Attack on Titan: Final Season Part 2",
+            seasonNumber = 4,
+            releaseYear = "2022",
+            relationType = "Sequel • TV",
+            category = "Anime",
+            type = "SERIES"
+        )
+
+        val finalChapters = MediaItem(
+            id = "aot_final_chapters",
+            title = "Attack on Titan: The Final Chapters",
+            seasonNumber = 4,
+            releaseYear = "2023",
+            relationType = "Sequel • TV Special",
+            category = "Anime",
+            type = "SERIES"
+        )
+
+        val ovaNoRegrets = MediaItem(
+            id = "aot_no_regrets",
+            title = "Attack on Titan: No Regrets",
+            seasonNumber = 0,
+            releaseYear = "2014",
+            relationType = "Side Story • OVA",
+            category = "Anime",
+            type = "SERIES"
+        )
+
+        // When viewing Season 4 Part 2:
+        assertEquals("CURRENT • TV", FranchiseManager.getFranchiseTag(s4Part2, s4Part2))
+        assertEquals("SEQUEL • TV SPECIAL", FranchiseManager.getFranchiseTag(finalChapters, s4Part2))
+        assertEquals("SIDE STORY • OVA", FranchiseManager.getFranchiseTag(ovaNoRegrets, s4Part2))
+
+        // When viewing Final Chapters:
+        assertEquals("PREQUEL • TV", FranchiseManager.getFranchiseTag(s4Part2, finalChapters))
+        assertEquals("CURRENT • TV SPECIAL", FranchiseManager.getFranchiseTag(finalChapters, finalChapters))
+        assertEquals("SIDE STORY • OVA", FranchiseManager.getFranchiseTag(ovaNoRegrets, finalChapters))
+    }
 }

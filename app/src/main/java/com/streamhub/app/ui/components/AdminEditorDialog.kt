@@ -128,7 +128,7 @@ fun AdminEditorDialog(
         mutableStateOf(if (isInitMovie) "" else (initialItem?.seasonNumber?.takeIf { it > 0 } ?: 1).toString())
     }
     var seasonTitle by remember(initialItem) { mutableStateOf(initialItem?.seasonTitle ?: "") }
-    var relationType by remember(initialItem) { mutableStateOf(initialItem?.relationType ?: if (isInitMovie) "Movie" else "Main Story") }
+    var relationType by remember(initialItem) { mutableStateOf(initialItem?.relationType?.takeIf { it.isNotBlank() && !it.equals("Main Story", ignoreCase = true) } ?: if (isInitMovie) "Movie" else "TV") }
 
     // --- State: Technical Specs ---
     var resolution by remember(initialItem) { mutableStateOf(initialItem?.mediaInfo?.resolution ?: "") }
@@ -1423,7 +1423,7 @@ fun AdminEditorDialog(
                         MetadataRow(seasonNumberText, { seasonNumberText = it }, "Season # (1, 2, 3...)", seasonTitle, { seasonTitle = it }, "Season/Arc Title (e.g. Arise from the Shadow)")
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        Text("Relation Type & Story Role", color = TextSecondary, fontSize = 11.sp)
+                        Text("Relation Type & Story Role (Multi-Selectable)", color = TextSecondary, fontSize = 11.sp)
                         Spacer(modifier = Modifier.height(4.dp))
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1431,13 +1431,50 @@ fun AdminEditorDialog(
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState())
                         ) {
-                            listOf("Main Story", "Sequel", "Prequel", "Movie", "Side Story", "Spin-Off", "OVA", "Special", "ONA").forEach { rel ->
-                                val isSelected = relationType.equals(rel, ignoreCase = true)
+                            val relationPills = listOf("Sequel", "Prequel", "TV", "TV Special", "Movie", "Side Story", "Spin-Off", "OVA", "Special", "ONA")
+                            val currentTokens = relationType.split("•", ",").map { it.trim() }.filter { it.isNotBlank() }
+
+                            relationPills.forEach { rel ->
+                                val isSelected = currentTokens.any { it.equals(rel, ignoreCase = true) } ||
+                                        (rel == "TV" && currentTokens.any { it.equals("TV", ignoreCase = true) && !it.contains("SPECIAL", ignoreCase = true) })
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
                                     color = if (isSelected) PrimaryRed else Color(0xFF1E1E2C),
                                     border = BorderStroke(1.dp, if (isSelected) PrimaryRed else Color(0x33FFFFFF)),
-                                    modifier = Modifier.clickable { relationType = rel }
+                                    modifier = Modifier.clickable {
+                                        val tokens = relationType.split("•", ",").map { it.trim() }.filter { it.isNotBlank() }.toMutableList()
+                                        if (tokens.any { it.equals(rel, ignoreCase = true) }) {
+                                            tokens.removeAll { it.equals(rel, ignoreCase = true) }
+                                        } else {
+                                            when (rel) {
+                                                "Sequel" -> tokens.removeAll { it.equals("Prequel", ignoreCase = true) }
+                                                "Prequel" -> tokens.removeAll { it.equals("Sequel", ignoreCase = true) }
+                                                "TV" -> {
+                                                    tokens.removeAll { it.equals("TV Special", ignoreCase = true) || it.equals("Movie", ignoreCase = true) }
+                                                }
+                                                "TV Special" -> {
+                                                    tokens.removeAll { it.equals("TV", ignoreCase = true) || it.equals("Special", ignoreCase = true) || it.equals("Movie", ignoreCase = true) }
+                                                }
+                                                "Movie" -> {
+                                                    tokens.removeAll { it.equals("TV", ignoreCase = true) || it.equals("TV Special", ignoreCase = true) }
+                                                }
+                                                "Side Story" -> tokens.removeAll { it.equals("Spin-Off", ignoreCase = true) }
+                                                "Spin-Off" -> tokens.removeAll { it.equals("Side Story", ignoreCase = true) }
+                                                "OVA" -> tokens.removeAll { it.equals("ONA", ignoreCase = true) }
+                                                "ONA" -> tokens.removeAll { it.equals("OVA", ignoreCase = true) }
+                                                "Special" -> tokens.removeAll { it.equals("TV Special", ignoreCase = true) }
+                                            }
+                                            tokens.add(rel)
+                                        }
+
+                                        // Role tokens first, Format tokens second
+                                        val roleWeights = mapOf(
+                                            "Sequel" to 1, "Prequel" to 2, "Side Story" to 3, "Spin-Off" to 4,
+                                            "TV" to 5, "TV Special" to 6, "Movie" to 7, "OVA" to 8, "ONA" to 9, "Special" to 10
+                                        )
+                                        tokens.sortBy { roleWeights[it] ?: 99 }
+                                        relationType = tokens.joinToString(" • ")
+                                    }
                                 ) {
                                     Text(
                                         text = rel,
