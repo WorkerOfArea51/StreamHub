@@ -73,16 +73,16 @@ class StreamDataSourceFactory(
                 activeDataSpec = dataSpec
                 bytesReadTotal = 0L
 
-                // Remote HTTP/HTTPS Stream: Primary DefaultHttpDataSource (handles 200 OK range skipping & seekable chunks), fallback to OkHttp
-                val defaultHttpSource = defaultHttpDataSourceFactory.createDataSource()
-                currentSource = defaultHttpSource
+                // Remote HTTP/HTTPS Stream: Primary OkHttp streaming (async socket pipeline), fallback to DefaultHttpDataSource
+                val okHttpSource = okHttpDataSourceFactory.createDataSource()
+                currentSource = okHttpSource
                 transferListener?.let { currentSource?.addTransferListener(it) }
                 return try {
                     currentSource!!.open(dataSpec)
                 } catch (e: Exception) {
-                    Log.w(TAG, "DefaultHttpDataSource open failed for ${dataSpec.uri}, failing over to OkHttp: ${e.message}")
-                    val okHttpSource = okHttpDataSourceFactory.createDataSource()
-                    currentSource = okHttpSource
+                    Log.w(TAG, "OkHttp open failed for ${dataSpec.uri}, failing over to DefaultHttpDataSource: ${e.message}")
+                    val defaultHttpSource = defaultHttpDataSourceFactory.createDataSource()
+                    currentSource = defaultHttpSource
                     transferListener?.let { currentSource?.addTransferListener(it) }
                     currentSource!!.open(dataSpec)
                 }
