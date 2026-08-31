@@ -334,15 +334,13 @@ class StreamPlayerViewModel : ViewModel() {
             }
         }
 
-        // FIX: Smart resume prompt — if saved position is >30s, ask user before seeking.
-        val savedProgress = WatchHistoryManager.getProgress(mediaItem.id)
-        val targetEpisodeIndex = if (savedProgress != null && savedProgress.episodeNumber in episodesList.indices) {
-            savedProgress.episodeNumber
-        } else {
-            initialEpisodeIndex
-        }
+        // FIX: Smart resume prompt — only resume saved position if playing the same episode
+        val targetEpisodeIndex = if (episodesList.isNotEmpty()) initialEpisodeIndex.coerceIn(episodesList.indices) else 0
 
-        val savedPositionMs = savedProgress?.positionMs ?: 0L
+        val savedProgress = WatchHistoryManager.getProgress(mediaItem.id)
+        val isSameEpisode = savedProgress != null && savedProgress.episodeNumber == targetEpisodeIndex
+        val savedPositionMs = if (isSameEpisode) savedProgress?.positionMs ?: 0L else 0L
+
         if (savedPositionMs > 5_000L &&
             (savedProgress?.durationMs ?: 0L) - savedPositionMs > 5_000L) {
             _uiState.update {
@@ -490,6 +488,27 @@ class StreamPlayerViewModel : ViewModel() {
     }
 
     @OptIn(UnstableApi::class)
+    private fun getAudioTrackLabel(format: androidx.media3.common.Format, fallbackIndex: Int): String {
+        val lang = cleanTrackName(format.label, format.language, isSubtitle = false)
+        val mime = format.sampleMimeType
+        val codec = when {
+            mime?.contains("ac-3", ignoreCase = true) == true -> "AC3"
+            mime?.contains("eac3", ignoreCase = true) == true -> "E-AC3"
+            mime?.contains("aac", ignoreCase = true) == true -> "AAC"
+            mime?.contains("opus", ignoreCase = true) == true -> "Opus"
+            mime?.contains("vorbis", ignoreCase = true) == true -> "Vorbis"
+            mime?.contains("dts", ignoreCase = true) == true -> "DTS"
+            mime?.contains("truehd", ignoreCase = true) == true -> "Dolby TrueHD"
+            else -> null
+        }
+        val isDefault = format.selectionFlags and androidx.media3.common.C.SELECTION_FLAG_DEFAULT != 0
+        val isForced = format.selectionFlags and androidx.media3.common.C.SELECTION_FLAG_FORCED != 0
+        val defaultSuffix = if (isDefault) " (Default)" else if (isForced) " (Forced)" else ""
+        val codecSuffix = if (codec != null) " [$codec]" else ""
+        return lang.ifEmpty { "Audio ${fallbackIndex + 1}" } + defaultSuffix + codecSuffix
+    }
+
+    @OptIn(UnstableApi::class)
     private fun updateAvailableTracks(tracks: androidx.media3.common.Tracks) {
         val audioTrackNames = mutableListOf<String>()
         val subtitleTrackNames = mutableListOf("Off")
@@ -499,23 +518,7 @@ class StreamPlayerViewModel : ViewModel() {
             if (trackType == androidx.media3.common.C.TRACK_TYPE_AUDIO) {
                 for (i in 0 until trackGroup.length) {
                     val format = trackGroup.getTrackFormat(i)
-                    val lang = cleanTrackName(format.label, format.language, isSubtitle = false)
-                    val mime = format.sampleMimeType
-                    val codec = when {
-                        mime?.contains("ac-3", ignoreCase = true) == true -> "AC3"
-                        mime?.contains("eac3", ignoreCase = true) == true -> "E-AC3"
-                        mime?.contains("aac", ignoreCase = true) == true -> "AAC"
-                        mime?.contains("opus", ignoreCase = true) == true -> "Opus"
-                        mime?.contains("vorbis", ignoreCase = true) == true -> "Vorbis"
-                        mime?.contains("dts", ignoreCase = true) == true -> "DTS"
-                        mime?.contains("truehd", ignoreCase = true) == true -> "Dolby TrueHD"
-                        else -> null
-                    }
-                    val isDefault = format.selectionFlags and androidx.media3.common.C.SELECTION_FLAG_DEFAULT != 0
-                    val isForced = format.selectionFlags and androidx.media3.common.C.SELECTION_FLAG_FORCED != 0
-                    val defaultSuffix = if (isDefault) " (Default)" else if (isForced) " (Forced)" else ""
-                    val codecSuffix = if (codec != null) " [$codec]" else ""
-                    val label = lang.ifEmpty { "Audio ${audioTrackNames.size + 1}" } + defaultSuffix + codecSuffix
+                    val label = getAudioTrackLabel(format, audioTrackNames.size)
                     audioTrackNames.add(label)
                 }
             } else if (trackType == androidx.media3.common.C.TRACK_TYPE_TEXT) {
@@ -722,33 +725,9 @@ class StreamPlayerViewModel : ViewModel() {
             if (trackGroup.type != androidx.media3.common.C.TRACK_TYPE_AUDIO) continue
             for (ti in 0 until trackGroup.length) {
                 val format = trackGroup.getTrackFormat(ti)
-                val lang = cleanTrackName(format.label, format.language, isSubtitle = false)
-                val mime = format.sampleMimeType
-                val codec = when {
-                    mime?.contains("ac-3", ignoreCase = true) == true -> "AC3"
-                    mime?.contains("eac3", ignoreCase = true) == true -> "E-AC3"
-                    mime?.contains("aac", ignoreCase = true) == true -> "AAC"
-                    mime?.contains("opus", ignoreCase = true) == true -> "Opus"
-                    mime?.contains("vorbis", ignoreCase = true) == true -> "Vorbis"
-                    mime?.contains("dts", ignoreCase = true) == true -> "DTS"
-                    mime?.contains("truehd", ignoreCase = true) == true -> "Dolby TrueHD"
-                    else -> null
-                }
-                val chCount = format.channelCount
-                val chLabel = when (chCount) {
-                    1 -> "Mono"
-                    2 -> "Stereo 2.0"
-                    6 -> "5.1 Surround"
-                    8 -> "7.1 Atmos"
-                    else -> if (chCount > 0) "${chCount}ch" else null
-                }
-                val formatted = listOfNotNull(
-                    lang.ifEmpty { "Audio ${audioCount + 1}" },
-                    chLabel,
-                    codec
-                ).joinToString(" • ")
+                val label = getAudioTrackLabel(format, audioCount)
 
-                if (formatted == trackName || format.label == trackName || format.language == trackName) {
+                if (label == trackName || format.label == trackName || format.language == trackName || trackName == "Audio ${audioCount + 1}") {
                     groupIndex = gi
                     trackIndex = ti
                     break@outer
@@ -758,14 +737,17 @@ class StreamPlayerViewModel : ViewModel() {
         }
 
         if (groupIndex >= 0 && trackIndex >= 0) {
-            val parameters = selector.buildUponParameters()
-                .setOverrideForType(
-                    androidx.media3.common.TrackSelectionOverride(
-                        tracks.groups[groupIndex].mediaTrackGroup,
-                        listOf(trackIndex)
-                    )
-                )
-            selector.parameters = parameters.build()
+            val override = androidx.media3.common.TrackSelectionOverride(
+                tracks.groups[groupIndex].mediaTrackGroup,
+                listOf(trackIndex)
+            )
+            val newPlayerParams = player.trackSelectionParameters.buildUpon()
+                .setOverrideForType(override)
+                .build()
+            player.trackSelectionParameters = newPlayerParams
+            selector.parameters = selector.buildUponParameters()
+                .setOverrideForType(override)
+                .build()
         }
 
         _uiState.update {

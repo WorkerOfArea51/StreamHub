@@ -179,49 +179,6 @@ fun MpvMoreSheet(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Cinema Ambient Glow Card
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0x18FFFFFF),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { onOpenAmbientSheet() }
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = "Ambient",
-                            tint = Color(0xFFD0BCFF),
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Cinema Ambient Glow", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Customize comfort moods, warm ember & backlight intensity", color = TextSecondary, fontSize = 10.sp)
-                        }
-                    }
-                    Text(
-                        text = "Customize ▸",
-                        color = Color(0xFFD0BCFF),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
             // Sleep Timer Row
             Text("Sleep Timer", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             Spacer(modifier = Modifier.height(8.dp))

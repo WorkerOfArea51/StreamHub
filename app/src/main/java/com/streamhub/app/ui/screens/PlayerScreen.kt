@@ -1401,15 +1401,7 @@ fun PlayerScreen(
                                 color = if (hasSubsOn) Color(0xFFD0BCFF) else Color.White
                             )
 
-                            // Playlist / Episodes
-                            if (!isMovie && mediaItem.episodes.isNotEmpty()) {
-                                ControlsButton(
-                                    icon = Icons.AutoMirrored.Filled.ViewList,
-                                    onClick = { showPlaylistSheet = true },
-                                    title = "Playlist",
-                                    size = 45.dp
-                                )
-                            }
+
 
                             // Ambient Mode (Click to Toggle & Long-Click for Mood Sheet)
                             val isAmbOn = playerSettings.isAmbientEnabled
@@ -1905,6 +1897,7 @@ fun PlayerScreen(
         // 4. Playlist Sheet
         if (showPlaylistSheet && !isMovie && mediaItem.episodes.isNotEmpty()) {
             MpvPlaylistSheet(
+                mediaItem = mediaItem,
                 episodes = mediaItem.episodes,
                 currentIndex = uiState.currentEpisodeIndex,
                 onSelectEpisode = { idx -> viewModel.playEpisode(idx) },

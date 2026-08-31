@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.streamhub.app.data.MyListManager
+import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.ui.components.SeasonArcSelectorSheet
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Button
@@ -506,12 +507,22 @@ fun DetailsScreen(
                     val myListSet by MyListManager.myListFlow.collectAsState()
                     val isBookmarked = myListSet.contains(mediaItem.id)
 
+                    val savedHistory = remember(mediaItem.id) { WatchHistoryManager.getProgress(mediaItem.id) }
+                    val targetPlayIndex = if (savedHistory != null && savedHistory.episodeNumber in mediaItem.episodes.indices) {
+                        savedHistory.episodeNumber
+                    } else 0
+                    val playButtonText = when {
+                        isMovie -> if (savedHistory != null && savedHistory.positionMs > 5000L) "Resume Movie" else "Play Movie"
+                        savedHistory != null && savedHistory.episodeNumber in mediaItem.episodes.indices -> "Resume Ep ${savedHistory.episodeNumber + 1}"
+                        else -> "Play"
+                    }
+
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Button(
-                            onClick = { onPlayEpisode(mediaItem, 0) },
+                            onClick = { onPlayEpisode(mediaItem, targetPlayIndex) },
                             colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
@@ -521,7 +532,7 @@ fun DetailsScreen(
                             Icon(Icons.Default.PlayArrow, contentDescription = "Play", tint = Color.White, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (isMovie) "Play Movie" else "Play",
+                                text = playButtonText,
                                 color = Color.White,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
