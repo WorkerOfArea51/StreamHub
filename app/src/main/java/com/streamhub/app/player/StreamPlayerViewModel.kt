@@ -186,14 +186,14 @@ class StreamPlayerViewModel : ViewModel() {
                     .build()
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        60_000,   // minBufferMs (keep at least 60s minimum buffer ahead)
-                        300_000,  // maxBufferMs (buffer up to 5 full minutes ahead continuously!)
-                        500,      // bufferForPlaybackMs (instant 0.5s startup)
-                        1_000     // bufferForPlaybackAfterRebufferMs (fast 1s recovery)
+                        30_000,   // minBufferMs (keep 30s minimum buffer ahead)
+                        180_000,  // maxBufferMs (buffer up to 3 full minutes ahead)
+                        1_500,    // bufferForPlaybackMs (1.5s startup cushion so server can send chunks)
+                        3_500     // bufferForPlaybackAfterRebufferMs (3.5s cushion after rebuffering so it doesn't instantly stall)
                     )
-                    .setBackBuffer(60_000, true) // 60s retained back-buffer for instant rewind
-                    .setPrioritizeTimeOverSizeThresholds(false) // Continuous caching at max network speed
-                    .setTargetBufferBytes(256 * 1024 * 1024) // 256 MB buffer pool for 1080p/4K bitrates
+                    .setBackBuffer(30_000, true) // 30s retained back-buffer for instant rewind
+                    .setPrioritizeTimeOverSizeThresholds(false) // Continuous caching at network speed
+                    .setTargetBufferBytes(128 * 1024 * 1024) // 128 MB buffer pool
                     .build()
                     val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
                         .setConstantBitrateSeekingEnabled(true)
@@ -285,10 +285,12 @@ class StreamPlayerViewModel : ViewModel() {
                     val errorInfo = classifyError(error)
                     val currentPos = _uiState.value.currentPositionMs
 
-                    // Auto-evict cached resource on playback error to clear stale/corrupted chunks
-                    _uiState.value.resolvedStreamUrl.let { currentUrl ->
-                        if (currentUrl.isNotBlank()) {
-                            StreamCacheManager.removeResource(currentUrl)
+                    // Only evict cached resource on non-retryable fatal container/source errors
+                    if (!errorInfo.canRetry) {
+                        _uiState.value.resolvedStreamUrl.let { currentUrl ->
+                            if (currentUrl.isNotBlank()) {
+                                StreamCacheManager.removeResource(currentUrl)
+                            }
                         }
                     }
 

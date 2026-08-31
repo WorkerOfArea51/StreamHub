@@ -57,9 +57,6 @@ class StreamDataSourceFactory(
         .setDefaultRequestProperties(DEFAULT_HEADERS)
 
     private val resilientHttpDataSourceFactory = DataSource.Factory {
-        val okHttpSource = okHttpDataSourceFactory.createDataSource()
-        val defaultHttpSource = defaultHttpDataSourceFactory.createDataSource()
-
         object : HttpDataSource {
             private var currentSource: DataSource? = null
             private var transferListener: TransferListener? = null
@@ -68,8 +65,6 @@ class StreamDataSourceFactory(
 
             override fun addTransferListener(transferListener: TransferListener) {
                 this.transferListener = transferListener
-                okHttpSource.addTransferListener(transferListener)
-                defaultHttpSource.addTransferListener(transferListener)
             }
 
             override fun open(dataSpec: DataSpec): Long {
@@ -78,12 +73,14 @@ class StreamDataSourceFactory(
                 bytesReadTotal = 0L
 
                 // Remote HTTP/HTTPS Stream: Try OkHttp streaming first, fallback to DefaultHttpDataSource
+                val okHttpSource = okHttpDataSourceFactory.createDataSource()
                 currentSource = okHttpSource
                 transferListener?.let { currentSource?.addTransferListener(it) }
                 return try {
                     currentSource!!.open(dataSpec)
                 } catch (e: Exception) {
                     Log.w(TAG, "OkHttp stream open failed for ${dataSpec.uri}, failing over to DefaultHttpDataSource: ${e.message}")
+                    val defaultHttpSource = defaultHttpDataSourceFactory.createDataSource()
                     currentSource = defaultHttpSource
                     transferListener?.let { currentSource?.addTransferListener(it) }
                     currentSource!!.open(dataSpec)
@@ -105,7 +102,7 @@ class StreamDataSourceFactory(
                         Log.w(TAG, "Remote stream read dropped after $bytesReadTotal bytes at offset $resumeOffset. Attempting auto-reconnect: ${e.message}")
                         try {
                             try { source.close() } catch (_: Exception) {}
-                            val fallbackSource = if (source === okHttpSource) defaultHttpSource else okHttpSource
+                            val fallbackSource = defaultHttpDataSourceFactory.createDataSource()
                             val resumeSpec = activeDataSpec!!.buildUpon().setPosition(resumeOffset).build()
                             fallbackSource.open(resumeSpec)
                             currentSource = fallbackSource
@@ -134,19 +131,21 @@ class StreamDataSourceFactory(
                 return (currentSource as? HttpDataSource)?.responseCode ?: 200
             }
 
+            private val requestProperties = mutableMapOf<String, String>()
+
             override fun setRequestProperty(name: String, value: String) {
-                (okHttpSource as? HttpDataSource)?.setRequestProperty(name, value)
-                (defaultHttpSource as? HttpDataSource)?.setRequestProperty(name, value)
+                requestProperties[name] = value
+                (currentSource as? HttpDataSource)?.setRequestProperty(name, value)
             }
 
             override fun clearRequestProperty(name: String) {
-                (okHttpSource as? HttpDataSource)?.clearRequestProperty(name)
-                (defaultHttpSource as? HttpDataSource)?.clearRequestProperty(name)
+                requestProperties.remove(name)
+                (currentSource as? HttpDataSource)?.clearRequestProperty(name)
             }
 
             override fun clearAllRequestProperties() {
-                (okHttpSource as? HttpDataSource)?.clearAllRequestProperties()
-                (defaultHttpSource as? HttpDataSource)?.clearAllRequestProperties()
+                requestProperties.clear()
+                (currentSource as? HttpDataSource)?.clearAllRequestProperties()
             }
 
             override fun close() {
