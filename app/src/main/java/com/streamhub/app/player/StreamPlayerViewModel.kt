@@ -182,18 +182,18 @@ class StreamPlayerViewModel : ViewModel() {
                     .build()
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        15_000,   // minBufferMs (15s buffer)
-                        50_000,   // maxBufferMs (50s max buffer)
-                        500,      // bufferForPlaybackMs (instant 0.5s playback start)
-                        1_000     // bufferForPlaybackAfterRebufferMs (fast 1s recovery)
+                        30_000,   // minBufferMs (keep 30s buffer ahead)
+                        120_000,  // maxBufferMs (up to 2 minutes)
+                        1_000,    // bufferForPlaybackMs (1s smooth start)
+                        2_000     // bufferForPlaybackAfterRebufferMs (2s after rebuffer)
                     )
-                    .setBackBuffer(15_000, true) // 15s retained back-buffer
-                    .setPrioritizeTimeOverSizeThresholds(true) // Prioritize instant playback start over filling large buffer pool
+                    .setBackBuffer(30_000, true) // 30s retained back-buffer for instant rewind
+                    .setPrioritizeTimeOverSizeThresholds(false) // Continuous streaming & caching
+                    .setTargetBufferBytes(128 * 1024 * 1024)
                     .build()
                     val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
                         .setConstantBitrateSeekingEnabled(true)
                         .setMatroskaExtractorFlags(
-                            androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES or
                             androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_EMIT_RAW_SUBTITLE_DATA
                         )
                     ExoPlayer.Builder(context, renderersFactory)
@@ -201,7 +201,7 @@ class StreamPlayerViewModel : ViewModel() {
                         .setAudioAttributes(audioAttributes, true)
                         .setHandleAudioBecomingNoisy(true)
                         .setLoadControl(loadControl)
-                        .setSeekParameters(androidx.media3.exoplayer.SeekParameters.DEFAULT)
+                        .setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
                         .setMediaSourceFactory(
                             androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory)
                         )
