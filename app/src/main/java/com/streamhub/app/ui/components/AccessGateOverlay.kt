@@ -222,7 +222,8 @@ fun AccessGateOverlay(
                                         activity = activity,
                                         onUserEarnedReward = {
                                             isLoadingAd = false
-                                            Toast.makeText(context, "12-Hour Free Pass Unlocked! 🎟️", Toast.LENGTH_LONG).show()
+                                            AdPassManager.grant12HourPass()
+                                            ToastManager.showToast("12-Hour Free Pass Active! 🎟️")
                                         },
                                         onAdDismissed = {
                                             isLoadingAd = false
@@ -356,7 +357,7 @@ fun AccessGateOverlay(
                                 return@Button
                             }
                             if (AccessGateManager.verifyAndUnlock(accessCodeInput)) {
-                                Toast.makeText(context, "Welcome to StreamHub VIP! 🚀", Toast.LENGTH_LONG).show()
+                                ToastManager.showToast("Welcome to StreamHub VIP! 🚀")
                             } else {
                                 errorMessage = "Invalid access code. Use 12h Free Pass above or contact on Telegram."
                             }
@@ -384,7 +385,7 @@ fun AccessGateOverlay(
                                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(TELEGRAM_CONTACT_URL))
                                 context.startActivity(intent)
                             }.onFailure {
-                                Toast.makeText(context, "Visit: $TELEGRAM_CONTACT_URL", Toast.LENGTH_LONG).show()
+                                ToastManager.showToast("Visit: $TELEGRAM_CONTACT_URL")
                             }
                         },
                         shape = RoundedCornerShape(12.dp),
@@ -423,7 +424,7 @@ fun AccessGateOverlay(
             onDismiss = { showAdPassDialog = false },
             onPassGranted = {
                 showAdPassDialog = false
-                Toast.makeText(context, "12-Hour Free Pass Active! 🎟️", Toast.LENGTH_LONG).show()
+                ToastManager.showToast("12-Hour Free Pass Active! 🎟️")
             }
         )
     }

@@ -291,7 +291,8 @@ fun AdPassGateDialog(
                                 activity = activity,
                                 onUserEarnedReward = {
                                     isLoadingAd = false
-                                    Toast.makeText(context, "🎉 12-Hour Pass Unlocked!", Toast.LENGTH_LONG).show()
+                                    AdPassManager.grant12HourPass()
+                                    ToastManager.showToast("12-Hour Free Pass Active! 🎟️")
                                     onPassGranted()
                                     onDismiss()
                                 },
@@ -301,7 +302,7 @@ fun AdPassGateDialog(
                                 onAdError = { errorMsg ->
                                     isLoadingAd = false
                                     AdPassManager.grant12HourPass()
-                                    Toast.makeText(context, "🎉 12-Hour Pass Unlocked!", Toast.LENGTH_LONG).show()
+                                    ToastManager.showToast("12-Hour Free Pass Active! 🎟️")
                                     onPassGranted()
                                     onDismiss()
                                 }

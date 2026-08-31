@@ -407,7 +407,7 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
     val isAccessKeyUnlocked by com.streamhub.app.data.AccessGateManager.isUnlocked.collectAsState()
     val passExpiryMillis by com.streamhub.app.data.ads.AdPassManager.passExpiryMillis.collectAsState()
     val isAdminMode by com.streamhub.app.data.AdminManager.isAdminMode.collectAsState()
-    val isAdPassActive = com.streamhub.app.data.ads.AdPassManager.hasActivePass()
+    val isAdPassActive = passExpiryMillis > System.currentTimeMillis()
 
     val isAppUnlocked = isAccessKeyUnlocked || isAdPassActive || isAdminMode
     val showBottomBar = bottomBarScreens.any { it.route == currentRoute }
