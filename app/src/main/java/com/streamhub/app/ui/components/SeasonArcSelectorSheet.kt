@@ -54,6 +54,7 @@ fun SeasonArcSelectorSheet(
     options: List<SeasonArcOption>,
     selectedSeasonNumber: Int,
     selectedArcName: String,
+    currentMedia: com.streamhub.app.data.models.MediaItem? = null,
     onDismiss: () -> Unit,
     onSelectOption: (SeasonArcOption) -> Unit
 ) {
@@ -148,7 +149,7 @@ fun SeasonArcSelectorSheet(
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                val currentMediaItem = options.firstOrNull { it.isCurrent }?.targetMediaItem
+                val currentMediaItem = currentMedia ?: options.firstOrNull { it.isCurrent }?.targetMediaItem
 
                 items(options, key = { it.id }) { opt ->
                     val isSelected = if (opt.isExternalMedia) {

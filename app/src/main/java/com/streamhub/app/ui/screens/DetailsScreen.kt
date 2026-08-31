@@ -998,6 +998,7 @@ fun DetailsScreen(
             options = seasonArcOptions,
             selectedSeasonNumber = selectedSeasonNumber,
             selectedArcName = selectedArcName,
+            currentMedia = mediaItem,
             onDismiss = { isSeasonSheetOpen = false },
             onSelectOption = { opt ->
                 isSeasonSheetOpen = false

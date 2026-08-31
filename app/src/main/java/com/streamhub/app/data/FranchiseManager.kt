@@ -269,6 +269,8 @@ object FranchiseManager {
         val internalSeasons = currentItem.episodes.map { it.seasonNumber }.distinct().sorted()
         val internalArcs = currentItem.episodes.mapNotNull { it.arcName.trim().takeIf { arc -> arc.isNotEmpty() } }.distinct()
 
+        val hasInternalSplits = internalArcs.isNotEmpty() || internalSeasons.size > 1
+
         if (internalArcs.isNotEmpty()) {
             // Group by arc
             internalArcs.forEachIndexed { index, arcName ->
@@ -313,7 +315,7 @@ object FranchiseManager {
         // 2. Add all franchise items (seasons/sequels/movies)
         franchiseList.forEach { fItem ->
             val isThisItem = fItem.id == currentItem.id
-            if (!isThisItem || options.isEmpty()) {
+            if (!isThisItem || !hasInternalSplits) {
                 val sNum = getEffectiveSeasonNumber(fItem)
                 val isMovie = fItem.category.equals("MOVIE", ignoreCase = true) || fItem.type.equals("MOVIE", ignoreCase = true)
                 val epCount = fItem.episodes.size.takeIf { it > 0 } 

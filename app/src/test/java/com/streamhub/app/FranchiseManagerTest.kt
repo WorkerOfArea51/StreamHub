@@ -160,4 +160,19 @@ class FranchiseManagerTest {
         assertEquals("CURRENT • TV SPECIAL", FranchiseManager.getFranchiseTag(finalChapters, finalChapters))
         assertEquals("SIDE STORY • OVA", FranchiseManager.getFranchiseTag(ovaNoRegrets, finalChapters))
     }
+
+    @Test
+    fun buildSeasonArcOptions_includesAllFranchiseSeasons() {
+        val s1 = MediaItem(id = "aot_1", title = "Attack on Titan", seasonNumber = 1, releaseYear = "2013", relationType = "Prequel", category = "Anime", type = "SERIES")
+        val s2 = MediaItem(id = "aot_2", title = "Attack on Titan Season 2", seasonNumber = 2, releaseYear = "2017", relationType = "Sequel • TV", category = "Anime", type = "SERIES")
+        val s3 = MediaItem(id = "aot_3", title = "Attack on Titan Season 3", seasonNumber = 3, releaseYear = "2018", relationType = "Sequel • TV", category = "Anime", type = "SERIES")
+        val catalog = listOf(s1, s2, s3)
+
+        // When viewing Season 2, all 3 seasons MUST be present in options:
+        val s2Options = FranchiseManager.buildSeasonArcOptions(s2, catalog, 2)
+        assertEquals(3, s2Options.size)
+        assertTrue(s2Options.any { it.id == "aot_1" && !it.isCurrent })
+        assertTrue(s2Options.any { it.id == "aot_2" && it.isCurrent })
+        assertTrue(s2Options.any { it.id == "aot_3" && !it.isCurrent })
+    }
 }
