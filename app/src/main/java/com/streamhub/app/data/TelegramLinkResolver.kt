@@ -355,20 +355,18 @@ object TelegramLinkResolver {
     }
 
     /**
-     * Derives the opposite-route mirror (`/stream/` <-> `/dl/`) for playback failover.
+     * Derives a safe playable mirror URL.
      *
-     * This also rescues LEGACY imports (already persisted in Firestore) whose
-     * streamUrl/mirrorStreamUrl were both collapsed into `/dl/` by the old
-     * sanitizer: given a `/dl/` URL it derives the `/stream/` twin and vice versa.
-     * Returns "" for non-F2L URLs (nothing safe to derive).
+     * Ensures /stream/ web landing pages are converted to /dl/ direct media stream.
+     * Never converts /dl/ to /stream/ since /stream/ is an HTML web-player page.
      */
     fun deriveMirrorUrl(url: String): String {
         val trimmed = url.trim()
         if (!trimmed.contains("alwaysdata.net", ignoreCase = true)) return ""
-        return when {
-            trimmed.contains("/dl/", ignoreCase = true) -> trimmed.replace(Regex("""(?i)/dl/"""), "/stream/")
-            trimmed.contains("/stream/", ignoreCase = true) -> trimmed.replace(Regex("""(?i)/stream/"""), "/dl/")
-            else -> ""
+        return if (trimmed.contains("/stream/", ignoreCase = true)) {
+            trimmed.replace(Regex("""(?i)/stream/"""), "/dl/")
+        } else {
+            ""
         }
     }
 

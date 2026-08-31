@@ -659,16 +659,9 @@ class StreamPlayerViewModel : ViewModel() {
 
         if (ep != null) {
             val currentUrl = snapshot.resolvedStreamUrl
-            val mirrorCandidate = TelegramLinkResolver.sanitizePlayableUrl(ep.mirrorStreamUrl)
-                .ifBlank { TelegramLinkResolver.deriveMirrorUrl(currentUrl) }
-            val mirrorUrl = if (mirrorCandidate == currentUrl) {
-                TelegramLinkResolver.deriveMirrorUrl(currentUrl)
-            } else {
-                mirrorCandidate
-            }
+            val mirrorUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.mirrorStreamUrl)
             if (mirrorUrl.isNotBlank() && mirrorUrl.startsWith("http") && mirrorUrl != currentUrl) {
                 Log.i("StreamPlayerViewModel", "Retrying with failover mirror URL: $mirrorUrl")
-                // Route switch -> start from 0 (mid-file Range may be unsupported on /dl/)
                 playEpisodeWithExplicitUrl(snapshot.currentEpisodeIndex, mirrorUrl, 0L)
                 return
             }
@@ -1146,18 +1139,10 @@ class StreamPlayerViewModel : ViewModel() {
 
             _uiState.update { it.copy(isBuffering = true, playerError = null, playerErrorInfo = null) }
 
-            // Failover: from the 2nd attempt onward, switch route (/stream/ <-> /dl/)
+            // Failover: from the 2nd attempt onward, switch to alternative mirror if available
             if (autoRetryCount >= 2 && ep != null) {
                 val currentUrl = snapshot.resolvedStreamUrl
-                val mirrorCandidate = TelegramLinkResolver.sanitizePlayableUrl(ep.mirrorStreamUrl)
-                    .ifBlank { TelegramLinkResolver.deriveMirrorUrl(currentUrl) }
-                // Legacy imports collapsed both routes into /dl/ — derive the twin
-                // route so failover remains a genuine endpoint switch for old data too.
-                val mirrorUrl = if (mirrorCandidate == currentUrl) {
-                    TelegramLinkResolver.deriveMirrorUrl(currentUrl)
-                } else {
-                    mirrorCandidate
-                }
+                val mirrorUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.mirrorStreamUrl)
                 if (mirrorUrl.isNotBlank() && mirrorUrl.startsWith("http") && mirrorUrl != currentUrl) {
                     Log.i("StreamPlayerViewModel", "Auto-reconnecting using failover mirror URL: $mirrorUrl")
                     playEpisodeWithExplicitUrl(snapshot.currentEpisodeIndex, mirrorUrl, savedPositionMs)
