@@ -73,16 +73,16 @@ class StreamDataSourceFactory(
                 activeDataSpec = dataSpec
                 bytesReadTotal = 0L
 
-                // Remote HTTP/HTTPS Stream: Try OkHttp streaming first, fallback to DefaultHttpDataSource
-                val okHttpSource = okHttpDataSourceFactory.createDataSource()
-                currentSource = okHttpSource
+                // Remote HTTP/HTTPS Stream: Primary DefaultHttpDataSource (handles 200 OK range skipping & seekable chunks), fallback to OkHttp
+                val defaultHttpSource = defaultHttpDataSourceFactory.createDataSource()
+                currentSource = defaultHttpSource
                 transferListener?.let { currentSource?.addTransferListener(it) }
                 return try {
                     currentSource!!.open(dataSpec)
                 } catch (e: Exception) {
-                    Log.w(TAG, "OkHttp stream open failed for ${dataSpec.uri}, failing over to DefaultHttpDataSource: ${e.message}")
-                    val defaultHttpSource = defaultHttpDataSourceFactory.createDataSource()
-                    currentSource = defaultHttpSource
+                    Log.w(TAG, "DefaultHttpDataSource open failed for ${dataSpec.uri}, failing over to OkHttp: ${e.message}")
+                    val okHttpSource = okHttpDataSourceFactory.createDataSource()
+                    currentSource = okHttpSource
                     transferListener?.let { currentSource?.addTransferListener(it) }
                     currentSource!!.open(dataSpec)
                 }
@@ -161,24 +161,8 @@ class StreamDataSourceFactory(
         }
     }
 
-    private val simpleCache by lazy { StreamCacheManager.getCache(appContext) }
-
-    private val cacheDataSinkFactory by lazy {
-        CacheDataSink.Factory()
-            .setCache(simpleCache)
-            .setFragmentSize(8 * 1024 * 1024L) // 8 MB chunk fragments for smooth streaming & disk persistence
-    }
-
-    private val cachedHttpDataSourceFactory by lazy {
-        CacheDataSource.Factory()
-            .setCache(simpleCache)
-            .setUpstreamDataSourceFactory(resilientHttpDataSourceFactory)
-            .setCacheWriteDataSinkFactory(cacheDataSinkFactory)
-            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-    }
-
     private val defaultDataSourceFactory by lazy {
-        DefaultDataSource.Factory(appContext, cachedHttpDataSourceFactory)
+        DefaultDataSource.Factory(appContext, resilientHttpDataSourceFactory)
     }
 
     override fun createDataSource(): DataSource {
