@@ -166,12 +166,8 @@ class StreamPlayerViewModel : ViewModel() {
                 }
                 trackSelector = DefaultTrackSelector(context).apply {
                     parameters = buildUponParameters()
-                        .setMinVideoBitrate(200_000)
-                        .setMaxVideoBitrate(12_000_000)
-                        .setMinVideoSize(320, 240)
-                        .setMaxVideoSize(1920, 1080)
                         .setViewportSizeToPhysicalDisplaySize(context, true)
-                        .setExceedRendererCapabilitiesIfNecessary(true) // Ensure EAC3/AC3/DTS audio tracks play on all devices
+                        .setExceedRendererCapabilitiesIfNecessary(true) // Ensure EAC3/AC3/DTS audio and all video tracks play on all devices
                         .setAllowAudioMixedMimeTypeAdaptiveness(true)
                         .setAllowAudioMixedChannelCountAdaptiveness(true)
                         .setAllowAudioNonSeamlessAdaptiveness(true)
@@ -294,8 +290,8 @@ class StreamPlayerViewModel : ViewModel() {
                         }
                     }
 
-                    // Smart Auto-Reconnect: Seamlessly reconnect up to 3 times with backoff & position preservation
-                    if (errorInfo.canRetry && autoRetryCount < 3) {
+                    // Smart Auto-Reconnect: Seamlessly reconnect up to 5 times with fast human-like re-fire
+                    if (errorInfo.canRetry && autoRetryCount < 5) {
                         autoRetryCount++
                         _uiState.update {
                             it.copy(
@@ -1108,9 +1104,11 @@ class StreamPlayerViewModel : ViewModel() {
     private fun scheduleAutoReconnect(savedPositionMs: Long) {
         autoRetryJob?.cancel()
         val backoffMs = when (autoRetryCount) {
-            1 -> 600L
-            2 -> 1500L
-            else -> 3000L
+            1 -> 800L    // Fast human-like 0.8s instant re-fire
+            2 -> 1200L   // 1.2s re-fire
+            3 -> 2000L   // 2.0s re-fire
+            4 -> 3000L   // 3.0s re-fire
+            else -> 4000L
         }
         Log.i("StreamPlayerViewModel", "Scheduling smart auto-reconnect #$autoRetryCount in ${backoffMs}ms at position ${savedPositionMs}ms")
 

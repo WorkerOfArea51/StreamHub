@@ -40,6 +40,7 @@ class StreamDataSourceFactory(
         private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
         private val DEFAULT_HEADERS = mapOf(
             "Accept" to "*/*",
+            "Accept-Encoding" to "identity",
             "Connection" to "keep-alive"
         )
     }
@@ -50,7 +51,7 @@ class StreamDataSourceFactory(
 
     private val defaultHttpDataSourceFactory = DefaultHttpDataSource.Factory()
         .setUserAgent(USER_AGENT)
-        .setConnectTimeoutMs(25_000)
+        .setConnectTimeoutMs(45_000)
         .setReadTimeoutMs(0) // Infinite read timeout for progressive media streams
         .setAllowCrossProtocolRedirects(true)
         .setKeepPostFor302Redirects(true)
