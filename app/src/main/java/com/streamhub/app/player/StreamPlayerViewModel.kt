@@ -179,29 +179,29 @@ class StreamPlayerViewModel : ViewModel() {
                     .build()
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        120_000,    // minBufferMs (keep 2 minutes minimum buffer ahead)
-                        7_200_000,  // maxBufferMs (buffer up to 2 full hours ahead — full movie pre-caching)
+                        25_000,     // minBufferMs (keep steady 25s buffer ahead for rock-solid stability)
+                        120_000,    // maxBufferMs (buffer up to 2 minutes ahead in memory)
                         1_000,      // bufferForPlaybackMs (1s smooth instant start)
                         2_000       // bufferForPlaybackAfterRebufferMs (2s fast recovery)
                     )
-                    .setBackBuffer(7_200_000, true) // Retain full watched history up to 2h for zero-latency rewind
-                    .setPrioritizeTimeOverSizeThresholds(false) // Unthrottled continuous background downloading at max internet speed
+                    .setBackBuffer(30_000, false) // 30s back buffer in RAM (disk SimpleCache handles full movie persistence)
+                    .setPrioritizeTimeOverSizeThresholds(true) // Crucial: prioritize time so buffering is never throttled by byte threshold
                     .build()
-                    val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
-                        .setConstantBitrateSeekingEnabled(true)
-                        .setMatroskaExtractorFlags(
-                            androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_EMIT_RAW_SUBTITLE_DATA
-                        )
-                    ExoPlayer.Builder(context, renderersFactory)
-                        .setTrackSelector(trackSelector!!)
-                        .setAudioAttributes(audioAttributes, true)
-                        .setHandleAudioBecomingNoisy(true)
-                        .setLoadControl(loadControl)
-                        .setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
-                        .setMediaSourceFactory(
-                            androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory)
-                        )
-                        .build()
+                val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
+                    .setConstantBitrateSeekingEnabled(true)
+                    .setMatroskaExtractorFlags(
+                        androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_EMIT_RAW_SUBTITLE_DATA
+                    )
+                ExoPlayer.Builder(context, renderersFactory)
+                    .setTrackSelector(trackSelector!!)
+                    .setAudioAttributes(audioAttributes, true)
+                    .setHandleAudioBecomingNoisy(true)
+                    .setLoadControl(loadControl)
+                    .setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
+                    .setMediaSourceFactory(
+                        androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory)
+                    )
+                    .build()
             }
 
             if (createResult.isFailure) {
@@ -286,8 +286,8 @@ class StreamPlayerViewModel : ViewModel() {
                         }
                     }
 
-                    // Smart Auto-Reconnect: Seamlessly reconnect up to 5 times with fast human-like re-fire
-                    if (errorInfo.canRetry && autoRetryCount < 5) {
+                    // Smart Auto-Reconnect: Seamlessly reconnect up to 3 times with fast human-like re-fire
+                    if (errorInfo.canRetry && autoRetryCount < 3) {
                         autoRetryCount++
                         _uiState.update {
                             it.copy(
@@ -1069,10 +1069,8 @@ class StreamPlayerViewModel : ViewModel() {
         autoRetryJob?.cancel()
         val backoffMs = when (autoRetryCount) {
             1 -> 800L    // Fast human-like 0.8s instant re-fire
-            2 -> 1200L   // 1.2s re-fire
-            3 -> 2000L   // 2.0s re-fire
-            4 -> 3000L   // 3.0s re-fire
-            else -> 4000L
+            2 -> 1500L   // 1.5s re-fire
+            else -> 2500L
         }
         Log.i("StreamPlayerViewModel", "Scheduling smart auto-reconnect #$autoRetryCount in ${backoffMs}ms at position ${savedPositionMs}ms")
 

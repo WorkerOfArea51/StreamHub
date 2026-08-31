@@ -55,7 +55,7 @@ object StreamCacheManager {
             }
 
             val evictor = LeastRecentlyUsedCacheEvictor(effectiveLimitBytes)
-            cacheDir = File(context.cacheDir, "media_stream_cache")
+            cacheDir = File(context.cacheDir, "media_stream_cache").apply { mkdirs() }
             databaseProvider = StandaloneDatabaseProvider(context.applicationContext)
             simpleCache = SimpleCache(cacheDir!!, evictor, databaseProvider!!)
             simpleCache!!

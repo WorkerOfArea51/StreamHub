@@ -98,13 +98,25 @@ class StreamDataSourceFactory(
                     readBytes
                 } catch (e: IOException) {
                     // Transparent in-flight reconnection for remote HTTP media streams
-                    if (activeDataSpec != null) {
-                        val resumeOffset = activeDataSpec!!.position + bytesReadTotal
+                    val dataSpec = activeDataSpec
+                    if (dataSpec != null) {
+                        val remainingLength = if (dataSpec.length != C.LENGTH_UNSET.toLong()) {
+                            dataSpec.length - bytesReadTotal
+                        } else {
+                            C.LENGTH_UNSET.toLong()
+                        }
+                        if (remainingLength == 0L) {
+                            return C.RESULT_END_OF_INPUT
+                        }
+                        val resumeOffset = dataSpec.position + bytesReadTotal
                         Log.w(TAG, "Remote stream read dropped after $bytesReadTotal bytes at offset $resumeOffset. Attempting auto-reconnect: ${e.message}")
                         try {
                             try { source.close() } catch (_: Exception) {}
                             val fallbackSource = defaultHttpDataSourceFactory.createDataSource()
-                            val resumeSpec = activeDataSpec!!.buildUpon().setPosition(resumeOffset).build()
+                            val resumeSpec = dataSpec.buildUpon()
+                                .setPosition(resumeOffset)
+                                .setLength(remainingLength)
+                                .build()
                             fallbackSource.open(resumeSpec)
                             currentSource = fallbackSource
                             transferListener?.let { currentSource?.addTransferListener(it) }
