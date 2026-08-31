@@ -71,9 +71,7 @@ fun MpvSeekbar(
     modifier: Modifier = Modifier,
     thumbnailBitmap: Bitmap? = null,
     sourceUrl: String? = null,
-    fallbackPosterUrl: String? = null,
-    abLoopStartMs: Long? = null,
-    abLoopEndMs: Long? = null
+    fallbackPosterUrl: String? = null
 ) {
     val totalDuration = durationMs.coerceAtLeast(1L)
     var isUserInteracting by remember { mutableStateOf(false) }
@@ -269,42 +267,6 @@ fun MpvSeekbar(
                             endX = playedPx.coerceAtLeast(1f)
                         )
                     )
-                }
-
-                // D. A-B Loop Indicators
-                if (abLoopStartMs != null || abLoopEndMs != null) {
-                    val markerStroke = 2.5.dp.toPx()
-                    val loopStartPx = abLoopStartMs?.let { ((it.toFloat() / totalDuration.toFloat()) * totalWidth).coerceIn(0f, totalWidth) }
-                    val loopEndPx = abLoopEndMs?.let { ((it.toFloat() / totalDuration.toFloat()) * totalWidth).coerceIn(0f, totalWidth) }
-
-                    // Interval Rect
-                    if (loopStartPx != null && loopEndPx != null && loopEndPx > loopStartPx) {
-                        drawRect(
-                            color = loopAmber.copy(alpha = 0.35f),
-                            topLeft = Offset(loopStartPx, trackTop),
-                            size = Size(loopEndPx - loopStartPx, trackHeight)
-                        )
-                    }
-
-                    // Start Line Marker
-                    if (loopStartPx != null) {
-                        drawLine(
-                            color = loopAmber,
-                            start = Offset(loopStartPx, centerY - thumbHeight / 2f),
-                            end = Offset(loopStartPx, centerY + thumbHeight / 2f),
-                            strokeWidth = markerStroke
-                        )
-                    }
-
-                    // End Line Marker
-                    if (loopEndPx != null) {
-                        drawLine(
-                            color = loopAmber,
-                            start = Offset(loopEndPx, centerY - thumbHeight / 2f),
-                            end = Offset(loopEndPx, centerY + thumbHeight / 2f),
-                            strokeWidth = markerStroke
-                        )
-                    }
                 }
 
                 // E. mpvEx Pill Thumb

@@ -34,6 +34,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -330,8 +332,6 @@ fun PlayerScreen(
     var showSubtitleSettingsDrawer by remember { mutableStateOf(false) }
     var showMoreSheet by remember { mutableStateOf(false) }
     var showStatsForNerds by remember { mutableStateOf(false) }
-    var abLoopStartMs by remember { mutableStateOf<Long?>(null) }
-    var abLoopEndMs by remember { mutableStateOf<Long?>(null) }
 
     val isAnySheetOpen = showAspectRatioSheet || showSpeedSheet || showZoomSheet ||
                          showPlaylistSheet || showAudioSheet || showSubtitleSheet ||
@@ -735,26 +735,7 @@ fun PlayerScreen(
                             scaleY = videoZoomScale,
                             translationX = videoZoomOffsetX,
                             translationY = videoZoomOffsetY
-                        )
-                        .pointerInput(Unit) {
-                            detectTransformGestures { _, pan, zoom, _ ->
-                                if (zoom != 1.0f) {
-                                    val newScale = (videoZoomScale * zoom).coerceIn(0.5f, 5.0f)
-                                    videoZoomScale = newScale
-                                    val zoomPct = (newScale * 100).roundToInt()
-                                    triggerHudPill("Zoom: $zoomPct%", Icons.Default.ZoomIn)
-                                }
-                                if (videoZoomScale > 1.05f) {
-                                    val maxX = (videoZoomScale - 1f) * 400f
-                                    val maxY = (videoZoomScale - 1f) * 400f
-                                    videoZoomOffsetX = (videoZoomOffsetX + pan.x).coerceIn(-maxX, maxX)
-                                    videoZoomOffsetY = (videoZoomOffsetY + pan.y).coerceIn(-maxY, maxY)
-                                } else {
-                                    videoZoomOffsetX = 0f
-                                    videoZoomOffsetY = 0f
-                                }
-                            }
-                        },
+                        ),
                     factory = { ctx ->
                         PlayerView(ctx).apply {
                             useController = false
@@ -825,9 +806,41 @@ fun PlayerScreen(
         // All Gestures, Controls, Overlays & Dialogs (Hidden in PiP Mode)
         // ──────────────────────────────────────────────────────────────
         if (!isPipMode) {
-            // Gesture Zones (Left 35%, Center 30%, Right 35%)
+            // Gesture Zones (Left 35%, Center 30%, Right 35%) with Full-Screen Multi-touch Pinch to Zoom & Pan
             if (!uiState.isLocked) {
-            Row(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                do {
+                                    val event = awaitPointerEvent()
+                                    if (event.changes.size >= 2) {
+                                        val zoomChange = event.calculateZoom()
+                                        val panChange = event.calculatePan()
+                                        if (zoomChange != 1.0f || (videoZoomScale > 1.05f && panChange != androidx.compose.ui.geometry.Offset.Zero)) {
+                                            val newScale = (videoZoomScale * zoomChange).coerceIn(0.5f, 5.0f)
+                                            videoZoomScale = newScale
+                                            val zoomPct = (newScale * 100).roundToInt()
+                                            triggerHudPill("Zoom: $zoomPct%", Icons.Default.ZoomIn)
+
+                                            if (videoZoomScale > 1.05f) {
+                                                val maxX = (videoZoomScale - 1f) * 400f
+                                                val maxY = (videoZoomScale - 1f) * 400f
+                                                videoZoomOffsetX = (videoZoomOffsetX + panChange.x).coerceIn(-maxX, maxX)
+                                                videoZoomOffsetY = (videoZoomOffsetY + panChange.y).coerceIn(-maxY, maxY)
+                                            } else {
+                                                videoZoomOffsetX = 0f
+                                                videoZoomOffsetY = 0f
+                                            }
+                                            event.changes.forEach { it.consume() }
+                                        }
+                                    }
+                                } while (event.changes.any { it.pressed })
+                            }
+                        }
+                ) {
+                    Row(modifier = Modifier.fillMaxSize()) {
                 // Left Zone: Brightness Drag & Double-tap Seek Backward + Long Press 2X Speed
                 Box(
                     modifier = Modifier
@@ -1001,6 +1014,7 @@ fun PlayerScreen(
                 )
             }
         }
+    }
 
         // Release Dynamic Speed HUD when finger leaves screen
         if (is2xSpeedHolding) {
@@ -1638,99 +1652,6 @@ fun PlayerScreen(
                                     iconSize = 18.dp,
                                     title = "Aspect Ratio"
                                 )
-
-                                // A-B Repeat Loop Pill (mpvEx Parity)
-                                var isABLoopExpanded by remember { mutableStateOf(false) }
-                                AnimatedContent(
-                                    targetState = (isABLoopExpanded || abLoopStartMs != null || abLoopEndMs != null),
-                                    transitionSpec = { fadeIn() + expandHorizontally() togetherWith fadeOut() + shrinkHorizontally() },
-                                    label = "ab_loop_pill"
-                                ) { isExpanded ->
-                                    if (isExpanded) {
-                                        Surface(
-                                            shape = RoundedCornerShape(50),
-                                            color = Color(0x991E1E2C),
-                                            border = BorderStroke(1.dp, Color(0xFFD0BCFF)),
-                                            modifier = Modifier.height(40.dp)
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.padding(horizontal = 4.dp)
-                                            ) {
-                                                // Button A
-                                                Surface(
-                                                    shape = RoundedCornerShape(50),
-                                                    color = if (abLoopStartMs != null) Color(0xFF6750A4) else Color.Transparent,
-                                                    modifier = Modifier
-                                                        .clip(RoundedCornerShape(50))
-                                                        .clickable {
-                                                            abLoopStartMs = uiState.currentPositionMs
-                                                            viewModel.setLoopA()
-                                                            triggerHudPill("Point A: ${formatMpvTime(uiState.currentPositionMs)}", Icons.Default.Refresh)
-                                                        }
-                                                ) {
-                                                    Text(
-                                                        text = if (abLoopStartMs != null) formatMpvTime(abLoopStartMs!!) else "A",
-                                                        color = Color.White,
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
-                                                    )
-                                                }
-
-                                                // Clear Button (X)
-                                                IconButton(
-                                                    onClick = {
-                                                        abLoopStartMs = null
-                                                        abLoopEndMs = null
-                                                        isABLoopExpanded = false
-                                                        viewModel.clearABLoop()
-                                                        triggerHudPill("A-B Loop cleared", Icons.Default.Close)
-                                                    },
-                                                    modifier = Modifier.size(28.dp)
-                                                ) {
-                                                    Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color.White, modifier = Modifier.size(14.dp))
-                                                }
-
-                                                // Button B
-                                                Surface(
-                                                    shape = RoundedCornerShape(50),
-                                                    color = if (abLoopEndMs != null) Color(0xFF6750A4) else Color.Transparent,
-                                                    modifier = Modifier
-                                                        .clip(RoundedCornerShape(50))
-                                                        .clickable {
-                                                            val cur = uiState.currentPositionMs
-                                                            if (abLoopStartMs != null && cur > abLoopStartMs!!) {
-                                                                abLoopEndMs = cur
-                                                                viewModel.setLoopB()
-                                                                triggerHudPill("Point B: ${formatMpvTime(cur)}", Icons.Default.Refresh)
-                                                            } else {
-                                                                triggerHudPill("Point B must be after Point A", Icons.Default.ErrorOutline)
-                                                            }
-                                                        }
-                                                ) {
-                                                    Text(
-                                                        text = if (abLoopEndMs != null) formatMpvTime(abLoopEndMs!!) else "B",
-                                                        color = Color.White,
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        ControlsButton(
-                                            icon = Icons.Outlined.Autorenew,
-                                            onClick = { isABLoopExpanded = true },
-                                            size = 40.dp,
-                                            iconSize = 20.dp,
-                                            title = "A-B Repeat"
-                                        )
-                                    }
-                                }
                             }
 
                             // Right Actions Group: Zoom Pill, PiP, Frame Nav Capsule (Camera), Night Shield
@@ -1903,9 +1824,7 @@ fun PlayerScreen(
                             onSeek = { viewModel.seekTo(it) },
                             thumbnailBitmap = scrubberThumbnailBitmap,
                             sourceUrl = uiState.resolvedStreamUrl,
-                            fallbackPosterUrl = mediaItem.posterUrl,
-                            abLoopStartMs = abLoopStartMs,
-                            abLoopEndMs = abLoopEndMs
+                            fallbackPosterUrl = mediaItem.posterUrl
                         )
                     }
                 }
@@ -2275,13 +2194,6 @@ private fun StatsForNerdsOverlay(
                 StatRowItem("Network Speed", "${uiState.networkSpeedKbps} kbps")
             }
             StatRowItem("Aspect Mode", uiState.aspectRatioMode.name)
-            val loopA = uiState.abLoopA
-            val loopB = uiState.abLoopB
-            if (loopA != null || loopB != null) {
-                val aStr = if (loopA != null) formatMpvTime(loopA) else "-"
-                val bStr = if (loopB != null) formatMpvTime(loopB) else "-"
-                StatRowItem("A-B Loop", "A: $aStr  B: $bStr")
-            }
         }
     }
 }
