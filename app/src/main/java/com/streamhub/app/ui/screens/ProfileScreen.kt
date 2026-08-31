@@ -87,7 +87,6 @@ import com.streamhub.app.data.UserStatsManager
 import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.components.AdminEditorDialog
-import com.streamhub.app.ui.components.BulkImportDialog
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.PrimaryRed
@@ -134,7 +133,6 @@ fun ProfileScreen(
 
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
     var showAddContentDialog by remember { mutableStateOf(false) }
-    var showBulkImportDialog by remember { mutableStateOf(false) }
     var showAdPassDialog by remember { mutableStateOf(false) }
     var showLiveTelemetryDialog by remember { mutableStateOf(false) }
     var showAboutScreen by remember { mutableStateOf(false) }
@@ -239,7 +237,7 @@ fun ProfileScreen(
             )
         }
 
-        // Owner Exclusive: Live Real-Time Audience & Telemetry Dashboard & Bulk Sync
+        // Owner Exclusive: Live Real-Time Audience & Telemetry Dashboard
         if (isAdminMode) {
             item(key = "settings_live_telemetry") {
                 val liveMetrics by com.streamhub.app.data.UserTelemetryManager.liveMetrics.collectAsState()
@@ -250,17 +248,6 @@ fun ProfileScreen(
                     subtitle = "Real-time active users, VIP vs Ad pass breakdown & live streams",
                     badge = "LIVE 🟢 (${liveMetrics.totalOnline})",
                     onClick = { showLiveTelemetryDialog = true }
-                )
-            }
-
-            item(key = "settings_bulk_sync") {
-                ProfileSettingsItem(
-                    icon = Icons.Default.CloudDownload,
-                    iconTint = Color(0xFF8B5CF6),
-                    title = "Multi-URL Bulk Sync & Import",
-                    subtitle = "Fetch multiple JSON links or F2L batches in parallel with preview",
-                    badge = "Bulk ⚡",
-                    onClick = { showBulkImportDialog = true }
                 )
             }
         }
@@ -346,31 +333,6 @@ fun ProfileScreen(
             onSave = { newItem ->
                 repository.saveMediaItem(newItem)
                 showAddContentDialog = false
-            }
-        )
-    }
-
-    // Bulk Catalog Importer & Multi-URL Sync Dialog
-    if (showBulkImportDialog) {
-        val catalog by repository.mediaCatalog.collectAsState()
-        BulkImportDialog(
-            existingCatalog = catalog,
-            onDismiss = { showBulkImportDialog = false },
-            onImportConfirmed = { items: List<com.streamhub.app.data.models.MediaItem>, strategy: com.streamhub.app.data.importer.ConflictStrategy ->
-                showBulkImportDialog = false
-                val (updatedCatalog, summary) = com.streamhub.app.data.importer.BulkCatalogImporter.applyImport(
-                    itemsToImport = items,
-                    existingCatalog = catalog,
-                    strategy = strategy
-                )
-                items.forEach { item ->
-                    repository.saveMediaItem(item)
-                }
-                Toast.makeText(
-                    context,
-                    "🎉 Successfully imported ${summary.importedCount} shows (${summary.totalEpisodesAdded} episodes)!",
-                    Toast.LENGTH_LONG
-                ).show()
             }
         )
     }
