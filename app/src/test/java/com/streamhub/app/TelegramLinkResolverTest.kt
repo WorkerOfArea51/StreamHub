@@ -313,4 +313,29 @@ class TelegramLinkResolverTest {
         assertEquals(15, episodes[1].episodeNumber)
         assertEquals("EP - 15 - The Diamond Mage", episodes[1].title)
     }
+
+    @Test
+    fun parseSmartBotMessage_preservesJsonArcNameOverFallback() {
+        val jsonPayload = """
+            [
+                {
+                    "episode_num": 1,
+                    "arc_name": "Magic Knights Entrance Arc",
+                    "title": "EP - 01 - Asta and Yuno",
+                    "stream_link": "https://streamhub69.alwaysdata.net/stream/ep1"
+                },
+                {
+                    "episode_num": 14,
+                    "arc_name": "Dungeon Exploration Arc",
+                    "title": "EP - 14 - Dungeon",
+                    "stream_link": "https://streamhub69.alwaysdata.net/stream/ep14"
+                }
+            ]
+        """.trimIndent()
+
+        val episodes = TelegramLinkResolver.parseSmartBotMessageOrLinks(jsonPayload, seasonNumber = 1, arcName = "Fallback Arc")
+        assertEquals(2, episodes.size)
+        assertEquals("Magic Knights Entrance Arc", episodes[0].arcName)
+        assertEquals("Dungeon Exploration Arc", episodes[1].arcName)
+    }
 }

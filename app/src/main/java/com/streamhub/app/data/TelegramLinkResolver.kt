@@ -257,11 +257,14 @@ object TelegramLinkResolver {
                         cleanedTitle.isNotBlank() -> cleanedTitle
                         else -> "Episode $epNum"
                     }
+                    val itemArcName = item.get("arc_name")?.asString?.takeIf { it.isNotBlank() } ?: arcName
+                    val itemSeasonNum = item.get("season_num")?.asInt ?: item.get("seasonNumber")?.asInt ?: seasonNumber
+
                     episodes.add(
                         Episode(
                             episodeNumber = epNum,
-                            seasonNumber = seasonNumber,
-                            arcName = arcName,
+                            seasonNumber = itemSeasonNum,
+                            arcName = itemArcName,
                             title = finalTitle,
                             streamUrl = primaryPlayUrl,
                             mirrorStreamUrl = mirrorUrl,
