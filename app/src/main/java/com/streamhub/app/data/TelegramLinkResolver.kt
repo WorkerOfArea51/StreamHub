@@ -321,12 +321,49 @@ object TelegramLinkResolver {
         return episodes.sortedBy { it.episodeNumber }
     }
 
+    /**
+     * Sanitizes a URL for playback WITHOUT changing its route semantics.
+     *
+     * Preserves primary = /stream/ (inline, Range-capable) and mirror = /dl/ (attachment).
+     * Performs cosmetic cleanup (trim + strip invisible/zero-width characters that break Uri.parse).
+     */
     fun sanitizePlayableUrl(url: String): String {
+        return url.trim().replace(Regex("""[\s\u200B-\u200D\uFEFF]"""), "")
+    }
+
+    /**
+     * Returns the download-route twin (`/dl/`) of an F2L link — used by the
+     * DOWNLOAD pipeline, which wants the attachment endpoint.
+     *
+     * Scoped strictly to the F2L backend host so unrelated direct links
+     * (other hosts, YouTube-resolved URLs, local files) are never rewritten.
+     */
+    fun toDownloadUrl(url: String): String {
         val trimmed = url.trim()
-        if (trimmed.contains("alwaysdata.net/stream/", ignoreCase = true)) {
-            return trimmed.replace(Regex("""(?i)alwaysdata\.net/stream/"""), "alwaysdata.net/dl/")
+        if (!trimmed.contains("alwaysdata.net", ignoreCase = true)) return trimmed
+        return if (trimmed.contains("/stream/", ignoreCase = true)) {
+            trimmed.replace(Regex("""(?i)/stream/"""), "/dl/")
+        } else {
+            trimmed
         }
-        return trimmed
+    }
+
+    /**
+     * Derives the opposite-route mirror (`/stream/` <-> `/dl/`) for playback failover.
+     *
+     * This also rescues LEGACY imports (already persisted in Firestore) whose
+     * streamUrl/mirrorStreamUrl were both collapsed into `/dl/` by the old
+     * sanitizer: given a `/dl/` URL it derives the `/stream/` twin and vice versa.
+     * Returns "" for non-F2L URLs (nothing safe to derive).
+     */
+    fun deriveMirrorUrl(url: String): String {
+        val trimmed = url.trim()
+        if (!trimmed.contains("alwaysdata.net", ignoreCase = true)) return ""
+        return when {
+            trimmed.contains("/dl/", ignoreCase = true) -> trimmed.replace(Regex("""(?i)/dl/"""), "/stream/")
+            trimmed.contains("/stream/", ignoreCase = true) -> trimmed.replace(Regex("""(?i)/stream/"""), "/dl/")
+            else -> ""
+        }
     }
 
     suspend fun resolveAsync(url: String): String {

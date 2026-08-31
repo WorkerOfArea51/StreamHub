@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem as ExoMediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.streamhub.app.data.WatchHistoryManager
@@ -286,26 +287,30 @@ class StreamPlayerViewModel : ViewModel() {
                         }
                     }
 
-                    // Smart Auto-Reconnect: Seamlessly reconnect up to 3 times with fast human-like re-fire
-                    if (errorInfo.canRetry && autoRetryCount < 3) {
+                    // Smart Auto-Reconnect: attempt budget bounded by maxAutoRetries.
+                    // Server-side (5xx) failures use longer backoff so we do not hammer
+                    // an already struggling single-worker backend into a crash loop.
+                    val serverDown = errorInfo.httpStatusCode in 500..599
+                    if (errorInfo.canRetry && autoRetryCount < maxAutoRetries) {
                         autoRetryCount++
                         _uiState.update {
                             it.copy(
                                 isBuffering = true,
                                 isPlaying = false,
                                 isReconnecting = true,
-                                reconnectAttempt = autoRetryCount,
+                                reconnectAttempt = autoRetryCount.coerceIn(1, maxAutoRetries),
                                 playerError = null,
                                 playerErrorInfo = null
                             )
                         }
-                        scheduleAutoReconnect(currentPos)
+                        scheduleAutoReconnect(currentPos, serverDown)
                     } else {
                         _uiState.update {
                             it.copy(
                                 isBuffering = false,
                                 isPlaying = false,
                                 isReconnecting = false,
+                                reconnectAttempt = 0,
                                 playerError = errorInfo.message,
                                 playerErrorInfo = errorInfo
                             )
@@ -378,37 +383,80 @@ class StreamPlayerViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Walks the exception cause chain looking for an HTTP status code attached
+     * by Media3's HttpDataSource layer (InvalidResponseCodeException).
+     */
+    private fun findHttpStatus(error: Throwable): Int {
+        var current: Throwable? = error
+        var depth = 0
+        while (current != null && depth < 6) {
+            if (current is HttpDataSource.InvalidResponseCodeException) {
+                return current.responseCode
+            }
+            current = current.cause
+            depth++
+        }
+        return 0
+    }
+
     private fun classifyError(error: Throwable): PlayerErrorInfo {
         val message = error.localizedMessage ?: error.message ?: "Unknown playback error"
-        val canRetry = true  // Most errors are retryable; specific cases set false below
+        val httpStatus = findHttpStatus(error)
 
         return when (error) {
             is androidx.media3.common.PlaybackException -> {
-                when (error.errorCode) {
-                    androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
-                    androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
-                    androidx.media3.common.PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE,
-                    androidx.media3.common.PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> {
-                        PlayerErrorInfo(PlayerErrorType.NETWORK, message, canRetry)
+                when {
+                    // Server-side failure: the F2L backend is a single uvicorn worker
+                    // on alwaysdata that goes down/restarts under load. 502/503/504 is
+                    // the dominant real-world failure mode — surface it clearly
+                    // instead of the opaque "Source error".
+                    httpStatus in 500..599 -> PlayerErrorInfo(
+                        PlayerErrorType.STREAM_RESOLVE,
+                        "Streaming server is offline or restarting (HTTP $httpStatus). Try again shortly.",
+                        canRetry = true,
+                        httpStatusCode = httpStatus
+                    )
+                    // Link expired / file removed on the bot backend
+                    httpStatus == 404 || httpStatus == 410 -> PlayerErrorInfo(
+                        PlayerErrorType.SOURCE_NOT_FOUND,
+                        "This video link has expired or was removed (HTTP $httpStatus). Refresh the episode links.",
+                        canRetry = true,
+                        httpStatusCode = httpStatus
+                    )
+                    // Backend reachable but refusing us (rate limit / hotlink protection)
+                    httpStatus == 403 || httpStatus == 429 -> PlayerErrorInfo(
+                        PlayerErrorType.STREAM_RESOLVE,
+                        "Server refused the stream (HTTP $httpStatus). Too many requests or link protection.",
+                        canRetry = true,
+                        httpStatusCode = httpStatus
+                    )
+                    else -> when (error.errorCode) {
+                        androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                        androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+                        androidx.media3.common.PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE,
+                        androidx.media3.common.PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS -> {
+                            PlayerErrorInfo(PlayerErrorType.NETWORK, message, canRetry = true, httpStatusCode = httpStatus)
+                        }
+                        androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+                        androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FAILED,
+                        androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED -> {
+                            PlayerErrorInfo(PlayerErrorType.DECODER, "This video format isn't supported by your device's decoder.", canRetry = false)
+                        }
+                        androidx.media3.common.PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
+                        androidx.media3.common.PlaybackException.ERROR_CODE_IO_NO_PERMISSION -> {
+                            PlayerErrorInfo(PlayerErrorType.SOURCE_NOT_FOUND, "This video source is currently unreachable or unavailable.", canRetry = true, httpStatusCode = httpStatus)
+                        }
+                        else -> PlayerErrorInfo(PlayerErrorType.UNKNOWN, message, canRetry = true, httpStatusCode = httpStatus)
                     }
-                    androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-                    androidx.media3.common.PlaybackException.ERROR_CODE_DECODING_FAILED,
-                    androidx.media3.common.PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED -> {
-                        PlayerErrorInfo(PlayerErrorType.DECODER, "This video format isn't supported by your device's decoder.", false)
-                    }
-                    androidx.media3.common.PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
-                    androidx.media3.common.PlaybackException.ERROR_CODE_IO_NO_PERMISSION -> {
-                        PlayerErrorInfo(PlayerErrorType.SOURCE_NOT_FOUND, "This video source is currently unreachable or unavailable.", true)
-                    }
-                    else -> PlayerErrorInfo(PlayerErrorType.UNKNOWN, message, canRetry)
                 }
             }
             is java.io.IOException,
             is java.net.SocketTimeoutException,
             is java.net.UnknownHostException -> {
-                PlayerErrorInfo(PlayerErrorType.NETWORK, "Network connection failed. Check your internet and retry.", canRetry)
+                PlayerErrorInfo(PlayerErrorType.NETWORK, "Network connection failed. Check your internet and retry.", canRetry = true, httpStatusCode = httpStatus)
             }
-            else -> PlayerErrorInfo(PlayerErrorType.UNKNOWN, message, canRetry)
+            else -> PlayerErrorInfo(PlayerErrorType.UNKNOWN, message, canRetry = true, httpStatusCode = httpStatus)
         }
     }
 
@@ -606,19 +654,28 @@ class StreamPlayerViewModel : ViewModel() {
         val ep = episodesList.getOrNull(snapshot.currentEpisodeIndex)
         _uiState.update { it.copy(playerError = null, playerErrorInfo = null, isBuffering = true) }
 
-        // If primary stream failed on retry attempt > 0, swap or fallback to alternative mirror URL if available
-        if (autoRetryCount > 1 && ep != null) {
+        // Manual retry replays the full failover cycle (primary -> mirror)
+        autoRetryCount = 0
+
+        if (ep != null) {
             val currentUrl = snapshot.resolvedStreamUrl
-            val mirrorUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.mirrorStreamUrl)
-            if (mirrorUrl.isNotBlank() && mirrorUrl != currentUrl && !mirrorUrl.contains("/stream/", ignoreCase = true)) {
+            val mirrorCandidate = TelegramLinkResolver.sanitizePlayableUrl(ep.mirrorStreamUrl)
+                .ifBlank { TelegramLinkResolver.deriveMirrorUrl(currentUrl) }
+            val mirrorUrl = if (mirrorCandidate == currentUrl) {
+                TelegramLinkResolver.deriveMirrorUrl(currentUrl)
+            } else {
+                mirrorCandidate
+            }
+            if (mirrorUrl.isNotBlank() && mirrorUrl.startsWith("http") && mirrorUrl != currentUrl) {
                 Log.i("StreamPlayerViewModel", "Retrying with failover mirror URL: $mirrorUrl")
+                // Route switch -> start from 0 (mid-file Range may be unsupported on /dl/)
                 playEpisodeWithExplicitUrl(snapshot.currentEpisodeIndex, mirrorUrl, 0L)
                 return
             }
         }
 
-        // Retry from 0 if position seek failed on newly replaced video file
-        val retryPositionMs = if (autoRetryCount > 1) 0L else (pendingSeekTargetMs ?: snapshot.currentPositionMs)
+        // Same-URL retry: resume from where playback stopped.
+        val retryPositionMs = pendingSeekTargetMs ?: snapshot.currentPositionMs
         playEpisode(snapshot.currentEpisodeIndex, retryPositionMs)
     }
 
@@ -1065,14 +1122,22 @@ class StreamPlayerViewModel : ViewModel() {
     private var autoRetryCount: Int = 0
     private var autoRetryJob: Job? = null
 
-    private fun scheduleAutoReconnect(savedPositionMs: Long) {
+    /** Hard cap for automatic reconnect attempts before the error overlay is shown. */
+    private val maxAutoRetries: Int = 3
+
+    private fun scheduleAutoReconnect(savedPositionMs: Long, serverDown: Boolean = false) {
         autoRetryJob?.cancel()
-        val backoffMs = when (autoRetryCount) {
-            1 -> 800L    // Fast human-like 0.8s instant re-fire
-            2 -> 1500L   // 1.5s re-fire
-            else -> 2500L
+        val backoffMs = when {
+            // Server is returning 5xx — give the backend room to recover instead of
+            // re-firing into a single-worker process every second.
+            serverDown -> when (autoRetryCount) { 1 -> 2_000L; 2 -> 5_000L; else -> 9_000L }
+            else -> when (autoRetryCount) { 1 -> 800L; 2 -> 1_500L; else -> 2_500L }
         }
-        Log.i("StreamPlayerViewModel", "Scheduling smart auto-reconnect #$autoRetryCount in ${backoffMs}ms at position ${savedPositionMs}ms")
+        Log.i(
+            "StreamPlayerViewModel",
+            "Scheduling smart auto-reconnect #$autoRetryCount/$maxAutoRetries in ${backoffMs}ms " +
+                "at position ${savedPositionMs}ms (serverDown=$serverDown)"
+        )
 
         autoRetryJob = viewModelScope.launch {
             delay(backoffMs)
@@ -1081,11 +1146,19 @@ class StreamPlayerViewModel : ViewModel() {
 
             _uiState.update { it.copy(isBuffering = true, playerError = null, playerErrorInfo = null) }
 
-            // If primary stream failed on attempt >= 2, swap to alternative mirror URL if available
+            // Failover: from the 2nd attempt onward, switch route (/stream/ <-> /dl/)
             if (autoRetryCount >= 2 && ep != null) {
                 val currentUrl = snapshot.resolvedStreamUrl
-                val mirrorUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.mirrorStreamUrl)
-                if (mirrorUrl.isNotBlank() && mirrorUrl != currentUrl && !mirrorUrl.contains("/stream/", ignoreCase = true)) {
+                val mirrorCandidate = TelegramLinkResolver.sanitizePlayableUrl(ep.mirrorStreamUrl)
+                    .ifBlank { TelegramLinkResolver.deriveMirrorUrl(currentUrl) }
+                // Legacy imports collapsed both routes into /dl/ — derive the twin
+                // route so failover remains a genuine endpoint switch for old data too.
+                val mirrorUrl = if (mirrorCandidate == currentUrl) {
+                    TelegramLinkResolver.deriveMirrorUrl(currentUrl)
+                } else {
+                    mirrorCandidate
+                }
+                if (mirrorUrl.isNotBlank() && mirrorUrl.startsWith("http") && mirrorUrl != currentUrl) {
                     Log.i("StreamPlayerViewModel", "Auto-reconnecting using failover mirror URL: $mirrorUrl")
                     playEpisodeWithExplicitUrl(snapshot.currentEpisodeIndex, mirrorUrl, savedPositionMs)
                     return@launch

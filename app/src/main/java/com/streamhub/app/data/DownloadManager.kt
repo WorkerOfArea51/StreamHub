@@ -406,7 +406,13 @@ object DownloadManager {
         scope.launch(Dispatchers.IO) {
             val resolvedUrl = try {
                 if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
-                    if (rawUrl.contains("t.me/")) TelegramLinkResolver.resolveAsync(rawUrl) else rawUrl
+                    if (rawUrl.contains("t.me/")) {
+                        TelegramLinkResolver.resolveAsync(rawUrl)
+                    } else {
+                        // Downloads deliberately target the /dl/ (attachment) endpoint,
+                        // while the PLAYER uses /stream/ (inline).
+                        TelegramLinkResolver.toDownloadUrl(rawUrl)
+                    }
                 } else {
                     TelegramLinkResolver.resolveAsync(rawUrl)
                 }
