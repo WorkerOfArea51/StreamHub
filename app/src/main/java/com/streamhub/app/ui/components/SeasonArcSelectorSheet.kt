@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
@@ -50,15 +51,20 @@ import com.streamhub.app.ui.theme.TextSecondary
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SeasonArcSelectorSheet(
+    title: String = "Select Season",
     universeTitle: String,
     options: List<SeasonArcOption>,
-    selectedSeasonNumber: Int,
-    selectedArcName: String,
+    selectedSeasonNumber: Int = 1,
+    selectedArcName: String = "",
     currentMedia: com.streamhub.app.data.models.MediaItem? = null,
     onDismiss: () -> Unit,
     onSelectOption: (SeasonArcOption) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val isArcMode = title.contains("Arc", ignoreCase = true)
+    val headerIcon = if (isArcMode) Icons.Default.AutoStories else Icons.Default.Layers
+    val headerTint = if (isArcMode) Color(0xFFB388FF) else AccentOrange
+    val headerBg = if (isArcMode) Color(0x267C4DFF) else Color(0x26FF9800)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -97,27 +103,27 @@ fun SeasonArcSelectorSheet(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
-                            .background(Color(0x26FF9800)),
+                            .background(headerBg),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Layers,
+                            imageVector = headerIcon,
                             contentDescription = null,
-                            tint = AccentOrange,
+                            tint = headerTint,
                             modifier = Modifier.size(20.dp)
                         )
                     }
 
                     Column {
                         Text(
-                            text = "Select Season & Arc",
+                            text = title,
                             color = Color.White,
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold
                         )
                         if (universeTitle.isNotBlank()) {
                             Text(
-                                text = "$universeTitle Universe",
+                                text = if (isArcMode) universeTitle else "$universeTitle Universe",
                                 color = TextSecondary,
                                 fontSize = 12.sp,
                                 maxLines = 1,
@@ -152,15 +158,15 @@ fun SeasonArcSelectorSheet(
                 val currentMediaItem = currentMedia ?: options.firstOrNull { it.isCurrent }?.targetMediaItem
 
                 items(options, key = { it.id }) { opt ->
-                    val isSelected = if (opt.isExternalMedia) {
-                        opt.isCurrent
-                    } else if (selectedArcName.isNotBlank()) {
+                    val isSelected = if (isArcMode) {
                         opt.internalArcName.equals(selectedArcName, ignoreCase = true)
+                    } else if (opt.isExternalMedia) {
+                        opt.isCurrent
                     } else {
                         opt.internalSeasonNumber == selectedSeasonNumber && opt.isCurrent
                     }
 
-                    val optTag = if (opt.targetMediaItem != null && currentMediaItem != null) {
+                    val optTag = if (!isArcMode && opt.targetMediaItem != null && currentMediaItem != null) {
                         com.streamhub.app.data.FranchiseManager.getFranchiseTag(opt.targetMediaItem, currentMediaItem)
                     } else ""
 

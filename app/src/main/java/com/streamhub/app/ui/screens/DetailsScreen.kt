@@ -38,6 +38,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -144,10 +145,17 @@ fun DetailsScreen(
         if (mediaItem != null) com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(mediaItem) else 1
     }
 
+    val distinctArcs = remember(mediaItem?.episodes) {
+        mediaItem?.episodes?.mapNotNull { it.arcName.trim().takeIf { a -> a.isNotEmpty() } }?.distinct() ?: emptyList()
+    }
+
     var selectedSeasonNumber by remember(currentMediaId, effectiveSeasonNumber) {
         mutableIntStateOf(effectiveSeasonNumber)
     }
-    var selectedArcName by remember(currentMediaId) { mutableStateOf("") }
+    var selectedArcName by remember(currentMediaId, distinctArcs) {
+        mutableStateOf(distinctArcs.firstOrNull() ?: "")
+    }
+    var isArcSheetOpen by remember { mutableStateOf(false) }
 
     BackHandler(enabled = currentMediaId != mediaId) {
         currentMediaId = mediaId
@@ -160,10 +168,16 @@ fun DetailsScreen(
         } else emptyList()
     }
 
-    // Build unified Season and Arc dropdown options
-    val seasonArcOptions = remember(mediaItem, catalog, selectedSeasonNumber) {
+    // Build Season and Arc dropdown options separately
+    val seasonOptions = remember(mediaItem, catalog) {
         if (mediaItem != null) {
-            com.streamhub.app.data.FranchiseManager.buildSeasonArcOptions(mediaItem, catalog, selectedSeasonNumber)
+            com.streamhub.app.data.FranchiseManager.buildSeasonOptions(mediaItem, catalog)
+        } else emptyList()
+    }
+
+    val arcOptions = remember(mediaItem) {
+        if (mediaItem != null) {
+            com.streamhub.app.data.FranchiseManager.buildArcOptions(mediaItem)
         } else emptyList()
     }
 
@@ -780,47 +794,88 @@ fun DetailsScreen(
 
                             Spacer(modifier = Modifier.width(8.dp))
 
-                            // Smart Season & Arc Pill Button
-                            val buttonLabel = remember(selectedSeasonNumber, selectedArcName, seasonArcOptions) {
-                                if (selectedArcName.isNotBlank()) selectedArcName
-                                else {
-                                    val currentOpt = seasonArcOptions.firstOrNull { it.isCurrent }
-                                    currentOpt?.shortLabel ?: "Season $selectedSeasonNumber"
-                                }
-                            }
-
-                            Surface(
-                                onClick = { isSeasonSheetOpen = true },
-                                shape = RoundedCornerShape(20.dp),
-                                color = SurfaceDark,
-                                border = BorderStroke(1.dp, Color(0x66FF9800)),
-                                modifier = Modifier.height(34.dp)
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Layers,
-                                        contentDescription = null,
-                                        tint = AccentOrange,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                    Text(
-                                        text = buttonLabel,
-                                        color = Color.White,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Icon(
-                                        imageVector = Icons.Default.ArrowDropDown,
-                                        contentDescription = "Select Season",
-                                        tint = AccentOrange,
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                                // 1. Season Capsule (Visible when franchise has multiple seasons / media)
+                                if (seasonOptions.size > 1) {
+                                    val currentOpt = seasonOptions.firstOrNull { it.isCurrent }
+                                    val seasonLabel = currentOpt?.shortLabel ?: "Season $selectedSeasonNumber"
+
+                                    Surface(
+                                        onClick = { isSeasonSheetOpen = true },
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = SurfaceDark,
+                                        border = BorderStroke(1.dp, Color(0x66FF9800)),
+                                        modifier = Modifier.height(34.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Layers,
+                                                contentDescription = null,
+                                                tint = AccentOrange,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Text(
+                                                text = seasonLabel,
+                                                color = Color.White,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1
+                                            )
+                                            Icon(
+                                                imageVector = Icons.Default.ArrowDropDown,
+                                                contentDescription = "Select Season",
+                                                tint = AccentOrange,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // 2. Arc Capsule (Visible when current season has internal arcs)
+                                if (arcOptions.isNotEmpty()) {
+                                    val currentArcOpt = arcOptions.firstOrNull { it.internalArcName.equals(selectedArcName, ignoreCase = true) }
+                                    val arcLabel = currentArcOpt?.shortLabel ?: "Arc"
+
+                                    Surface(
+                                        onClick = { isArcSheetOpen = true },
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = SurfaceDark,
+                                        border = BorderStroke(1.dp, Color(0x667C4DFF)),
+                                        modifier = Modifier.height(34.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.AutoStories,
+                                                contentDescription = null,
+                                                tint = Color(0xFFB388FF),
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Text(
+                                                text = arcLabel,
+                                                color = Color.White,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1
+                                            )
+                                            Icon(
+                                                imageVector = Icons.Default.ArrowDropDown,
+                                                contentDescription = "Select Arc",
+                                                tint = Color(0xFFB388FF),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -994,10 +1049,11 @@ fun DetailsScreen(
 
     if (isSeasonSheetOpen) {
         SeasonArcSelectorSheet(
+            title = "Select Season & Media",
             universeTitle = mediaItem.franchiseTitle.ifBlank { mediaItem.title },
-            options = seasonArcOptions,
+            options = seasonOptions,
             selectedSeasonNumber = selectedSeasonNumber,
-            selectedArcName = selectedArcName,
+            selectedArcName = "",
             currentMedia = mediaItem,
             onDismiss = { isSeasonSheetOpen = false },
             onSelectOption = { opt ->
@@ -1005,11 +1061,23 @@ fun DetailsScreen(
                 if (opt.isExternalMedia && opt.targetMediaItem != null) {
                     currentMediaId = opt.targetMediaItem.id
                     selectedSeasonNumber = com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(opt.targetMediaItem)
-                    selectedArcName = ""
-                } else {
-                    selectedSeasonNumber = opt.internalSeasonNumber
-                    selectedArcName = opt.internalArcName
                 }
+            }
+        )
+    }
+
+    if (isArcSheetOpen) {
+        SeasonArcSelectorSheet(
+            title = "Select Story Arc",
+            universeTitle = mediaItem.seasonTitle.ifBlank { mediaItem.title },
+            options = arcOptions,
+            selectedSeasonNumber = selectedSeasonNumber,
+            selectedArcName = selectedArcName,
+            currentMedia = mediaItem,
+            onDismiss = { isArcSheetOpen = false },
+            onSelectOption = { opt ->
+                isArcSheetOpen = false
+                selectedArcName = opt.internalArcName
             }
         )
     }
@@ -1057,11 +1125,7 @@ fun EpisodeRowItem(
     val displayTitle = if (isMovie) {
         cleanedTitle.ifBlank { mediaItem.title }
     } else {
-        if (episode.arcName.isNotBlank() && !cleanedTitle.startsWith(episode.arcName, ignoreCase = true)) {
-            "${episode.arcName} - $cleanedTitle"
-        } else {
-            cleanedTitle.ifBlank { "Episode ${episode.episodeNumber}" }
-        }
+        cleanedTitle.ifBlank { "Episode ${episode.episodeNumber}" }
     }
 
     val metaDetails = buildList {

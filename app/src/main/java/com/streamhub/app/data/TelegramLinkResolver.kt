@@ -96,9 +96,7 @@ object TelegramLinkResolver {
                 val cleanTitle = cleanEpisodeTitle(fullRawTitle, epNum)
 
                 val finalTitle = when {
-                    cleanTitle.isNotBlank() && arcName.isNotBlank() -> "$arcName - $cleanTitle"
                     cleanTitle.isNotBlank() -> cleanTitle
-                    arcName.isNotBlank() -> "$arcName - Episode $epNum"
                     else -> "Episode $epNum"
                 }
 
@@ -254,9 +252,7 @@ object TelegramLinkResolver {
 
                 if (primaryPlayUrl.isNotBlank()) {
                     val finalTitle = when {
-                        cleanedTitle.isNotBlank() && arcName.isNotBlank() -> "$arcName - $cleanedTitle"
                         cleanedTitle.isNotBlank() -> cleanedTitle
-                        arcName.isNotBlank() -> "$arcName - Episode $epNum"
                         else -> "Episode $epNum"
                     }
                     episodes.add(
@@ -301,7 +297,7 @@ object TelegramLinkResolver {
                     return@forEachIndexed
                 }
                 val epNum = extractEpisodeNumber(line) ?: (index + 1)
-                val epTitle = if (arcName.isNotBlank()) "$arcName - Ep $epNum" else "Episode $epNum"
+                val epTitle = "Episode $epNum"
                 val sanitizedUrl = sanitizePlayableUrl(line)
 
                 episodes.add(

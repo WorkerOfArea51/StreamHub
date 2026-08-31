@@ -169,10 +169,31 @@ class FranchiseManagerTest {
         val catalog = listOf(s1, s2, s3)
 
         // When viewing Season 2, all 3 seasons MUST be present in options:
-        val s2Options = FranchiseManager.buildSeasonArcOptions(s2, catalog, 2)
+        val s2Options = FranchiseManager.buildSeasonOptions(s2, catalog)
         assertEquals(3, s2Options.size)
         assertTrue(s2Options.any { it.id == "aot_1" && !it.isCurrent })
         assertTrue(s2Options.any { it.id == "aot_2" && it.isCurrent })
         assertTrue(s2Options.any { it.id == "aot_3" && !it.isCurrent })
+    }
+
+    @Test
+    fun buildArcOptions_extractsInternalArcsCleanly() {
+        val blackCloverS1 = MediaItem(
+            id = "bc_1",
+            title = "Black Clover",
+            seasonNumber = 1,
+            episodes = listOf(
+                com.streamhub.app.data.models.Episode(episodeNumber = 1, arcName = "Magic Knights Entrance Arc", title = "EP - 01 - Asta and Yuno"),
+                com.streamhub.app.data.models.Episode(episodeNumber = 2, arcName = "Magic Knights Entrance Arc", title = "EP - 02 - A Boy's Vow"),
+                com.streamhub.app.data.models.Episode(episodeNumber = 14, arcName = "Dungeon Exploration Arc", title = "EP - 14 - Dungeon"),
+            )
+        )
+
+        val arcOptions = FranchiseManager.buildArcOptions(blackCloverS1)
+        assertEquals(2, arcOptions.size)
+        assertEquals("Arc 1: Magic Knights Entrance Arc", arcOptions[0].title)
+        assertEquals(2, arcOptions[0].episodeCount)
+        assertEquals("Arc 2: Dungeon Exploration Arc", arcOptions[1].title)
+        assertEquals(1, arcOptions[1].episodeCount)
     }
 }

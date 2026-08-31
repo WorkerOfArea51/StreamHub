@@ -257,105 +257,94 @@ object FranchiseManager {
      * Builds unified options for the interactive Season & Arc Dropdown in the EPISODES tab.
      * Merges internal arcs/seasons inside [currentItem] with sibling franchise entries in [catalog].
      */
+    /**
+     * Builds list of Season/Media options for the franchise universe selector.
+     * Exclusively contains actual Seasons, Sequels, Prequels, and Movies.
+     */
+    fun buildSeasonOptions(
+        currentItem: MediaItem,
+        catalog: List<MediaItem>
+    ): List<SeasonArcOption> {
+        val franchiseList = getFranchiseItems(currentItem, catalog)
+        val options = mutableListOf<SeasonArcOption>()
+
+        franchiseList.forEach { fItem ->
+            val isThisItem = fItem.id == currentItem.id
+            val sNum = getEffectiveSeasonNumber(fItem)
+            val isMovie = fItem.category.equals("MOVIE", ignoreCase = true) || fItem.type.equals("MOVIE", ignoreCase = true)
+            val epCount = fItem.episodes.size.takeIf { it > 0 } 
+                ?: fItem.totalEpisodes.filter { it.isDigit() }.toIntOrNull() 
+                ?: 0
+
+            val badgeStr = if (isMovie) "MOVIE" else "S$sNum"
+            val shortLabelStr = if (isMovie) "Movie" else "Season $sNum"
+
+            val titleStr = when {
+                fItem.seasonTitle.isNotBlank() -> fItem.seasonTitle
+                isMovie -> fItem.title
+                fItem.title.contains("Season $sNum", ignoreCase = true) -> fItem.title
+                sNum > 1 -> "Season $sNum: ${fItem.title}"
+                else -> "Season 1: ${fItem.title}"
+            }
+
+            val subtitleStr = buildString {
+                if (fItem.releaseYear.isNotBlank()) append("${fItem.releaseYear} • ")
+                append(if (epCount > 0) "$epCount Episodes" else "Episodes Pending")
+            }
+
+            options.add(
+                SeasonArcOption(
+                    id = fItem.id,
+                    title = titleStr,
+                    subtitle = subtitleStr,
+                    shortLabel = shortLabelStr,
+                    badge = badgeStr,
+                    episodeCount = epCount,
+                    isExternalMedia = !isThisItem,
+                    targetMediaItem = fItem,
+                    internalSeasonNumber = sNum,
+                    isCurrent = isThisItem
+                )
+            )
+        }
+
+        return options.distinctBy { it.id }
+    }
+
+    /**
+     * Builds list of internal story arc options for the currently open season.
+     */
+    fun buildArcOptions(currentItem: MediaItem): List<SeasonArcOption> {
+        val internalArcs = currentItem.episodes.mapNotNull { it.arcName.trim().takeIf { arc -> arc.isNotEmpty() } }.distinct()
+        if (internalArcs.isEmpty()) return emptyList()
+
+        return internalArcs.mapIndexed { index, arcName ->
+            val arcEps = currentItem.episodes.filter { it.arcName.equals(arcName, ignoreCase = true) }
+            SeasonArcOption(
+                id = "internal_arc_$index",
+                title = "Arc ${index + 1}: $arcName",
+                subtitle = "${arcEps.size} Episodes",
+                shortLabel = "Arc ${index + 1}",
+                badge = "ARC ${index + 1}",
+                episodeCount = arcEps.size,
+                isExternalMedia = false,
+                targetMediaItem = currentItem,
+                internalSeasonNumber = arcEps.firstOrNull()?.seasonNumber ?: 1,
+                internalArcName = arcName,
+                isCurrent = index == 0
+            )
+        }
+    }
+
+    /**
+     * Legacy / backward-compatible builder combining seasons and internal splits.
+     */
     fun buildSeasonArcOptions(
         currentItem: MediaItem,
         catalog: List<MediaItem>,
         selectedSeasonNumber: Int
     ): List<SeasonArcOption> {
-        val franchiseList = getFranchiseItems(currentItem, catalog)
-        val options = mutableListOf<SeasonArcOption>()
-
-        // 1. Check if current item has internal multi-arc or multi-season episodes
-        val internalSeasons = currentItem.episodes.map { it.seasonNumber }.distinct().sorted()
-        val internalArcs = currentItem.episodes.mapNotNull { it.arcName.trim().takeIf { arc -> arc.isNotEmpty() } }.distinct()
-
-        val hasInternalSplits = internalArcs.isNotEmpty() || internalSeasons.size > 1
-
-        if (internalArcs.isNotEmpty()) {
-            // Group by arc
-            internalArcs.forEachIndexed { index, arcName ->
-                val arcEps = currentItem.episodes.filter { it.arcName.equals(arcName, ignoreCase = true) }
-                options.add(
-                    SeasonArcOption(
-                        id = "internal_arc_$index",
-                        title = "Arc ${index + 1}: $arcName",
-                        subtitle = "${arcEps.size} Episodes",
-                        shortLabel = "Arc ${index + 1}",
-                        badge = "ARC ${index + 1}",
-                        episodeCount = arcEps.size,
-                        isExternalMedia = false,
-                        targetMediaItem = currentItem,
-                        internalSeasonNumber = arcEps.firstOrNull()?.seasonNumber ?: 1,
-                        internalArcName = arcName,
-                        isCurrent = true
-                    )
-                )
-            }
-        } else if (internalSeasons.size > 1) {
-            // Multiple internal seasons
-            internalSeasons.forEach { sNum ->
-                val sEps = currentItem.episodes.filter { it.seasonNumber == sNum }
-                options.add(
-                    SeasonArcOption(
-                        id = "internal_season_$sNum",
-                        title = "Season $sNum",
-                        subtitle = "${sEps.size} Episodes",
-                        shortLabel = "Season $sNum",
-                        badge = "S$sNum",
-                        episodeCount = sEps.size,
-                        isExternalMedia = false,
-                        targetMediaItem = currentItem,
-                        internalSeasonNumber = sNum,
-                        isCurrent = sNum == selectedSeasonNumber
-                    )
-                )
-            }
-        }
-
-        // 2. Add all franchise items (seasons/sequels/movies)
-        franchiseList.forEach { fItem ->
-            val isThisItem = fItem.id == currentItem.id
-            if (!isThisItem || !hasInternalSplits) {
-                val sNum = getEffectiveSeasonNumber(fItem)
-                val isMovie = fItem.category.equals("MOVIE", ignoreCase = true) || fItem.type.equals("MOVIE", ignoreCase = true)
-                val epCount = fItem.episodes.size.takeIf { it > 0 } 
-                    ?: fItem.totalEpisodes.filter { it.isDigit() }.toIntOrNull() 
-                    ?: 0
-
-                val badgeStr = if (isMovie) "MOVIE" else "S$sNum"
-                val shortLabelStr = if (isMovie) "Movie" else "Season $sNum"
-
-                val titleStr = when {
-                    fItem.seasonTitle.isNotBlank() -> fItem.seasonTitle
-                    isMovie -> fItem.title
-                    fItem.title.contains("Season $sNum", ignoreCase = true) -> fItem.title
-                    sNum > 1 -> "Season $sNum: ${fItem.title}"
-                    else -> "Season 1: ${fItem.title}"
-                }
-
-                val subtitleStr = buildString {
-                    if (fItem.releaseYear.isNotBlank()) append("${fItem.releaseYear} • ")
-                    append(if (epCount > 0) "$epCount Episodes" else "Episodes Pending")
-                }
-
-                options.add(
-                    SeasonArcOption(
-                        id = fItem.id,
-                        title = titleStr,
-                        subtitle = subtitleStr,
-                        shortLabel = shortLabelStr,
-                        badge = badgeStr,
-                        episodeCount = epCount,
-                        isExternalMedia = !isThisItem,
-                        targetMediaItem = fItem,
-                        internalSeasonNumber = sNum,
-                        isCurrent = isThisItem
-                    )
-                )
-            }
-        }
-
-        return options.distinctBy { it.id }
+        return buildSeasonOptions(currentItem, catalog)
     }
 
     /**
