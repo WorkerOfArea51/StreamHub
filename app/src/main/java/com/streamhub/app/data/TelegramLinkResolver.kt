@@ -192,13 +192,16 @@ object TelegramLinkResolver {
 
             for (i in 0 until jsonArray.size()) {
                 val item = jsonArray.get(i).asJsonObject
-                val epNum = item.get("episode_num")?.asInt
-                    ?: item.get("episode")?.asInt
-                    ?: (i + 1)
                 val fileName = item.get("file_name")?.asString
                     ?: item.get("name")?.asString
                     ?: item.get("fileName")?.asString
                     ?: ""
+                val rawTitleInput = item.get("title")?.asString ?: fileName
+                val explicitNum = extractEpisodeNumber(rawTitleInput) ?: extractEpisodeNumber(fileName)
+                val epNum = explicitNum
+                    ?: item.get("episode_num")?.asInt
+                    ?: item.get("episode")?.asInt
+                    ?: (i + 1)
                 val streamUrl = item.get("direct_stream_url")?.asString
                     ?: item.get("stream_link")?.asString
                     ?: item.get("stream_url")?.asString
@@ -223,7 +226,6 @@ object TelegramLinkResolver {
                     }
                     ?: item.get("fileSize")?.asString
                     ?: ""
-                val rawTitleInput = item.get("title")?.asString ?: fileName
                 val cleanedTitle = cleanEpisodeTitle(rawTitleInput, epNum)
                 val code = item.get("code")?.asString ?: item.get("id")?.asString ?: ""
 
@@ -341,7 +343,10 @@ object TelegramLinkResolver {
     }
 
     private fun extractEpisodeNumber(text: String): Int? {
-        val epRegex = Regex("""(?i)(?:ep|episode|s\d+e|\be)\s*[-:]?\s*0*(\d+)""")
+        if (Regex("""(?i)\b(?:EP|Episode|E)?\s*[-_.:]?\s*\d+\.\d+\b""").containsMatchIn(text)) {
+            return null
+        }
+        val epRegex = Regex("""(?i)(?:ep|episode|s\d+e)\s*[-:]?\s*0*(\d+)\b""")
         val match = epRegex.find(text)
         return match?.groupValues?.get(1)?.toIntOrNull()
     }

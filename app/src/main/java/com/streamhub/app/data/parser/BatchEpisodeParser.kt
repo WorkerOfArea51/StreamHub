@@ -26,9 +26,9 @@ object BatchEpisodeParser {
 
     private val URL_REGEX = Regex("https?://[^\\s\"'<>]+", RegexOption.IGNORE_CASE)
     private val EPISODE_NUM_PATTERNS = listOf(
-        Regex("(?i)(?:episode|ep|e)[.\\s_-]*(\\d{1,4})"),
+        Regex("(?i)(?:episode|ep|e)[.\\s_-]*(\\d{1,4})(?!\\.\\d)"),
         Regex("\\[(\\d{1,4})\\]"),
-        Regex("[-_\\s](\\d{1,4})[-_\\s]"),
+        Regex("[-_\\s](\\d{1,4})[-_\\s](?!\\.\\d)"),
         Regex("[-_\\s](\\d{1,4})\\.(?:mkv|mp4|webm|avi)")
     )
     private val RESOLUTION_REGEX = Regex("(?i)(4k|2160p|1080p|720p|480p|360p|fhd|hd)")
@@ -180,9 +180,10 @@ object BatchEpisodeParser {
             val result = mutableListOf<Episode>()
             for (i in 0 until array.length()) {
                 val obj = array.optJSONObject(i) ?: continue
-                val epNum = obj.optInt("episode_num", obj.optInt("episodeNumber", obj.optInt("episode", i + 1)))
                 val rawFileName = obj.optString("file_name", obj.optString("fileName", obj.optString("name", "")))
                 val rawTitle = obj.optString("title", obj.optString("episode_title", ""))
+                val explicitNum = extractEpisodeNumber(rawTitle) ?: extractEpisodeNumber(rawFileName)
+                val epNum = explicitNum ?: obj.optInt("episode_num", obj.optInt("episodeNumber", obj.optInt("episode", i + 1)))
                 val title = when {
                     rawTitle.isNotBlank() -> com.streamhub.app.data.TelegramLinkResolver.cleanEpisodeTitle(rawTitle, epNum)
                     rawFileName.isNotBlank() -> com.streamhub.app.data.TelegramLinkResolver.cleanEpisodeTitle(rawFileName, epNum)
@@ -412,6 +413,9 @@ object BatchEpisodeParser {
     }
 
     private fun extractEpisodeNumber(text: String): Int? {
+        if (Regex("""(?i)\b(?:EP|Episode|E)?\s*[-_.:]?\s*\d+\.\d+\b""").containsMatchIn(text)) {
+            return null
+        }
         for (regex in EPISODE_NUM_PATTERNS) {
             val match = regex.find(text)
             if (match != null) {

@@ -283,4 +283,34 @@ class TelegramLinkResolverTest {
         assertEquals(1421000L, episodes[0].durationMs)
         assertEquals("447.4 MB", episodes[0].fileSize)
     }
+
+    @Test
+    fun parseSmartBotMessage_explicitEpisodeNumberFromTitle_overridesBatchIndex() {
+        val jsonPayload = """
+            {
+              "status": "success",
+              "episodes": [
+                {
+                  "episode_num": 1,
+                  "file_name": "EP - 14 - Dungeon.mkv",
+                  "title": "EP - 14 - Dungeon",
+                  "download_url": "https://streamhub69.alwaysdata.net/dl/xyz"
+                },
+                {
+                  "episode_num": 2,
+                  "file_name": "EP - 15 - The Diamond Mage.mkv",
+                  "title": "EP - 15 - The Diamond Mage",
+                  "download_url": "https://streamhub69.alwaysdata.net/dl/abc"
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val episodes = TelegramLinkResolver.parseSmartBotMessageOrLinks(jsonPayload, seasonNumber = 1)
+        assertEquals(2, episodes.size)
+        assertEquals(14, episodes[0].episodeNumber)
+        assertEquals("EP - 14 - Dungeon", episodes[0].title)
+        assertEquals(15, episodes[1].episodeNumber)
+        assertEquals("EP - 15 - The Diamond Mage", episodes[1].title)
+    }
 }
