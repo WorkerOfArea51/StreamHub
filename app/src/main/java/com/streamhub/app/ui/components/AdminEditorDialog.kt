@@ -790,8 +790,9 @@ fun AdminEditorDialog(
                                                                     com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(existingDump)
                                                                         .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(existingDump) }
                                                                 } else emptyList()
-                                                                val otherSeasons = existingEps.filterNot { it.seasonNumber == parsedSeasonNum }
-                                                                val merged = (otherSeasons + eps).sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+                                                                val existingMap = existingEps.associateBy { it.seasonNumber to it.episodeNumber }.toMutableMap()
+                                                                eps.forEach { ep -> existingMap[ep.seasonNumber to ep.episodeNumber] = ep }
+                                                                val merged = existingMap.values.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
                                                                 val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(merged)
                                                                 generatedEpisodesText = jsonStr
                                                                 startBatchLink = jsonStr
@@ -847,8 +848,9 @@ fun AdminEditorDialog(
                                                             com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(existingDump)
                                                                 .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(existingDump) }
                                                         } else emptyList()
-                                                        val otherSeasons = existingEps.filterNot { it.seasonNumber == parsedSeasonNum }
-                                                        val merged = (otherSeasons + eps).sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+                                                        val existingMap = existingEps.associateBy { it.seasonNumber to it.episodeNumber }.toMutableMap()
+                                                        eps.forEach { ep -> existingMap[ep.seasonNumber to ep.episodeNumber] = ep }
+                                                        val merged = existingMap.values.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
                                                         val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(merged)
                                                         generatedEpisodesText = jsonStr
                                                         startBatchLink = jsonStr
@@ -906,8 +908,9 @@ fun AdminEditorDialog(
                                                                 com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(existingDump)
                                                                     .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(existingDump) }
                                                             } else emptyList()
-                                                            val otherSeasons = existingEps.filterNot { it.seasonNumber == parsedSeasonNum }
-                                                            val merged = (otherSeasons + eps).sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+                                                            val existingMap = existingEps.associateBy { it.seasonNumber to it.episodeNumber }.toMutableMap()
+                                                            eps.forEach { ep -> existingMap[ep.seasonNumber to ep.episodeNumber] = ep }
+                                                            val merged = existingMap.values.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
                                                             val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(merged)
                                                             generatedEpisodesText = jsonStr
                                                             startBatchLink = jsonStr
@@ -931,8 +934,9 @@ fun AdminEditorDialog(
                                                 com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(existingDump)
                                                     .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(existingDump) }
                                             } else emptyList()
-                                            val otherSeasons = existingEps.filterNot { it.seasonNumber == parsedSeasonNum }
-                                            val merged = (otherSeasons + parsed).sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+                                            val existingMap = existingEps.associateBy { it.seasonNumber to it.episodeNumber }.toMutableMap()
+                                            parsed.forEach { ep -> existingMap[ep.seasonNumber to ep.episodeNumber] = ep }
+                                            val merged = existingMap.values.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
                                             val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(merged)
                                             generatedEpisodesText = jsonStr
                                             startBatchLink = jsonStr
@@ -944,8 +948,9 @@ fun AdminEditorDialog(
                                                     com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(existingDump)
                                                         .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(existingDump) }
                                                 } else emptyList()
-                                                val otherSeasons = existingEps.filterNot { it.seasonNumber == parsedSeasonNum }
-                                                val merged = (otherSeasons + fallback).sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+                                                val existingMap = existingEps.associateBy { it.seasonNumber to it.episodeNumber }.toMutableMap()
+                                                fallback.forEach { ep -> existingMap[ep.seasonNumber to ep.episodeNumber] = ep }
+                                                val merged = existingMap.values.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
                                                 val jsonStr = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(merged)
                                                 generatedEpisodesText = jsonStr
                                                 startBatchLink = jsonStr
