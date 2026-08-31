@@ -31,8 +31,8 @@ data class StorageMetrics(
 )
 
 data class CacheConfig(
-    val cacheLimitMb: Int = 2048,
-    val cacheTtlDays: Int = 7,
+    val cacheLimitMb: Int = -1, // Default: Unlimited (-1)
+    val cacheTtlHours: Int = -1, // Default: Never (-1) or 1h, 6h, 12h, 24h, 72h, 168h, 336h, 720h
     val keepWatchedForInstantResume: Boolean = true
 )
 
@@ -42,7 +42,7 @@ object StorageCacheManager {
     private const val TAG = "StorageCacheManager"
     private const val PREFS_NAME = "streamhub_storage_settings"
     private const val KEY_CACHE_LIMIT = "cache_limit_mb"
-    private const val KEY_CACHE_TTL = "cache_ttl_days"
+    private const val KEY_CACHE_TTL = "cache_ttl_hours"
     private const val KEY_INSTANT_RESUME = "keep_watched_instant_resume"
 
     private lateinit var appContext: Context
@@ -71,8 +71,8 @@ object StorageCacheManager {
     private fun loadConfig() {
         val p = getPrefs()
         _configFlow.value = CacheConfig(
-            cacheLimitMb = p.getInt(KEY_CACHE_LIMIT, 2048),
-            cacheTtlDays = p.getInt(KEY_CACHE_TTL, 7),
+            cacheLimitMb = p.getInt(KEY_CACHE_LIMIT, -1),
+            cacheTtlHours = p.getInt(KEY_CACHE_TTL, -1),
             keepWatchedForInstantResume = p.getBoolean(KEY_INSTANT_RESUME, true)
         )
     }
@@ -81,7 +81,7 @@ object StorageCacheManager {
         _configFlow.value = newConfig
         getPrefs().edit()
             .putInt(KEY_CACHE_LIMIT, newConfig.cacheLimitMb)
-            .putInt(KEY_CACHE_TTL, newConfig.cacheTtlDays)
+            .putInt(KEY_CACHE_TTL, newConfig.cacheTtlHours)
             .putBoolean(KEY_INSTANT_RESUME, newConfig.keepWatchedForInstantResume)
             .apply()
 
@@ -233,11 +233,25 @@ object StorageCacheManager {
         scope.launch {
             try {
                 val config = _configFlow.value
+                // 1. Enforce max size limit if not unlimited (-1)
                 if (config.cacheLimitMb > 0) {
                     val maxLimitBytes = config.cacheLimitMb * 1024L * 1024L
                     val currentVideoBytes = _metricsFlow.value.videoCacheBytes
                     if (currentVideoBytes > maxLimitBytes) {
                         StreamCacheManager.clearCache(appContext)
+                    }
+                }
+                // 2. Enforce TTL policy (auto-clear chunks older than TTL)
+                if (config.cacheTtlHours > 0) {
+                    val ttlMillis = config.cacheTtlHours * 3600_000L
+                    val threshold = System.currentTimeMillis() - ttlMillis
+                    val videoCacheDir = File(appContext.cacheDir, "media_stream_cache")
+                    if (videoCacheDir.exists()) {
+                        videoCacheDir.walkTopDown().forEach { file ->
+                            if (file.isFile && file.lastModified() < threshold) {
+                                try { file.delete() } catch (_: Exception) {}
+                            }
+                        }
                     }
                 }
                 calculateStorageUsage()

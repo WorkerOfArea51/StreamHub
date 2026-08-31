@@ -35,8 +35,8 @@ class StorageCacheManagerTest {
     @Test
     fun cacheConfig_defaults_areStandard() {
         val config = CacheConfig()
-        assertEquals(2048, config.cacheLimitMb)
-        assertEquals(7, config.cacheTtlDays)
+        assertEquals(-1, config.cacheLimitMb)
+        assertEquals(-1, config.cacheTtlHours)
         assertTrue(config.keepWatchedForInstantResume)
     }
 }

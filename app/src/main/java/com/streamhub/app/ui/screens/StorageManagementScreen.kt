@@ -317,20 +317,22 @@ fun StorageManagementScreen(
                     // Cache Size Limit Dropdown Row
                     DropdownSettingRow(
                         title = "Maximum Cache Size Limit",
-                        subtitle = "Automatically evicts oldest video chunks when exceeded",
+                        subtitle = "Full-movie caching capacity (evicts oldest when full)",
                         currentValue = when (config.cacheLimitMb) {
-                            500 -> "500 MB"
-                            1024 -> "1 GB"
                             2048 -> "2 GB"
                             5120 -> "5 GB"
-                            else -> "Unlimited"
+                            10240 -> "10 GB"
+                            20480 -> "20 GB"
+                            51200 -> "50 GB"
+                            else -> "Unlimited (Recommended)"
                         },
                         options = listOf(
-                            "500 MB" to 500,
-                            "1 GB" to 1024,
-                            "2 GB" to 2048,
+                            "Unlimited (Recommended)" to -1,
+                            "50 GB" to 51200,
+                            "20 GB" to 20480,
+                            "10 GB" to 10240,
                             "5 GB" to 5120,
-                            "Unlimited" to -1
+                            "2 GB" to 2048
                         ),
                         onSelect = { StorageCacheManager.updateConfig(config.copy(cacheLimitMb = it)) }
                     )
@@ -343,20 +345,30 @@ fun StorageManagementScreen(
                     // Cache TTL Auto-Delete Row
                     DropdownSettingRow(
                         title = "Cache Auto-Delete TTL",
-                        subtitle = "Automatically purge temporary chunks older than",
-                        currentValue = when (config.cacheTtlDays) {
-                            3 -> "3 Days"
-                            7 -> "7 Days"
-                            14 -> "14 Days"
-                            else -> "Never"
+                        subtitle = "Automatically purge watched video chunks older than",
+                        currentValue = when (config.cacheTtlHours) {
+                            1 -> "1 Hour"
+                            6 -> "6 Hours"
+                            12 -> "12 Hours"
+                            24 -> "1 Day (24h)"
+                            72 -> "3 Days"
+                            168 -> "7 Days"
+                            336 -> "14 Days"
+                            720 -> "30 Days"
+                            else -> "Never (Keep Forever)"
                         },
                         options = listOf(
-                            "3 Days" to 3,
-                            "7 Days" to 7,
-                            "14 Days" to 14,
-                            "Never" to -1
+                            "1 Hour" to 1,
+                            "6 Hours" to 6,
+                            "12 Hours" to 12,
+                            "1 Day (24h)" to 24,
+                            "3 Days" to 72,
+                            "7 Days" to 168,
+                            "14 Days" to 336,
+                            "30 Days" to 720,
+                            "Never (Keep Forever)" to -1
                         ),
-                        onSelect = { StorageCacheManager.updateConfig(config.copy(cacheTtlDays = it)) }
+                        onSelect = { StorageCacheManager.updateConfig(config.copy(cacheTtlHours = it)) }
                     )
 
                     HorizontalDivider(

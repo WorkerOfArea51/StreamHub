@@ -43,8 +43,19 @@ object StreamCacheManager {
         return cacheLock.write {
             // Double-check after acquiring write lock.
             simpleCache?.let { return it }
+            val configuredLimitMb = try {
+                val prefs = context.applicationContext.getSharedPreferences("streamhub_storage_settings", Context.MODE_PRIVATE)
+                prefs.getInt("cache_limit_mb", -1)
+            } catch (_: Exception) { -1 }
+
+            val effectiveLimitBytes = if (configuredLimitMb > 0) {
+                configuredLimitMb * 1024L * 1024L
+            } else {
+                100L * 1024 * 1024 * 1024L // 100 GB for Unlimited
+            }
+
+            val evictor = LeastRecentlyUsedCacheEvictor(effectiveLimitBytes)
             cacheDir = File(context.cacheDir, "media_stream_cache")
-            val evictor = LeastRecentlyUsedCacheEvictor(CACHE_SIZE_BYTES)
             databaseProvider = StandaloneDatabaseProvider(context.applicationContext)
             simpleCache = SimpleCache(cacheDir!!, evictor, databaseProvider!!)
             simpleCache!!
