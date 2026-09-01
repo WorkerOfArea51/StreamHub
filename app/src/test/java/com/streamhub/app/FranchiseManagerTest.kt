@@ -196,4 +196,116 @@ class FranchiseManagerTest {
         assertEquals("Arc 2: Dungeon Exploration Arc", arcOptions[1].title)
         assertEquals(1, arcOptions[1].episodeCount)
     }
+
+    @Test
+    fun testFranchise_seasonsAndSequelMovieChronology() {
+        val s1 = MediaItem(
+            id = "code_geass_s1",
+            title = "Code Geass: Lelouch of the Rebellion",
+            category = "Anime",
+            type = "SERIES",
+            releaseYear = "2006",
+            seasonNumber = 1,
+            franchiseId = "code-geass"
+        )
+        val s2 = MediaItem(
+            id = "code_geass_s2",
+            title = "Code Geass: Lelouch of the Rebellion R2",
+            category = "Anime",
+            type = "SERIES",
+            releaseYear = "2008",
+            seasonNumber = 2,
+            franchiseId = "code-geass"
+        )
+        val movie = MediaItem(
+            id = "code_geass_movie",
+            title = "Code Geass: Lelouch of the Re;surrection",
+            category = "Movie",
+            type = "MOVIE",
+            relationType = "Movie",
+            releaseYear = "2019",
+            seasonNumber = 0,
+            franchiseId = "code-geass"
+        )
+
+        val catalog = listOf(movie, s2, s1)
+        val sortedFranchise = FranchiseManager.getFranchiseItems(s1, catalog)
+
+        assertEquals(3, sortedFranchise.size)
+        assertEquals("s1 should be first (2006)", "code_geass_s1", sortedFranchise[0].id)
+        assertEquals("s2 should be second (2008)", "code_geass_s2", sortedFranchise[1].id)
+        assertEquals("movie should be third (2019)", "code_geass_movie", sortedFranchise[2].id)
+
+        // Tags when viewing the movie:
+        assertEquals("PREQUEL • TV", FranchiseManager.getFranchiseTag(s1, movie))
+        assertEquals("PREQUEL • TV", FranchiseManager.getFranchiseTag(s2, movie))
+        assertEquals("CURRENT • MOVIE", FranchiseManager.getFranchiseTag(movie, movie))
+
+        // Tags when viewing S2:
+        assertEquals("PREQUEL • TV", FranchiseManager.getFranchiseTag(s1, s2))
+        assertEquals("CURRENT • TV", FranchiseManager.getFranchiseTag(s2, s2))
+        assertEquals("SEQUEL • MOVIE", FranchiseManager.getFranchiseTag(movie, s2))
+    }
+
+    @Test
+    fun testFranchise_adminExplicitSeasonOrderOverridesReleaseYear() {
+        // Scenario: Movie released in 2008, but in 2019 an anime prequel was released.
+        // Admin assigns Season 1 to the 2019 anime and Season 2 to the 2008 movie.
+        val animePrequel2019 = MediaItem(
+            id = "anime_2019",
+            title = "Origins Story",
+            releaseYear = "2019",
+            seasonNumber = 1,
+            category = "Anime",
+            type = "SERIES",
+            franchiseId = "origin-universe"
+        )
+        val movie2008 = MediaItem(
+            id = "movie_2008",
+            title = "The Main Movie",
+            releaseYear = "2008",
+            seasonNumber = 2,
+            category = "Movie",
+            type = "MOVIE",
+            franchiseId = "origin-universe"
+        )
+
+        val catalog = listOf(movie2008, animePrequel2019)
+        val sorted = FranchiseManager.getFranchiseItems(animePrequel2019, catalog)
+
+        // The 2019 anime (Season 1) MUST come before the 2008 movie (Season 2)
+        assertEquals("anime_2019", sorted[0].id)
+        assertEquals("movie_2008", sorted[1].id)
+    }
+
+    @Test
+    fun testFranchise_prequelTagOverridesReleaseYear() {
+        // Scenario: Standalone Movie in 2021 tagged as "Prequel" relative to 2018 TV Series
+        val mainSeries2018 = MediaItem(
+            id = "main_2018",
+            title = "Main Anime",
+            releaseYear = "2018",
+            seasonNumber = 1,
+            category = "Anime",
+            type = "SERIES",
+            franchiseId = "main-universe"
+        )
+        val prequelMovie2021 = MediaItem(
+            id = "prequel_2021",
+            title = "Prequel Zero Movie",
+            releaseYear = "2021",
+            seasonNumber = 0,
+            relationType = "Prequel",
+            category = "Movie",
+            type = "MOVIE",
+            franchiseId = "main-universe"
+        )
+
+        val catalog = listOf(mainSeries2018, prequelMovie2021)
+        val sorted = FranchiseManager.getFranchiseItems(mainSeries2018, catalog)
+
+        // Prequel movie MUST come before the main series
+        assertEquals("prequel_2021", sorted[0].id)
+        assertEquals("main_2018", sorted[1].id)
+    }
 }

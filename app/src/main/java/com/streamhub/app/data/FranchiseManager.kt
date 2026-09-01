@@ -76,8 +76,7 @@ object FranchiseManager {
 
         return matched.sortedWith(
             compareBy<MediaItem> { item ->
-                val sNum = getEffectiveSeasonNumber(item)
-                if (sNum > 0) sNum else 999
+                getChronologicalScore(item)
             }.thenBy { item ->
                 item.releaseYear.toIntOrNull() ?: 9999
             }.thenBy { item ->
@@ -118,19 +117,49 @@ object FranchiseManager {
     }
 
     fun getChronologicalScore(item: MediaItem): Double {
-        val sNum = getEffectiveSeasonNumber(item)
+        val explicitSNum = item.seasonNumber.takeIf { it > 0 }
+        val detectedSNum = detectSeasonNumber(item.title).takeIf { it > 1 }
         val year = item.releaseYear.trim().toIntOrNull() ?: 0
-        val chapter = detectChapterOrPartNumber(item.title) ?: sNum.takeIf { it > 0 } ?: 1
-        val isExplicitPrequel = item.relationType.trim().equals("PREQUEL", ignoreCase = true) && sNum <= 1
+        val format = getMediaFormatLabel(item)
+        val isExplicitPrequel = item.relationType.trim().equals("PREQUEL", ignoreCase = true) || item.relationType.trim().startsWith("PREQUEL •", ignoreCase = true)
+        val isExplicitSequel = item.relationType.trim().equals("SEQUEL", ignoreCase = true) || item.relationType.trim().startsWith("SEQUEL •", ignoreCase = true)
 
         val baseScore = when {
-            sNum > 0 && year > 1900 -> (sNum * 100000.0) + (year * 10.0)
-            sNum > 0 -> sNum * 100000.0
-            year > 1900 -> (year * 100.0) + chapter
-            else -> chapter.toDouble()
+            // Priority 1: Admin explicitly specified a Season / Sequence Number (e.g. 1, 2, 3...)
+            explicitSNum != null -> {
+                (explicitSNum * 10_000_000.0) + (if (year > 1900) year * 10.0 else 0.0)
+            }
+
+            // Priority 2: Title has detected Season number (e.g. "Season 2", "Part 3")
+            detectedSNum != null -> {
+                (detectedSNum * 10_000_000.0) + (if (year > 1900) year * 10.0 else 0.0)
+            }
+
+            // Priority 3: No explicit sequence number -> Release Year timeline anchor
+            year > 1900 -> {
+                val yearBase = year * 10_000.0
+                val formatOffset = when (format) {
+                    "TV" -> 10.0
+                    "MOVIE" -> if (isExplicitSequel) 50.0 else 25.0
+                    "OVA", "ONA" -> 30.0
+                    "SPECIAL", "TV SPECIAL" -> 40.0
+                    else -> 20.0
+                }
+                yearBase + formatOffset
+            }
+
+            // Priority 4: Chapter/Part detection fallback
+            else -> {
+                val chapter = detectChapterOrPartNumber(item.title) ?: 1
+                chapter * 1_000.0
+            }
         }
 
-        return if (isExplicitPrequel) baseScore - 1_000_000.0 else baseScore
+        return when {
+            isExplicitPrequel -> baseScore - 100_000_000.0
+            isExplicitSequel -> baseScore + 500_000.0
+            else -> baseScore
+        }
     }
 
     /**

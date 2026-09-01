@@ -128,7 +128,15 @@ fun AdminEditorDialog(
                       initialItem?.category?.equals("Movies", ignoreCase = true) == true ||
                       initialItem?.relationType?.equals("Movie", ignoreCase = true) == true
     var seasonNumberText by remember(initialItem) {
-        mutableStateOf(if (isInitMovie) "" else (initialItem?.seasonNumber?.takeIf { it > 0 } ?: 1).toString())
+        mutableStateOf(
+            if (initialItem != null && initialItem.seasonNumber > 0) {
+                initialItem.seasonNumber.toString()
+            } else if (isInitMovie) {
+                ""
+            } else {
+                "1"
+            }
+        )
     }
     var seasonTitle by remember(initialItem) { mutableStateOf(initialItem?.seasonTitle ?: "") }
     var relationType by remember(initialItem) { mutableStateOf(initialItem?.relationType?.takeIf { it.isNotBlank() && !it.equals("Main Story", ignoreCase = true) } ?: if (isInitMovie) "Movie" else "TV") }
@@ -1452,7 +1460,7 @@ fun AdminEditorDialog(
                                                       relationType.equals("Movie", ignoreCase = true) ||
                                                       category.equals("Movie", ignoreCase = true) ||
                                                       category.equals("Movies", ignoreCase = true)
-                                    val parsedSeasonNum = if (isMovieItem) 0 else (seasonNumberText.toIntOrNull() ?: 1)
+                                    val parsedSeasonNum = seasonNumberText.trim().toIntOrNull() ?: if (isMovieItem) 0 else 1
                                     val episodes = when {
                                         isMovieFormat && currentEpisodes.size <= 1 && (startBatchLink.isNotBlank() || generatedEpisodesText.isNotBlank()) -> {
                                             val link = TelegramLinkResolver.sanitizePlayableUrl(startBatchLink.ifBlank { generatedEpisodesText }.trim())
