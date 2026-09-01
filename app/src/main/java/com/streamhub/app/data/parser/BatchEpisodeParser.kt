@@ -388,16 +388,16 @@ object BatchEpisodeParser {
             )
         }
 
-        val duplicates = episodes.groupBy { it.episodeNumber }
+        val duplicates = episodes.groupBy { (it.arcName.ifBlank { "S${it.seasonNumber}" }) to it.episodeNumber }
             .filter { it.value.size > 1 }
-            .keys.toList()
+            .map { (key, _) -> if (key.first.isNotBlank()) "${key.first} Ep ${key.second}" else "Ep ${key.second}" }
 
         val emptyUrls = episodes.filter { it.streamUrl.isBlank() && it.mirrorStreamUrl.isBlank() }
             .map { it.episodeNumber }
 
         val warnings = mutableListOf<String>()
         if (duplicates.isNotEmpty()) {
-            warnings.add("Duplicate episode numbers detected: ${duplicates.joinToString(", ")}")
+            warnings.add("Duplicate episode numbers within same arc/season: ${duplicates.joinToString(", ")}")
         }
         if (emptyUrls.isNotEmpty()) {
             warnings.add("Episodes without stream links: ${emptyUrls.joinToString(", ")}")
@@ -406,7 +406,7 @@ object BatchEpisodeParser {
         return EpisodeValidationResult(
             isValid = duplicates.isEmpty() && emptyUrls.isEmpty(),
             totalCount = episodes.size,
-            duplicateEpisodeNumbers = duplicates,
+            duplicateEpisodeNumbers = duplicates.mapNotNull { Regex("""\b(\d+)\b""").find(it)?.groupValues?.get(1)?.toIntOrNull() },
             emptyUrlEpisodeNumbers = emptyUrls,
             warningMessages = warnings
         )

@@ -790,10 +790,11 @@ fun AdminEditorDialog(
                                                                 }
                                                                 currentEpisodes.clear()
                                                                 currentEpisodes.addAll(map.values.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber })))
+                                                                val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps)
+                                                                startBatchLink = jsonDump
+                                                                generatedEpisodesText = jsonDump
                                                                 f2lBatchInput = ""
-                                                                startBatchLink = ""
-                                                                generatedEpisodesText = ""
-                                                                batchSuccess = "✅ Added/Updated ${eps.size} episodes! Ready for next arc."
+                                                                batchSuccess = "✅ Fetched & Loaded ${eps.size} episodes! Check JSON below."
                                                             } else {
                                                                 batchError = "No episodes returned by F2L API"
                                                             }
@@ -849,9 +850,10 @@ fun AdminEditorDialog(
                                                         }
                                                         currentEpisodes.clear()
                                                         currentEpisodes.addAll(map.values.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber })))
-                                                        startBatchLink = ""
-                                                        generatedEpisodesText = ""
-                                                        batchSuccess = "✅ Added/Updated ${eps.size} episodes! Ready for next arc."
+                                                        val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps)
+                                                        startBatchLink = jsonDump
+                                                        generatedEpisodesText = jsonDump
+                                                        batchSuccess = "✅ Fetched & Loaded ${eps.size} episodes! Check JSON below."
                                                     }
                                                 },
                                                 onFailure = { err ->
@@ -862,10 +864,10 @@ fun AdminEditorDialog(
                                         }
                                     }
                                 },
-                                label = { Text("⚡ Add Arc / Batch Input (Auto-merges on Parse) *", color = TextSecondary) },
-                                placeholder = { Text("Paste raw links, Telegram post, or JSON here for this arc...\n> Ep 01: https://...\n> Ep 02: https://...", color = TextSecondary) },
-                                minLines = 3,
-                                maxLines = 6,
+                                label = { Text("⚡ Smart Raw Dump / Episode Links / Telegram Post *", color = TextSecondary) },
+                                placeholder = { Text("Paste raw links, Telegram posts, or JSON here...\n> Ep 01: https://cdn.example.com/ep01.mp4\n> Ep 02: https://cdn.example.com/ep02.mp4", color = TextSecondary) },
+                                minLines = 4,
+                                maxLines = 8,
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = Color(0xFFFFD700),
                                     unfocusedBorderColor = Color(0xFF2C2C3E),
@@ -909,9 +911,10 @@ fun AdminEditorDialog(
                                                             }
                                                             currentEpisodes.clear()
                                                             currentEpisodes.addAll(map.values.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber })))
-                                                            startBatchLink = ""
-                                                            generatedEpisodesText = ""
-                                                            batchSuccess = "✅ Added/Updated ${eps.size} episodes! Ready for next arc."
+                                                            val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps)
+                                                            startBatchLink = jsonDump
+                                                            generatedEpisodesText = jsonDump
+                                                            batchSuccess = "✅ Fetched & Loaded ${eps.size} episodes! Check JSON below."
                                                         } else {
                                                             batchError = "No episodes returned by F2L API"
                                                         }
@@ -935,9 +938,9 @@ fun AdminEditorDialog(
                                             }
                                             currentEpisodes.clear()
                                             currentEpisodes.addAll(map.values.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber })))
-                                            startBatchLink = ""
-                                            generatedEpisodesText = ""
-                                            batchSuccess = "✅ Added/Updated ${parsed.size} episodes! Ready for next arc."
+                                            startBatchLink = clipText
+                                            generatedEpisodesText = clipText
+                                            batchSuccess = "✅ Parsed & Loaded ${parsed.size} episodes! Check JSON below."
                                         } else {
                                             batchError = "Could not parse episodes from clipboard text."
                                         }
@@ -987,14 +990,6 @@ fun AdminEditorDialog(
                                 val validation = remember(currentEpisodes.size) {
                                     com.streamhub.app.data.parser.BatchEpisodeParser.validateEpisodes(currentEpisodes)
                                 }
-                                val arcGroups = remember(currentEpisodes.size, currentEpisodes.map { it.arcName }) {
-                                    currentEpisodes.groupBy { it.arcName.ifBlank { "Season ${it.seasonNumber}" } }
-                                }
-                                val arcSummary = remember(arcGroups) {
-                                    if (arcGroups.size > 1) {
-                                        " (" + arcGroups.entries.joinToString(" • ") { "${it.key}: ${it.value.size} Eps" } + ")"
-                                    } else ""
-                                }
 
                                 Spacer(modifier = Modifier.height(10.dp))
                                 Surface(
@@ -1010,7 +1005,7 @@ fun AdminEditorDialog(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
-                                                text = if (validation.isValid) "✅ ${currentEpisodes.size} Episodes Ready$arcSummary" else "⚠️ ${currentEpisodes.size} Episodes$arcSummary (${validation.warningMessages.size} Warnings)",
+                                                text = if (validation.isValid) "✅ ${currentEpisodes.size} Episodes Ready" else "⚠️ ${currentEpisodes.size} Episodes Ready (${validation.warningMessages.size} Warnings)",
                                                 color = if (validation.isValid) Color(0xFF81C784) else Color(0xFFFFB74D),
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold,
@@ -1057,7 +1052,7 @@ fun AdminEditorDialog(
                                             verticalArrangement = Arrangement.spacedBy(4.dp),
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            currentEpisodes.take(8).forEach { ep ->
+                                            currentEpisodes.take(5).forEach { ep ->
                                                 Row(
                                                     verticalAlignment = Alignment.CenterVertically,
                                                     modifier = Modifier.fillMaxWidth()
@@ -1104,9 +1099,9 @@ fun AdminEditorDialog(
                                                     }
                                                 }
                                             }
-                                            if (currentEpisodes.size > 8) {
+                                            if (currentEpisodes.size > 5) {
                                                 Text(
-                                                    text = "... + ${currentEpisodes.size - 8} more episodes across ${arcGroups.size} arcs",
+                                                    text = "... + ${currentEpisodes.size - 5} more episodes",
                                                     color = Color(0xFFA5D6A7),
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.Medium
