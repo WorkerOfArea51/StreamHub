@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -1187,14 +1188,25 @@ fun EpisodeRowItem(
             }
         }
     }.joinToString(" • ")
+    val watchHistoryMap by WatchHistoryManager.historyFlow.collectAsState()
+    val mediaProgress = watchHistoryMap[mediaItem.id]
+    val isCurrentEp = mediaProgress != null && (
+        mediaProgress.episodeNumber == episode.episodeNumber - 1 ||
+        mediaProgress.episodeNumber == index ||
+        (mediaProgress.episodeTitle.isNotBlank() && mediaProgress.episodeTitle.equals(episode.title, ignoreCase = true))
+    )
+    val hasEpProgress = isCurrentEp && mediaProgress != null && mediaProgress.positionMs > 5000L && mediaProgress.durationMs > 0L
+    val epFraction = if (hasEpProgress && mediaProgress != null) {
+        (mediaProgress.positionMs.toFloat() / mediaProgress.durationMs.toFloat()).coerceIn(0.04f, 1f)
+    } else 0f
 
-    Card(
+    Surface(
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        color = if (hasEpProgress && !mediaProgress!!.isCompleted) Color(0x18FF9800) else SurfaceDark,
+        border = BorderStroke(1.dp, if (hasEpProgress && !mediaProgress!!.isCompleted) AccentOrange.copy(alpha = 0.5f) else CardBorderDark),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
     ) {
         Row(
             modifier = Modifier
@@ -1250,7 +1262,25 @@ fun EpisodeRowItem(
                         }
                     }
 
-                    // Duration Badge (bottom-right)
+                    // Red Resume Progress Bar along bottom of thumbnail
+                    if (hasEpProgress) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .height(3.5.dp)
+                                .background(Color(0x99000000))
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(epFraction)
+                                    .background(PrimaryRed)
+                            )
+                        }
+                    }
+
+                    // Duration / Remaining Badge (bottom-right)
                     val durationLabel = when {
                         episode.durationMs > 0 -> {
                             val totalSec = (episode.durationMs / 1000).toInt()
@@ -1277,7 +1307,28 @@ fun EpisodeRowItem(
                         }
                         else -> ""
                     }
-                    if (durationLabel.isNotBlank()) {
+
+                    if (hasEpProgress && !mediaProgress!!.isCompleted) {
+                        val remainingMs = (mediaProgress.durationMs - mediaProgress.positionMs).coerceAtLeast(0L)
+                        val remainingMin = (remainingMs / 60000).toInt()
+                        val remainingLabel = if (remainingMin > 0) "${remainingMin}m left" else "<1m left"
+
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(4.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(PrimaryRed.copy(alpha = 0.9f))
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = remainingLabel,
+                                color = Color.White,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else if (durationLabel.isNotBlank()) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
@@ -1302,7 +1353,7 @@ fun EpisodeRowItem(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = displayTitle,
-                        color = TextPrimary,
+                        color = if (hasEpProgress && !mediaProgress!!.isCompleted) AccentOrange else TextPrimary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,

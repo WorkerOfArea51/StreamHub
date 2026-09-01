@@ -27,10 +27,12 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Whatshot
+import com.streamhub.app.data.repository.FirebaseRepository
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -167,6 +169,9 @@ fun AdminEditorDialog(
     var batchSuccess by remember { mutableStateOf<String?>(null) }
     var validationError by remember { mutableStateOf<String?>(null) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var isCheckingHealth by remember { mutableStateOf(false) }
+    var healthReport by remember { mutableStateOf<com.streamhub.app.data.api.StreamHealthReport?>(null) }
+    var showBackupDialog by remember { mutableStateOf(false) }
 
     if (showDeleteConfirmDialog && initialItem != null && onDelete != null) {
         AlertDialog(
@@ -191,6 +196,13 @@ fun AdminEditorDialog(
                 }
             },
             containerColor = Color(0xFF1E1E2E)
+        )
+    }
+
+    if (showBackupDialog) {
+        CatalogBackupDialog(
+            repository = FirebaseRepository.getInstance(),
+            onDismiss = { showBackupDialog = false }
         )
     }
 
@@ -240,11 +252,32 @@ fun AdminEditorDialog(
                         )
                     }
 
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(34.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFF0284C7).copy(alpha = 0.2f),
+                            border = BorderStroke(1.dp, Color(0xFF0284C7)),
+                            modifier = Modifier.clickable { showBackupDialog = true }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                            ) {
+                                Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(13.dp))
+                                Text("Backup / Restore", color = Color(0xFF38BDF8), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                        }
                     }
                 }
 
@@ -409,12 +442,12 @@ fun AdminEditorDialog(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Title Input
+                        // Title Input (Supports exact title name, MAL URL/ID, TMDB URL/ID)
                         OutlinedTextField(
                             value = title,
                             onValueChange = { title = it; validationError = null },
-                            label = { Text("Exact Title *", color = TextSecondary) },
-                            placeholder = { Text("e.g. Solo Leveling, Naruto, Avengers", color = TextSecondary) },
+                            label = { Text("Exact Title or MAL / TMDB Link *", color = TextSecondary) },
+                            placeholder = { Text("Title or link (e.g. Buddy Daddies or https://myanimelist.net/anime/52932)", color = TextSecondary) },
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = Color(0xFFFFD700),
@@ -489,7 +522,7 @@ fun AdminEditorDialog(
                             } else {
                                 Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Auto-Fetch Metadata by Title", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("✨ Auto-Fetch Metadata by Title or Link", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
 
@@ -1012,31 +1045,81 @@ fun AdminEditorDialog(
                                                 modifier = Modifier.weight(1f)
                                             )
 
-                                            // Quick Batch Renumbering Action
-                                            Surface(
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = Color(0xFF0284C7).copy(alpha = 0.2f),
-                                                border = BorderStroke(1.dp, Color(0xFF0284C7)),
-                                                modifier = Modifier.clickable {
-                                                    val renumbered = currentEpisodes.groupBy { it.seasonNumber }.flatMap { (_, epList) ->
-                                                        epList.mapIndexed { idx, ep ->
-                                                            ep.copy(
-                                                                episodeNumber = idx + 1,
-                                                                title = if (ep.title.matches(Regex("^Episode \\d+$", RegexOption.IGNORE_CASE))) "Episode ${idx + 1}" else ep.title
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // Health Check Action
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = if (isCheckingHealth) Color(0xFFFF9800).copy(alpha = 0.2f) else if ((healthReport?.deadCount ?: 0) > 0) PrimaryRed.copy(alpha = 0.2f) else Color(0xFF10B981).copy(alpha = 0.2f),
+                                                    border = BorderStroke(1.dp, if (isCheckingHealth) Color(0xFFFF9800) else if ((healthReport?.deadCount ?: 0) > 0) PrimaryRed else Color(0xFF10B981)),
+                                                    modifier = Modifier.clickable(enabled = !isCheckingHealth && currentEpisodes.isNotEmpty()) {
+                                                        isCheckingHealth = true
+                                                        scope.launch {
+                                                            com.streamhub.app.data.api.StreamHealthChecker.checkEpisodesHealth(currentEpisodes).collect { report ->
+                                                                healthReport = report
+                                                                if (!report.isChecking) {
+                                                                    isCheckingHealth = false
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    ) {
+                                                        if (isCheckingHealth) {
+                                                            CircularProgressIndicator(
+                                                                modifier = Modifier.size(10.dp),
+                                                                color = Color(0xFFFF9800),
+                                                                strokeWidth = 1.5.dp
+                                                            )
+                                                            Text(
+                                                                "Checking (${healthReport?.checkedCount ?: 0}/${currentEpisodes.size})...",
+                                                                color = Color(0xFFFF9800),
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                        } else {
+                                                            Text(
+                                                                if (healthReport != null) "🩺 ${healthReport?.aliveCount} Live / ${healthReport?.deadCount} Dead" else "🩺 Check Links",
+                                                                color = if ((healthReport?.deadCount ?: 0) > 0) PrimaryRed else Color(0xFF10B981),
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.Bold
                                                             )
                                                         }
                                                     }
-                                                    currentEpisodes.clear()
-                                                    currentEpisodes.addAll(renumbered)
                                                 }
-                                            ) {
-                                                Text(
-                                                    "🔄 Re-Index 1..N",
-                                                    color = Color(0xFF38BDF8),
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                )
+
+                                                // Quick Batch Renumbering Action
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = Color(0xFF0284C7).copy(alpha = 0.2f),
+                                                    border = BorderStroke(1.dp, Color(0xFF0284C7)),
+                                                    modifier = Modifier.clickable {
+                                                        val renumbered = currentEpisodes.groupBy { it.seasonNumber }.flatMap { (_, epList) ->
+                                                            epList.mapIndexed { idx, ep ->
+                                                                ep.copy(
+                                                                    episodeNumber = idx + 1,
+                                                                    title = if (ep.title.matches(Regex("^Episode \\d+$", RegexOption.IGNORE_CASE))) "Episode ${idx + 1}" else ep.title
+                                                                )
+                                                            }
+                                                        }
+                                                        currentEpisodes.clear()
+                                                        currentEpisodes.addAll(renumbered)
+                                                    }
+                                                ) {
+                                                    Text(
+                                                        "🔄 Re-Index",
+                                                        color = Color(0xFF38BDF8),
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    )
+                                                }
                                             }
                                         }
 
@@ -1047,12 +1130,24 @@ fun AdminEditorDialog(
                                             }
                                         }
 
+                                        healthReport?.let { hr ->
+                                            if (hr.deadCount > 0) {
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    "⚠️ ${hr.deadCount} stream link(s) broken/dead!",
+                                                    color = PrimaryRed,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+
                                         Spacer(modifier = Modifier.height(8.dp))
                                         Column(
                                             verticalArrangement = Arrangement.spacedBy(4.dp),
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            currentEpisodes.take(5).forEach { ep ->
+                                            currentEpisodes.take(5).forEachIndexed { idx, ep ->
                                                 Row(
                                                     verticalAlignment = Alignment.CenterVertically,
                                                     modifier = Modifier.fillMaxWidth()
@@ -1095,6 +1190,18 @@ fun AdminEditorDialog(
                                                             color = Color(0xFF38BDF8),
                                                             fontSize = 9.sp,
                                                             fontWeight = FontWeight.Medium
+                                                        )
+                                                    }
+
+                                                    val key = "${ep.seasonNumber}_${ep.arcName}_${ep.episodeNumber}"
+                                                    val epHealth = healthReport?.results?.get(key)
+                                                    if (epHealth != null) {
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            text = if (epHealth.isAlive) "🟢 ${epHealth.httpCode} (${epHealth.latencyMs}ms)" else "🔴 ${epHealth.errorMessage ?: "HTTP ${epHealth.httpCode}"}",
+                                                            color = if (epHealth.isAlive) Color(0xFF81C784) else Color(0xFFFF5252),
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.Bold
                                                         )
                                                     }
                                                 }

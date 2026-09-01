@@ -1,10 +1,62 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Squircle Card Fill -->
     <path
-        android:fillColor="#E50914"
-        android:pathData="M36,24L76,54L36,84Z" />
+        android:fillColor="#1E2333"
+        android:pathData="M40,24 L68,24 A16,16 0 0 1 84,40 L84,68 A16,16 0 0 1 68,84 L40,84 A16,16 0 0 1 24,68 L24,40 A16,16 0 0 1 40,24 Z" />
+
+    <!-- Squircle Card Glowing Stroke -->
+    <path
+        android:strokeWidth="2.8"
+        android:pathData="M40,24 L68,24 A16,16 0 0 1 84,40 L84,68 A16,16 0 0 1 68,84 L40,84 A16,16 0 0 1 24,68 L24,40 A16,16 0 0 1 40,24 Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="24"
+                android:startY="24"
+                android:endX="84"
+                android:endY="84"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FFFF3366" />
+                <item android:offset="0.5" android:color="#FFFF6B00" />
+                <item android:offset="1.0" android:color="#FFFFD700" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Center Play Triangle with Neon Gradient -->
+    <path android:pathData="M48,39 L71,54 L48,69 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="48"
+                android:startY="39"
+                android:endX="71"
+                android:endY="69"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FFFF3366" />
+                <item android:offset="0.6" android:color="#FFFF6B00" />
+                <item android:offset="1.0" android:color="#FFFFD700" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Left Cyan Waveform Bar -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M34,48 L37,48 A1.5,1.5 0 0 1 38.5,49.5 L38.5,58.5 A1.5,1.5 0 0 1 37,60 L34,60 A1.5,1.5 0 0 1 32.5,58.5 L32.5,49.5 A1.5,1.5 0 0 1 34,48 Z" />
+
+    <!-- Left Crimson Waveform Bar -->
+    <path
+        android:fillColor="#FF3366"
+        android:pathData="M40,43 L43,43 A1.5,1.5 0 0 1 44.5,44.5 L44.5,63.5 A1.5,1.5 0 0 1 43,65 L40,65 A1.5,1.5 0 0 1 38.5,63.5 L38.5,44.5 A1.5,1.5 0 0 1 40,43 Z" />
+
+    <!-- Right Gold Waveform Bar -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M75,46 L78,46 A1.5,1.5 0 0 1 79.5,47.5 L79.5,60.5 A1.5,1.5 0 0 1 78,62 L75,62 A1.5,1.5 0 0 1 73.5,60.5 L73.5,47.5 A1.5,1.5 0 0 1 75,46 Z" />
 </vector>

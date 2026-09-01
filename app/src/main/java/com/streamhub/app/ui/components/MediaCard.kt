@@ -38,6 +38,12 @@ import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.fillMaxHeight
+import com.streamhub.app.data.WatchHistoryManager
+import com.streamhub.app.ui.theme.AccentOrange
+
 @Composable
 fun MediaCard(
     item: MediaItem,
@@ -47,6 +53,13 @@ fun MediaCard(
     val isMovie = item.category.equals("MOVIE", ignoreCase = true) || 
                   item.category.equals("Movies", ignoreCase = true) || 
                   item.type.equals("MOVIE", ignoreCase = true)
+
+    val watchHistory by WatchHistoryManager.historyFlow.collectAsState()
+    val progress = watchHistory[item.id]
+    val isWatchingInProgress = progress != null && progress.positionMs > 5000L && progress.durationMs > 0L && !progress.isCompleted
+    val progressFraction = if (isWatchingInProgress && progress != null) {
+        (progress.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0.04f, 1f)
+    } else 0f
 
     Column(
         modifier = modifier
@@ -143,6 +156,32 @@ fun MediaCard(
                     )
                 }
             }
+
+            // Netflix-Style Resume Progress Bar along bottom edge
+            if (isWatchingInProgress) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(3.5.dp)
+                        .background(Color(0x99000000))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(progressFraction)
+                            .background(PrimaryRed)
+                    )
+                }
+            } else if (progress?.isCompleted == true) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .background(Color(0xFF4CAF50))
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(6.dp))
@@ -156,21 +195,34 @@ fun MediaCard(
             overflow = TextOverflow.Ellipsis
         )
 
-        val metaSubtitle = buildString {
-            append(item.category)
-            if (!isMovie && item.seasonNumber > 1) {
-                append(" • Season ${item.seasonNumber}")
+        val metaSubtitle = if (isWatchingInProgress && progress != null) {
+            val remainingMs = (progress.durationMs - progress.positionMs).coerceAtLeast(0L)
+            val remainingMin = (remainingMs / 60000).toInt()
+            val remainingText = if (remainingMin > 0) "${remainingMin}m left" else "<1m left"
+            if (!isMovie && progress.episodeNumber > 0) {
+                "Ep ${progress.episodeNumber} • $remainingText"
+            } else {
+                remainingText
             }
-            if (item.releaseYear.isNotBlank()) {
-                append(" • ${item.releaseYear}")
+        } else {
+            buildString {
+                append(item.category)
+                if (!isMovie && item.seasonNumber > 1) {
+                    append(" • Season ${item.seasonNumber}")
+                }
+                if (item.releaseYear.isNotBlank()) {
+                    append(" • ${item.releaseYear}")
+                }
             }
         }
 
         Text(
             text = metaSubtitle,
-            color = TextSecondary,
+            color = if (isWatchingInProgress) AccentOrange else TextSecondary,
             fontSize = 11.sp,
+            fontWeight = if (isWatchingInProgress) FontWeight.Bold else FontWeight.Normal,
             maxLines = 1
         )
     }
 }
+

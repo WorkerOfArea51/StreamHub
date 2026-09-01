@@ -102,6 +102,8 @@ fun ArcEpisodeEditorDialog(
     var isFetchingF2l by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var successToast by remember { mutableStateOf<String?>(null) }
+    var isCheckingHealth by remember { mutableStateOf(false) }
+    var healthReport by remember { mutableStateOf<com.streamhub.app.data.api.StreamHealthReport?>(null) }
 
     val scope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
@@ -446,13 +448,65 @@ fun ArcEpisodeEditorDialog(
                                 fontWeight = FontWeight.Bold
                             )
 
-                            if (arcEpisodes.isNotEmpty()) {
-                                Text(
-                                    text = "Sorted 1..N",
-                                    color = AccentGold,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (arcEpisodes.isNotEmpty()) {
+                                    // Health Check Action
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isCheckingHealth) Color(0xFFFF9800).copy(alpha = 0.2f) else if ((healthReport?.deadCount ?: 0) > 0) PrimaryRed.copy(alpha = 0.2f) else Color(0xFF10B981).copy(alpha = 0.2f),
+                                        border = BorderStroke(1.dp, if (isCheckingHealth) Color(0xFFFF9800) else if ((healthReport?.deadCount ?: 0) > 0) PrimaryRed else Color(0xFF10B981)),
+                                        modifier = Modifier.clickable(enabled = !isCheckingHealth && arcEpisodes.isNotEmpty()) {
+                                            isCheckingHealth = true
+                                            scope.launch {
+                                                com.streamhub.app.data.api.StreamHealthChecker.checkEpisodesHealth(arcEpisodes).collect { report ->
+                                                    healthReport = report
+                                                    if (!report.isChecking) {
+                                                        isCheckingHealth = false
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            if (isCheckingHealth) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(10.dp),
+                                                    color = Color(0xFFFF9800),
+                                                    strokeWidth = 1.5.dp
+                                                )
+                                                Text(
+                                                    "Checking (${healthReport?.checkedCount ?: 0}/${arcEpisodes.size})...",
+                                                    color = Color(0xFFFF9800),
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            } else {
+                                                Text(
+                                                    if (healthReport != null) "🩺 ${healthReport?.aliveCount} Live / ${healthReport?.deadCount} Dead" else "🩺 Check Links",
+                                                    color = if ((healthReport?.deadCount ?: 0) > 0) PrimaryRed else Color(0xFF10B981),
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (arcEpisodes.isNotEmpty()) {
+                                    Text(
+                                        text = "Sorted 1..N",
+                                        color = AccentGold,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
                             }
                         }
                     }
@@ -501,8 +555,24 @@ fun ArcEpisodeEditorDialog(
                                         if (ep.durationMs > 0L) "${ep.durationMs / 60000}m" else null
                                     ).joinToString(" • ")
 
-                                    if (specs.isNotBlank()) {
-                                        Text(specs, color = TextSecondary, fontSize = 10.sp)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        if (specs.isNotBlank()) {
+                                            Text(specs, color = TextSecondary, fontSize = 10.sp)
+                                        }
+
+                                        val key = "${ep.seasonNumber}_${ep.arcName}_${ep.episodeNumber}"
+                                        val epHealth = healthReport?.results?.get(key)
+                                        if (epHealth != null) {
+                                            Text(
+                                                text = if (epHealth.isAlive) "🟢 ${epHealth.httpCode} (${epHealth.latencyMs}ms)" else "🔴 ${epHealth.errorMessage ?: "HTTP ${epHealth.httpCode}"}",
+                                                color = if (epHealth.isAlive) Color(0xFF81C784) else Color(0xFFFF5252),
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
                                     }
                                 }
 

@@ -60,6 +60,34 @@ object MetadataFetchManager {
     private val movieGenreMap = ConcurrentHashMap<Int, String>()
     private val tvGenreMap = ConcurrentHashMap<Int, String>()
 
+    fun extractMalId(query: String): Int? {
+        val trimmed = query.trim()
+        Regex("""(?i)myanimelist\.net/anime/(\d+)""").find(trimmed)?.let {
+            return it.groupValues[1].toIntOrNull()
+        }
+        Regex("""(?i)^mal:\s*(\d+)""").find(trimmed)?.let {
+            return it.groupValues[1].toIntOrNull()
+        }
+        return null
+    }
+
+    fun extractTmdbTarget(query: String): Pair<Int, Boolean?>? {
+        val trimmed = query.trim()
+        Regex("""(?i)themoviedb\.org/tv/(\d+)""").find(trimmed)?.let {
+            return Pair(it.groupValues[1].toIntOrNull() ?: return null, false)
+        }
+        Regex("""(?i)themoviedb\.org/movie/(\d+)""").find(trimmed)?.let {
+            return Pair(it.groupValues[1].toIntOrNull() ?: return null, true)
+        }
+        Regex("""(?i)^tmdb:\s*(?:tv/|series/)?(\d+)""").find(trimmed)?.let {
+            return Pair(it.groupValues[1].toIntOrNull() ?: return null, false)
+        }
+        Regex("""(?i)^tmdb:\s*movie/(\d+)""").find(trimmed)?.let {
+            return Pair(it.groupValues[1].toIntOrNull() ?: return null, true)
+        }
+        return null
+    }
+
     suspend fun fetchMetadata(
         titleQuery: String,
         category: String,
@@ -67,10 +95,25 @@ object MetadataFetchManager {
     ): Result<FetchedMetadata> {
         return withContext(Dispatchers.IO) {
             try {
-                if (category.equals("Anime", ignoreCase = true)) {
-                    fetchFromMAL(titleQuery)
-                } else {
-                    fetchFromTMDB(titleQuery, category, targetSeason)
+                val cleanQuery = titleQuery.trim()
+                val malIdFromUrl = extractMalId(cleanQuery)
+                val tmdbTarget = extractTmdbTarget(cleanQuery)
+
+                when {
+                    malIdFromUrl != null -> {
+                        fetchFromMAL(cleanQuery, directMalId = malIdFromUrl)
+                    }
+                    tmdbTarget != null -> {
+                        val isMovie = tmdbTarget.second ?: (category.equals("Movie", ignoreCase = true) || category.equals("Movies", ignoreCase = true))
+                        val effectiveCat = if (isMovie) "Movies" else if (category.equals("Anime", ignoreCase = true)) "Anime" else "Series"
+                        fetchFromTMDB(cleanQuery, effectiveCat, targetSeason, directTmdbId = tmdbTarget.first, explicitIsMovie = tmdbTarget.second)
+                    }
+                    category.equals("Anime", ignoreCase = true) -> {
+                        fetchFromMAL(cleanQuery)
+                    }
+                    else -> {
+                        fetchFromTMDB(cleanQuery, category, targetSeason)
+                    }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -113,15 +156,17 @@ object MetadataFetchManager {
     private suspend fun fetchFromTMDB(
         query: String,
         category: String,
-        targetSeason: Int = 1
+        targetSeason: Int = 1,
+        directTmdbId: Int? = null,
+        explicitIsMovie: Boolean? = null
     ): Result<FetchedMetadata> {
         val apiKey = Secrets.TMDB_API_KEY
         if (apiKey.isBlank()) {
             return Result.failure(Exception("TMDB API Key is missing. Add STREAMHUB_TMDB_API_KEY secret."))
         }
 
-        val isMovie = category.equals("MOVIE", ignoreCase = true) || 
-                      category.startsWith("Movie", ignoreCase = true)
+        val isMovie = explicitIsMovie ?: (category.equals("MOVIE", ignoreCase = true) || 
+                      category.startsWith("Movie", ignoreCase = true))
         val endpoint = if (isMovie) "search/movie" else "search/tv"
         val detailType = if (isMovie) "movie" else "tv"
 
@@ -129,14 +174,14 @@ object MetadataFetchManager {
         val detectedFromQuery = if (!isMovie) com.streamhub.app.data.FranchiseManager.detectSeasonNumber(cleanQuery) else 1
         val effectiveSeason = if (detectedFromQuery > 1) detectedFromQuery else if (targetSeason > 1) targetSeason else 1
 
-        val directTmdbId = when {
+        val resolvedTmdbId = directTmdbId ?: when {
             cleanQuery.toIntOrNull() != null -> cleanQuery.toInt()
             cleanQuery.contains("themoviedb.org/movie/") -> cleanQuery.substringAfter("themoviedb.org/movie/").substringBefore("-").substringBefore("/").substringBefore("?").toIntOrNull()
             cleanQuery.contains("themoviedb.org/tv/") -> cleanQuery.substringAfter("themoviedb.org/tv/").substringBefore("-").substringBefore("/").substringBefore("?").toIntOrNull()
             else -> null
         }
 
-        var tmdbIdNum = directTmdbId ?: 0
+        var tmdbIdNum = resolvedTmdbId ?: 0
         var title = cleanQuery
         var originalTitle = ""
         var overview = "No synopsis available."
@@ -146,7 +191,7 @@ object MetadataFetchManager {
         var voteAverage = 0.0
         val genreIdsList = mutableListOf<Int>()
 
-        if (directTmdbId == null) {
+        if (resolvedTmdbId == null) {
             val searchCleanTerm = if (!isMovie) {
                 cleanQuery
                     .replace(Regex("(?i)(?:\\s*:\\s*|\\s*-\\s*|\\s+)\\b(?:season|s)\\s*\\d+.*$"), "")
@@ -554,14 +599,21 @@ object MetadataFetchManager {
      * MyAnimeList Search for Anime — prefers English title over Romaji/Japanese title
      * and fetches full specs (studio, source, duration, status, episodes, MAL ID, synonyms).
      */
-    private suspend fun fetchFromMAL(query: String): Result<FetchedMetadata> {
+    private suspend fun fetchFromMAL(
+        query: String,
+        directMalId: Int? = null
+    ): Result<FetchedMetadata> {
         val clientId = Secrets.MAL_CLIENT_ID
         if (clientId.isBlank()) {
             return Result.failure(Exception("MAL Client ID is missing. Add STREAMHUB_MAL_CLIENT_ID secret."))
         }
 
-        val encodedQuery = URLEncoder.encode(query.trim(), Charsets.UTF_8.name())
-        val url = "${Secrets.MAL_BASE_URL}anime?q=$encodedQuery&limit=1&fields=id,title,main_picture,synopsis,mean,start_date,end_date,genres,alternative_titles,num_episodes,status,media_type,source,average_episode_duration,studios,producers,rating"
+        val url = if (directMalId != null) {
+            "${Secrets.MAL_BASE_URL}anime/$directMalId?fields=id,title,main_picture,synopsis,mean,start_date,end_date,genres,alternative_titles,num_episodes,status,media_type,source,average_episode_duration,studios,producers,rating"
+        } else {
+            val encodedQuery = URLEncoder.encode(query.trim(), Charsets.UTF_8.name())
+            "${Secrets.MAL_BASE_URL}anime?q=$encodedQuery&limit=1&fields=id,title,main_picture,synopsis,mean,start_date,end_date,genres,alternative_titles,num_episodes,status,media_type,source,average_episode_duration,studios,producers,rating"
+        }
 
         val request = Request.Builder()
             .url(url)
@@ -577,16 +629,19 @@ object MetadataFetchManager {
                 ?: return Result.failure(Exception("Empty response from MyAnimeList"))
 
             val json = JSONObject(body)
-            val data = json.optJSONArray("data")
-            if (data == null || data.length() == 0) {
-                return Result.failure(Exception("No anime results found on MyAnimeList for '$query'"))
+            val node = if (directMalId != null) {
+                json
+            } else {
+                val data = json.optJSONArray("data")
+                if (data == null || data.length() == 0) {
+                    return Result.failure(Exception("No anime results found on MyAnimeList for '$query'"))
+                }
+                data.getJSONObject(0).optJSONObject("node")
+                    ?: return Result.failure(Exception("Invalid node structure from MAL"))
             }
 
-            val node = data.getJSONObject(0).optJSONObject("node")
-                ?: return Result.failure(Exception("Invalid node structure from MAL"))
-
-            val malIdNum = node.optInt("id", 0)
-            val defaultTitle = node.optString("title", query)
+            val malIdNum = node.optInt("id", directMalId ?: 0)
+            val defaultTitle = node.optString("title", if (directMalId != null) "Anime #$directMalId" else query)
             val synopsis = node.optString("synopsis", "No synopsis available.")
             val mainPic = node.optJSONObject("main_picture")
             val posterUrl = mainPic?.optString("large", mainPic.optString("medium", "")) ?: ""
