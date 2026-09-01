@@ -51,6 +51,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.streamhub.app.data.MyListManager
 import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.ui.components.SeasonArcSelectorSheet
+import com.streamhub.app.ui.components.ArcEpisodeEditorDialog
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -157,6 +158,7 @@ fun DetailsScreen(
         mutableStateOf(distinctArcs.firstOrNull() ?: "")
     }
     var isArcSheetOpen by remember { mutableStateOf(false) }
+    var selectedArcForEdit by remember { mutableStateOf<com.streamhub.app.data.SeasonArcOption?>(null) }
 
     BackHandler(enabled = currentMediaId != mediaId) {
         currentMediaId = mediaId
@@ -1089,6 +1091,37 @@ fun DetailsScreen(
             onSelectOption = { opt ->
                 isArcSheetOpen = false
                 selectedArcName = opt.internalArcName
+            },
+            onEditArc = { opt ->
+                isArcSheetOpen = false
+                selectedArcForEdit = opt
+            }
+        )
+    }
+
+    selectedArcForEdit?.let { arcOpt ->
+        ArcEpisodeEditorDialog(
+            mediaItem = mediaItem,
+            arcOption = arcOpt,
+            onDismiss = { selectedArcForEdit = null },
+            onSaveArcEpisodes = { updatedArcEpisodes ->
+                val targetArc = arcOpt.internalArcName
+                val targetSeason = arcOpt.internalSeasonNumber.coerceAtLeast(1)
+
+                val otherEpisodes = mediaItem.episodes.filterNot { ep ->
+                    if (targetArc.isNotBlank()) {
+                        ep.arcName.equals(targetArc, ignoreCase = true)
+                    } else {
+                        ep.seasonNumber == targetSeason
+                    }
+                }
+
+                val mergedEpisodes = (otherEpisodes + updatedArcEpisodes)
+                    .sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+
+                val updatedMediaItem = mediaItem.copy(episodes = mergedEpisodes)
+                repository.saveMediaItem(updatedMediaItem)
+                selectedArcForEdit = null
             }
         )
     }

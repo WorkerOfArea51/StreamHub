@@ -48,7 +48,11 @@ import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 
-@OptIn(ExperimentalMaterial3Api::class)
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.filled.Edit
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun SeasonArcSelectorSheet(
     title: String = "Select Season",
@@ -58,7 +62,8 @@ fun SeasonArcSelectorSheet(
     selectedArcName: String = "",
     currentMedia: com.streamhub.app.data.models.MediaItem? = null,
     onDismiss: () -> Unit,
-    onSelectOption: (SeasonArcOption) -> Unit
+    onSelectOption: (SeasonArcOption) -> Unit,
+    onEditArc: ((SeasonArcOption) -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val isArcMode = title.contains("Arc", ignoreCase = true)
@@ -171,14 +176,23 @@ fun SeasonArcSelectorSheet(
                     } else ""
 
                     Surface(
-                        onClick = { onSelectOption(opt) },
                         shape = RoundedCornerShape(14.dp),
                         color = if (isSelected) Color(0xFF261D18) else SurfaceDark,
                         border = BorderStroke(
                             width = if (isSelected) 1.5.dp else 1.dp,
                             color = if (isSelected) AccentGold else CardBorderDark
                         ),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .combinedClickable(
+                                onClick = { onSelectOption(opt) },
+                                onLongClick = {
+                                    if (isArcMode && onEditArc != null) {
+                                        onEditArc(opt)
+                                    }
+                                }
+                            )
                     ) {
                         Row(
                             modifier = Modifier
@@ -236,7 +250,23 @@ fun SeasonArcSelectorSheet(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+
+                            // Quick Edit Arc Action (if arc mode & callback provided)
+                            if (isArcMode && onEditArc != null) {
+                                IconButton(
+                                    onClick = { onEditArc(opt) },
+                                    modifier = Modifier.size(30.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "Edit Arc Links",
+                                        tint = Color(0xFFB388FF),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
 
                             // Checkmark or chevron
                             if (isSelected) {
