@@ -136,7 +136,10 @@ object UserTelemetryManager {
 
         cachedCountryCode = prefs?.getString("saved_country_code", "") ?: ""
         cachedCountryName = prefs?.getString("saved_country_name", "") ?: ""
-        cachedCountryFlag = prefs?.getString("saved_country_flag", "") ?: ""
+        val savedFlag = prefs?.getString("saved_country_flag", "") ?: ""
+        cachedCountryFlag = if (savedFlag.isBlank() || savedFlag.startsWith("{") || savedFlag.contains("http") || savedFlag.length > 4) {
+            if (cachedCountryCode.isNotBlank()) countryCodeToEmoji(cachedCountryCode) else ""
+        } else savedFlag
 
         fetchRealGeoLocation()
         startHeartbeat()
@@ -337,6 +340,12 @@ object UserTelemetryManager {
                             else -> guest++
                         }
 
+                        val rawCode = doc.getString("countryCode") ?: "US"
+                        val rawFlag = doc.getString("flagEmoji") ?: ""
+                        val cleanFlag = if (rawFlag.isBlank() || rawFlag.startsWith("{") || rawFlag.contains("http") || rawFlag.length > 4) {
+                            countryCodeToEmoji(rawCode)
+                        } else rawFlag
+
                         val session = UserSessionInfo(
                             clientId = doc.id,
                             tier = tier,
@@ -359,9 +368,9 @@ object UserTelemetryManager {
                             architecture = doc.getString("architecture") ?: "ARM64",
                             batteryPercent = doc.getLong("batteryPercent")?.toInt() ?: 100,
                             isCharging = doc.getBoolean("isCharging") ?: false,
-                            countryCode = doc.getString("countryCode") ?: "US",
+                            countryCode = rawCode,
                             countryName = doc.getString("countryName") ?: "United States",
-                            flagEmoji = doc.getString("flagEmoji") ?: "🌐",
+                            flagEmoji = cleanFlag,
                             isEmulator = doc.getBoolean("isEmulator") ?: false,
                             isRooted = doc.getBoolean("isRooted") ?: false,
                             isVpnActive = doc.getBoolean("isVpnActive") ?: false,
@@ -732,11 +741,12 @@ object UserTelemetryManager {
                     if (json.optBoolean("success", false)) {
                         val code = json.optString("country_code", "").uppercase(Locale.ROOT)
                         val name = json.optString("country", "")
-                        val flag = json.optString("flag", "")
+                        val flagObj = json.optJSONObject("flag")
+                        val emoji = flagObj?.optString("emoji", "") ?: ""
                         if (code.isNotBlank() && name.isNotBlank()) {
                             cachedCountryCode = code
                             cachedCountryName = name
-                            cachedCountryFlag = if (flag.isNotBlank()) flag else countryCodeToEmoji(code)
+                            cachedCountryFlag = if (emoji.isNotBlank() && emoji.length <= 4 && !emoji.startsWith("{")) emoji else countryCodeToEmoji(code)
                             prefs?.edit()
                                 ?.putString("saved_country_code", cachedCountryCode)
                                 ?.putString("saved_country_name", cachedCountryName)
@@ -782,10 +792,11 @@ object UserTelemetryManager {
         }
     }
 
-    private fun countryCodeToEmoji(code: String): String {
-        if (code.length != 2) return "🌐"
-        val firstChar = Character.codePointAt(code.uppercase(), 0) - 0x41 + 0x1F1E6
-        val secondChar = Character.codePointAt(code.uppercase(), 1) - 0x41 + 0x1F1E6
+    fun countryCodeToEmoji(code: String): String {
+        val clean = code.trim().uppercase(Locale.ROOT)
+        if (clean.length != 2 || !clean.all { it in 'A'..'Z' }) return "🌐"
+        val firstChar = Character.codePointAt(clean, 0) - 0x41 + 0x1F1E6
+        val secondChar = Character.codePointAt(clean, 1) - 0x41 + 0x1F1E6
         return String(Character.toChars(firstChar)) + String(Character.toChars(secondChar))
     }
 
