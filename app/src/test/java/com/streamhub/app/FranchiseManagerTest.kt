@@ -308,4 +308,41 @@ class FranchiseManagerTest {
         assertEquals("prequel_2021", sorted[0].id)
         assertEquals("main_2018", sorted[1].id)
     }
+
+    @Test
+    fun testFranchise_movieWithCustomSeasonNumberMaintainsMovieFormatAndSubtitle() {
+        // Scenario: Dragon Ball Super (TV) + Dragon Ball Super: Broly (Movie assigned Season # 4)
+        val dbsTv = MediaItem(
+            id = "dbs_tv",
+            title = "Dragon Ball Super",
+            category = "Anime",
+            type = "SERIES",
+            releaseYear = "2015",
+            seasonNumber = 4,
+            totalEpisodes = "131 Eps",
+            franchiseId = "dragon-ball"
+        )
+        val brolyMovie = MediaItem(
+            id = "dbs_broly",
+            title = "Dragon Ball Super: Broly",
+            category = "Anime",
+            type = "MOVIE",
+            relationType = "Sequel • Movie",
+            releaseYear = "2018",
+            duration = "100 min",
+            seasonNumber = 4,
+            franchiseId = "dragon-ball"
+        )
+
+        // 1. Format label must remain MOVIE
+        assertEquals("MOVIE", FranchiseManager.getMediaFormatLabel(brolyMovie))
+        assertEquals("TV", FranchiseManager.getMediaFormatLabel(dbsTv))
+
+        // 2. Tag must be SEQUEL • MOVIE
+        assertEquals("SEQUEL • MOVIE", FranchiseManager.getFranchiseTag(brolyMovie, dbsTv))
+
+        // 3. Subtitle must show release year and duration, NOT "Season 4"
+        val subtitle = FranchiseManager.getSeasonCardSubtitle(brolyMovie)
+        assertEquals("2018 • 100 min", subtitle)
+    }
 }

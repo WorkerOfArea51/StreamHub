@@ -228,6 +228,7 @@ class StreamPlayerViewModel : ViewModel() {
             val listener = object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     _uiState.update { it.copy(isPlaying = isPlaying) }
+                    syncTelemetry(if (isPlaying) "PLAYING" else "PAUSED")
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -246,6 +247,14 @@ class StreamPlayerViewModel : ViewModel() {
                         exoPlayer?.let { updateAvailableTracks(it.currentTracks) }
                         resetRetryCounter()  // NEW: clear retry counter on successful playback
                     }
+
+                    val state = when {
+                        isBuffering -> "BUFFERING"
+                        playbackState == Player.STATE_ENDED -> "IDLE"
+                        exoPlayer?.isPlaying == true -> "PLAYING"
+                        else -> "PAUSED"
+                    }
+                    syncTelemetry(state)
 
                     if (playbackState == Player.STATE_ENDED) {
                         // FIX: Clear stale pending seek target before next episode starts.
@@ -583,7 +592,15 @@ class StreamPlayerViewModel : ViewModel() {
 
         val watchingTitle = currentMediaItem?.title ?: episode.title
         if (watchingTitle.isNotBlank()) {
-            com.streamhub.app.data.UserTelemetryManager.updateCurrentActivity("Watching $watchingTitle")
+            com.streamhub.app.data.UserTelemetryManager.updatePlaybackState(
+                mediaTitle = currentMediaItem?.title ?: episode.title,
+                episodeTitle = episode.title,
+                seasonNumber = episode.seasonNumber,
+                episodeNumber = if (episode.episodeNumber > 0) episode.episodeNumber else (index + 1),
+                positionMs = startPositionMs,
+                durationMs = fallbackDurationMs,
+                playerState = "BUFFERING"
+            )
         }
 
         // FIX: Cancel previous preload job when starting a new episode — preloader will be eligible again.
@@ -1265,7 +1282,25 @@ class StreamPlayerViewModel : ViewModel() {
         lastBufferedBytes = 0L
         lastSpeedSampleMs = 0L
         speedSamples.clear()
-        com.streamhub.app.data.UserTelemetryManager.updateCurrentActivity("Browsing Catalog")
+        com.streamhub.app.data.UserTelemetryManager.clearPlaybackState()
+    }
+
+    private fun syncTelemetry(playerState: String) {
+        val media = currentMediaItem ?: return
+        val epIndex = _uiState.value.currentEpisodeIndex
+        val ep = media.episodes.getOrNull(epIndex)
+        val pos = exoPlayer?.currentPosition?.coerceAtLeast(0L) ?: _uiState.value.currentPositionMs
+        val dur = exoPlayer?.duration?.coerceAtLeast(0L) ?: _uiState.value.durationMs
+        val epNum = if (ep != null && ep.episodeNumber > 0) ep.episodeNumber else (epIndex + 1)
+        com.streamhub.app.data.UserTelemetryManager.updatePlaybackState(
+            mediaTitle = media.title,
+            episodeTitle = ep?.title ?: "",
+            seasonNumber = ep?.seasonNumber ?: 1,
+            episodeNumber = epNum,
+            positionMs = pos,
+            durationMs = dur,
+            playerState = playerState
+        )
     }
 
     override fun onCleared() {

@@ -202,13 +202,14 @@ fun SeasonArcSelectorSheet(
                         ) {
                             // Badge Tag (e.g. S1, S2, ARC 1, MOVIE)
                             val badgeColor = when {
-                                isSelected || opt.isCurrent || optTag.startsWith("CURRENT") -> AccentGold
+                                isSelected -> AccentGold
+                                !isArcMode && (opt.isCurrent || optTag.startsWith("CURRENT")) -> AccentGold
                                 optTag.startsWith("SEQUEL") -> Color(0xFF00E676)
                                 optTag.startsWith("PREQUEL") -> Color(0xFF7C4DFF)
                                 optTag.startsWith("SIDE STORY") || optTag.startsWith("SPIN-OFF") || optTag.contains("OVA") || optTag.contains("ONA") || optTag.contains("SPECIAL") -> Color(0xFF38BDF8)
                                 opt.badge.startsWith("ARC", true) -> Color(0xFF7C4DFF)
                                 opt.badge.equals("MOVIE", true) || optTag.contains("MOVIE") -> AccentOrange
-                                else -> AccentGold
+                                else -> Color(0xFF7C4DFF)
                             }
 
                             Box(

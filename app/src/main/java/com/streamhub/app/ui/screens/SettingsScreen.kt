@@ -18,8 +18,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -27,9 +25,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,9 +32,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.streamhub.app.data.AdminManager
-import com.streamhub.app.data.repository.FirebaseRepository
-import com.streamhub.app.ui.components.CatalogBackupDialog
 import com.streamhub.app.ui.screens.settings.AboutCard
 import com.streamhub.app.ui.screens.settings.AppUpdateCard
 import com.streamhub.app.ui.screens.settings.DownloadPathCard
@@ -64,8 +56,6 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val currentAccent by ThemeManager.currentAccent.collectAsState()
-    val isAdminMode by AdminManager.isAdminMode.collectAsState()
-    var showBackupDialog by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -161,75 +151,6 @@ fun SettingsScreen(
             item(key = "card_updates") {
                 AppUpdateCard()
             }
-
-            // Admin & Database Management (Visible to Admins)
-            if (isAdminMode) {
-                item(key = "cat_admin_database") {
-                    SettingsCategoryHeader(title = "ADMIN & DATABASE MANAGEMENT", accentColor = Color(0xFF38BDF8))
-                }
-
-                item(key = "card_catalog_backup") {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = SurfaceDark,
-                        border = BorderStroke(1.dp, CardBorderDark),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showBackupDialog = true }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(Color(0xFF0284C7).copy(alpha = 0.2f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CloudDownload,
-                                        contentDescription = null,
-                                        tint = Color(0xFF38BDF8),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Column {
-                                    Text(
-                                        text = "1-Click Catalog Backup & Restore",
-                                        color = TextPrimary,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "Export or restore entire Firestore catalog JSON",
-                                        color = TextSecondary,
-                                        fontSize = 11.sp
-                                    )
-                                }
-                            }
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                contentDescription = null,
-                                tint = TextSecondary
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        if (showBackupDialog) {
-            CatalogBackupDialog(
-                repository = FirebaseRepository.getInstance(),
-                onDismiss = { showBackupDialog = false }
-            )
         }
     }
 }

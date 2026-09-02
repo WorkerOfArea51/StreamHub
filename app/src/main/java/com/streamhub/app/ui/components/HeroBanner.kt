@@ -1,7 +1,10 @@
 package com.streamhub.app.ui.components
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -21,10 +25,14 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +45,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.streamhub.app.data.MyListManager
 import com.streamhub.app.data.models.MediaItem
+import com.streamhub.app.ui.components.FolderSelectionDialog
+import com.streamhub.app.ui.components.ToastManager
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.CardBorderDark
@@ -44,6 +54,7 @@ import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HeroBanner(
     media: MediaItem,
@@ -53,6 +64,7 @@ fun HeroBanner(
 ) {
     val myListSet by MyListManager.myListFlow.collectAsState()
     val isBookmarked = myListSet.contains(media.id)
+    var showFolderSelectionDialog by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -178,27 +190,56 @@ fun HeroBanner(
                     )
                 }
 
-                OutlinedButton(
-                    onClick = {
-                        MyListManager.toggleBookmark(media.id)
-                        onAddToListClick(media)
-                    },
+                Surface(
                     shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.weight(1f)
+                    color = if (isBookmarked) Color(0x33FF9800) else Color(0x22181824),
+                    border = BorderStroke(1.dp, if (isBookmarked) AccentOrange else Color(0x44FFFFFF)),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .combinedClickable(
+                            onClick = {
+                                val added = MyListManager.toggleBookmark(media.id)
+                                val msg = if (added) "Added to My List • Hold to choose folder 📁" else "Removed from My List"
+                                ToastManager.showToast(msg)
+                                onAddToListClick(media)
+                            },
+                            onLongClick = {
+                                showFolderSelectionDialog = true
+                            }
+                        )
                 ) {
-                    Icon(
-                        imageVector = if (isBookmarked) Icons.Default.Check else Icons.Default.Add,
-                        contentDescription = "My List",
-                        tint = if (isBookmarked) AccentOrange else TextPrimary
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = if (isBookmarked) "In My List" else "My List",
-                        color = if (isBookmarked) AccentOrange else TextPrimary,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isBookmarked) Icons.Default.Check else Icons.Default.Add,
+                            contentDescription = "My List",
+                            tint = if (isBookmarked) AccentOrange else TextPrimary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (isBookmarked) "In My List" else "My List",
+                            color = if (isBookmarked) AccentOrange else TextPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                    }
                 }
             }
+        }
+
+        if (showFolderSelectionDialog) {
+            FolderSelectionDialog(
+                mediaItem = media,
+                onDismiss = { showFolderSelectionDialog = false }
+            )
         }
     }
 }

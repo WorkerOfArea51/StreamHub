@@ -52,7 +52,12 @@ fun MediaCard(
 ) {
     val isMovie = item.category.equals("MOVIE", ignoreCase = true) || 
                   item.category.equals("Movies", ignoreCase = true) || 
-                  item.type.equals("MOVIE", ignoreCase = true)
+                  item.type.equals("MOVIE", ignoreCase = true) ||
+                  item.relationType.contains("Movie", ignoreCase = true)
+
+    val effectiveSeason = com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(item)
+    val detectedPart = com.streamhub.app.data.FranchiseManager.detectChapterOrPartNumber(item.title)
+    val movieSeq = if (isMovie) (detectedPart ?: item.seasonNumber.takeIf { it > 1 }) else null
 
     val watchHistory by WatchHistoryManager.historyFlow.collectAsState()
     val progress = watchHistory[item.id]
@@ -94,8 +99,8 @@ fun MediaCard(
                     )
             )
 
-            // Season / Relation Badge Top Left
-            if (!isMovie && item.seasonNumber > 1) {
+            // Season / Relation / Movie Sequence Badge Top Left
+            if (!isMovie && effectiveSeason > 1) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -105,7 +110,23 @@ fun MediaCard(
                         .padding(horizontal = 5.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = "S${item.seasonNumber}",
+                        text = "S$effectiveSeason",
+                        color = Color.White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            } else if (isMovie && movieSeq != null && movieSeq > 1) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xCCFF5722))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "M$movieSeq",
                         color = Color.White,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Black
@@ -207,8 +228,10 @@ fun MediaCard(
         } else {
             buildString {
                 append(item.category)
-                if (!isMovie && item.seasonNumber > 1) {
-                    append(" • Season ${item.seasonNumber}")
+                if (!isMovie && effectiveSeason > 1) {
+                    append(" • Season $effectiveSeason")
+                } else if (isMovie && movieSeq != null && movieSeq > 1) {
+                    append(" • Movie $movieSeq")
                 }
                 if (item.releaseYear.isNotBlank()) {
                     append(" • ${item.releaseYear}")

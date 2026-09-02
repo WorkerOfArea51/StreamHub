@@ -394,6 +394,25 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
+    LaunchedEffect(currentRoute) {
+        if (currentRoute != null) {
+            val screenTitle = when {
+                currentRoute.startsWith("details/") -> "Media Details"
+                currentRoute.startsWith("player/") -> "Video Player"
+                currentRoute == Screen.Home.route -> "Home Feed"
+                currentRoute == Screen.Search.route -> "Explore & Search"
+                currentRoute == Screen.Downloads.route -> "Downloads Manager"
+                currentRoute == Screen.MyList.route -> "My List"
+                currentRoute == Screen.Profile.route -> "My Space & Settings"
+                currentRoute == Screen.History.route -> "Watch History"
+                currentRoute == Screen.Admin.route -> "Admin Studio"
+                currentRoute == Screen.Settings.route -> "Settings"
+                else -> currentRoute
+            }
+            com.streamhub.app.data.UserTelemetryManager.updateCurrentScreen(screenTitle)
+        }
+    }
+
     val bottomBarScreens = remember {
         listOf(
             Screen.Home,

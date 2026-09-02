@@ -17,6 +17,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.mutableStateOf
+import com.streamhub.app.ui.components.FolderSelectionDialog
+import com.streamhub.app.ui.components.ToastManager
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.lifecycle.Lifecycle
@@ -73,6 +79,7 @@ fun HeroCarousel(
     val myListSet by MyListManager.myListFlow.collectAsState()
 
     var lastInteractionTime by remember { mutableLongStateOf(0L) }
+    var selectedMediaForFolder by remember { mutableStateOf<MediaItem?>(null) }
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
@@ -216,26 +223,48 @@ fun HeroCarousel(
                             Text("Watch Now 🍿", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
 
-                        OutlinedButton(
-                            onClick = {
-                                lastInteractionTime = System.currentTimeMillis()
-                                MyListManager.toggleBookmark(media.id)
-                            },
+                        Surface(
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f)
+                            color = if (isBookmarked) primaryColor.copy(alpha = 0.2f) else Color(0x22181824),
+                            border = BorderStroke(1.dp, if (isBookmarked) primaryColor else Color(0x44FFFFFF)),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .combinedClickable(
+                                    onClick = {
+                                        lastInteractionTime = System.currentTimeMillis()
+                                        val added = MyListManager.toggleBookmark(media.id)
+                                        val msg = if (added) "Added to My List • Hold to choose folder 📁" else "Removed from My List"
+                                        ToastManager.showToast(msg)
+                                    },
+                                    onLongClick = {
+                                        lastInteractionTime = System.currentTimeMillis()
+                                        selectedMediaForFolder = media
+                                    }
+                                )
                         ) {
-                            Icon(
-                                imageVector = if (isBookmarked) Icons.Default.Check else Icons.Default.Add,
-                                contentDescription = "My List",
-                                tint = primaryColor
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (isBookmarked) "In My List" else "My List",
-                                color = primaryColor,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isBookmarked) Icons.Default.Check else Icons.Default.Add,
+                                    contentDescription = "My List",
+                                    tint = primaryColor,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (isBookmarked) "In My List" else "My List",
+                                    color = primaryColor,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            }
                         }
                     }
                 }
@@ -260,6 +289,13 @@ fun HeroCarousel(
                     )
                 }
             }
+        }
+
+        selectedMediaForFolder?.let { targetMedia ->
+            FolderSelectionDialog(
+                mediaItem = targetMedia,
+                onDismiss = { selectedMediaForFolder = null }
+            )
         }
     }
 }

@@ -1,7 +1,6 @@
 package com.streamhub.app.ui.screens.player.controls
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
@@ -28,10 +27,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -50,13 +49,12 @@ fun BrightnessSliderCard(
         modifier = modifier
     ) {
         val clamped = brightness.coerceIn(0f, 1f)
-        val targetHeight by animateFloatAsState(clamped, label = "brightness_height")
 
         Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = Color(0xD91E1E2C),
-            border = BorderStroke(1.dp, Color(0x40FFFFFF)),
-            shadowElevation = 10.dp
+            shape = RoundedCornerShape(22.dp),
+            color = Color(0xF012111E),
+            border = BorderStroke(1.2.dp, Color(0x55FFB74D)),
+            shadowElevation = 12.dp
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 18.dp),
@@ -83,9 +81,13 @@ fun BrightnessSliderCard(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .fillMaxHeight(targetHeight)
-                            .clip(RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp))
-                            .background(Color(0xFFFFB74D))
+                            .fillMaxHeight(clamped)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFFFFD54F), Color(0xFFFF9800))
+                                )
+                            )
                     )
                 }
 
@@ -119,14 +121,12 @@ fun VolumeSliderCard(
         val clamped = volumePercent.coerceIn(0, 200)
         val normalFraction = (clamped.coerceAtMost(100) / 100f)
         val boostFraction = if (clamped > 100) ((clamped - 100) / 100f) else 0f
-        val targetHeight by animateFloatAsState(normalFraction, label = "vol_normal")
-        val boostHeight by animateFloatAsState(boostFraction, label = "vol_boost")
 
         Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = Color(0xD91E1E2C),
-            border = BorderStroke(1.dp, if (clamped > 100) Color(0xFFFF5252) else Color(0x40FFFFFF)),
-            shadowElevation = 10.dp
+            shape = RoundedCornerShape(22.dp),
+            color = Color(0xF012111E),
+            border = BorderStroke(1.2.dp, if (clamped > 100) Color(0xFFFF5252) else Color(0x55D0BCFF)),
+            shadowElevation = 12.dp
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 18.dp),
@@ -154,18 +154,27 @@ fun VolumeSliderCard(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .fillMaxHeight(targetHeight)
-                            .clip(RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp))
-                            .background(Color(0xFFD0BCFF))
+                            .fillMaxHeight(normalFraction)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFFE8DEF8), Color(0xFFD0BCFF))
+                                )
+                            )
                     )
 
-                    // Audio boost fill (red overlay)
+                    // Audio boost fill (red overlay on top of normal volume)
                     if (boostFraction > 0f) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .fillMaxHeight(boostHeight)
-                                .background(Color(0xFFFF5252))
+                                .fillMaxHeight(boostFraction)
+                                .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFFFF8A80), Color(0xFFFF5252))
+                                )
+                            )
                         )
                     }
                 }

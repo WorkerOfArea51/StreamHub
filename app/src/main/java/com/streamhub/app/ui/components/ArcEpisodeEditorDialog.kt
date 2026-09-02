@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -97,6 +98,9 @@ fun ArcEpisodeEditorDialog(
 
     val arcEpisodes = remember { mutableStateListOf<Episode>().apply { addAll(initialArcEpisodes) } }
 
+    var currentArcName by remember(arcOption.internalArcName) {
+        mutableStateOf(arcOption.internalArcName.ifBlank { "Arc ${arcOption.internalSeasonNumber}" })
+    }
     var rawSnippetText by remember { mutableStateOf("") }
     var f2lBatchInput by remember { mutableStateOf("") }
     var isFetchingF2l by remember { mutableStateOf(false) }
@@ -232,6 +236,51 @@ fun ArcEpisodeEditorDialog(
                         .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    // Story Arc Name / Saga Title Edit Card
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = SurfaceDark,
+                            border = BorderStroke(1.dp, Color(0xFF7C4DFF).copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = null,
+                                        tint = Color(0xFFB388FF),
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Text(
+                                        text = "Story Arc / Saga Title",
+                                        color = Color(0xFFB388FF),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                OutlinedTextField(
+                                    value = currentArcName,
+                                    onValueChange = { currentArcName = it },
+                                    label = { Text("Arc Name (Rename this entire Arc)", color = TextSecondary, fontSize = 11.sp) },
+                                    placeholder = { Text("e.g. Universe Survival Arc Part 2: Tournament of Power", color = TextSecondary, fontSize = 11.sp) },
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Color(0xFF7C4DFF),
+                                        unfocusedBorderColor = Color(0xFF2C2C3E),
+                                        focusedTextColor = TextPrimary,
+                                        unfocusedTextColor = TextPrimary
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+
                     // 1-Click F2L Bot Importer for this Arc
                     item {
                         Surface(
@@ -613,7 +662,11 @@ fun ArcEpisodeEditorDialog(
 
                     Button(
                         onClick = {
-                            onSaveArcEpisodes(arcEpisodes.toList())
+                            val finalArcName = currentArcName.trim().ifBlank { targetArcName }
+                            val updatedEpisodes = arcEpisodes.map { ep ->
+                                ep.copy(arcName = finalArcName)
+                            }
+                            onSaveArcEpisodes(updatedEpisodes)
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
                         shape = RoundedCornerShape(12.dp),

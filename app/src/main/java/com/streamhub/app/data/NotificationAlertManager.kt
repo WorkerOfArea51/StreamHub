@@ -159,4 +159,51 @@ object NotificationAlertManager {
             Log.e(TAG, "Failed to send notification: ${e.message}", e)
         }
     }
+
+    /**
+     * Dispatches an instant remote Admin or Global Announcement notification to the Android Notification Shade.
+     */
+    fun sendAdminAlertNotification(
+        context: Context,
+        title: String,
+        message: String,
+        notificationId: Int = (System.currentTimeMillis() % 100000).toInt()
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val permissionStatus = context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+            if (permissionStatus != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                Log.w(TAG, "POST_NOTIFICATIONS permission not granted — skipping admin notification")
+                return
+            }
+        }
+
+        try {
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                notificationId,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setDefaults(NotificationCompat.DEFAULT_ALL)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            notificationManager?.notify(notificationId, builder.build())
+            Log.i(TAG, "Triggered admin alert notification: $title")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send admin alert notification: ${e.message}", e)
+        }
+    }
 }

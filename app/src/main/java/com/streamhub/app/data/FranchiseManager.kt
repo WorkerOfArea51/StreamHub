@@ -179,25 +179,25 @@ object FranchiseManager {
         val isExplicitMovie = relUpper.contains("MOVIE") ||
                 catUpper == "MOVIE" ||
                 catUpper == "MOVIES" ||
-                typeUpper == "MOVIE" ||
                 titleUpper.contains(" MOVIE") ||
                 titleUpper.endsWith("MOVIE") ||
                 titleUpper.contains(" THE MOVIE")
-
-        if (catUpper == "ANIME" || catUpper == "ANIMES" || catUpper == "WEB_SERIES" || catUpper == "SERIES" || typeUpper == "SERIES") {
-            // It's anime/series category — check if it's explicitly a franchise film/movie
-            return if (isExplicitMovie && item.seasonNumber <= 1 && item.episodes.size <= 1 && !titleUpper.contains("SEASON")) "MOVIE" else "TV"
-        }
 
         if (isExplicitMovie) {
             return "MOVIE"
         }
 
-        if (item.seasonNumber > 1 || titleUpper.contains("SEASON") || relUpper.contains("TV")) {
+        if (catUpper == "WEB_SERIES" || catUpper == "SERIES" || typeUpper == "SERIES" ||
+            titleUpper.contains("SEASON") || relUpper.contains("TV") || item.episodes.size > 1
+        ) {
             return "TV"
         }
 
-        return if (catUpper == "MOVIE" || typeUpper == "MOVIE") "MOVIE" else "TV"
+        if (typeUpper == "MOVIE" || catUpper == "MOVIE" || catUpper == "MOVIES") {
+            return "MOVIE"
+        }
+
+        return "TV"
     }
 
     /**
@@ -250,7 +250,7 @@ object FranchiseManager {
      */
     fun getSeasonCardSubtitle(item: MediaItem): String {
         val format = getMediaFormatLabel(item)
-        val isMovie = format == "MOVIE"
+        val isMovie = format == "MOVIE" || format == "OVA" || format == "ONA" || format == "SPECIAL" || format == "TV SPECIAL"
         val sNum = getEffectiveSeasonNumber(item)
         val parts = mutableListOf<String>()
 
@@ -258,11 +258,16 @@ object FranchiseManager {
             if (item.releaseYear.isNotBlank()) {
                 parts.add(item.releaseYear)
             }
+            if (format != "MOVIE") {
+                parts.add(format)
+            }
             if (item.duration.isNotBlank()) {
-                parts.add(item.duration)
+                val dur = item.duration.trim()
+                parts.add(if (dur.endsWith("min", ignoreCase = true) || dur.endsWith("m", ignoreCase = true)) dur else "${dur}m")
             } else if (item.episodes.isNotEmpty()) {
                 val durMs = item.episodes.first().durationMs
                 if (durMs > 0) parts.add("${durMs / 60000}m")
+                else if (item.episodes.size > 1) parts.add("${item.episodes.size} Eps")
             }
         } else {
             if (sNum > 0) {
@@ -360,7 +365,7 @@ object FranchiseManager {
                 targetMediaItem = currentItem,
                 internalSeasonNumber = arcEps.firstOrNull()?.seasonNumber ?: 1,
                 internalArcName = arcName,
-                isCurrent = index == 0
+                isCurrent = false
             )
         }
     }

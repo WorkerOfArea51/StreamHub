@@ -5,8 +5,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -85,6 +87,7 @@ import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.models.PlaybackProgress
 import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.ui.components.FolderSelectionDialog
 import com.streamhub.app.ui.components.MediaCard
 import com.streamhub.app.ui.theme.AccentGold
 import com.streamhub.app.ui.theme.AccentOrange
@@ -631,48 +634,14 @@ fun MyListScreen(
 
     // ── Dialog: Move Title into Collection / Folder ──
     itemToManageCollection?.let { item ->
-        val currentFolder = myItemsMap[item.id]?.collection ?: "Watchlist"
-        AlertDialog(
-            onDismissRequest = { itemToManageCollection = null },
-            title = { Text("Organize Folder 📁", color = TextPrimary, fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Select a folder for '${item.title}':", color = TextSecondary, fontSize = 12.sp)
-                    collections.forEach { col ->
-                        val isSelected = currentFolder.equals(col, ignoreCase = true)
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (isSelected) Color(0xFF0284C7) else Color(0xFF1A1A28),
-                            border = BorderStroke(1.dp, if (isSelected) Color(0xFF38BDF8) else CardBorderDark),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    MyListManager.setCollection(item.id, col)
-                                    itemToManageCollection = null
-                                    Toast.makeText(context, "Moved to '$col'", Toast.LENGTH_SHORT).show()
-                                }
-                        ) {
-                            Text(
-                                text = "📁 $col",
-                                color = if (isSelected) Color.White else TextPrimary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(12.dp)
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { itemToManageCollection = null }) {
-                    Text("Close", color = TextSecondary)
-                }
-            },
-            containerColor = SurfaceDark
+        FolderSelectionDialog(
+            mediaItem = item,
+            onDismiss = { itemToManageCollection = null }
         )
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MyListGridCard(
     item: MediaItem,
@@ -688,7 +657,11 @@ fun MyListGridCard(
         border = BorderStroke(1.dp, CardBorderDark),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clip(RoundedCornerShape(12.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onManageCollection
+            )
     ) {
         Column {
             Box(
@@ -715,40 +688,68 @@ fun MyListGridCard(
                         )
                 )
 
-                // Favorite Heart Button (Top Right)
-                IconButton(
-                    onClick = onToggleFavorite,
+                // Top Header Overlay: Rating on Left, Folder + Favorite Buttons on Right
+                Row(
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(4.dp)
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x88000000))
+                        .fillMaxWidth()
+                        .padding(5.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
                 ) {
-                    Icon(
-                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = "Favorite",
-                        tint = if (isFavorite) Color(0xFFFF5252) else Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-
-                // Rating Badge (Top Left)
-                if (item.rating.isNotBlank()) {
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = Color(0xCC000000),
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(6.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    // Rating Badge (Top Left)
+                    if (item.rating.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xCC000000)
                         ) {
-                            Icon(Icons.Default.Star, contentDescription = null, tint = AccentGold, modifier = Modifier.size(10.dp))
-                            Text(text = item.rating, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Row(
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Icon(Icons.Default.Star, contentDescription = null, tint = AccentGold, modifier = Modifier.size(10.dp))
+                                Text(text = item.rating, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.width(1.dp))
+                    }
+
+                    // Action Buttons (Top Right)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Folder Button (Opens folder picker)
+                        IconButton(
+                            onClick = onManageCollection,
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xCC0A0A12))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = "Folder",
+                                tint = Color(0xFF38BDF8),
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+
+                        // Favorite Heart Button
+                        IconButton(
+                            onClick = onToggleFavorite,
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xCC0A0A12))
+                        ) {
+                            Icon(
+                                imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = "Favorite",
+                                tint = if (isFavorite) Color(0xFFFF5252) else Color.White,
+                                modifier = Modifier.size(15.dp)
+                            )
                         }
                     }
                 }
@@ -800,6 +801,7 @@ fun MyListGridCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MyListRowItem(
     item: MediaItem,
@@ -816,7 +818,11 @@ fun MyListRowItem(
         border = BorderStroke(1.dp, CardBorderDark),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clip(RoundedCornerShape(12.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onManageCollection
+            )
     ) {
         Row(
             modifier = Modifier.padding(10.dp),

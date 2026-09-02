@@ -141,13 +141,32 @@ object MyListManager {
     fun setCollection(mediaId: String, collectionName: String) {
         if (!::appContext.isInitialized) return
         val currentMap = _itemsFlow.value.toMutableMap()
-        val existing = currentMap[mediaId] ?: MyListItem(mediaId = mediaId)
+        val existing = currentMap[mediaId] ?: MyListItem(mediaId = mediaId, addedAt = System.currentTimeMillis())
         val updated = existing.copy(collection = collectionName)
         currentMap[mediaId] = updated
 
         val prefs = getPrefs().edit()
         saveItemToPrefs(prefs, updated)
+        val idSet = currentMap.keys.toSet()
+        prefs.putStringSet(KEY_BOOKMARKS, idSet).apply()
+
         _itemsFlow.value = currentMap
+        _myListFlow.value = idSet
+    }
+
+    @Synchronized
+    fun removeFromList(mediaId: String) {
+        if (!::appContext.isInitialized) return
+        val currentMap = _itemsFlow.value.toMutableMap()
+        if (currentMap.containsKey(mediaId)) {
+            currentMap.remove(mediaId)
+            val prefs = getPrefs().edit()
+            prefs.remove(KEY_ITEM_PREFIX + mediaId)
+            val idSet = currentMap.keys.toSet()
+            prefs.putStringSet(KEY_BOOKMARKS, idSet).apply()
+            _itemsFlow.value = currentMap
+            _myListFlow.value = idSet
+        }
     }
 
     @Synchronized

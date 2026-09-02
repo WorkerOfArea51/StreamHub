@@ -51,9 +51,12 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.streamhub.app.data.MyListManager
 import com.streamhub.app.data.WatchHistoryManager
-import com.streamhub.app.ui.components.SeasonArcSelectorSheet
-import com.streamhub.app.ui.components.ArcEpisodeEditorDialog
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import com.streamhub.app.ui.components.ArcEpisodeEditorDialog
+import com.streamhub.app.ui.components.FolderSelectionDialog
+import com.streamhub.app.ui.components.SeasonArcSelectorSheet
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -115,6 +118,7 @@ import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DetailsScreen(
     mediaId: String,
@@ -160,6 +164,7 @@ fun DetailsScreen(
     }
     var isArcSheetOpen by remember { mutableStateOf(false) }
     var selectedArcForEdit by remember { mutableStateOf<com.streamhub.app.data.SeasonArcOption?>(null) }
+    var showFolderSelectionDialog by remember { mutableStateOf(false) }
 
     BackHandler(enabled = currentMediaId != mediaId) {
         currentMediaId = mediaId
@@ -544,32 +549,48 @@ fun DetailsScreen(
                             )
                         }
 
-                        OutlinedButton(
-                            onClick = { MyListManager.toggleBookmark(mediaItem.id) },
+                        Surface(
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = if (isBookmarked) Color(0x33FF9800) else Color(0x22181824)
-                            ),
+                            color = if (isBookmarked) Color(0x33FF9800) else Color(0x22181824),
                             border = BorderStroke(1.dp, if (isBookmarked) AccentOrange else Color(0x44FFFFFF)),
                             modifier = Modifier
                                 .weight(1f)
                                 .height(46.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .combinedClickable(
+                                    onClick = {
+                                        val added = MyListManager.toggleBookmark(mediaItem.id)
+                                        val msg = if (added) "Added to My List • Hold to choose folder 📁" else "Removed from My List"
+                                        ToastManager.showToast(msg)
+                                    },
+                                    onLongClick = {
+                                        showFolderSelectionDialog = true
+                                    }
+                                )
                         ) {
-                            Icon(
-                                imageVector = if (isBookmarked) Icons.Default.Check else Icons.Default.Add,
-                                contentDescription = "My List",
-                                tint = if (isBookmarked) AccentOrange else TextPrimary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (isBookmarked) "In My List" else "My List",
-                                color = if (isBookmarked) AccentOrange else TextPrimary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                softWrap = false
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isBookmarked) Icons.Default.Check else Icons.Default.Add,
+                                    contentDescription = "My List",
+                                    tint = if (isBookmarked) AccentOrange else TextPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (isBookmarked) "In My List" else "My List",
+                                    color = if (isBookmarked) AccentOrange else TextPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
                     }
 
@@ -1122,6 +1143,10 @@ fun DetailsScreen(
 
                 val updatedMediaItem = mediaItem.copy(episodes = mergedEpisodes)
                 repository.saveMediaItem(updatedMediaItem)
+                val newArcName = updatedArcEpisodes.firstOrNull()?.arcName ?: ""
+                if (selectedArcName.equals(targetArc, ignoreCase = true) && newArcName.isNotBlank()) {
+                    selectedArcName = newArcName
+                }
                 selectedArcForEdit = null
             }
         )
@@ -1140,6 +1165,13 @@ fun DetailsScreen(
                 showAdminEditDialog = false
                 onBackClick()
             }
+        )
+    }
+
+    if (showFolderSelectionDialog && mediaItem != null) {
+        FolderSelectionDialog(
+            mediaItem = mediaItem,
+            onDismiss = { showFolderSelectionDialog = false }
         )
     }
 }

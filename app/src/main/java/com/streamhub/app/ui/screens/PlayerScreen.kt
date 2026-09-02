@@ -495,9 +495,7 @@ fun PlayerScreen(
         }
     }
 
-    // Volume & Brightness Drag States
-    // FIX: Track system volume changes via ContentObserver — syncs when user presses
-    // the physical volume rocker while in the player.
+    // Volume & Brightness Drag States (mpvEx Parity Engine)
     val audioManager = remember { context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
     val maxVolume = remember { audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC)?.toFloat()?.coerceAtLeast(1f) ?: 1f }
 
@@ -505,17 +503,40 @@ fun PlayerScreen(
         mutableFloatStateOf(((audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0) / maxVolume) * 100f)
     }
 
-    // FIX: Register a ContentObserver to sync currentVolumePercent when the system
+    var isDraggingVolume by remember { mutableStateOf(false) }
+    var isDraggingBrightness by remember { mutableStateOf(false) }
+    var volumeHideJob by remember { mutableStateOf<Job?>(null) }
+    var brightnessHideJob by remember { mutableStateOf<Job?>(null) }
+
+    fun displayVolumeSlider() {
+        showVolumeIndicator = true
+        volumeHideJob?.cancel()
+        volumeHideJob = scope.launch {
+            delay(1500L)
+            showVolumeIndicator = false
+        }
+    }
+
+    fun displayBrightnessSlider() {
+        showBrightnessIndicator = true
+        brightnessHideJob?.cancel()
+        brightnessHideJob = scope.launch {
+            delay(1500L)
+            showBrightnessIndicator = false
+        }
+    }
+
+    // Register a ContentObserver to sync currentVolumePercent when the system
     // volume changes (physical rocker, notification shade, Bluetooth headset).
     DisposableEffect(audioManager) {
         val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
+                if (isDraggingVolume) return
                 val currentVol = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
                 val newPercent = (currentVol / maxVolume) * 100f
-                // Only update if the difference is meaningful (>2%) to avoid feedback loops
-                // with our own setStreamVolume calls.
-                if (kotlin.math.abs(newPercent - currentVolumePercent) > 2f) {
+                if (kotlin.math.abs(newPercent - currentVolumePercent) > 1f) {
                     currentVolumePercent = newPercent
+                    displayVolumeSlider()
                 }
             }
         }
@@ -529,18 +550,44 @@ fun PlayerScreen(
         }
     }
 
-    var currentBrightnessPercent by remember {
-        mutableFloatStateOf(
-            run {
-                val sysBrightness = activity?.window?.attributes?.screenBrightness ?: -1f
-                if (sysBrightness > 0f) sysBrightness * 100f else 70f
+    val initialBrightness = remember {
+        val windowBrightness = activity?.window?.attributes?.screenBrightness ?: -1f
+        if (windowBrightness in 0.01f..1.0f) {
+            windowBrightness * 100f
+        } else {
+            try {
+                val sysBrightness = android.provider.Settings.System.getInt(
+                    context.contentResolver,
+                    android.provider.Settings.System.SCREEN_BRIGHTNESS,
+                    128
+                )
+                (sysBrightness / 255f * 100f).coerceIn(5f, 100f)
+            } catch (e: Exception) {
+                50f
             }
-        )
+        }
     }
 
-    // FIX: Throttle timestamps for volume/brightness drag updates to ~30 Hz (33ms).
-    var lastVolumeUpdateMs by remember { mutableLongStateOf(0L) }
-    var lastBrightnessUpdateMs by remember { mutableLongStateOf(0L) }
+    var currentBrightnessPercent by remember {
+        mutableFloatStateOf(initialBrightness)
+    }
+
+    // Reset window brightness override to system default when player screen is closed/disposed
+    DisposableEffect(Unit) {
+        onDispose {
+            activity?.window?.attributes = activity?.window?.attributes?.apply {
+                screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            }
+        }
+    }
+
+    // Tap & Double-tap Debounce Jobs
+    var leftTapJob by remember { mutableStateOf<Job?>(null) }
+    var lastLeftTapTime by remember { mutableLongStateOf(0L) }
+    var rightTapJob by remember { mutableStateOf<Job?>(null) }
+    var lastRightTapTime by remember { mutableLongStateOf(0L) }
+    var centerTapJob by remember { mutableStateOf<Job?>(null) }
+    var lastCenterTapTime by remember { mutableLongStateOf(0L) }
 
     fun triggerDoubleTapSeek(isForward: Boolean) {
         val direction = if (isForward) "forward" else "backward"
@@ -851,180 +898,341 @@ fun PlayerScreen(
                         }
                 ) {
                     Row(modifier = Modifier.fillMaxSize()) {
-                // Left Zone: Brightness Drag & Double-tap Seek Backward + Long Press 2X Speed
-                Box(
-                    modifier = Modifier
-                        .weight(0.35f)
-                        .fillMaxHeight()
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onTap = { viewModel.toggleControlsVisibility() },
-                                onDoubleTap = { triggerDoubleTapSeek(isForward = false) },
-                                onLongPress = {
-                                    if (uiState.isPlaying) {
-                                        speedBeforeHold = uiState.playbackSpeed
-                                        viewModel.setPlaybackSpeed(2.0f)
-                                        is2xSpeedHolding = true
-                                    }
-                                }
-                            )
-                        }
-                        .pointerInput(playerSettings.volumeOnRight) {
-                            detectVerticalDragGestures(
-                                onDragStart = {
-                                    if (playerSettings.volumeOnRight) showBrightnessIndicator = true
-                                    else showVolumeIndicator = true
-                                },
-                                onDragEnd = {
-                                    scope.launch {
-                                        delay(1200)
-                                        showBrightnessIndicator = false
-                                        showVolumeIndicator = false
-                                    }
-                                },
-                                onVerticalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    val delta = -dragAmount / 4.5f
-                                    if (playerSettings.volumeOnRight) {
-                                        showBrightnessIndicator = true
-                                        // FIX: Throttle brightness writes to ~30 Hz (every 33ms) to avoid
-                                        // recomposition storm on 120 Hz displays.
-                                        val now = System.currentTimeMillis()
-                                        if (now - lastBrightnessUpdateMs > 33L) {
-                                            lastBrightnessUpdateMs = now
-                                            currentBrightnessPercent = (currentBrightnessPercent + delta).coerceIn(10f, 100f)
-                                            activity?.window?.attributes = activity?.window?.attributes?.apply {
-                                                screenBrightness = currentBrightnessPercent / 100f
-                                            }
-                                        }
-                                    } else {
-                                        showVolumeIndicator = true
-                                        val now = System.currentTimeMillis()
-                                        if (now - lastVolumeUpdateMs > 33L) {
-                                            lastVolumeUpdateMs = now
-                                            currentVolumePercent = (currentVolumePercent + delta).coerceIn(0f, 200f)
-                                            if (currentVolumePercent <= 100f) {
-                                                val targetVol = ((currentVolumePercent / 100f) * maxVolume).toInt()
-                                                audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
-                                                viewModel.setVolumeBoost(0)
-                                            } else {
-                                                audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume.toInt(), 0)
-                                                val boostVal = (currentVolumePercent - 100f).toInt()
-                                                viewModel.setVolumeBoost(boostVal)
-                                            }
-                                        }
-                                    }
-                                }
-                            )
-                        }
-                )
+                        // Left Zone: Brightness/Volume Drag & Double-tap Seek Backward + Long Press 2X Speed
+                        Box(
+                            modifier = Modifier
+                                .weight(0.35f)
+                                .fillMaxHeight()
+                                .pointerInput(playerSettings.volumeOnRight, uiState.isPlaying) {
+                                    var originalBrightness = 0f
+                                    var originalVolume = 0f
+                                    var isDragging = false
+                                    var isLongPressed = false
 
-                // Center Zone: Single tap (Controls) & Double-tap (Play/Pause), Subtitle Vertical Drag
-                Box(
-                    modifier = Modifier
-                        .weight(0.30f)
-                        .fillMaxHeight()
-                        .pointerInput(subConfig) {
-                            detectVerticalDragGestures(
-                                onDragStart = {
-                                    triggerHudPill("Subtitle Position: ${(subConfig.bottomPaddingFraction * 100).toInt()}%", Icons.Default.Subtitles)
-                                },
-                                onVerticalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    val deltaFraction = -dragAmount / 400f
-                                    val newPadding = (subConfig.bottomPaddingFraction + deltaFraction).coerceIn(0.02f, 0.85f)
-                                    SubtitleSettingsManager.updateConfig(subConfig.copy(bottomPaddingFraction = newPadding))
-                                    triggerHudPill("Subtitle Position: ${(newPadding * 100).toInt()}%", Icons.Default.Subtitles)
-                                }
-                            )
-                        }
-                        .pointerInput(uiState.isPlaying) {
-                            detectTapGestures(
-                                onTap = { viewModel.toggleControlsVisibility() },
-                                onDoubleTap = {
-                                    val nowPlaying = !uiState.isPlaying
-                                    viewModel.togglePlayPause()
-                                    triggerCenterPlayPause(nowPlaying)
-                                },
-                                onLongPress = {
-                                    if (uiState.isPlaying) {
-                                        speedBeforeHold = uiState.playbackSpeed
-                                        viewModel.setPlaybackSpeed(2.0f)
-                                        is2xSpeedHolding = true
-                                    }
-                                }
-                            )
-                        }
-                )
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                        val startPos = down.position
+                                        isDragging = false
+                                        isLongPressed = false
 
-                // Right Zone: Volume Drag & Double-tap Seek Forward + Long Press 2X Speed
-                Box(
-                    modifier = Modifier
-                        .weight(0.35f)
-                        .fillMaxHeight()
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onTap = { viewModel.toggleControlsVisibility() },
-                                onDoubleTap = { triggerDoubleTapSeek(isForward = true) },
-                                onLongPress = {
-                                    if (uiState.isPlaying) {
-                                        speedBeforeHold = uiState.playbackSpeed
-                                        viewModel.setPlaybackSpeed(2.0f)
-                                        is2xSpeedHolding = true
-                                    }
-                                }
-                            )
-                        }
-                        .pointerInput(playerSettings.volumeOnRight) {
-                            detectVerticalDragGestures(
-                                onDragStart = {
-                                    if (playerSettings.volumeOnRight) showVolumeIndicator = true
-                                    else showBrightnessIndicator = true
-                                },
-                                onDragEnd = {
-                                    scope.launch {
-                                        delay(1200)
-                                        showVolumeIndicator = false
-                                        showBrightnessIndicator = false
-                                    }
-                                },
-                                onVerticalDrag = { change, dragAmount ->
-                                    change.consume()
-                                    val delta = -dragAmount / 4.5f
-                                    if (playerSettings.volumeOnRight) {
-                                        showVolumeIndicator = true
-                                        val now = System.currentTimeMillis()
-                                        if (now - lastVolumeUpdateMs > 33L) {
-                                            lastVolumeUpdateMs = now
-                                            currentVolumePercent = (currentVolumePercent + delta).coerceIn(0f, 200f)
-                                            if (currentVolumePercent <= 100f) {
-                                                val targetVol = ((currentVolumePercent / 100f) * maxVolume).toInt()
-                                                audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
-                                                viewModel.setVolumeBoost(0)
-                                            } else {
-                                                audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume.toInt(), 0)
-                                                val boostVal = (currentVolumePercent - 100f).toInt()
-                                                viewModel.setVolumeBoost(boostVal)
+                                        val longPressJob = scope.launch {
+                                            delay(450L)
+                                            if (!isDragging && down.pressed) {
+                                                if (uiState.isPlaying) {
+                                                    isLongPressed = true
+                                                    speedBeforeHold = uiState.playbackSpeed
+                                                    viewModel.setPlaybackSpeed(2.0f)
+                                                    is2xSpeedHolding = true
+                                                }
                                             }
                                         }
-                                    } else {
-                                        showBrightnessIndicator = true
-                                        val now = System.currentTimeMillis()
-                                        if (now - lastBrightnessUpdateMs > 33L) {
-                                            lastBrightnessUpdateMs = now
-                                            currentBrightnessPercent = (currentBrightnessPercent + delta).coerceIn(10f, 100f)
-                                            activity?.window?.attributes = activity?.window?.attributes?.apply {
-                                                screenBrightness = currentBrightnessPercent / 100f
+
+                                        while (true) {
+                                            val event = awaitPointerEvent()
+                                            val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                                            val currentPos = pointer.position
+                                            val deltaX = currentPos.x - startPos.x
+                                            val deltaY = currentPos.y - startPos.y
+                                            val distance = kotlin.math.sqrt(deltaX * deltaX + deltaY * deltaY)
+
+                                            if (!isDragging && distance > 16f) {
+                                                longPressJob.cancel()
+                                                if (kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX) * 1.1f) {
+                                                    isDragging = true
+                                                    if (isLongPressed) {
+                                                        viewModel.setPlaybackSpeed(speedBeforeHold)
+                                                        is2xSpeedHolding = false
+                                                        isLongPressed = false
+                                                    }
+                                                    if (playerSettings.volumeOnRight) {
+                                                        isDraggingBrightness = true
+                                                        originalBrightness = currentBrightnessPercent
+                                                        showBrightnessIndicator = true
+                                                        brightnessHideJob?.cancel()
+                                                    } else {
+                                                        isDraggingVolume = true
+                                                        originalVolume = currentVolumePercent
+                                                        showVolumeIndicator = true
+                                                        volumeHideJob?.cancel()
+                                                    }
+                                                }
+                                            }
+
+                                            if (isDragging) {
+                                                pointer.consume()
+                                                if (playerSettings.volumeOnRight) {
+                                                    val dragDelta = (startPos.y - currentPos.y) / (size.height * 0.75f) * 100f
+                                                    val newBrightness = (originalBrightness + dragDelta).coerceIn(1f, 100f)
+                                                    currentBrightnessPercent = newBrightness
+                                                    activity?.window?.attributes = activity?.window?.attributes?.apply {
+                                                        screenBrightness = (newBrightness / 100f).coerceIn(0.01f, 1.0f)
+                                                    }
+                                                } else {
+                                                    val dragDelta = (startPos.y - currentPos.y) / (size.height * 0.85f) * 200f
+                                                    val newVol = (originalVolume + dragDelta).coerceIn(0f, 200f)
+                                                    currentVolumePercent = newVol
+                                                    if (newVol <= 100f) {
+                                                        val targetVol = ((newVol / 100f) * maxVolume).toInt()
+                                                        audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                                                        viewModel.setVolumeBoost(0)
+                                                    } else {
+                                                        audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume.toInt(), 0)
+                                                        val boostVal = (newVol - 100f).toInt()
+                                                        viewModel.setVolumeBoost(boostVal)
+                                                    }
+                                                }
+                                            }
+
+                                            if (!pointer.pressed) {
+                                                longPressJob.cancel()
+                                                if (isLongPressed) {
+                                                    viewModel.setPlaybackSpeed(speedBeforeHold)
+                                                    is2xSpeedHolding = false
+                                                } else if (isDragging) {
+                                                    if (playerSettings.volumeOnRight) {
+                                                        isDraggingBrightness = false
+                                                        displayBrightnessSlider()
+                                                    } else {
+                                                        isDraggingVolume = false
+                                                        displayVolumeSlider()
+                                                    }
+                                                } else {
+                                                    val now = System.currentTimeMillis()
+                                                    if (now - lastLeftTapTime < 320L && kotlin.math.abs(currentPos.x - startPos.x) < 50f) {
+                                                        leftTapJob?.cancel()
+                                                        leftTapJob = null
+                                                        lastLeftTapTime = 0L
+                                                        triggerDoubleTapSeek(isForward = false)
+                                                    } else {
+                                                        lastLeftTapTime = now
+                                                        leftTapJob?.cancel()
+                                                        leftTapJob = scope.launch {
+                                                            delay(280L)
+                                                            viewModel.toggleControlsVisibility()
+                                                        }
+                                                    }
+                                                }
+                                                break
                                             }
                                         }
                                     }
                                 }
-                            )
-                        }
-                )
+                        )
+
+                        // Center Zone: Subtitle Drag & Single-tap Controls & Double-tap (Play/Pause) + Long Press 2X Speed
+                        Box(
+                            modifier = Modifier
+                                .weight(0.30f)
+                                .fillMaxHeight()
+                                .pointerInput(subConfig, uiState.isPlaying) {
+                                    var originalPadding = subConfig.bottomPaddingFraction
+                                    var isDragging = false
+                                    var isLongPressed = false
+
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                        val startPos = down.position
+                                        isDragging = false
+                                        isLongPressed = false
+
+                                        val longPressJob = scope.launch {
+                                            delay(450L)
+                                            if (!isDragging && down.pressed) {
+                                                if (uiState.isPlaying) {
+                                                    isLongPressed = true
+                                                    speedBeforeHold = uiState.playbackSpeed
+                                                    viewModel.setPlaybackSpeed(2.0f)
+                                                    is2xSpeedHolding = true
+                                                }
+                                            }
+                                        }
+
+                                        while (true) {
+                                            val event = awaitPointerEvent()
+                                            val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                                            val currentPos = pointer.position
+                                            val deltaX = currentPos.x - startPos.x
+                                            val deltaY = currentPos.y - startPos.y
+                                            val distance = kotlin.math.sqrt(deltaX * deltaX + deltaY * deltaY)
+
+                                            if (!isDragging && distance > 16f) {
+                                                longPressJob.cancel()
+                                                if (kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX) * 1.1f) {
+                                                    isDragging = true
+                                                    if (isLongPressed) {
+                                                        viewModel.setPlaybackSpeed(speedBeforeHold)
+                                                        is2xSpeedHolding = false
+                                                        isLongPressed = false
+                                                    }
+                                                    originalPadding = subConfig.bottomPaddingFraction
+                                                    triggerHudPill("Subtitle Position: ${(originalPadding * 100).toInt()}%", Icons.Default.Subtitles)
+                                                }
+                                            }
+
+                                            if (isDragging) {
+                                                pointer.consume()
+                                                val dragDelta = (startPos.y - currentPos.y) / (size.height * 1.5f)
+                                                val newPadding = (originalPadding + dragDelta).coerceIn(0.02f, 0.85f)
+                                                SubtitleSettingsManager.updateConfig(subConfig.copy(bottomPaddingFraction = newPadding))
+                                                triggerHudPill("Subtitle Position: ${(newPadding * 100).toInt()}%", Icons.Default.Subtitles)
+                                            }
+
+                                            if (!pointer.pressed) {
+                                                longPressJob.cancel()
+                                                if (isLongPressed) {
+                                                    viewModel.setPlaybackSpeed(speedBeforeHold)
+                                                    is2xSpeedHolding = false
+                                                } else if (!isDragging) {
+                                                    val now = System.currentTimeMillis()
+                                                    if (now - lastCenterTapTime < 320L && kotlin.math.abs(currentPos.x - startPos.x) < 50f) {
+                                                        centerTapJob?.cancel()
+                                                        centerTapJob = null
+                                                        lastCenterTapTime = 0L
+                                                        val nowPlaying = !uiState.isPlaying
+                                                        viewModel.togglePlayPause()
+                                                        triggerCenterPlayPause(nowPlaying)
+                                                    } else {
+                                                        lastCenterTapTime = now
+                                                        centerTapJob?.cancel()
+                                                        centerTapJob = scope.launch {
+                                                            delay(280L)
+                                                            viewModel.toggleControlsVisibility()
+                                                        }
+                                                    }
+                                                }
+                                                break
+                                            }
+                                        }
+                                    }
+                                }
+                        )
+
+                        // Right Zone: Volume/Brightness Drag & Double-tap Seek Forward + Long Press 2X Speed
+                        Box(
+                            modifier = Modifier
+                                .weight(0.35f)
+                                .fillMaxHeight()
+                                .pointerInput(playerSettings.volumeOnRight, uiState.isPlaying) {
+                                    var originalBrightness = 0f
+                                    var originalVolume = 0f
+                                    var isDragging = false
+                                    var isLongPressed = false
+
+                                    awaitEachGesture {
+                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                        val startPos = down.position
+                                        isDragging = false
+                                        isLongPressed = false
+
+                                        val longPressJob = scope.launch {
+                                            delay(450L)
+                                            if (!isDragging && down.pressed) {
+                                                if (uiState.isPlaying) {
+                                                    isLongPressed = true
+                                                    speedBeforeHold = uiState.playbackSpeed
+                                                    viewModel.setPlaybackSpeed(2.0f)
+                                                    is2xSpeedHolding = true
+                                                }
+                                            }
+                                        }
+
+                                        while (true) {
+                                            val event = awaitPointerEvent()
+                                            val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                                            val currentPos = pointer.position
+                                            val deltaX = currentPos.x - startPos.x
+                                            val deltaY = currentPos.y - startPos.y
+                                            val distance = kotlin.math.sqrt(deltaX * deltaX + deltaY * deltaY)
+
+                                            if (!isDragging && distance > 16f) {
+                                                longPressJob.cancel()
+                                                if (kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX) * 1.1f) {
+                                                    isDragging = true
+                                                    if (isLongPressed) {
+                                                        viewModel.setPlaybackSpeed(speedBeforeHold)
+                                                        is2xSpeedHolding = false
+                                                        isLongPressed = false
+                                                    }
+                                                    if (playerSettings.volumeOnRight) {
+                                                        isDraggingVolume = true
+                                                        originalVolume = currentVolumePercent
+                                                        showVolumeIndicator = true
+                                                        volumeHideJob?.cancel()
+                                                    } else {
+                                                        isDraggingBrightness = true
+                                                        originalBrightness = currentBrightnessPercent
+                                                        showBrightnessIndicator = true
+                                                        brightnessHideJob?.cancel()
+                                                    }
+                                                }
+                                            }
+
+                                            if (isDragging) {
+                                                pointer.consume()
+                                                if (playerSettings.volumeOnRight) {
+                                                    val dragDelta = (startPos.y - currentPos.y) / (size.height * 0.85f) * 200f
+                                                    val newVol = (originalVolume + dragDelta).coerceIn(0f, 200f)
+                                                    currentVolumePercent = newVol
+                                                    if (newVol <= 100f) {
+                                                        val targetVol = ((newVol / 100f) * maxVolume).toInt()
+                                                        audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+                                                        viewModel.setVolumeBoost(0)
+                                                    } else {
+                                                        audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume.toInt(), 0)
+                                                        val boostVal = (newVol - 100f).toInt()
+                                                        viewModel.setVolumeBoost(boostVal)
+                                                    }
+                                                } else {
+                                                    val dragDelta = (startPos.y - currentPos.y) / (size.height * 0.75f) * 100f
+                                                    val newBrightness = (originalBrightness + dragDelta).coerceIn(1f, 100f)
+                                                    currentBrightnessPercent = newBrightness
+                                                    activity?.window?.attributes = activity?.window?.attributes?.apply {
+                                                        screenBrightness = (newBrightness / 100f).coerceIn(0.01f, 1.0f)
+                                                    }
+                                                }
+                                            }
+
+                                            if (!pointer.pressed) {
+                                                longPressJob.cancel()
+                                                if (isLongPressed) {
+                                                    viewModel.setPlaybackSpeed(speedBeforeHold)
+                                                    is2xSpeedHolding = false
+                                                } else if (isDragging) {
+                                                    if (playerSettings.volumeOnRight) {
+                                                        isDraggingVolume = false
+                                                        displayVolumeSlider()
+                                                    } else {
+                                                        isDraggingBrightness = false
+                                                        displayBrightnessSlider()
+                                                    }
+                                                } else {
+                                                    val now = System.currentTimeMillis()
+                                                    if (now - lastRightTapTime < 320L && kotlin.math.abs(currentPos.x - startPos.x) < 50f) {
+                                                        rightTapJob?.cancel()
+                                                        rightTapJob = null
+                                                        lastRightTapTime = 0L
+                                                        triggerDoubleTapSeek(isForward = true)
+                                                    } else {
+                                                        lastRightTapTime = now
+                                                        rightTapJob?.cancel()
+                                                        rightTapJob = scope.launch {
+                                                            delay(280L)
+                                                            viewModel.toggleControlsVisibility()
+                                                        }
+                                                    }
+                                                }
+                                                break
+                                            }
+                                        }
+                                    }
+                                }
+                        )
+                    }
+                }
             }
-        }
-    }
 
         // Release Dynamic Speed HUD when finger leaves screen
         if (is2xSpeedHolding) {
