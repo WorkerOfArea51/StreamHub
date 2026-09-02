@@ -679,11 +679,7 @@ fun DetailsScreen(
                                     else -> PrimaryRed
                                 }
 
-                                val tagTextColor = when {
-                                    tag.startsWith("PREQUEL") || tag.contains("MOVIE") -> Color.White
-                                    isCurrent || tag.startsWith("SEQUEL") || tag.startsWith("SIDE STORY") || tag.startsWith("SPIN-OFF") || tag.startsWith("SEASON") || tag.contains("SPECIAL") || tag.contains("OVA") || tag.contains("ONA") -> Color.Black
-                                    else -> Color.White
-                                }
+                                val tagTextColor = if (isCurrent) Color.Black else Color.White
 
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),

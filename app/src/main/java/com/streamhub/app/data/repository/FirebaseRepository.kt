@@ -308,6 +308,7 @@ class FirebaseRepository private constructor() {
             "franchiseId" to item.franchiseId,
             "franchiseTitle" to item.franchiseTitle,
             "seasonNumber" to item.seasonNumber,
+            "partNumber" to item.partNumber,
             "seasonTitle" to item.seasonTitle,
             "relationType" to item.relationType,
             "relatedMediaIds" to item.relatedMediaIds,

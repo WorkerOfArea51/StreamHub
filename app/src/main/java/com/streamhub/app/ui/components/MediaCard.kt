@@ -56,8 +56,10 @@ fun MediaCard(
                   item.relationType.contains("Movie", ignoreCase = true)
 
     val effectiveSeason = com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(item)
-    val detectedPart = com.streamhub.app.data.FranchiseManager.detectChapterOrPartNumber(item.title)
-    val movieSeq = if (isMovie) (detectedPart ?: item.seasonNumber.takeIf { it > 1 }) else null
+    val effectivePart = com.streamhub.app.data.FranchiseManager.getEffectivePartNumber(item)
+    val movieSeq = if (isMovie) (effectivePart ?: item.seasonNumber.takeIf { it > 1 }) else null
+    val seasonBadgeText = if (effectivePart != null && effectivePart > 0) "S$effectiveSeason P$effectivePart" else "S$effectiveSeason"
+    val seasonSubtitleText = if (effectivePart != null && effectivePart > 0) "Season $effectiveSeason Pt $effectivePart" else "Season $effectiveSeason"
 
     val watchHistory by WatchHistoryManager.historyFlow.collectAsState()
     val progress = watchHistory[item.id]
@@ -100,7 +102,7 @@ fun MediaCard(
             )
 
             // Season / Relation / Movie Sequence Badge Top Left
-            if (!isMovie && effectiveSeason > 1) {
+            if (!isMovie && (effectiveSeason > 1 || (effectivePart != null && effectivePart > 0))) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -110,7 +112,7 @@ fun MediaCard(
                         .padding(horizontal = 5.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = "S$effectiveSeason",
+                        text = seasonBadgeText,
                         color = Color.White,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Black
@@ -228,8 +230,8 @@ fun MediaCard(
         } else {
             buildString {
                 append(item.category)
-                if (!isMovie && effectiveSeason > 1) {
-                    append(" • Season $effectiveSeason")
+                if (!isMovie && (effectiveSeason > 1 || (effectivePart != null && effectivePart > 0))) {
+                    append(" • $seasonSubtitleText")
                 } else if (isMovie && movieSeq != null && movieSeq > 1) {
                     append(" • Movie $movieSeq")
                 }

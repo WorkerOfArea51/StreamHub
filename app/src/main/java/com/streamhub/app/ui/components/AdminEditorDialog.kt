@@ -138,6 +138,9 @@ fun AdminEditorDialog(
             }
         )
     }
+    var partNumberText by remember(initialItem) {
+        mutableStateOf(if ((initialItem?.partNumber ?: 0) > 0) initialItem!!.partNumber.toString() else "")
+    }
     var seasonTitle by remember(initialItem) { mutableStateOf(initialItem?.seasonTitle ?: "") }
     var relationType by remember(initialItem) { mutableStateOf(initialItem?.relationType?.takeIf { it.isNotBlank() && !it.equals("Main Story", ignoreCase = true) } ?: if (isInitMovie) "Movie" else "TV") }
 
@@ -1333,7 +1336,23 @@ fun AdminEditorDialog(
                         MetadataRow(franchiseTitle, { franchiseTitle = it }, "Franchise Name (e.g. Solo Leveling)", franchiseId, { franchiseId = it }, "Franchise Slug (e.g. solo-leveling)")
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        MetadataRow(seasonNumberText, { seasonNumberText = it }, "Season # (1, 2, 3...)", seasonTitle, { seasonTitle = it }, "Season/Arc Title (e.g. Arise from the Shadow)")
+                        MetadataRow(
+                            val1 = seasonNumberText,
+                            onVal1Change = { seasonNumberText = it },
+                            label1 = "Season # (1, 2, 3...)",
+                            val2 = partNumberText,
+                            onVal2Change = { partNumberText = it },
+                            label2 = "Part # (e.g. 2, or blank)"
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedTextField(
+                            value = seasonTitle,
+                            onValueChange = { seasonTitle = it },
+                            label = { Text("Season/Arc Title (e.g. Arise from the Shadow)", color = TextSecondary) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text("Relation Type & Story Role (Multi-Selectable)", color = TextSecondary, fontSize = 11.sp)
@@ -1542,6 +1561,7 @@ fun AdminEditorDialog(
                                         franchiseId = finalFranchiseId,
                                         franchiseTitle = finalFranchiseTitle,
                                         seasonNumber = parsedSeasonNum,
+                                        partNumber = partNumberText.toIntOrNull() ?: 0,
                                         seasonTitle = seasonTitle,
                                         relationType = relationType,
                                         mediaInfo = MediaInfo(

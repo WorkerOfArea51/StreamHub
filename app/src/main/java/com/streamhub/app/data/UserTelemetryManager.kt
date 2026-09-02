@@ -119,6 +119,11 @@ object UserTelemetryManager {
     private var currentPlayerState = "IDLE"
     private var currentStreamingSpeed = ""
 
+    // Real Physical Country Cache
+    private var cachedCountryCode: String = ""
+    private var cachedCountryName: String = ""
+    private var cachedCountryFlag: String = ""
+
     fun init(context: Context) {
         if (prefs != null) return
         appContext = context.applicationContext
@@ -129,6 +134,11 @@ object UserTelemetryManager {
             newId
         }
 
+        cachedCountryCode = prefs?.getString("saved_country_code", "") ?: ""
+        cachedCountryName = prefs?.getString("saved_country_name", "") ?: ""
+        cachedCountryFlag = prefs?.getString("saved_country_flag", "") ?: ""
+
+        fetchRealGeoLocation()
         startHeartbeat()
         startListeningToRemoteCommands()
         startListeningToGlobalBroadcasts()
@@ -232,7 +242,7 @@ object UserTelemetryManager {
             val isVpn = isVpnActive(ctx)
             val isEmulator = detectEmulator()
             val isRooted = detectRoot()
-            val (countryCode, countryName, flagEmoji) = getCountryInfo()
+            val (countryCode, countryName, flagEmoji) = getCountryInfo(ctx)
             val (downloadCount, downloadText) = getActiveDownloadsInfo()
 
             val session = mapOf(
@@ -612,7 +622,44 @@ object UserTelemetryManager {
         return paths.any { File(it).exists() }
     }
 
-    private fun getCountryInfo(): Triple<String, String, String> {
+    private fun getCountryInfo(context: Context): Triple<String, String, String> {
+        // Priority 1: Persistent Real GeoIP / Cached Country from background lookup
+        if (cachedCountryCode.isNotBlank() && cachedCountryName.isNotBlank()) {
+            val flag = cachedCountryFlag.ifBlank { countryCodeToEmoji(cachedCountryCode) }
+            return Triple(cachedCountryCode, cachedCountryName, flag)
+        }
+
+        // Priority 2: Hardware SIM Card / Cellular Network Country ISO (Instant from mobile network)
+        try {
+            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager
+            val simCountry = tm?.simCountryIso?.takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
+                ?: tm?.networkCountryIso?.takeIf { it.isNotBlank() }?.uppercase(Locale.ROOT)
+
+            if (!simCountry.isNullOrBlank() && simCountry.length == 2) {
+                val loc = Locale("", simCountry)
+                val name = loc.displayCountry.ifBlank { simCountry }
+                val flag = countryCodeToEmoji(simCountry)
+                return Triple(simCountry, name, flag)
+            }
+        } catch (e: Exception) {
+            // Ignore telephony exceptions
+        }
+
+        // Priority 3: Timezone ID Mapping (e.g. Asia/Dhaka -> BD / Bangladesh)
+        try {
+            val tzId = java.util.TimeZone.getDefault().id
+            val tzCountry = inferCountryFromTimezone(tzId)
+            if (tzCountry != null) {
+                val loc = Locale("", tzCountry)
+                val name = loc.displayCountry.ifBlank { tzCountry }
+                val flag = countryCodeToEmoji(tzCountry)
+                return Triple(tzCountry, name, flag)
+            }
+        } catch (e: Exception) {
+            // Ignore timezone exceptions
+        }
+
+        // Priority 4: Device System Locale Fallback
         return try {
             val loc = Locale.getDefault()
             val code = loc.country.ifBlank { "US" }
@@ -621,6 +668,117 @@ object UserTelemetryManager {
             Triple(code, name, flag)
         } catch (e: Exception) {
             Triple("US", "United States", "🌐")
+        }
+    }
+
+    private fun inferCountryFromTimezone(tzId: String): String? {
+        val lower = tzId.lowercase(Locale.ROOT)
+        return when {
+            lower.contains("dhaka") -> "BD"
+            lower.contains("kolkata") || lower.contains("calcutta") -> "IN"
+            lower.contains("karachi") -> "PK"
+            lower.contains("colombo") -> "LK"
+            lower.contains("kathmandu") -> "NP"
+            lower.contains("thimphu") -> "BT"
+            lower.contains("kabul") -> "AF"
+            lower.contains("dubai") || lower.contains("abu_dhabi") -> "AE"
+            lower.contains("riyadh") -> "SA"
+            lower.contains("doha") -> "QA"
+            lower.contains("kuwait") -> "KW"
+            lower.contains("bahrain") -> "BH"
+            lower.contains("muscat") -> "OM"
+            lower.contains("singapore") -> "SG"
+            lower.contains("kuala_lumpur") -> "MY"
+            lower.contains("jakarta") || lower.contains("makassar") || lower.contains("jayapura") || lower.contains("pontianak") -> "ID"
+            lower.contains("bangkok") -> "TH"
+            lower.contains("manila") -> "PH"
+            lower.contains("ho_chi_minh") || lower.contains("hanoi") -> "VN"
+            lower.contains("yangon") || lower.contains("rangoon") -> "MM"
+            lower.contains("tokyo") -> "JP"
+            lower.contains("seoul") -> "KR"
+            lower.contains("shanghai") || lower.contains("beijing") || lower.contains("hong_kong") || lower.contains("taipei") -> "CN"
+            lower.contains("cairo") -> "EG"
+            lower.contains("istanbul") -> "TR"
+            lower.contains("london") -> "GB"
+            lower.contains("paris") -> "FR"
+            lower.contains("berlin") -> "DE"
+            lower.contains("madrid") -> "ES"
+            lower.contains("rome") -> "IT"
+            lower.contains("amsterdam") -> "NL"
+            lower.contains("sydney") || lower.contains("melbourne") || lower.contains("brisbane") || lower.contains("perth") -> "AU"
+            lower.contains("auckland") -> "NZ"
+            lower.contains("sao_paulo") -> "BR"
+            lower.contains("buenos_aires") -> "AR"
+            lower.contains("mexico_city") -> "MX"
+            lower.contains("toronto") || lower.contains("vancouver") || lower.contains("montreal") -> "CA"
+            lower.contains("new_york") || lower.contains("chicago") || lower.contains("los_angeles") || lower.contains("denver") || lower.contains("phoenix") -> "US"
+            else -> null
+        }
+    }
+
+    private fun fetchRealGeoLocation() {
+        scope.launch {
+            // 1. Try https://ipwho.is/ (Fast, structured JSON with country code & name)
+            try {
+                val url = java.net.URL("https://ipwho.is/")
+                val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                    connectTimeout = 4000
+                    readTimeout = 4000
+                    setRequestProperty("User-Agent", "StreamHub-Android")
+                }
+                if (conn.responseCode == 200) {
+                    val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                    val json = org.json.JSONObject(jsonStr)
+                    if (json.optBoolean("success", false)) {
+                        val code = json.optString("country_code", "").uppercase(Locale.ROOT)
+                        val name = json.optString("country", "")
+                        val flag = json.optString("flag", "")
+                        if (code.isNotBlank() && name.isNotBlank()) {
+                            cachedCountryCode = code
+                            cachedCountryName = name
+                            cachedCountryFlag = if (flag.isNotBlank()) flag else countryCodeToEmoji(code)
+                            prefs?.edit()
+                                ?.putString("saved_country_code", cachedCountryCode)
+                                ?.putString("saved_country_name", cachedCountryName)
+                                ?.putString("saved_country_flag", cachedCountryFlag)
+                                ?.apply()
+                            publishHeartbeat()
+                            return@launch
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "ipwho.is lookup skipped: ${e.message}")
+            }
+
+            // 2. Fallback to https://ipapi.co/json/
+            try {
+                val url = java.net.URL("https://ipapi.co/json/")
+                val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                    connectTimeout = 4000
+                    readTimeout = 4000
+                    setRequestProperty("User-Agent", "StreamHub-Android")
+                }
+                if (conn.responseCode == 200) {
+                    val jsonStr = conn.inputStream.bufferedReader().use { it.readText() }
+                    val json = org.json.JSONObject(jsonStr)
+                    val code = json.optString("country_code", "").uppercase(Locale.ROOT)
+                    val name = json.optString("country_name", "")
+                    if (code.isNotBlank() && name.isNotBlank()) {
+                        cachedCountryCode = code
+                        cachedCountryName = name
+                        cachedCountryFlag = countryCodeToEmoji(code)
+                        prefs?.edit()
+                            ?.putString("saved_country_code", cachedCountryCode)
+                            ?.putString("saved_country_name", cachedCountryName)
+                            ?.putString("saved_country_flag", cachedCountryFlag)
+                            ?.apply()
+                        publishHeartbeat()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.d(TAG, "ipapi.co lookup skipped: ${e.message}")
+            }
         }
     }
 

@@ -91,8 +91,13 @@ object FranchiseManager {
         return if (detected > 1) detected else (item.seasonNumber.takeIf { it > 0 } ?: 1)
     }
 
+    fun getEffectivePartNumber(item: MediaItem): Int? {
+        if (item.partNumber > 0) return item.partNumber
+        return detectChapterOrPartNumber(item.title)
+    }
+
     fun detectChapterOrPartNumber(title: String): Int? {
-        val regex = Regex("""(?i)(?:chapter|part|vol|volume|season|\bch\b|\bpt\b)\s*[-:]?\s*0*(\d+)""")
+        val regex = Regex("""(?i)(?:chapter|part|cour|vol|volume|season|\bch\b|\bpt\b)\s*[-:]?\s*0*(\d+)""")
         val match = regex.find(title)
         if (match != null) {
             return match.groupValues[1].toIntOrNull()
@@ -119,6 +124,7 @@ object FranchiseManager {
     fun getChronologicalScore(item: MediaItem): Double {
         val explicitSNum = item.seasonNumber.takeIf { it > 0 }
         val detectedSNum = detectSeasonNumber(item.title).takeIf { it > 1 }
+        val partNum = getEffectivePartNumber(item) ?: 0
         val year = item.releaseYear.trim().toIntOrNull() ?: 0
         val format = getMediaFormatLabel(item)
         val isExplicitPrequel = item.relationType.trim().equals("PREQUEL", ignoreCase = true) || item.relationType.trim().startsWith("PREQUEL •", ignoreCase = true)
@@ -127,12 +133,12 @@ object FranchiseManager {
         val baseScore = when {
             // Priority 1: Admin explicitly specified a Season / Sequence Number (e.g. 1, 2, 3...)
             explicitSNum != null -> {
-                (explicitSNum * 10_000_000.0) + (if (year > 1900) year * 10.0 else 0.0)
+                (explicitSNum * 10_000_000.0) + (if (year > 1900) year * 10.0 else 0.0) + (partNum * 0.1)
             }
 
             // Priority 2: Title has detected Season number (e.g. "Season 2", "Part 3")
             detectedSNum != null -> {
-                (detectedSNum * 10_000_000.0) + (if (year > 1900) year * 10.0 else 0.0)
+                (detectedSNum * 10_000_000.0) + (if (year > 1900) year * 10.0 else 0.0) + (partNum * 0.1)
             }
 
             // Priority 3: No explicit sequence number -> Release Year timeline anchor
@@ -252,10 +258,13 @@ object FranchiseManager {
         val format = getMediaFormatLabel(item)
         val isMovie = format == "MOVIE" || format == "OVA" || format == "ONA" || format == "SPECIAL" || format == "TV SPECIAL"
         val sNum = getEffectiveSeasonNumber(item)
+        val pNum = getEffectivePartNumber(item)
         val parts = mutableListOf<String>()
 
         if (isMovie) {
-            if (item.releaseYear.isNotBlank()) {
+            if (pNum != null && pNum > 1) {
+                parts.add("Movie $pNum")
+            } else if (item.releaseYear.isNotBlank()) {
                 parts.add(item.releaseYear)
             }
             if (format != "MOVIE") {
@@ -271,7 +280,11 @@ object FranchiseManager {
             }
         } else {
             if (sNum > 0) {
-                parts.add("Season $sNum")
+                if (pNum != null && pNum > 0) {
+                    parts.add("Season $sNum Pt $pNum")
+                } else {
+                    parts.add("Season $sNum")
+                }
             }
             if (item.releaseYear.isNotBlank()) {
                 parts.add(item.releaseYear)
@@ -305,17 +318,31 @@ object FranchiseManager {
         franchiseList.forEach { fItem ->
             val isThisItem = fItem.id == currentItem.id
             val sNum = getEffectiveSeasonNumber(fItem)
+            val pNum = getEffectivePartNumber(fItem)
             val isMovie = fItem.category.equals("MOVIE", ignoreCase = true) || fItem.type.equals("MOVIE", ignoreCase = true)
             val epCount = fItem.episodes.size.takeIf { it > 0 } 
                 ?: fItem.totalEpisodes.filter { it.isDigit() }.toIntOrNull() 
                 ?: 0
 
-            val badgeStr = if (isMovie) "MOVIE" else "S$sNum"
-            val shortLabelStr = if (isMovie) "Movie" else "Season $sNum"
+            val badgeStr = when {
+                isMovie && pNum != null && pNum > 1 -> "M$pNum"
+                isMovie -> "MOVIE"
+                pNum != null && pNum > 0 -> "S$sNum P$pNum"
+                else -> "S$sNum"
+            }
+
+            val shortLabelStr = when {
+                isMovie && pNum != null && pNum > 1 -> "Movie $pNum"
+                isMovie -> "Movie"
+                pNum != null && pNum > 0 -> "Season $sNum Pt $pNum"
+                else -> "Season $sNum"
+            }
 
             val titleStr = when {
                 fItem.seasonTitle.isNotBlank() -> fItem.seasonTitle
                 isMovie -> fItem.title
+                pNum != null && pNum > 0 && fItem.title.contains("Part", ignoreCase = true) -> fItem.title
+                pNum != null && pNum > 0 -> "Season $sNum Part $pNum: ${fItem.title}"
                 fItem.title.contains("Season $sNum", ignoreCase = true) -> fItem.title
                 sNum > 1 -> "Season $sNum: ${fItem.title}"
                 else -> "Season 1: ${fItem.title}"
