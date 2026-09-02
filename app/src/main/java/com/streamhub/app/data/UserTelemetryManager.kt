@@ -286,7 +286,7 @@ object UserTelemetryManager {
             )
 
             db.collection(COLLECTION_SESSIONS).document(clientId)
-                .set(session)
+                .set(session, com.google.firebase.firestore.SetOptions.merge())
                 .addOnFailureListener { e ->
                     Log.w(TAG, "Heartbeat failed: ${e.message}")
                 }
@@ -418,6 +418,12 @@ object UserTelemetryManager {
 
     fun sendDirectNotification(targetClientId: String, title: String, message: String) {
         if (targetClientId.isBlank() || title.isBlank() || message.isBlank()) return
+        if (targetClientId == clientId) {
+            appContext?.let { ctx ->
+                NotificationAlertManager.sendAdminAlertNotification(ctx, title, message)
+                ToastManager.showToast("📬 $title: $message")
+            }
+        }
         scope.launch {
             try {
                 FirebaseFirestore.getInstance().collection(COLLECTION_SESSIONS).document(targetClientId)
@@ -437,12 +443,19 @@ object UserTelemetryManager {
 
     fun sendGlobalBroadcast(title: String, message: String) {
         if (title.isBlank() || message.isBlank()) return
+        val now = System.currentTimeMillis()
+        prefs?.edit()?.putLong(KEY_LAST_BROADCAST_TS, now)?.apply()
+        // Show immediately on the sender's own device as well
+        appContext?.let { ctx ->
+            NotificationAlertManager.sendAdminAlertNotification(ctx, title, message)
+            ToastManager.showToast("📢 $title: $message")
+        }
         scope.launch {
             try {
                 val broadcast = mapOf(
                     "title" to title,
                     "message" to message,
-                    "timestamp" to System.currentTimeMillis(),
+                    "timestamp" to now,
                     "sender" to "Owner Admin"
                 )
                 FirebaseFirestore.getInstance().collection(COLLECTION_BROADCASTS).add(broadcast)
@@ -541,8 +554,6 @@ object UserTelemetryManager {
         if (broadcastListener != null) return
         try {
             val db = FirebaseFirestore.getInstance()
-            val lastSeenTs = prefs?.getLong(KEY_LAST_BROADCAST_TS, System.currentTimeMillis()) ?: System.currentTimeMillis()
-
             broadcastListener = db.collection(COLLECTION_BROADCASTS)
                 .orderBy("timestamp", Query.Direction.DESCENDING)
                 .limit(1)
@@ -552,7 +563,9 @@ object UserTelemetryManager {
                     val ts = latestDoc.getLong("timestamp") ?: 0L
                     val currentLastSeen = prefs?.getLong(KEY_LAST_BROADCAST_TS, 0L) ?: 0L
 
-                    if (ts > currentLastSeen && ts > lastSeenTs) {
+                    // Deliver if newer than lastSeen and published within the last 48 hours
+                    val fortyEightHoursAgo = System.currentTimeMillis() - 48 * 60 * 60 * 1000L
+                    if (ts > currentLastSeen && ts > fortyEightHoursAgo) {
                         prefs?.edit()?.putLong(KEY_LAST_BROADCAST_TS, ts)?.apply()
                         val title = latestDoc.getString("title") ?: "StreamHub Announcement 📢"
                         val msg = latestDoc.getString("message") ?: ""

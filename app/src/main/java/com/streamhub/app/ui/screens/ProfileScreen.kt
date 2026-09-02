@@ -49,6 +49,7 @@ import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import com.streamhub.app.data.UserProfileManager
 import com.streamhub.app.ui.components.EditProfileDialog
+import com.streamhub.app.ui.components.ToastManager
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -159,7 +160,7 @@ fun ProfileScreen(
                 onOpenStudio = { showAddContentDialog = true },
                 onLockAdmin = {
                     AdminManager.disableAdmin()
-                    Toast.makeText(context, "Admin mode locked", Toast.LENGTH_SHORT).show()
+                    ToastManager.showToast("Admin mode locked 🔒")
                 },
                 onEditProfile = { showEditProfileDialog = true }
             )
@@ -305,7 +306,7 @@ fun ProfileScreen(
             onSuccess = {
                 showAdminPasswordDialog = false
                 showAddContentDialog = true
-                Toast.makeText(context, "Creator Studio Unlocked! 🎬", Toast.LENGTH_SHORT).show()
+                ToastManager.showToast("Creator Studio Unlocked! 🎬")
             }
         )
     }
@@ -539,7 +540,7 @@ private fun StreamHubUserProfileCard(
                     modifier = Modifier.clickable {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
                         clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("StreamHub Member ID", userProfile.memberId))
-                        Toast.makeText(context, "Copied Member ID: ${userProfile.memberId} 📋", Toast.LENGTH_SHORT).show()
+                        ToastManager.showToast("Copied Member ID: ${userProfile.memberId} 📋")
                     }
                 ) {
                     Row(

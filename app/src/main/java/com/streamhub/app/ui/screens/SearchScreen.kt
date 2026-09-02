@@ -613,7 +613,7 @@ fun SearchScreen(
             onSuccess = {
                 showAdminPasswordDialog = false
                 showAddContentDialog = true
-                android.widget.Toast.makeText(context, "Creator Studio Unlocked! 🎬", android.widget.Toast.LENGTH_SHORT).show()
+                com.streamhub.app.ui.components.ToastManager.showToast("Creator Studio Unlocked! 🎬")
             }
         )
     }

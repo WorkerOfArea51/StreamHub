@@ -91,7 +91,7 @@ fun AppAboutDialog(
             }
             context.startActivity(intent)
         } catch (e: Exception) {
-            Toast.makeText(context, "Could not open browser: ${e.message}", Toast.LENGTH_SHORT).show()
+            ToastManager.showToast("Could not open browser: ${e.message}")
         }
     }
 

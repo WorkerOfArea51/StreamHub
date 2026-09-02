@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import com.streamhub.app.ui.components.ToastManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -95,7 +96,7 @@ fun AboutScreen(
             }
             context.startActivity(intent)
         } catch (e: Exception) {
-            Toast.makeText(context, "Could not open link: ${e.message}", Toast.LENGTH_SHORT).show()
+            ToastManager.showToast("Could not open link: ${e.message}")
         }
     }
 

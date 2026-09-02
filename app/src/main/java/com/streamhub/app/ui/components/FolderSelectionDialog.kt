@@ -236,7 +236,7 @@ fun FolderSelectionDialog(
                                 .clip(RoundedCornerShape(12.dp))
                                 .clickable {
                                     MyListManager.setCollection(mediaItem.id, col)
-                                    Toast.makeText(context, "Saved to '$col' 📁", Toast.LENGTH_SHORT).show()
+                                    ToastManager.showToast("Saved to '$col' 📁")
                                     onDismiss()
                                 }
                         ) {
@@ -329,7 +329,7 @@ fun FolderSelectionDialog(
                                         val trimmed = newFolderName.trim()
                                         MyListManager.addCustomCollection(trimmed)
                                         MyListManager.setCollection(mediaItem.id, trimmed)
-                                        Toast.makeText(context, "Saved to '$trimmed' 📁", Toast.LENGTH_SHORT).show()
+                                        ToastManager.showToast("Saved to '$trimmed' 📁")
                                         isCreatingFolder = false
                                         newFolderName = ""
                                         onDismiss()
@@ -386,7 +386,7 @@ fun FolderSelectionDialog(
                         TextButton(
                             onClick = {
                                 MyListManager.removeFromList(mediaItem.id)
-                                Toast.makeText(context, "Removed from My List", Toast.LENGTH_SHORT).show()
+                                ToastManager.showToast("Removed from My List")
                                 onDismiss()
                             }
                         ) {

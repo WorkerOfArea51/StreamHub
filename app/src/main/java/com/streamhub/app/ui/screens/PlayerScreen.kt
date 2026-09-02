@@ -10,6 +10,7 @@ import android.util.Log
 import android.util.Rational
 import android.view.WindowManager
 import android.widget.Toast
+import com.streamhub.app.ui.components.ToastManager
 import kotlin.OptIn
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -296,11 +297,7 @@ fun PlayerScreen(
     // accidental exit. User must unlock first (via the floating unlock pill) to leave.
     androidx.activity.compose.BackHandler(enabled = uiState.isLocked) {
         // Show a hint toast instead of exiting.
-        Toast.makeText(
-            context,
-            "Screen is locked. Tap the unlock pill to exit.",
-            Toast.LENGTH_SHORT
-        ).show()
+        ToastManager.showToast("Screen is locked. Tap unlock to exit 🔒")
     }
 
     val isMovie = mediaItem.type.equals("MOVIE", ignoreCase = true) ||
@@ -1581,7 +1578,7 @@ fun PlayerScreen(
                             ControlsButton(
                                 icon = Icons.Default.Cast,
                                 onClick = {
-                                    Toast.makeText(context, "Scanning for Cast devices...", Toast.LENGTH_SHORT).show()
+                                    ToastManager.showToast("Scanning for Cast devices... 📡")
                                 },
                                 title = "Cast",
                                 size = 45.dp
@@ -1910,7 +1907,7 @@ fun PlayerScreen(
                                                 videoZoomScale = 1.0f
                                                 videoZoomOffsetX = 0f
                                                 videoZoomOffsetY = 0f
-                                                Toast.makeText(context, "Zoom reset: 100%", Toast.LENGTH_SHORT).show()
+                                                ToastManager.showToast("Zoom reset: 100%")
                                             },
                                             size = 40.dp,
                                             iconSize = 18.dp,
@@ -1987,11 +1984,7 @@ fun PlayerScreen(
                                                                         bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
                                                                     }
                                                                     act.runOnUiThread {
-                                                                        Toast.makeText(
-                                                                            context,
-                                                                            "📸 Snapshot saved to ${screenshotDir.name}",
-                                                                            Toast.LENGTH_SHORT
-                                                                        ).show()
+                                                                        ToastManager.showToast("📸 Snapshot saved to ${screenshotDir.name}")
                                                                     }
                                                                 } catch (e: Exception) {
                                                                     Log.w("PlayerScreen", "Saving screenshot failed", e)
@@ -2020,7 +2013,7 @@ fun PlayerScreen(
                                     icon = if (isNightShield) Icons.Filled.Shield else Icons.Outlined.Shield,
                                     onClick = {
                                         isNightShield = !isNightShield
-                                        Toast.makeText(context, if (isNightShield) "🌙 Night Shield ON (Amber Filter)" else "Night Shield OFF", Toast.LENGTH_SHORT).show()
+                                        ToastManager.showToast(if (isNightShield) "🌙 Night Shield ON (Amber Filter)" else "Night Shield OFF")
                                     },
                                     size = 40.dp,
                                     iconSize = 18.dp,
@@ -2222,11 +2215,7 @@ fun PlayerScreen(
                                                     bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
                                                 }
                                                 act.runOnUiThread {
-                                                    Toast.makeText(
-                                                        context,
-                                                        "📸 Snapshot saved to ${screenshotDir.name}",
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
+                                                    ToastManager.showToast("📸 Snapshot saved to ${screenshotDir.name}")
                                                 }
                                             } catch (e: Exception) {
                                                 Log.w("PlayerScreen", "Saving snapshot failed", e)

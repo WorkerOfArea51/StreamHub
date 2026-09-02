@@ -1,6 +1,7 @@
 package com.streamhub.app.ui.screens
 
 import android.widget.Toast
+import com.streamhub.app.ui.components.ToastManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -270,7 +271,7 @@ fun MyListScreen(
                     IconButton(
                         onClick = {
                             MyListManager.removeCompletedItems(completedMedia.map { it.id }.toSet())
-                            Toast.makeText(context, "Cleared completed items from watchlist", Toast.LENGTH_SHORT).show()
+                            ToastManager.showToast("Cleared completed items from watchlist")
                         }
                     ) {
                         Icon(Icons.Default.ClearAll, contentDescription = "Clear Completed", tint = Color(0xFFFF5252), modifier = Modifier.size(22.dp))
@@ -579,7 +580,7 @@ fun MyListScreen(
                             onToggleFavorite = { MyListManager.toggleFavorite(item.id) },
                             onRemove = {
                                 MyListManager.toggleBookmark(item.id)
-                                Toast.makeText(context, "Removed from My List", Toast.LENGTH_SHORT).show()
+                                ToastManager.showToast("Removed from My List")
                             },
                             onManageCollection = { itemToManageCollection = item }
                         )
@@ -615,7 +616,7 @@ fun MyListScreen(
                             selectedCollection = newCollectionName.trim()
                             newCollectionName = ""
                             showNewCollectionDialog = false
-                            Toast.makeText(context, "Folder created!", Toast.LENGTH_SHORT).show()
+                            ToastManager.showToast("Folder created! 📁")
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = primaryColor)

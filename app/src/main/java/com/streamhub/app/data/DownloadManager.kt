@@ -437,18 +437,14 @@ object DownloadManager {
                     val msg = "⚠️ Low Storage: Only ${storageCheck.freeMb.toInt()} MB free. At least ${storageCheck.requiredMb.toInt()} MB required."
                     Log.e(TAG, msg)
                     withContext(Dispatchers.Main) {
-                        appContext?.let {
-                            android.widget.Toast.makeText(it, msg, android.widget.Toast.LENGTH_LONG).show()
-                        }
+                        com.streamhub.app.ui.components.ToastManager.showToast(msg)
                     }
                     return@launch
                 }
                 is StorageCheckResult.Error -> {
                     Log.e(TAG, "Storage validation error: ${storageCheck.message}")
                     withContext(Dispatchers.Main) {
-                        appContext?.let {
-                            android.widget.Toast.makeText(it, "Storage Error: ${storageCheck.message}", android.widget.Toast.LENGTH_SHORT).show()
-                        }
+                        com.streamhub.app.ui.components.ToastManager.showToast("Storage Error: ${storageCheck.message}")
                     }
                     return@launch
                 }
@@ -629,9 +625,7 @@ object DownloadManager {
         if (storageCheck is StorageCheckResult.Insufficient) {
             val msg = "⚠️ Low Storage: Only ${storageCheck.freeMb.toInt()} MB free to resume ${item.mediaTitle}."
             Log.w(TAG, msg)
-            appContext?.let {
-                android.widget.Toast.makeText(it, msg, android.widget.Toast.LENGTH_SHORT).show()
-            }
+            com.streamhub.app.ui.components.ToastManager.showToast(msg)
             markAsPaused(item)
             return
         }

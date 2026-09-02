@@ -155,6 +155,8 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
             .onFailure { Log.e(TAG, "YoutubeStreamExtractor.init failed", it) }
         runCatching { StorageCacheManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "StorageCacheManager.init failed", it) }
+        runCatching { com.streamhub.app.data.NotificationAlertManager.init(applicationContext) }
+            .onFailure { Log.e(TAG, "NotificationAlertManager.init failed", it) }
         runCatching { com.streamhub.app.data.UserTelemetryManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "UserTelemetryManager.init failed", it) }
         runCatching { com.streamhub.app.data.UserProfileManager.init(applicationContext) }

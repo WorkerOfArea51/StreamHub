@@ -98,9 +98,9 @@ fun EditProfileDialog(
             val savedPath = UserProfileManager.saveCustomAvatar(context, uri)
             if (savedPath.isNotBlank()) {
                 avatarUriInput = savedPath
-                Toast.makeText(context, "Photo selected! 📸", Toast.LENGTH_SHORT).show()
+                ToastManager.showToast("Photo selected! 📸")
             } else {
-                Toast.makeText(context, "Failed to load photo", Toast.LENGTH_SHORT).show()
+                ToastManager.showToast("Failed to load photo")
             }
         }
     }
@@ -298,7 +298,7 @@ fun EditProfileDialog(
                         avatarUri = avatarUriInput,
                         presetIndex = selectedPresetIdx
                     )
-                    Toast.makeText(context, "VIP Profile updated! ✨", Toast.LENGTH_SHORT).show()
+                    ToastManager.showToast("VIP Profile updated! ✨")
                     onDismiss()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
@@ -317,7 +317,7 @@ fun EditProfileDialog(
                     taglineInput = ""
                     avatarUriInput = ""
                     selectedPresetIdx = 0
-                    Toast.makeText(context, "Profile reset to default", Toast.LENGTH_SHORT).show()
+                    ToastManager.showToast("Profile reset to default")
                 }
             ) {
                 Icon(Icons.Default.Refresh, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(14.dp))

@@ -29,8 +29,11 @@ object NotificationAlertManager {
     private const val KEY_ALERTS_ENABLED = "alerts_enabled"
     private const val KEY_SEEN_EPISODE_COUNTS = "seen_episode_counts_"
 
-    private const val CHANNEL_ID = "streamhub_episode_alerts"
-    private const val CHANNEL_NAME = "New Episode Alerts"
+    const val CHANNEL_EPISODE_ID = "streamhub_episode_alerts"
+    const val CHANNEL_EPISODE_NAME = "New Episode Alerts"
+
+    const val CHANNEL_ADMIN_ID = "streamhub_admin_announcements"
+    const val CHANNEL_ADMIN_NAME = "Admin & Community Announcements"
 
     private var prefs: SharedPreferences? = null
 
@@ -43,7 +46,7 @@ object NotificationAlertManager {
         prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         _alertsEnabled.value = prefs?.getBoolean(KEY_ALERTS_ENABLED, true) ?: true
 
-        createNotificationChannel(appContext)
+        createNotificationChannels(appContext)
     }
 
     fun setAlertsEnabled(context: Context, enabled: Boolean) {
@@ -51,19 +54,33 @@ object NotificationAlertManager {
         prefs?.edit()?.putBoolean(KEY_ALERTS_ENABLED, enabled)?.apply()
     }
 
-    private fun createNotificationChannel(context: Context) {
+    fun createNotificationChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                CHANNEL_NAME,
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+
+            // 1. Episode Alerts Channel
+            val episodeChannel = NotificationChannel(
+                CHANNEL_EPISODE_ID,
+                CHANNEL_EPISODE_NAME,
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Notifications when new episodes release for your bookmarked shows"
                 enableVibration(true)
             }
+            nm.createNotificationChannel(episodeChannel)
 
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            notificationManager?.createNotificationChannel(channel)
+            // 2. Admin Announcements Channel (Guaranteed High Priority Heads-up)
+            val adminChannel = NotificationChannel(
+                CHANNEL_ADMIN_ID,
+                CHANNEL_ADMIN_NAME,
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Important announcements, broadcasts, and direct messages from Admin"
+                enableVibration(true)
+                enableLights(true)
+                setShowBadge(true)
+            }
+            nm.createNotificationChannel(adminChannel)
         }
     }
 
@@ -139,7 +156,7 @@ object NotificationAlertManager {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+            val builder = NotificationCompat.Builder(context, CHANNEL_EPISODE_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle("New Episode Available!")
                 .setContentText("$mediaTitle - $episodeTitle is now ready to stream!")
@@ -169,6 +186,8 @@ object NotificationAlertManager {
         message: String,
         notificationId: Int = (System.currentTimeMillis() % 100000).toInt()
     ) {
+        createNotificationChannels(context)
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val permissionStatus = context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
             if (permissionStatus != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -189,13 +208,15 @@ object NotificationAlertManager {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+            val builder = NotificationCompat.Builder(context, CHANNEL_ADMIN_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(title)
                 .setContentText(message)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(message))
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setDefaults(NotificationCompat.DEFAULT_ALL)
+                .setVibrate(longArrayOf(0, 300, 200, 300))
                 .setAutoCancel(true)
                 .setContentIntent(pendingIntent)
 

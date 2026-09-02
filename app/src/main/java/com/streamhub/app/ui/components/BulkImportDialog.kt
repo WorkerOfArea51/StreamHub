@@ -228,7 +228,7 @@ fun BulkImportDialog(
                                             if (!clip.isNullOrBlank()) {
                                                 rawInputText = if (rawInputText.isBlank()) clip else "$rawInputText\n$clip"
                                             } else {
-                                                Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                                                ToastManager.showToast("Clipboard is empty")
                                             }
                                         },
                                         shape = RoundedCornerShape(10.dp),
@@ -561,7 +561,7 @@ fun BulkImportDialog(
                     Button(
                         onClick = {
                             if (selectedItems.isEmpty()) {
-                                Toast.makeText(context, "Please select at least 1 show to import", Toast.LENGTH_SHORT).show()
+                                ToastManager.showToast("Please select at least 1 show to import")
                                 return@Button
                             }
                             onImportConfirmed(selectedItems, selectedStrategy)

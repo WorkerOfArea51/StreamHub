@@ -945,7 +945,7 @@ fun DeviceTelemetryDetailDialog(
                                     OutlinedButton(
                                         onClick = {
                                             UserTelemetryManager.sendForceRefresh(session.clientId)
-                                            Toast.makeText(context, "Force refresh sent to ${session.deviceModel}", Toast.LENGTH_SHORT).show()
+                                            ToastManager.showToast("Force refresh sent to ${session.deviceModel} 🔄")
                                         },
                                         shape = RoundedCornerShape(10.dp),
                                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
@@ -961,7 +961,7 @@ fun DeviceTelemetryDetailDialog(
                                     OutlinedButton(
                                         onClick = {
                                             UserTelemetryManager.sendKickUser(session.clientId)
-                                            Toast.makeText(context, "Kick command sent to ${session.deviceModel}", Toast.LENGTH_SHORT).show()
+                                            ToastManager.showToast("Kick command sent to ${session.deviceModel} 🚫")
                                             onDismiss()
                                         },
                                         shape = RoundedCornerShape(10.dp),
@@ -1023,7 +1023,7 @@ fun DeviceTelemetryDetailDialog(
                     onClick = {
                         if (messageText.isNotBlank()) {
                             UserTelemetryManager.sendDirectNotification(session.clientId, messageTitle.trim(), messageText.trim())
-                            Toast.makeText(context, "Notification sent to ${session.deviceModel} 🚀", Toast.LENGTH_SHORT).show()
+                            ToastManager.showToast("Notification sent to ${session.deviceModel} 🚀")
                             showSendMessageDialog = false
                         }
                     },
@@ -1088,7 +1088,7 @@ fun GlobalBroadcastDialog(onDismiss: () -> Unit) {
                 onClick = {
                     if (broadcastMessage.isNotBlank()) {
                         UserTelemetryManager.sendGlobalBroadcast(broadcastTitle.trim(), broadcastMessage.trim())
-                        Toast.makeText(context, "Broadcast announcement published to all users! 📢", Toast.LENGTH_SHORT).show()
+                        ToastManager.showToast("Broadcast announcement published to all users! 📢")
                         onDismiss()
                     }
                 },
