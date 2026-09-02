@@ -424,24 +424,13 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
     }
 
     val isAccessKeyUnlocked by com.streamhub.app.data.AccessGateManager.isUnlocked.collectAsState()
-    val passExpiryMillis by com.streamhub.app.data.ads.AdPassManager.passExpiryMillis.collectAsState()
     val isAdminMode by com.streamhub.app.data.AdminManager.isAdminMode.collectAsState()
-    val isAdPassActive = passExpiryMillis > System.currentTimeMillis()
 
-    val isAppUnlocked = isAccessKeyUnlocked || isAdPassActive || isAdminMode
+    val isAppUnlocked = isAccessKeyUnlocked || isAdminMode
     val showBottomBar = bottomBarScreens.any { it.route == currentRoute }
 
-    var pendingPlayMedia by remember { mutableStateOf<Pair<com.streamhub.app.data.models.MediaItem, Int>?>(null) }
-    var showAdPassGate by remember { mutableStateOf(false) }
-
     val safePlayEpisode: (com.streamhub.app.data.models.MediaItem, Int) -> Unit = { media, episodeIndex ->
-        val isExemptFromAds = isAdminMode || isAccessKeyUnlocked || isAdPassActive || media.id.startsWith("offline:")
-        if (isExemptFromAds) {
-            navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
-        } else {
-            pendingPlayMedia = Pair(media, episodeIndex)
-            showAdPassGate = true
-        }
+        navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -704,21 +693,6 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
         }
         if (currentRoute != Screen.Splash.route) {
             com.streamhub.app.ui.components.AccessGateOverlay(isUnlocked = isAppUnlocked)
-        }
-        if (showAdPassGate) {
-            com.streamhub.app.ui.components.AdPassGateDialog(
-                onDismiss = {
-                    showAdPassGate = false
-                    pendingPlayMedia = null
-                },
-                onPassGranted = {
-                    showAdPassGate = false
-                    pendingPlayMedia?.let { (media, epIndex) ->
-                        navController.navigate(Screen.Player.createRoute(media.id, epIndex))
-                        pendingPlayMedia = null
-                    }
-                }
-            )
         }
         StreamHubToastHost()
     }

@@ -62,8 +62,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamhub.app.data.AccessGateManager
-import com.streamhub.app.data.ads.AdPassManager
-import com.streamhub.app.data.ads.UnityAdsManager
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
@@ -76,11 +74,8 @@ fun AccessGateOverlay(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val activity = context as? Activity
     var accessCodeInput by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var showAdPassDialog by remember { mutableStateOf(false) }
-    var isLoadingAd by remember { mutableStateOf(false) }
     val primaryColor = MaterialTheme.colorScheme.primary
 
     AnimatedVisibility(
@@ -193,7 +188,7 @@ fun AccessGateOverlay(
                             }
                             Spacer(modifier = Modifier.height(3.dp))
                             Text(
-                                text = "To maintain ultra-smooth, bufferless 4K & 1080p streaming, unlock access using a community code or by watching 1 quick ad for 12 hours free.",
+                                text = "To maintain ultra-smooth, bufferless 4K & 1080p streaming, please enter your community VIP access code.",
                                 color = TextSecondary,
                                 fontSize = 10.5.sp,
                                 lineHeight = 14.sp
@@ -201,119 +196,7 @@ fun AccessGateOverlay(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // ── PRIMARY OPTION 1: 12-Hour Free Ad Pass Button ──
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFF0F382C),
-                        border = BorderStroke(
-                            1.dp,
-                            Brush.horizontalGradient(
-                                listOf(Color(0xFF00E676), Color(0xFF00B0FF))
-                            )
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(enabled = !isLoadingAd) {
-                                if (activity != null && UnityAdsManager.isRewardedAdLoaded.value) {
-                                    isLoadingAd = true
-                                    UnityAdsManager.showRewardedAd(
-                                        activity = activity,
-                                        onUserEarnedReward = {
-                                            isLoadingAd = false
-                                            AdPassManager.grant12HourPass()
-                                            ToastManager.showToast("12-Hour Free Pass Active! 🎟️")
-                                        },
-                                        onAdDismissed = {
-                                            isLoadingAd = false
-                                        },
-                                        onAdError = { reason ->
-                                            isLoadingAd = false
-                                            showAdPassDialog = true
-                                        }
-                                    )
-                                } else {
-                                    showAdPassDialog = true
-                                }
-                            }
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .background(Color(0xFF00E676).copy(alpha = 0.2f), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (isLoadingAd) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(18.dp),
-                                            color = Color(0xFF00E676),
-                                            strokeWidth = 2.dp
-                                        )
-                                    } else {
-                                        Text("📺", fontSize = 18.sp)
-                                    }
-                                }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = "Watch 1 Ad for 12h Free Pass",
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp
-                                    )
-                                    Text(
-                                        text = "Instant 12h unlimited streaming access",
-                                        color = Color(0xFF00E676),
-                                        fontSize = 10.sp
-                                    )
-                                }
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFF00E676))
-                                    .padding(horizontal = 10.dp, vertical = 5.dp)
-                            ) {
-                                Text(
-                                    text = "FREE PASS ⚡",
-                                    color = Color.Black,
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 10.sp
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // ── OR DIVIDER ──
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFF2C2C44))
-                        Text(
-                            text = "  OR USE ACCESS CODE  ",
-                            color = TextSecondary,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFF2C2C44))
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     // Access Code Input
                     OutlinedTextField(
@@ -417,15 +300,5 @@ fun AccessGateOverlay(
                 }
             }
         }
-    }
-
-    if (showAdPassDialog) {
-        AdPassGateDialog(
-            onDismiss = { showAdPassDialog = false },
-            onPassGranted = {
-                showAdPassDialog = false
-                ToastManager.showToast("12-Hour Free Pass Active! 🎟️")
-            }
-        )
     }
 }

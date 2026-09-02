@@ -113,17 +113,6 @@ fun ProfileScreen(
     val streakDays by UserStatsManager.streakDays.collectAsState()
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
     val isAccessKeyUnlocked by com.streamhub.app.data.AccessGateManager.isUnlocked.collectAsState()
-    val passExpiry by com.streamhub.app.data.ads.AdPassManager.passExpiryMillis.collectAsState()
-    var remainingPassMs by remember { mutableLongStateOf(com.streamhub.app.data.ads.AdPassManager.getRemainingTimeMillis()) }
-    val hasAdPass = com.streamhub.app.data.ads.AdPassManager.hasActivePass()
-
-    androidx.compose.runtime.LaunchedEffect(passExpiry) {
-        while (true) {
-            remainingPassMs = com.streamhub.app.data.ads.AdPassManager.getRemainingTimeMillis()
-            kotlinx.coroutines.delay(1000L)
-        }
-    }
-
     androidx.compose.runtime.LaunchedEffect(isAdminMode) {
         if (isAdminMode) {
             com.streamhub.app.data.UserTelemetryManager.startObservingLiveMetrics()
@@ -133,7 +122,6 @@ fun ProfileScreen(
 
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
     var showAddContentDialog by remember { mutableStateOf(false) }
-    var showAdPassDialog by remember { mutableStateOf(false) }
     var showLiveTelemetryDialog by remember { mutableStateOf(false) }
     var showAboutScreen by remember { mutableStateOf(false) }
     var showWhatsNewDialog by remember { mutableStateOf(false) }
@@ -161,13 +149,11 @@ fun ProfileScreen(
             }
         }
 
-        // ── VIP Profile Card (With Dynamic Owner Crown 👑, Access Key Tickmark ✅, or Ad Pass 🎬) ──
+        // ── VIP Profile Card (With Dynamic Owner Crown 👑 or VIP Access Key Tickmark ✅) ──
         item(key = "vip_profile_card") {
             StreamHubUserProfileCard(
                 isAdmin = isAdminMode,
                 isAccessKeyVerified = isAccessKeyUnlocked,
-                hasAdPass = hasAdPass,
-                remainingPassMs = remainingPassMs,
                 primaryColor = primaryColor,
                 onSecretTapUnlock = { showAdminPasswordDialog = true },
                 onOpenStudio = { showAddContentDialog = true },
@@ -175,7 +161,6 @@ fun ProfileScreen(
                     AdminManager.disableAdmin()
                     Toast.makeText(context, "Admin mode locked", Toast.LENGTH_SHORT).show()
                 },
-                onOpenPassDialog = { showAdPassDialog = true },
                 onEditProfile = { showEditProfileDialog = true }
             )
         }
@@ -343,26 +328,16 @@ fun ProfileScreen(
             onDismiss = { showEditProfileDialog = false }
         )
     }
-
-    // 12-Hour Access Pass Dialog
-    if (showAdPassDialog) {
-        com.streamhub.app.ui.components.AdPassGateDialog(
-            onDismiss = { showAdPassDialog = false }
-        )
-    }
 }
 
 @Composable
 private fun StreamHubUserProfileCard(
     isAdmin: Boolean,
     isAccessKeyVerified: Boolean,
-    hasAdPass: Boolean,
-    remainingPassMs: Long,
     primaryColor: Color,
     onSecretTapUnlock: () -> Unit,
     onOpenStudio: () -> Unit,
     onLockAdmin: () -> Unit,
-    onOpenPassDialog: () -> Unit,
     onEditProfile: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -401,9 +376,9 @@ private fun StreamHubUserProfileCard(
         isAccessKeyVerified -> {
             // Verified by Access Key -> Tickmark ✅
             UserProfileTier(
-                title = "StreamHub Member",
-                badge = "✅ Verified",
-                subtitle = "✨ Community Access Key Active • Ultra HD",
+                title = "StreamHub VIP",
+                badge = "✅ VIP Active",
+                subtitle = "✨ Community VIP Key Active • Ultra HD",
                 cardBorder = listOf(Color(0xFF00E5FF), Color(0xFF7C4DFF)),
                 avatarColors = listOf(Color(0xFF00E5FF), Color(0xFF7C4DFF)),
                 avatarIcon = Icons.Default.Verified,
@@ -412,29 +387,15 @@ private fun StreamHubUserProfileCard(
                 badgeTextColor = Color(0xFF00E5FF)
             )
         }
-        hasAdPass -> {
-            // Verified by Watching Ads -> Ad Pass Emoji 🎬 / 🎟️
-            UserProfileTier(
-                title = "StreamHub Pass",
-                badge = "🎬 12h Pass",
-                subtitle = "📺 Ad Pass Active • ${com.streamhub.app.data.ads.AdPassManager.formatRemainingTime(remainingPassMs)} left",
-                cardBorder = listOf(Color(0xFF00E676), Color(0xFF00B0FF)),
-                avatarColors = listOf(Color(0xFF00E676), Color(0xFF00B0FF)),
-                avatarIcon = Icons.Default.PlayArrow,
-                badgeBg = Color(0x2200E676),
-                badgeBorder = Color(0xFF00E676),
-                badgeTextColor = Color(0xFF00E676)
-            )
-        }
         else -> {
             // Free Tier / Guest -> 👤
             UserProfileTier(
                 title = "StreamHub Guest",
-                badge = "👤 Free Tier",
-                subtitle = "✨ Tap avatar to enter PIN or watch an ad",
+                badge = "🔒 Locked",
+                subtitle = "✨ Enter VIP Access Key to unlock streaming",
                 cardBorder = listOf(primaryColor.copy(alpha = 0.5f), Color(0xFF38BDF8).copy(alpha = 0.3f)),
                 avatarColors = listOf(primaryColor, Color(0xFF38BDF8)),
-                avatarIcon = Icons.Default.AutoAwesome,
+                avatarIcon = Icons.Default.Lock,
                 badgeBg = Color(0x18FFFFFF),
                 badgeBorder = Color(0x33FFFFFF),
                 badgeTextColor = TextSecondary
@@ -676,45 +637,6 @@ private fun StreamHubUserProfileCard(
                             .clickable { onLockAdmin() }
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     )
-                }
-            } else if (!isAccessKeyVerified) {
-                // Quick Pass Trigger Action for non-key members
-                Spacer(modifier = Modifier.height(14.dp))
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (hasAdPass) Color(0xFF0F382C) else Color(0xFF1E1E2E),
-                    border = BorderStroke(
-                        1.dp,
-                        if (hasAdPass) Color(0xFF00E676).copy(alpha = 0.5f) else Color(0x33FFFFFF)
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onOpenPassDialog() }
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(if (hasAdPass) "🎟️" else "📺", fontSize = 16.sp)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = if (hasAdPass) "Extend 12h Pass (Watch Ad)" else "Get 12-Hour Free Pass (Watch Ad)",
-                                color = if (hasAdPass) Color(0xFF00E676) else TextPrimary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                        Text(
-                            text = if (hasAdPass) "EXTEND" else "GET PASS",
-                            color = if (hasAdPass) Color(0xFF00E676) else Color(0xFF00E5FF),
-                            fontWeight = FontWeight.Black,
-                            fontSize = 11.sp
-                        )
-                    }
                 }
             }
         }

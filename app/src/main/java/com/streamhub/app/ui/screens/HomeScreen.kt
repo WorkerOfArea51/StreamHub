@@ -105,18 +105,6 @@ fun HomeScreen(
     var showAdminAddDialog by remember { mutableStateOf(false) }
     var showSurpriseMeDialog by remember { mutableStateOf(false) }
     var showClearHistoryDialog by remember { mutableStateOf(false) }
-    var showAdPassDialog by remember { mutableStateOf(false) }
-
-    val passExpiry by com.streamhub.app.data.ads.AdPassManager.passExpiryMillis.collectAsState()
-    var remainingPassMs by remember { mutableStateOf(com.streamhub.app.data.ads.AdPassManager.getRemainingTimeMillis()) }
-    val isPassActive = com.streamhub.app.data.ads.AdPassManager.hasActivePass()
-
-    LaunchedEffect(passExpiry) {
-        while (true) {
-            remainingPassMs = com.streamhub.app.data.ads.AdPassManager.getRemainingTimeMillis()
-            kotlinx.coroutines.delay(1000L)
-        }
-    }
 
     val myListIds by com.streamhub.app.data.MyListManager.myListFlow.collectAsState()
 
@@ -681,12 +669,6 @@ fun HomeScreen(
                 }
             },
             containerColor = Color(0xFF1E1E2E)
-        )
-    }
-
-    if (showAdPassDialog) {
-        com.streamhub.app.ui.components.AdPassGateDialog(
-            onDismiss = { showAdPassDialog = false }
         )
     }
 }

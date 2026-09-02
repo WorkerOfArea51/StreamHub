@@ -45,8 +45,8 @@ android {
         minSdk = 24
         targetSdk = 35
         val envVersionName = System.getenv("VERSION_NAME")?.removePrefix("v")?.removePrefix("V")
-        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 246
-        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.246"
+        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 248
+        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.248"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -59,10 +59,6 @@ android {
         buildConfigField("boolean", "DEBUG_LOGGING", "false")
         buildConfigField("String", "ADMIN_MASTER_PASSWORD", "\"${secret("streamhub.admin_master_password", "")}\"")
         buildConfigField("String", "APP_ACCESS_CODE", "\"${secret("streamhub.app_access_code", "")}\"")
-        buildConfigField("String", "UNITY_GAME_ID", "\"${secret("streamhub.unity_game_id", "800363798")}\"")
-        buildConfigField("String", "UNITY_REWARDED_AD_UNIT_ID", "\"${secret("streamhub.unity_rewarded_ad_unit_id", "Rewarded_Android")}\"")
-        buildConfigField("String", "UNITY_INTERSTITIAL_AD_UNIT_ID", "\"${secret("streamhub.unity_interstitial_ad_unit_id", "Interstitial_Android")}\"")
-        buildConfigField("String", "UNITY_BANNER_AD_UNIT_ID", "\"${secret("streamhub.unity_banner_ad_unit_id", "Banner_Android")}\"")
     }
 
     splits {
@@ -202,9 +198,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-process:2.8.7")
     // NOTE: Using 1.1.0-alpha06 for KeyScheme.AES256_GCM support (not available in 1.0.0 stable)
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
-
-    // Unity Ads Android SDK
-    implementation("com.unity3d.ads:unity-ads:4.12.5")
 
     // FIX: Test dependencies for unit and instrumented tests
     testImplementation("junit:junit:4.13.2")

@@ -8,12 +8,12 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.Build
+import android.telephony.TelephonyManager
 import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.streamhub.app.BuildConfig
-import com.streamhub.app.data.ads.AdPassManager
 import com.streamhub.app.ui.components.ToastManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -229,7 +229,6 @@ object UserTelemetryManager {
         return when {
             AdminManager.isAdminMode.value -> "OWNER"
             AccessGateManager.isUnlocked.value -> "VIP"
-            AdPassManager.hasActivePass() -> "AD_PASS"
             else -> "GUEST"
         }
     }
@@ -453,8 +452,19 @@ object UserTelemetryManager {
         }
     }
 
+    fun getClientId(): String = clientId
+
+    fun triggerImmediateHeartbeat() {
+        scope.launch {
+            publishHeartbeat()
+        }
+    }
+
     fun sendForceRefresh(targetClientId: String) {
         if (targetClientId.isBlank()) return
+        if (targetClientId == clientId) {
+            triggerImmediateHeartbeat()
+        }
         scope.launch {
             try {
                 FirebaseFirestore.getInstance().collection(COLLECTION_SESSIONS).document(targetClientId)
@@ -580,26 +590,69 @@ object UserTelemetryManager {
     private fun getNetworkType(context: Context): String {
         return try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            val network = cm?.activeNetwork ?: return "Offline ❌"
-            val capabilities = cm.getNetworkCapabilities(network) ?: return "Offline ❌"
+                ?: return "Connected 🌐"
 
-            when {
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi 🛜"
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Cellular 5G/4G 📶"
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet 🔌"
-                else -> "Connected 🌐"
+            // 1. Try activeNetwork capabilities
+            var caps = cm.activeNetwork?.let { cm.getNetworkCapabilities(it) }
+
+            // 2. Fallback: Search allNetworks (crucial on Xiaomi/HyperOS/dual-SIM where activeNetwork can be unbound or null)
+            if (caps == null) {
+                for (net in cm.allNetworks) {
+                    val c = cm.getNetworkCapabilities(net)
+                    if (c != null && (c.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                                c.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                                c.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ||
+                                c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET))) {
+                        caps = c
+                        break
+                    }
+                }
             }
+
+            if (caps != null) {
+                return when {
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi 🛜"
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "Cellular 5G/4G 📶"
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet 🔌"
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "VPN / Secure 🛡️"
+                    caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) -> "Connected 🌐"
+                    else -> "Connected 🌐"
+                }
+            }
+
+            // 3. Fallback: Legacy NetworkInfo (extremely reliable across all Android/MIUI versions)
+            @Suppress("DEPRECATION")
+            val activeInfo = cm.activeNetworkInfo
+            if (activeInfo != null && activeInfo.isConnectedOrConnecting) {
+                return when (activeInfo.type) {
+                    ConnectivityManager.TYPE_WIFI -> "Wi-Fi 🛜"
+                    ConnectivityManager.TYPE_MOBILE -> "Cellular 5G/4G 📶"
+                    ConnectivityManager.TYPE_ETHERNET -> "Ethernet 🔌"
+                    else -> "Connected 🌐"
+                }
+            }
+
+            // 4. Fallback: TelephonyManager data connection
+            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+            if (tm != null && tm.simState == TelephonyManager.SIM_STATE_READY && tm.dataState == TelephonyManager.DATA_CONNECTED) {
+                return "Cellular 5G/4G 📶"
+            }
+
+            // 5. Default: When executing this inside publishHeartbeat(), network connectivity is active!
+            "Connected 🌐"
         } catch (e: Exception) {
-            "Unknown"
+            "Connected 🌐"
         }
     }
 
     private fun isVpnActive(context: Context): Boolean {
         return try {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            val network = cm?.activeNetwork ?: return false
-            val capabilities = cm.getNetworkCapabilities(network) ?: return false
-            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+            val activeCaps = cm.activeNetwork?.let { cm.getNetworkCapabilities(it) }
+            if (activeCaps != null && activeCaps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return true
+            cm.allNetworks.any { net ->
+                cm.getNetworkCapabilities(net)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+            }
         } catch (e: Exception) {
             false
         }

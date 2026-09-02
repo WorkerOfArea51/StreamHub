@@ -92,12 +92,12 @@ object FranchiseManager {
     }
 
     fun getEffectivePartNumber(item: MediaItem): Int? {
-        if (item.partNumber > 0) return item.partNumber
-        return detectChapterOrPartNumber(item.title)
+        // Full manual control: ONLY use part number if creator explicitly entered partNumber > 0 in Creator Mode!
+        return if (item.partNumber > 0) item.partNumber else null
     }
 
     fun detectChapterOrPartNumber(title: String): Int? {
-        val regex = Regex("""(?i)(?:chapter|part|cour|vol|volume|season|\bch\b|\bpt\b)\s*[-:]?\s*0*(\d+)""")
+        val regex = Regex("""(?i)(?:chapter|cour|vol|volume|\bch\b|\bpt\b)\s*[-:]?\s*0*(\d+)""")
         val match = regex.find(title)
         if (match != null) {
             return match.groupValues[1].toIntOrNull()

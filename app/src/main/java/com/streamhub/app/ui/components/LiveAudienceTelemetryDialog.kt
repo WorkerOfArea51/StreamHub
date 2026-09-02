@@ -117,7 +117,8 @@ fun LiveAudienceTelemetryDialog(
 
     val metrics by UserTelemetryManager.liveMetrics.collectAsState()
 
-    var selectedDeviceForInspection by remember { mutableStateOf<UserSessionInfo?>(null) }
+    var selectedDeviceClientId by remember { mutableStateOf<String?>(null) }
+    var cachedSelectedSession by remember { mutableStateOf<UserSessionInfo?>(null) }
     var showGlobalBroadcastDialog by remember { mutableStateOf(false) }
 
     // Pulsing Live Indicator Animation
@@ -342,13 +343,13 @@ fun LiveAudienceTelemetryDialog(
                                 )
 
                                 TierMetricCard(
-                                    title = "Ads Unlocked",
-                                    count = metrics.adPassUsers,
+                                    title = "Guest / Locked",
+                                    count = metrics.guestUsers,
                                     total = metrics.totalOnline,
-                                    icon = Icons.Default.VideoLibrary,
-                                    accentColor = Color(0xFF00E676),
-                                    bgColor = Color(0xFF142416),
-                                    borderColor = Color(0x6600E676),
+                                    icon = Icons.Default.Lock,
+                                    accentColor = Color(0xFF9E9E9E),
+                                    bgColor = Color(0xFF181820),
+                                    borderColor = Color(0x449E9E9E),
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -367,17 +368,6 @@ fun LiveAudienceTelemetryDialog(
                                     accentColor = Color(0xFFFF5252),
                                     bgColor = Color(0xFF261418),
                                     borderColor = Color(0x66FF5252),
-                                    modifier = Modifier.weight(1f)
-                                )
-
-                                TierMetricCard(
-                                    title = "Guest / Locked",
-                                    count = metrics.guestUsers,
-                                    total = metrics.totalOnline,
-                                    icon = Icons.Default.Lock,
-                                    accentColor = Color(0xFF9E9E9E),
-                                    bgColor = Color(0xFF181820),
-                                    borderColor = Color(0x449E9E9E),
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -486,7 +476,10 @@ fun LiveAudienceTelemetryDialog(
                             items(metrics.activeWatchers, key = { it.clientId }) { session ->
                                 ActiveDeviceItem(
                                     session = session,
-                                    onClick = { selectedDeviceForInspection = session }
+                                    onClick = {
+                                        selectedDeviceClientId = session.clientId
+                                        cachedSelectedSession = session
+                                    }
                                 )
                             }
                         }
@@ -510,11 +503,17 @@ fun LiveAudienceTelemetryDialog(
     }
 
     // ── Dialog: Deep Device Inspector ──
-    selectedDeviceForInspection?.let { session ->
-        DeviceTelemetryDetailDialog(
-            session = session,
-            onDismiss = { selectedDeviceForInspection = null }
-        )
+    selectedDeviceClientId?.let { targetClientId ->
+        val liveSession = metrics.activeWatchers.find { it.clientId == targetClientId } ?: cachedSelectedSession
+        if (liveSession != null) {
+            DeviceTelemetryDetailDialog(
+                session = liveSession,
+                onDismiss = {
+                    selectedDeviceClientId = null
+                    cachedSelectedSession = null
+                }
+            )
+        }
     }
 
     // ── Dialog: Global Broadcast Announcement ──
