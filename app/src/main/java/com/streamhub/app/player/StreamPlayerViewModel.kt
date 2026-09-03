@@ -989,6 +989,7 @@ class StreamPlayerViewModel : ViewModel() {
 
     private fun startPositionTracker() {
         var lastProgressSaveMs = 0L
+        var watchTimeAccumulatorMs = 0L
         positionTrackerJob?.cancel()
         positionTrackerJob = viewModelScope.launch {
             while (isActive) {
@@ -1072,13 +1073,17 @@ class StreamPlayerViewModel : ViewModel() {
                             }
                         }
 
-                        com.streamhub.app.data.UserStatsManager.addWatchTimeMillis(
-                            200L,
-                            currentMediaItem?.category ?: "ANIME"
-                        )
+                        watchTimeAccumulatorMs += 200L
+                        if (watchTimeAccumulatorMs >= 1000L) {
+                            com.streamhub.app.data.UserStatsManager.addWatchTimeMillis(
+                                watchTimeAccumulatorMs,
+                                currentMediaItem?.category ?: "ANIME"
+                            )
+                            watchTimeAccumulatorMs = 0L
+                        }
 
                         val now = System.currentTimeMillis()
-                        if (now - lastProgressSaveMs >= 2_000L) {
+                        if (now - lastProgressSaveMs >= 5_000L) {
                             currentMediaItem?.let { media ->
                                 val isMovie = media.type.equals("MOVIE", ignoreCase = true) ||
                                               media.category.equals("Movie", ignoreCase = true) ||
@@ -1282,6 +1287,7 @@ class StreamPlayerViewModel : ViewModel() {
         lastBufferedBytes = 0L
         lastSpeedSampleMs = 0L
         speedSamples.clear()
+        com.streamhub.app.data.UserStatsManager.flushToDisk()
         com.streamhub.app.data.UserTelemetryManager.clearPlaybackState()
     }
 

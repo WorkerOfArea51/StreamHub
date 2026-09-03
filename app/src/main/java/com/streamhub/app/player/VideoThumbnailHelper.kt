@@ -5,6 +5,7 @@ import android.media.MediaMetadataRetriever
 import android.util.Log
 import android.util.LruCache
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -117,25 +118,24 @@ object VideoThumbnailHelper {
         }
     }
 
+    private val helperScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+
     /**
-     * FIX: Thread-safe release — sets released flag first to prevent new retriever creation,
-     * then acquires mutex to safely release the existing retriever.
-     * Also evicts the memory cache to free pressure on low-memory devices.
+     * Non-blocking release: sets released flag first to prevent new retriever creation,
+     * evicts the memory cache immediately, and releases the existing retriever asynchronously
+     * on a background thread without blocking the Android UI Looper.
      */
     fun release() {
         released = true
-        retrieverMutex.let { mu ->
-            // Try non-blocking acquire; if locked, the holder will see `released=true` and exit
-            kotlinx.coroutines.runBlocking {
-                mu.withLock {
-                    try { retriever?.release() } catch (_: Exception) {}
-                    retriever = null
-                    currentSourceUrl = null
-                    memoryCache.evictAll()
-                }
+        currentSourceUrl = null
+        memoryCache.evictAll()
+        helperScope.launch {
+            retrieverMutex.withLock {
+                try {
+                    retriever?.release()
+                } catch (_: Exception) {}
+                retriever = null
             }
         }
-        // Allow future reuse after a short delay.
-        released = false
     }
 }

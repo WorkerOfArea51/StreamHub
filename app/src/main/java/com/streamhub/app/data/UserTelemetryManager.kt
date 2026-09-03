@@ -18,6 +18,7 @@ import com.streamhub.app.ui.components.ToastManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -98,7 +99,7 @@ object UserTelemetryManager {
     private var telemetryListener: ListenerRegistration? = null
     private var deviceCommandListener: ListenerRegistration? = null
     private var broadcastListener: ListenerRegistration? = null
-    private val scope = CoroutineScope(Dispatchers.IO + Job())
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val sessionStartTimestamp = System.currentTimeMillis()
 
@@ -237,61 +238,63 @@ object UserTelemetryManager {
         val ctx = appContext ?: return
         if (clientId.isBlank()) return
 
-        try {
-            val db = FirebaseFirestore.getInstance()
-            val (batteryPct, isCharging) = getBatteryInfo(ctx)
-            val networkType = getNetworkType(ctx)
-            val isVpn = isVpnActive(ctx)
-            val isEmulator = detectEmulator()
-            val isRooted = detectRoot()
-            val (countryCode, countryName, flagEmoji) = getCountryInfo(ctx)
-            val (downloadCount, downloadText) = getActiveDownloadsInfo()
+        scope.launch {
+            try {
+                val db = FirebaseFirestore.getInstance()
+                val (batteryPct, isCharging) = getBatteryInfo(ctx)
+                val networkType = getNetworkType(ctx)
+                val isVpn = isVpnActive(ctx)
+                val isEmulator = detectEmulator()
+                val isRooted = detectRoot()
+                val (countryCode, countryName, flagEmoji) = getCountryInfo(ctx)
+                val (downloadCount, downloadText) = getActiveDownloadsInfo()
 
-            val session = mapOf(
-                "clientId" to clientId,
-                "tier" to getCurrentTier(),
-                "deviceModel" to "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}",
-                "appVersion" to BuildConfig.VERSION_NAME,
-                "currentActivity" to currentStatusText,
-                "currentScreen" to currentScreenName,
-                "lastActiveTimestamp" to System.currentTimeMillis(),
-                "sessionStartTimestamp" to sessionStartTimestamp,
-                // Playback
-                "mediaTitle" to currentMediaTitle,
-                "episodeTitle" to currentEpisodeTitle,
-                "seasonNumber" to currentSeasonNumber,
-                "episodeNumber" to currentEpisodeNumber,
-                "positionMs" to currentPositionMs,
-                "durationMs" to currentDurationMs,
-                "playerState" to currentPlayerState,
-                "streamingSpeed" to currentStreamingSpeed,
-                // Hardware & Network
-                "networkType" to networkType,
-                "osVersion" to "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
-                "architecture" to (Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"),
-                "batteryPercent" to batteryPct,
-                "isCharging" to isCharging,
-                // Location & Locale
-                "countryCode" to countryCode,
-                "countryName" to countryName,
-                "flagEmoji" to flagEmoji,
-                // Security & Integrity
-                "isEmulator" to isEmulator,
-                "isRooted" to isRooted,
-                "isVpnActive" to isVpn,
-                "isOfficialBuild" to (BuildConfig.APPLICATION_ID == "com.streamhub.app"),
-                // Downloads
-                "activeDownloadsCount" to downloadCount,
-                "downloadStatusText" to downloadText
-            )
+                val session = mapOf(
+                    "clientId" to clientId,
+                    "tier" to getCurrentTier(),
+                    "deviceModel" to "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}",
+                    "appVersion" to BuildConfig.VERSION_NAME,
+                    "currentActivity" to currentStatusText,
+                    "currentScreen" to currentScreenName,
+                    "lastActiveTimestamp" to System.currentTimeMillis(),
+                    "sessionStartTimestamp" to sessionStartTimestamp,
+                    // Playback
+                    "mediaTitle" to currentMediaTitle,
+                    "episodeTitle" to currentEpisodeTitle,
+                    "seasonNumber" to currentSeasonNumber,
+                    "episodeNumber" to currentEpisodeNumber,
+                    "positionMs" to currentPositionMs,
+                    "durationMs" to currentDurationMs,
+                    "playerState" to currentPlayerState,
+                    "streamingSpeed" to currentStreamingSpeed,
+                    // Hardware & Network
+                    "networkType" to networkType,
+                    "osVersion" to "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
+                    "architecture" to (Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"),
+                    "batteryPercent" to batteryPct,
+                    "isCharging" to isCharging,
+                    // Location & Locale
+                    "countryCode" to countryCode,
+                    "countryName" to countryName,
+                    "flagEmoji" to flagEmoji,
+                    // Security & Integrity
+                    "isEmulator" to isEmulator,
+                    "isRooted" to isRooted,
+                    "isVpnActive" to isVpn,
+                    "isOfficialBuild" to (BuildConfig.APPLICATION_ID == "com.streamhub.app"),
+                    // Downloads
+                    "activeDownloadsCount" to downloadCount,
+                    "downloadStatusText" to downloadText
+                )
 
-            db.collection(COLLECTION_SESSIONS).document(clientId)
-                .set(session, com.google.firebase.firestore.SetOptions.merge())
-                .addOnFailureListener { e ->
-                    Log.w(TAG, "Heartbeat failed: ${e.message}")
-                }
-        } catch (e: Exception) {
-            Log.w(TAG, "Heartbeat error: ${e.message}")
+                db.collection(COLLECTION_SESSIONS).document(clientId)
+                    .set(session, com.google.firebase.firestore.SetOptions.merge())
+                    .addOnFailureListener { e ->
+                        Log.w(TAG, "Heartbeat failed: ${e.message}")
+                    }
+            } catch (e: Exception) {
+                Log.w(TAG, "Heartbeat error: ${e.message}")
+            }
         }
     }
 

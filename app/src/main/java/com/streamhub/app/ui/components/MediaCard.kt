@@ -1,6 +1,7 @@
 package com.streamhub.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -57,7 +58,7 @@ fun MediaCard(
 
     val effectiveSeason = com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(item)
     val effectivePart = com.streamhub.app.data.FranchiseManager.getEffectivePartNumber(item)
-    val movieSeq = if (isMovie) (effectivePart ?: item.seasonNumber.takeIf { it > 1 }) else null
+    val movieSeq = if (isMovie) (effectivePart?.takeIf { it > 1 }) else null
     val seasonBadgeText = if (effectivePart != null && effectivePart > 0) "S$effectiveSeason P$effectivePart" else "S$effectiveSeason"
     val seasonSubtitleText = if (effectivePart != null && effectivePart > 0) "Season $effectiveSeason Pt $effectivePart" else "Season $effectiveSeason"
 
@@ -215,7 +216,13 @@ fun MediaCard(
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            modifier = Modifier
+                .fillMaxWidth()
+                .basicMarquee(
+                    iterations = Int.MAX_VALUE,
+                    initialDelayMillis = 2000,
+                    velocity = 30.dp
+                )
         )
 
         val metaSubtitle = if (isWatchingInProgress && progress != null) {
@@ -246,7 +253,14 @@ fun MediaCard(
             color = if (isWatchingInProgress) AccentOrange else TextSecondary,
             fontSize = 11.sp,
             fontWeight = if (isWatchingInProgress) FontWeight.Bold else FontWeight.Normal,
-            maxLines = 1
+            maxLines = 1,
+            modifier = Modifier
+                .fillMaxWidth()
+                .basicMarquee(
+                    iterations = Int.MAX_VALUE,
+                    initialDelayMillis = 2500,
+                    velocity = 28.dp
+                )
         )
     }
 }

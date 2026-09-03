@@ -43,6 +43,11 @@ object DownloadNotificationHelper {
         }
     }
 
+    fun getSafeNotificationId(downloadId: Long): Int {
+        // Mask to 27 bits (max ~134M) so multiplying by 10 stays well under Int.MAX_VALUE (2.14B)
+        return (downloadId.hashCode() and 0x07FFFFFF).coerceAtLeast(1)
+    }
+
     fun showProgress(
         context: Context,
         downloadId: Long,
@@ -56,13 +61,14 @@ object DownloadNotificationHelper {
     ) {
         initChannel(context)
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+        val notifId = getSafeNotificationId(downloadId)
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pendingIntent = PendingIntent.getActivity(
             context,
-            downloadId.toInt(),
+            notifId * 10,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -76,7 +82,7 @@ object DownloadNotificationHelper {
         }
         val pausePendingIntent = PendingIntent.getBroadcast(
             context,
-            (downloadId.toInt() * 10) + 1,
+            (notifId * 10) + 1,
             pauseIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -90,7 +96,7 @@ object DownloadNotificationHelper {
         }
         val cancelPendingIntent = PendingIntent.getBroadcast(
             context,
-            (downloadId.toInt() * 10) + 2,
+            (notifId * 10) + 2,
             cancelIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -112,7 +118,7 @@ object DownloadNotificationHelper {
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", cancelPendingIntent)
 
         try {
-            nm.notify(downloadId.toInt(), builder.build())
+            nm.notify(notifId, builder.build())
         } catch (_: SecurityException) {}
     }
 
@@ -127,13 +133,14 @@ object DownloadNotificationHelper {
     ) {
         initChannel(context)
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+        val notifId = getSafeNotificationId(downloadId)
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pendingIntent = PendingIntent.getActivity(
             context,
-            downloadId.toInt(),
+            notifId * 10,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -147,7 +154,7 @@ object DownloadNotificationHelper {
         }
         val resumePendingIntent = PendingIntent.getBroadcast(
             context,
-            (downloadId.toInt() * 10) + 3,
+            (notifId * 10) + 3,
             resumeIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -161,7 +168,7 @@ object DownloadNotificationHelper {
         }
         val cancelPendingIntent = PendingIntent.getBroadcast(
             context,
-            (downloadId.toInt() * 10) + 2,
+            (notifId * 10) + 2,
             cancelIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -179,7 +186,7 @@ object DownloadNotificationHelper {
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Cancel", cancelPendingIntent)
 
         try {
-            nm.notify(downloadId.toInt(), builder.build())
+            nm.notify(notifId, builder.build())
         } catch (_: SecurityException) {}
     }
 
@@ -191,13 +198,14 @@ object DownloadNotificationHelper {
     ) {
         initChannel(context)
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+        val notifId = getSafeNotificationId(downloadId)
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         val pendingIntent = PendingIntent.getActivity(
             context,
-            downloadId.toInt(),
+            notifId * 10,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -213,12 +221,12 @@ object DownloadNotificationHelper {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
 
         try {
-            nm.notify(downloadId.toInt(), builder.build())
+            nm.notify(notifId, builder.build())
         } catch (_: SecurityException) {}
     }
 
     fun cancel(context: Context, downloadId: Long) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-        nm?.cancel(downloadId.toInt())
+        nm?.cancel(getSafeNotificationId(downloadId))
     }
 }

@@ -249,6 +249,14 @@ class FirebaseRepository private constructor() {
             .addOnFailureListener { e ->
                 Log.w(TAG, "Primary write to '$targetCollection' failed (check security rules): ${e.message}")
             }
+
+        // Clean up from other collections if category was moved/changed
+        for (col in ALL_COLLECTIONS) {
+            if (col != targetCollection) {
+                db.collection(col).document(itemToSave.id).delete()
+                    .addOnFailureListener { /* Ignore if document didn't exist in this collection */ }
+            }
+        }
     }
 
     /**

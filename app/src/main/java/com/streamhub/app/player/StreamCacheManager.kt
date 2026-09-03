@@ -84,7 +84,7 @@ object StreamCacheManager {
                 databaseProvider = null
                 try { cache?.release() } catch (e: Exception) { Log.e(TAG, "Failed to release cache", e) }
                 try {
-                    (cacheDir ?: File(context_safe().cacheDir, "media_stream_cache")).deleteRecursively()
+                    getEffectiveCacheDir()?.deleteRecursively()
                 } catch (e: Exception) { Log.e(TAG, "Failed to delete cache dir", e) }
                 cacheDir = null
             } else if (activeReaderCount == 0) {
@@ -93,10 +93,10 @@ object StreamCacheManager {
         }
     }
 
-    /** Safe context access for deferred operations (cached at init/call). */
     @Volatile private var cachedContext: Context? = null
-    private fun context_safe(): Context =
-        cachedContext ?: throw IllegalStateException("StreamCacheManager not initialized")
+    private fun getEffectiveCacheDir(): File? {
+        return cacheDir ?: cachedContext?.let { File(it.cacheDir, "media_stream_cache") }
+    }
 
     fun clearCache(context: Context): Boolean {
         cachedContext = context.applicationContext

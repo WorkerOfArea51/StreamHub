@@ -70,33 +70,43 @@ object UserStatsManager {
         }
     }
 
+    private var cachedTotalMs = 0L
+    private var cachedDailyMs = 0L
+    private var cachedLastDate = ""
+    private var cachedStreak = 0
+    private var cachedAnimeMs = 0L
+    private var cachedMovieMs = 0L
+    private var cachedSeriesMs = 0L
+    private var lastDiskSaveTimestamp = 0L
+    private const val DISK_SAVE_INTERVAL_MS = 5_000L // 5s debounce for flash storage protection
+
     @Synchronized
     private fun loadStats() {
         val p = prefs ?: return
-        val totalMs = p.getLong(KEY_TOTAL_WATCH_MS, 0L)
-        val dailyMs = p.getLong(KEY_DAILY_WATCH_MS, 0L)
-        val lastDate = p.getString(KEY_LAST_WATCH_DATE, "") ?: ""
-        val streak = p.getInt(KEY_STREAK_COUNT, 0)
+        cachedTotalMs = p.getLong(KEY_TOTAL_WATCH_MS, 0L)
+        cachedDailyMs = p.getLong(KEY_DAILY_WATCH_MS, 0L)
+        cachedLastDate = p.getString(KEY_LAST_WATCH_DATE, "") ?: ""
+        cachedStreak = p.getInt(KEY_STREAK_COUNT, 0)
 
-        val animeSec = p.getLong(KEY_ANIME_SECONDS, 0L)
-        val movieSec = p.getLong(KEY_MOVIE_SECONDS, 0L)
-        val seriesSec = p.getLong(KEY_SERIES_SECONDS, 0L)
+        cachedAnimeMs = p.getLong(KEY_ANIME_SECONDS, 0L) * 1000L
+        cachedMovieMs = p.getLong(KEY_MOVIE_SECONDS, 0L) * 1000L
+        cachedSeriesMs = p.getLong(KEY_SERIES_SECONDS, 0L) * 1000L
 
         val todayStr = getTodayDateString()
 
-        val currentDailyMs = if (lastDate == todayStr) dailyMs else 0L
+        val currentDailyMs = if (cachedLastDate == todayStr) cachedDailyMs else 0L
         val currentStreak = when {
-            lastDate.isBlank() -> 0
-            lastDate == todayStr -> streak.coerceAtLeast(1)
-            isYesterday(lastDate) -> streak
+            cachedLastDate.isBlank() -> 0
+            cachedLastDate == todayStr -> cachedStreak.coerceAtLeast(1)
+            isYesterday(cachedLastDate) -> cachedStreak
             else -> 0
         }
 
-        _totalWatchHours.value = String.format(Locale.US, "%.1fh", totalMs / (3600.0 * 1000.0))
+        _totalWatchHours.value = String.format(Locale.US, "%.1fh", cachedTotalMs / (3600.0 * 1000.0))
         _dailyWatchFormatted.value = formatMillis(currentDailyMs)
         _streakDays.value = currentStreak
 
-        calculateCategoryPercentages(animeSec, movieSec, seriesSec)
+        calculateCategoryPercentages(cachedAnimeMs / 1000L, cachedMovieMs / 1000L, cachedSeriesMs / 1000L)
     }
 
     private fun calculateCategoryPercentages(animeSec: Long, movieSec: Long, seriesSec: Long) {
@@ -118,52 +128,66 @@ object UserStatsManager {
     }
 
     @Synchronized
-    fun addWatchTimeMillis(millis: Long, category: String = "ANIME") {
+    fun addWatchTimeMillis(millis: Long, category: String = "ANIME", forceSave: Boolean = false) {
         if (millis <= 0L) return
         val safeMillis = millis.coerceAtMost(60_000L) // max 1 min step
 
-        val p = prefs ?: return
         val todayStr = getTodayDateString()
-        val lastDate = p.getString(KEY_LAST_WATCH_DATE, "") ?: ""
-        var streak = p.getInt(KEY_STREAK_COUNT, 0)
+        if (cachedLastDate != todayStr) {
+            cachedStreak = if (cachedLastDate.isBlank()) 1
+            else if (isYesterday(cachedLastDate)) cachedStreak + 1
+            else 1
+            cachedDailyMs = safeMillis
+            cachedLastDate = todayStr
+        } else {
+            cachedDailyMs += safeMillis
+        }
+        cachedTotalMs += safeMillis
 
-        val totalMs = p.getLong(KEY_TOTAL_WATCH_MS, 0L) + safeMillis
-        val prevDailyMs = if (lastDate == todayStr) p.getLong(KEY_DAILY_WATCH_MS, 0L) else 0L
-        val newDailyMs = prevDailyMs + safeMillis
-
-        var animeSec = p.getLong(KEY_ANIME_SECONDS, 0L)
-        var movieSec = p.getLong(KEY_MOVIE_SECONDS, 0L)
-        var seriesSec = p.getLong(KEY_SERIES_SECONDS, 0L)
-
-        val addedSec = safeMillis / 1000L
-        when (category.uppercase()) {
-            "ANIME" -> animeSec += addedSec
-            "MOVIE" -> movieSec += addedSec
-            "WEB_SERIES", "SERIES" -> seriesSec += addedSec
+        when (category.uppercase(Locale.ROOT)) {
+            "ANIME" -> cachedAnimeMs += safeMillis
+            "MOVIE", "MOVIES" -> cachedMovieMs += safeMillis
+            "WEB_SERIES", "SERIES" -> cachedSeriesMs += safeMillis
             else -> { /* Ignore */ }
         }
 
-        if (lastDate != todayStr) {
-            streak = if (lastDate.isBlank()) 1
-                     else if (isYesterday(lastDate)) streak + 1
-                     else 1
-        }
+        val animeSec = cachedAnimeMs / 1000L
+        val movieSec = cachedMovieMs / 1000L
+        val seriesSec = cachedSeriesMs / 1000L
 
+        _totalWatchHours.value = String.format(Locale.US, "%.1fh", cachedTotalMs / (3600.0 * 1000.0))
+        _dailyWatchFormatted.value = formatMillis(cachedDailyMs)
+        _streakDays.value = cachedStreak
+
+        calculateCategoryPercentages(animeSec, movieSec, seriesSec)
+
+        val now = System.currentTimeMillis()
+        if (forceSave || (now - lastDiskSaveTimestamp >= DISK_SAVE_INTERVAL_MS)) {
+            flushToDiskInternal(now, animeSec, movieSec, seriesSec)
+        }
+    }
+
+    @Synchronized
+    fun flushToDisk() {
+        val now = System.currentTimeMillis()
+        val animeSec = cachedAnimeMs / 1000L
+        val movieSec = cachedMovieMs / 1000L
+        val seriesSec = cachedSeriesMs / 1000L
+        flushToDiskInternal(now, animeSec, movieSec, seriesSec)
+    }
+
+    private fun flushToDiskInternal(now: Long, animeSec: Long, movieSec: Long, seriesSec: Long) {
+        val p = prefs ?: return
         p.edit()
-            .putLong(KEY_TOTAL_WATCH_MS, totalMs)
-            .putLong(KEY_DAILY_WATCH_MS, newDailyMs)
-            .putString(KEY_LAST_WATCH_DATE, todayStr)
-            .putInt(KEY_STREAK_COUNT, streak)
+            .putLong(KEY_TOTAL_WATCH_MS, cachedTotalMs)
+            .putLong(KEY_DAILY_WATCH_MS, cachedDailyMs)
+            .putString(KEY_LAST_WATCH_DATE, cachedLastDate)
+            .putInt(KEY_STREAK_COUNT, cachedStreak)
             .putLong(KEY_ANIME_SECONDS, animeSec)
             .putLong(KEY_MOVIE_SECONDS, movieSec)
             .putLong(KEY_SERIES_SECONDS, seriesSec)
             .apply()
-
-        _totalWatchHours.value = String.format(Locale.US, "%.1fh", totalMs / (3600.0 * 1000.0))
-        _dailyWatchFormatted.value = formatMillis(newDailyMs)
-        _streakDays.value = streak
-
-        calculateCategoryPercentages(animeSec, movieSec, seriesSec)
+        lastDiskSaveTimestamp = now
     }
 
     private fun formatMillis(millis: Long): String {

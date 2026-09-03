@@ -2490,7 +2490,9 @@ private fun transformCue(
 ): androidx.media3.common.text.Cue {
     val rawBitmap = cue.bitmap
     if (rawBitmap != null && !rawBitmap.isRecycled) {
-        val bitmap = if (rawBitmap.config == android.graphics.Bitmap.Config.HARDWARE) {
+        val isHardwareConfig = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O &&
+            rawBitmap.config == android.graphics.Bitmap.Config.HARDWARE
+        val bitmap = if (isHardwareConfig) {
             rawBitmap.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
         } else {
             rawBitmap

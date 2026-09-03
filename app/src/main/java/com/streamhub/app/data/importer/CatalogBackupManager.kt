@@ -10,6 +10,7 @@ import android.provider.MediaStore
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.streamhub.app.BuildConfig
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.repository.FirebaseRepository
 import kotlinx.coroutines.Dispatchers
@@ -23,7 +24,7 @@ import java.util.Locale
 
 data class CatalogBackupHeader(
     val formatVersion: Int = 1,
-    val appVersion: String = "4.8.244",
+    val appVersion: String = BuildConfig.VERSION_NAME,
     val exportedAt: Long = System.currentTimeMillis(),
     val exportDateFormatted: String = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()),
     val totalMediaCount: Int = 0,
@@ -58,7 +59,7 @@ object CatalogBackupManager {
         val totalEps = catalog.sumOf { it.episodes.size }
         val header = CatalogBackupHeader(
             formatVersion = 1,
-            appVersion = "4.8.244",
+            appVersion = BuildConfig.VERSION_NAME,
             exportedAt = System.currentTimeMillis(),
             exportDateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()),
             totalMediaCount = catalog.size,

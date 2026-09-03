@@ -27,6 +27,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -43,6 +45,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -84,6 +88,7 @@ fun SearchScreen(
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
     var showAddContentDialog by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     LaunchedEffect(searchQuery) {
         val trimmed = searchQuery.trim()
@@ -93,13 +98,6 @@ fun SearchScreen(
         } else {
             delay(300L)
             debouncedQuery = searchQuery
-        }
-    }
-
-    LaunchedEffect(debouncedQuery) {
-        val trimmed = debouncedQuery.trim()
-        if (trimmed.length >= 2 && !trimmed.startsWith("#")) {
-            com.streamhub.app.data.SearchHistoryManager.addQuery(trimmed)
         }
     }
 
@@ -315,6 +313,16 @@ fun SearchScreen(
                 }
             },
             singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(
+                onSearch = {
+                    val trimmed = searchQuery.trim()
+                    if (trimmed.length >= 2 && !trimmed.startsWith("#")) {
+                        com.streamhub.app.data.SearchHistoryManager.addQuery(trimmed)
+                    }
+                    keyboardController?.hide()
+                }
+            ),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = SurfaceDark,
                 unfocusedContainerColor = SurfaceDark,
@@ -599,7 +607,13 @@ fun SearchScreen(
                 items(sortedCatalog, key = { it.id }) { item ->
                     MediaCard(
                         item = item,
-                        onClick = { onMediaClick(item) },
+                        onClick = {
+                            val trimmed = searchQuery.trim()
+                            if (trimmed.length >= 2 && !trimmed.startsWith("#")) {
+                                com.streamhub.app.data.SearchHistoryManager.addQuery(trimmed)
+                            }
+                            onMediaClick(item)
+                        },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
