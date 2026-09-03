@@ -89,6 +89,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.Alignment
@@ -143,7 +144,11 @@ fun DetailsScreen(
     var isTrailerPlaying by remember { mutableStateOf(false) }
     var recommendations by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
 
-    var currentMediaId by remember(mediaId) { mutableStateOf(mediaId) }
+    var currentMediaId by rememberSaveable(mediaId) { mutableStateOf(mediaId) }
+    LaunchedEffect(mediaId) {
+        currentMediaId = mediaId
+    }
+
     val mediaItem = remember(currentMediaId, catalog) {
         catalog.firstOrNull { 
             it.id == currentMediaId ||
@@ -161,10 +166,10 @@ fun DetailsScreen(
         mediaItem?.episodes?.mapNotNull { it.arcName.trim().takeIf { a -> a.isNotEmpty() } }?.distinct() ?: emptyList()
     }
 
-    var selectedSeasonNumber by remember(currentMediaId, effectiveSeasonNumber) {
+    var selectedSeasonNumber by rememberSaveable(currentMediaId, effectiveSeasonNumber) {
         mutableIntStateOf(effectiveSeasonNumber)
     }
-    var selectedArcName by remember(currentMediaId, distinctArcs) {
+    var selectedArcName by rememberSaveable(currentMediaId) {
         mutableStateOf(distinctArcs.firstOrNull() ?: "")
     }
     var isArcSheetOpen by remember { mutableStateOf(false) }
@@ -291,6 +296,41 @@ fun DetailsScreen(
         modifier = modifier
     ) { innerPadding ->
         val detailsListState = rememberLazyListState()
+
+        val historyMap by WatchHistoryManager.historyFlow.collectAsState()
+        val mediaProgress = historyMap[mediaItem.id] ?: remember(mediaItem.id) { WatchHistoryManager.getProgress(mediaItem.id) }
+
+        var hasScrolledForCurrentSession by remember(mediaItem.id) { mutableStateOf(false) }
+
+        LaunchedEffect(mediaItem.id, mediaProgress?.lastUpdated) {
+            val progress = mediaProgress ?: WatchHistoryManager.getProgress(mediaItem.id)
+            if (progress != null && !isMovie && mediaItem.episodes.isNotEmpty() && !hasScrolledForCurrentSession) {
+                val isRecent = (System.currentTimeMillis() - progress.lastUpdated) < 60_000L
+                if (isRecent) {
+                    hasScrolledForCurrentSession = true
+                    delay(350)
+                    val targetEp = mediaItem.episodes.getOrNull(progress.episodeNumber)
+                        ?: mediaItem.episodes.find { it.episodeNumber == progress.episodeNumber }
+                    if (targetEp != null) {
+                        if (targetEp.arcName.isNotBlank() && !selectedArcName.equals(targetEp.arcName, ignoreCase = true)) {
+                            selectedArcName = targetEp.arcName
+                        }
+                        if (targetEp.seasonNumber > 0 && selectedSeasonNumber != targetEp.seasonNumber) {
+                            selectedSeasonNumber = targetEp.seasonNumber
+                        }
+                        delay(200)
+                        val filteredIdx = seasonFilteredEpisodes.indexOf(targetEp).takeIf { it >= 0 } ?: 0
+                        val headerItems = if (franchiseItems.size > 1) 7 else 6
+                        val targetScrollItem = (headerItems + filteredIdx).coerceAtLeast(0)
+                        detailsListState.animateScrollToItem(
+                            index = targetScrollItem,
+                            scrollOffset = -80
+                        )
+                    }
+                }
+            }
+        }
+
         CompositionLocalProvider(LocalIsScrollInProgress provides detailsListState.isScrollInProgress) {
             LazyColumn(
                 state = detailsListState,
@@ -1093,8 +1133,7 @@ fun DetailsScreen(
                     }
                 }
 
-                val mergedEpisodes = (otherEpisodes + updatedArcEpisodes)
-                    .sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+                val mergedEpisodes = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(otherEpisodes + updatedArcEpisodes)
 
                 val updatedMediaItem = mediaItem.copy(episodes = mergedEpisodes)
                 repository.saveMediaItem(updatedMediaItem)

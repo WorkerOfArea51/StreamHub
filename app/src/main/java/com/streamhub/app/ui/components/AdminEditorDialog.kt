@@ -833,8 +833,8 @@ fun AdminEditorDialog(
                                                                     map[key] = ep
                                                                 }
                                                                 currentEpisodes.clear()
-                                                                currentEpisodes.addAll(map.values.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber })))
-                                                                val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps)
+                                                                currentEpisodes.addAll(com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(map.values.toList()))
+                                                                val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(currentEpisodes)
                                                                 startBatchLink = jsonDump
                                                                 generatedEpisodesText = jsonDump
                                                                 f2lBatchInput = ""
@@ -893,7 +893,7 @@ fun AdminEditorDialog(
                                                             map[key] = ep
                                                         }
                                                         currentEpisodes.clear()
-                                                        currentEpisodes.addAll(map.values.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber })))
+                                                        currentEpisodes.addAll(com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(map.values.toList()))
                                                         val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps)
                                                         startBatchLink = jsonDump
                                                         generatedEpisodesText = jsonDump
@@ -954,7 +954,7 @@ fun AdminEditorDialog(
                                                                 map[key] = ep
                                                             }
                                                             currentEpisodes.clear()
-                                                            currentEpisodes.addAll(map.values.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber })))
+                                                            currentEpisodes.addAll(com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(map.values.toList()))
                                                             val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps)
                                                             startBatchLink = jsonDump
                                                             generatedEpisodesText = jsonDump
@@ -981,7 +981,7 @@ fun AdminEditorDialog(
                                                 map[key] = ep
                                             }
                                             currentEpisodes.clear()
-                                            currentEpisodes.addAll(map.values.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber })))
+                                            currentEpisodes.addAll(com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(map.values.toList()))
                                             startBatchLink = clipText
                                             generatedEpisodesText = clipText
                                             batchSuccess = "✅ Parsed & Loaded ${parsed.size} episodes! Check JSON below."
@@ -1111,7 +1111,8 @@ fun AdminEditorDialog(
                                                     color = Color(0xFF0284C7).copy(alpha = 0.2f),
                                                     border = BorderStroke(1.dp, Color(0xFF0284C7)),
                                                     modifier = Modifier.clickable {
-                                                        val renumbered = currentEpisodes.groupBy { it.seasonNumber }.flatMap { (_, epList) ->
+                                                        val sortedBase = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(currentEpisodes)
+                                                        val renumbered = sortedBase.groupBy { it.seasonNumber }.flatMap { (_, epList) ->
                                                             epList.mapIndexed { idx, ep ->
                                                                 ep.copy(
                                                                     episodeNumber = idx + 1,
@@ -1509,7 +1510,7 @@ fun AdminEditorDialog(
                                                         val key = (ep.arcName.ifBlank { "S${ep.seasonNumber}" }) to ep.episodeNumber
                                                         map[key] = ep
                                                     }
-                                                    map.values.sortedWith(compareBy({ it.seasonNumber }, { it.episodeNumber }))
+                                                    com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(map.values.toList())
                                                 } else {
                                                     currentEpisodes.toList()
                                                 }

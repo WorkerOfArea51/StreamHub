@@ -433,6 +433,11 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
         navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
     }
 
+    val playViaDetails: (com.streamhub.app.data.models.MediaItem, Int) -> Unit = { media, episodeIndex ->
+        navController.navigate(Screen.Details.createRoute(media.id))
+        navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             bottomBar = {
@@ -512,7 +517,7 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                     onMediaClick = { media ->
                         navController.navigate(Screen.Details.createRoute(media.id))
                     },
-                    onPlayEpisode = safePlayEpisode,
+                    onPlayEpisode = playViaDetails,
                     onNavigateToHistory = {
                         navController.navigate(Screen.History.route)
                     }
@@ -567,7 +572,7 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                     onMediaClick = { media ->
                         navController.navigate(Screen.Details.createRoute(media.id))
                     },
-                    onPlayEpisode = safePlayEpisode
+                    onPlayEpisode = playViaDetails
                 )
             }
 

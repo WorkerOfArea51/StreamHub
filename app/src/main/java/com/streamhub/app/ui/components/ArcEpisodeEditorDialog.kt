@@ -331,7 +331,8 @@ fun ArcEpisodeEditorDialog(
                                                         if (fetchedEps.isNotEmpty()) {
                                                             val map = arcEpisodes.associateBy { it.episodeNumber }.toMutableMap()
                                                             fetchedEps.forEach { ep ->
-                                                                map[ep.episodeNumber] = ep.copy(
+                                                                val resolved = com.streamhub.app.data.EpisodeOrderingManager.resolveEffectiveEpisode(ep)
+                                                                map[resolved.episodeNumber] = resolved.copy(
                                                                     seasonNumber = targetSeasonNumber,
                                                                     arcName = targetArcName
                                                                 )
@@ -434,7 +435,8 @@ fun ArcEpisodeEditorDialog(
                                             if (parsed.isNotEmpty()) {
                                                 val map = arcEpisodes.associateBy { it.episodeNumber }.toMutableMap()
                                                 parsed.forEach { ep ->
-                                                    map[ep.episodeNumber] = ep.copy(
+                                                    val resolved = com.streamhub.app.data.EpisodeOrderingManager.resolveEffectiveEpisode(ep)
+                                                    map[resolved.episodeNumber] = resolved.copy(
                                                         seasonNumber = targetSeasonNumber,
                                                         arcName = targetArcName
                                                     )

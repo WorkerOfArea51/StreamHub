@@ -141,8 +141,9 @@ fun MpvPlaylistSheet(
                 ) {
                     itemsIndexed(episodes) { index, ep ->
                         val isCurrent = index == currentIndex
-                        val rawTitle = ep.title.ifBlank { ep.fileName.ifBlank { "Episode ${ep.episodeNumber}" } }
-                        val displayTitle = TelegramLinkResolver.cleanEpisodeTitle(rawTitle, ep.episodeNumber).ifBlank { "Episode ${ep.episodeNumber}" }
+                        val resolvedEpNumber = com.streamhub.app.data.EpisodeOrderingManager.resolveEffectiveEpisode(ep).episodeNumber
+                        val rawTitle = ep.title.ifBlank { ep.fileName.ifBlank { "Episode $resolvedEpNumber" } }
+                        val displayTitle = TelegramLinkResolver.cleanEpisodeTitle(rawTitle, resolvedEpNumber).ifBlank { "Episode $resolvedEpNumber" }
                         val effectiveThumbnail = ep.thumbnailUrl.ifBlank {
                             mediaItem?.bannerUrl?.ifBlank { mediaItem.posterUrl } ?: ""
                         }
@@ -197,7 +198,7 @@ fun MpvPlaylistSheet(
                                             .padding(6.dp)
                                     ) {
                                         Text(
-                                            text = "${ep.episodeNumber}",
+                                            text = "$resolvedEpNumber",
                                             color = Color.White,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
@@ -295,8 +296,9 @@ fun MpvPlaylistSheet(
                 ) {
                     itemsIndexed(episodes) { index, ep ->
                         val isCurrent = index == currentIndex
-                        val rawTitle = ep.title.ifBlank { ep.fileName.ifBlank { "Episode ${ep.episodeNumber}" } }
-                        val displayTitle = TelegramLinkResolver.cleanEpisodeTitle(rawTitle, ep.episodeNumber).ifBlank { "Episode ${ep.episodeNumber}" }
+                        val resolvedEpNumber = com.streamhub.app.data.EpisodeOrderingManager.resolveEffectiveEpisode(ep).episodeNumber
+                        val rawTitle = ep.title.ifBlank { ep.fileName.ifBlank { "Episode $resolvedEpNumber" } }
+                        val displayTitle = TelegramLinkResolver.cleanEpisodeTitle(rawTitle, resolvedEpNumber).ifBlank { "Episode $resolvedEpNumber" }
                         val effectiveThumbnail = ep.thumbnailUrl.ifBlank {
                             mediaItem?.bannerUrl?.ifBlank { mediaItem.posterUrl } ?: ""
                         }
@@ -352,7 +354,7 @@ fun MpvPlaylistSheet(
                                             .padding(4.dp)
                                     ) {
                                         Text(
-                                            text = "${ep.episodeNumber}",
+                                            text = "$resolvedEpNumber",
                                             color = Color.White,
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,

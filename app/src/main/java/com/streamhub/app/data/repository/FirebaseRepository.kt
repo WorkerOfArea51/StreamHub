@@ -177,7 +177,8 @@ class FirebaseRepository private constructor() {
                                     category = finalCategory,
                                     type = finalType,
                                     createdAt = createdAt,
-                                    updatedAt = updatedAt
+                                    updatedAt = updatedAt,
+                                    episodes = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(item.episodes)
                                 )
                             }
                         } catch (e: Exception) {
@@ -216,7 +217,12 @@ class FirebaseRepository private constructor() {
 
         val finalCreatedAt = if (item.createdAt > 0L) item.createdAt else System.currentTimeMillis()
         val finalUpdatedAt = System.currentTimeMillis()
-        val itemToSave = item.copy(createdAt = finalCreatedAt, updatedAt = finalUpdatedAt)
+        val normalizedEpisodes = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(item.episodes)
+        val itemToSave = item.copy(
+            createdAt = finalCreatedAt,
+            updatedAt = finalUpdatedAt,
+            episodes = normalizedEpisodes
+        )
 
         // 1. Optimistic instant UI update
         _mediaCatalog.update { current ->
