@@ -12,6 +12,7 @@ import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +36,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import com.streamhub.app.ui.components.LocalIsScrollInProgress
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import kotlinx.coroutines.delay
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.zIndex
 import androidx.compose.material.icons.Icons
@@ -666,94 +668,36 @@ fun DetailsScreen(
                             )
                         }
                         Spacer(modifier = Modifier.height(8.dp))
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            contentPadding = PaddingValues(vertical = 4.dp)
-                        ) {
-                            items(franchiseItems) { fItem ->
-                                val isCurrent = fItem.id == mediaItem.id
-                                val tag = com.streamhub.app.data.FranchiseManager.getFranchiseTag(fItem, mediaItem)
-                                val subtitle = com.streamhub.app.data.FranchiseManager.getSeasonCardSubtitle(fItem)
+                        val franchiseRowState = rememberLazyListState()
+                        val isParentScrolling = LocalIsScrollInProgress.current
+                        val isFranchiseScrolling = isParentScrolling || franchiseRowState.isScrollInProgress
 
-                                val tagColor = when {
-                                    isCurrent -> AccentGold
-                                    tag.startsWith("SEQUEL") -> Color(0xFF00E676)
-                                    tag.startsWith("PREQUEL") -> Color(0xFF7C4DFF)
-                                    tag.startsWith("SIDE STORY") || tag.startsWith("SPIN-OFF") || tag.contains("OVA") || tag.contains("ONA") || tag.contains("SPECIAL") -> Color(0xFF38BDF8)
-                                    tag.startsWith("SEASON") -> Color(0xFFFF9800)
-                                    tag.contains("MOVIE") -> AccentOrange
-                                    else -> PrimaryRed
-                                }
+                        LaunchedEffect(franchiseItems, mediaItem.id) {
+                            val currentIdx = franchiseItems.indexOfFirst { it.id == mediaItem.id }
+                            if (currentIdx > 0) {
+                                franchiseRowState.animateScrollToItem(currentIdx)
+                            }
+                        }
 
-                                val tagTextColor = if (isCurrent) Color.Black else Color.White
-
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = if (isCurrent) Color(0xFF1F1826) else SurfaceDark,
-                                    border = BorderStroke(
-                                        width = if (isCurrent) 1.5.dp else 1.dp,
-                                        color = if (isCurrent) AccentGold else tagColor.copy(alpha = 0.5f)
-                                    ),
-                                    modifier = Modifier
-                                        .width(135.dp)
-                                        .clickable {
-                                            if (!isCurrent) {
+                        CompositionLocalProvider(LocalIsScrollInProgress provides isFranchiseScrolling) {
+                            LazyRow(
+                                state = franchiseRowState,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                contentPadding = PaddingValues(vertical = 4.dp)
+                            ) {
+                                items(franchiseItems, key = { it.id }) { fItem ->
+                                    FranchiseCard(
+                                        fItem = fItem,
+                                        mediaItem = mediaItem,
+                                        isScrolling = isFranchiseScrolling,
+                                        onClick = {
+                                            if (fItem.id != mediaItem.id) {
                                                 currentMediaId = fItem.id
                                                 selectedSeasonNumber = com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(fItem)
                                                 selectedArcName = ""
                                             }
                                         }
-                                ) {
-                                    Column(modifier = Modifier.padding(8.dp)) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(160.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                        ) {
-                                            AsyncImage(
-                                                model = fItem.posterUrl.ifBlank { fItem.bannerUrl },
-                                                contentDescription = fItem.title,
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier.fillMaxSize()
-                                            )
-                                            // Compound Tag Badge (e.g. CURRENT • TV, SEQUEL • MOVIE, PREQUEL • TV)
-                                            Surface(
-                                                shape = RoundedCornerShape(topStart = 0.dp, topEnd = 8.dp, bottomStart = 8.dp, bottomEnd = 0.dp),
-                                                color = tagColor,
-                                                modifier = Modifier.align(Alignment.TopEnd)
-                                            ) {
-                                                Text(
-                                                    text = tag,
-                                                    color = tagTextColor,
-                                                    fontSize = 8.5.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
-                                                )
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.height(6.dp))
-
-                                        Text(
-                                            text = if (fItem.seasonTitle.isNotBlank()) fItem.seasonTitle else fItem.title,
-                                            color = if (isCurrent) AccentGold else TextPrimary,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-
-                                        Spacer(modifier = Modifier.height(2.dp))
-
-                                        Text(
-                                            text = subtitle,
-                                            color = TextSecondary,
-                                            fontSize = 9.sp,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
+                                    )
                                 }
                             }
                         }
@@ -1446,5 +1390,131 @@ fun InfoDetailRow(label: String, value: String) {
     ) {
         Text(text = label, color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
         Text(text = value.ifEmpty { "N/A" }, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun FranchiseCard(
+    fItem: MediaItem,
+    mediaItem: MediaItem,
+    isScrolling: Boolean,
+    onClick: () -> Unit
+) {
+    var canMarquee by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isScrolling) {
+        if (isScrolling) {
+            canMarquee = false
+        } else {
+            delay(900L)
+            canMarquee = true
+        }
+    }
+
+    val isCurrent = fItem.id == mediaItem.id
+    val tag = com.streamhub.app.data.FranchiseManager.getFranchiseTag(fItem, mediaItem)
+    val subtitle = com.streamhub.app.data.FranchiseManager.getSeasonCardSubtitle(fItem)
+
+    val tagColor = when {
+        isCurrent -> AccentGold
+        tag.startsWith("SEQUEL") -> Color(0xFF00E676)
+        tag.startsWith("PREQUEL") -> Color(0xFF7C4DFF)
+        tag.startsWith("SIDE STORY") || tag.startsWith("SPIN-OFF") || tag.contains("OVA") || tag.contains("ONA") || tag.contains("SPECIAL") -> Color(0xFF38BDF8)
+        tag.startsWith("SEASON") -> Color(0xFFFF9800)
+        tag.contains("MOVIE") -> AccentOrange
+        else -> PrimaryRed
+    }
+
+    val tagTextColor = if (isCurrent) Color.Black else Color.White
+
+    val titleModifier = if (canMarquee) {
+        Modifier
+            .fillMaxWidth()
+            .basicMarquee(
+                iterations = Int.MAX_VALUE,
+                initialDelayMillis = 1000,
+                repeatDelayMillis = 2500,
+                velocity = 30.dp
+            )
+    } else {
+        Modifier.fillMaxWidth()
+    }
+
+    val subtitleModifier = if (canMarquee) {
+        Modifier
+            .fillMaxWidth()
+            .basicMarquee(
+                iterations = Int.MAX_VALUE,
+                initialDelayMillis = 1800,
+                repeatDelayMillis = 2500,
+                velocity = 26.dp
+            )
+    } else {
+        Modifier.fillMaxWidth()
+    }
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (isCurrent) Color(0xFF1F1826) else SurfaceDark,
+        border = BorderStroke(
+            width = if (isCurrent) 1.5.dp else 1.dp,
+            color = if (isCurrent) AccentGold else tagColor.copy(alpha = 0.5f)
+        ),
+        modifier = Modifier
+            .width(135.dp)
+            .clickable { onClick() }
+    ) {
+        Column(modifier = Modifier.padding(8.dp)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+                    .clip(RoundedCornerShape(8.dp))
+            ) {
+                AsyncImage(
+                    model = fItem.posterUrl.ifBlank { fItem.bannerUrl },
+                    contentDescription = fItem.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                // Compound Tag Badge (e.g. CURRENT • TV, SEQUEL • MOVIE, PREQUEL • TV)
+                Surface(
+                    shape = RoundedCornerShape(topStart = 0.dp, topEnd = 8.dp, bottomStart = 8.dp, bottomEnd = 0.dp),
+                    color = tagColor,
+                    modifier = Modifier.align(Alignment.TopEnd)
+                ) {
+                    Text(
+                        text = tag,
+                        color = tagTextColor,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = if (fItem.seasonTitle.isNotBlank()) fItem.seasonTitle else fItem.title,
+                color = if (isCurrent) AccentGold else TextPrimary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = titleModifier
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            Text(
+                text = subtitle,
+                color = TextSecondary,
+                fontSize = 9.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = subtitleModifier
+            )
+        }
     }
 }

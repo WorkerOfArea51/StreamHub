@@ -86,6 +86,11 @@ object FranchiseManager {
     }
 
     fun getEffectiveSeasonNumber(item: MediaItem): Int {
+        // Full manual control: If creator explicitly set partNumber > 0 and seasonNumber > 0,
+        // respect seasonNumber unconditionally (e.g. Season 1 Part 2 is Season 1, NOT Season 2).
+        if (item.partNumber > 0 && item.seasonNumber > 0) {
+            return item.seasonNumber
+        }
         if (item.seasonNumber > 1) return item.seasonNumber
         val detected = detectSeasonNumber(item.title)
         return if (detected > 1) detected else (item.seasonNumber.takeIf { it > 0 } ?: 1)
@@ -468,10 +473,6 @@ object FranchiseManager {
         val thMatch = Regex("(\\d+)(st|nd|rd|th)\\s*Season", RegexOption.IGNORE_CASE).find(title)
         if (thMatch != null) {
             return thMatch.groupValues[1].toIntOrNull() ?: 1
-        }
-        val partMatch = Regex("Part\\s*(\\d+)", RegexOption.IGNORE_CASE).find(title)
-        if (partMatch != null) {
-            return partMatch.groupValues[1].toIntOrNull() ?: 1
         }
         return 1
     }
