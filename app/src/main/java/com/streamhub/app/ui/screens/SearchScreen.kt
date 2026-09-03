@@ -19,7 +19,10 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.runtime.CompositionLocalProvider
+import com.streamhub.app.ui.components.LocalIsScrollInProgress
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
@@ -597,25 +600,29 @@ fun SearchScreen(
                 modifier = Modifier.weight(1f)
             )
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 135.dp),
-                contentPadding = PaddingValues(bottom = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                items(sortedCatalog, key = { it.id }) { item ->
-                    MediaCard(
-                        item = item,
-                        onClick = {
-                            val trimmed = searchQuery.trim()
-                            if (trimmed.length >= 2 && !trimmed.startsWith("#")) {
-                                com.streamhub.app.data.SearchHistoryManager.addQuery(trimmed)
-                            }
-                            onMediaClick(item)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+            val gridState = rememberLazyGridState()
+            CompositionLocalProvider(LocalIsScrollInProgress provides gridState.isScrollInProgress) {
+                LazyVerticalGrid(
+                    state = gridState,
+                    columns = GridCells.Adaptive(minSize = 135.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    items(sortedCatalog, key = { it.id }) { item ->
+                        MediaCard(
+                            item = item,
+                            onClick = {
+                                val trimmed = searchQuery.trim()
+                                if (trimmed.length >= 2 && !trimmed.startsWith("#")) {
+                                    com.streamhub.app.data.SearchHistoryManager.addQuery(trimmed)
+                                }
+                                onMediaClick(item)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             }
         }

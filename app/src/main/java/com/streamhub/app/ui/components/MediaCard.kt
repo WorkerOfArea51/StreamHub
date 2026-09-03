@@ -41,16 +41,40 @@ import com.streamhub.app.ui.theme.TextSecondary
 
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.foundation.layout.fillMaxHeight
 import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.ui.theme.AccentOrange
+import kotlinx.coroutines.delay
+
+/**
+ * CompositionLocal indicating whether a parent scroll container (vertical or horizontal)
+ * is currently scrolling or flinging. Marquees pause during scrolling to guarantee 120 FPS.
+ */
+val LocalIsScrollInProgress = compositionLocalOf { false }
 
 @Composable
 fun MediaCard(
     item: MediaItem,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier.width(135.dp)
+    modifier: Modifier = Modifier.width(135.dp),
+    isScrolling: Boolean = LocalIsScrollInProgress.current
 ) {
+    var canMarquee by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isScrolling) {
+        if (isScrolling) {
+            canMarquee = false
+        } else {
+            // Settle pause: wait 900ms after scroll halts before initiating auto-scroll
+            delay(900L)
+            canMarquee = true
+        }
+    }
     val isMovie = item.category.equals("MOVIE", ignoreCase = true) || 
                   item.category.equals("Movies", ignoreCase = true) || 
                   item.type.equals("MOVIE", ignoreCase = true) ||
@@ -210,19 +234,27 @@ fun MediaCard(
 
         Spacer(modifier = Modifier.height(6.dp))
 
+        val titleModifier = if (canMarquee) {
+            Modifier
+                .fillMaxWidth()
+                .basicMarquee(
+                    iterations = Int.MAX_VALUE,
+                    initialDelayMillis = 1000,
+                    repeatDelayMillis = 2500,
+                    velocity = 30.dp
+                )
+        } else {
+            Modifier.fillMaxWidth()
+        }
+
         Text(
             text = item.title,
             color = TextPrimary,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
-            modifier = Modifier
-                .fillMaxWidth()
-                .basicMarquee(
-                    iterations = Int.MAX_VALUE,
-                    initialDelayMillis = 2000,
-                    velocity = 30.dp
-                )
+            overflow = TextOverflow.Ellipsis,
+            modifier = titleModifier
         )
 
         val metaSubtitle = if (isWatchingInProgress && progress != null) {
@@ -248,19 +280,27 @@ fun MediaCard(
             }
         }
 
+        val subtitleModifier = if (canMarquee) {
+            Modifier
+                .fillMaxWidth()
+                .basicMarquee(
+                    iterations = Int.MAX_VALUE,
+                    initialDelayMillis = 1800,
+                    repeatDelayMillis = 2500,
+                    velocity = 26.dp
+                )
+        } else {
+            Modifier.fillMaxWidth()
+        }
+
         Text(
             text = metaSubtitle,
             color = if (isWatchingInProgress) AccentOrange else TextSecondary,
             fontSize = 11.sp,
             fontWeight = if (isWatchingInProgress) FontWeight.Bold else FontWeight.Normal,
             maxLines = 1,
-            modifier = Modifier
-                .fillMaxWidth()
-                .basicMarquee(
-                    iterations = Int.MAX_VALUE,
-                    initialDelayMillis = 2500,
-                    velocity = 28.dp
-                )
+            overflow = TextOverflow.Ellipsis,
+            modifier = subtitleModifier
         )
     }
 }

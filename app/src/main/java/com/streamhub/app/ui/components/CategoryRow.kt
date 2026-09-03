@@ -22,6 +22,9 @@ import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.TextPrimary
 
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.CompositionLocalProvider
+
 @Composable
 fun CategoryRow(
     title: String,
@@ -31,6 +34,10 @@ fun CategoryRow(
     onSeeAllClick: (() -> Unit)? = null
 ) {
     if (items.isEmpty()) return
+
+    val rowState = rememberLazyListState()
+    val isParentScrolling = LocalIsScrollInProgress.current
+    val isScrolling = isParentScrolling || rowState.isScrollInProgress
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
@@ -59,15 +66,18 @@ fun CategoryRow(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(items, key = { it.id }) { media ->
-                MediaCard(
-                    item = media,
-                    onClick = { onMediaClick(media) }
-                )
+        CompositionLocalProvider(LocalIsScrollInProgress provides isScrolling) {
+            LazyRow(
+                state = rowState,
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(items, key = { it.id }) { media ->
+                    MediaCard(
+                        item = media,
+                        onClick = { onMediaClick(media) }
+                    )
+                }
             }
         }
     }

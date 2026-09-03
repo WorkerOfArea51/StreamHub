@@ -30,6 +30,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.CompositionLocalProvider
+import com.streamhub.app.ui.components.LocalIsScrollInProgress
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.activity.compose.BackHandler
@@ -285,12 +288,15 @@ fun DetailsScreen(
         containerColor = BackgroundDark,
         modifier = modifier
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(bottom = 120.dp)
-        ) {
+        val detailsListState = rememberLazyListState()
+        CompositionLocalProvider(LocalIsScrollInProgress provides detailsListState.isScrollInProgress) {
+            LazyColumn(
+                state = detailsListState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                contentPadding = PaddingValues(bottom = 120.dp)
+            ) {
             // Header Backdrop Container (Modern 16:9 Hero Trailer Player)
             item {
                 val rawId = mediaItem.trailerId.trim()
@@ -1033,26 +1039,34 @@ fun DetailsScreen(
                         }
 
                         if (resolvedRecommendations.isNotEmpty()) {
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                items(resolvedRecommendations) { recItem ->
-                                    MediaCard(
-                                        item = recItem,
-                                        onClick = {
-                                            val catalogMatch = catalog.firstOrNull { cat ->
-                                                (cat.id == recItem.id) ||
-                                                (cat.tmdbId.isNotBlank() && (cat.tmdbId == recItem.tmdbId || cat.tmdbId == recItem.id.removePrefix("tmdb_rec_"))) ||
-                                                (cat.malId.isNotBlank() && (cat.malId == recItem.malId || cat.malId == recItem.id.removePrefix("mal_rec_"))) ||
-                                                (cat.title.isNotBlank() && (cat.title.equals(recItem.title, ignoreCase = true) || cat.title.replace(":", "").equals(recItem.title.replace(":", ""), ignoreCase = true)))
+                            val recRowState = rememberLazyListState()
+                            val isParentScrolling = LocalIsScrollInProgress.current
+                            val isRecScrolling = isParentScrolling || recRowState.isScrollInProgress
+                            CompositionLocalProvider(LocalIsScrollInProgress provides isRecScrolling) {
+                                LazyRow(
+                                    state = recRowState,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    items(resolvedRecommendations) { recItem ->
+                                        MediaCard(
+                                            item = recItem,
+                                            onClick = {
+                                                val catalogMatch = catalog.firstOrNull { cat ->
+                                                    (cat.id == recItem.id) ||
+                                                    (cat.tmdbId.isNotBlank() && (cat.tmdbId == recItem.tmdbId || cat.tmdbId == recItem.id.removePrefix("tmdb_rec_"))) ||
+                                                    (cat.malId.isNotBlank() && (cat.malId == recItem.malId || cat.malId == recItem.id.removePrefix("mal_rec_"))) ||
+                                                    (cat.title.isNotBlank() && (cat.title.equals(recItem.title, ignoreCase = true) || cat.title.replace(":", "").equals(recItem.title.replace(":", ""), ignoreCase = true)))
+                                                }
+                                                if (catalogMatch != null) {
+                                                    currentMediaId = catalogMatch.id
+                                                    selectedSeasonNumber = com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(catalogMatch)
+                                                    selectedArcName = ""
+                                                } else {
+                                                    onMediaClick(recItem)
+                                                }
                                             }
-                                            if (catalogMatch != null) {
-                                                currentMediaId = catalogMatch.id
-                                                selectedSeasonNumber = com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(catalogMatch)
-                                                selectedArcName = ""
-                                            } else {
-                                                onMediaClick(recItem)
-                                            }
-                                        }
-                                    )
+                                        )
+                                    }
                                 }
                             }
                         } else {
@@ -1075,6 +1089,7 @@ fun DetailsScreen(
                     }
                 }
             }
+        }
         }
     }
 

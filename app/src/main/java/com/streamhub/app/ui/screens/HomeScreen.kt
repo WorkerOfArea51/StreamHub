@@ -23,6 +23,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.CompositionLocalProvider
+import com.streamhub.app.ui.components.LocalIsScrollInProgress
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -305,11 +308,14 @@ fun HomeScreen(
 
         Pair(trending, shelves)
     }
+        val homeVerticalListState = rememberLazyListState()
     Box(modifier = modifier.fillMaxSize().background(BackgroundDark)) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 80.dp)
-        ) {
+        CompositionLocalProvider(LocalIsScrollInProgress provides homeVerticalListState.isScrollInProgress) {
+            LazyColumn(
+                state = homeVerticalListState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 80.dp)
+            ) {
             // Category Filter Pills & Surprise Me Roulette Button
             item {
                 LazyRow(
@@ -611,6 +617,7 @@ fun HomeScreen(
                 }
             }
         }
+        }
 
         if (isAdminMode) {
             FloatingActionButton(
@@ -679,6 +686,10 @@ fun MediaSectionRow(
     items: List<MediaItem>,
     onMediaClick: (MediaItem) -> Unit
 ) {
+    val rowState = rememberLazyListState()
+    val isParentScrolling = LocalIsScrollInProgress.current
+    val isScrolling = isParentScrolling || rowState.isScrollInProgress
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -694,16 +705,19 @@ fun MediaSectionRow(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(horizontal = 16.dp)
-        ) {
-            items(items, key = { it.id }) { item ->
-                MediaCard(
-                    item = item,
-                    onClick = { onMediaClick(item) },
-                    modifier = Modifier.width(115.dp)
-                )
+        CompositionLocalProvider(LocalIsScrollInProgress provides isScrolling) {
+            LazyRow(
+                state = rowState,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp)
+            ) {
+                items(items, key = { it.id }) { item ->
+                    MediaCard(
+                        item = item,
+                        onClick = { onMediaClick(item) },
+                        modifier = Modifier.width(115.dp)
+                    )
+                }
             }
         }
     }
@@ -775,18 +789,25 @@ fun ContinueWatchingSection(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            items(continueWatchingList, key = { it.first.id }) { (media, progress) ->
-                ContinueWatchingRowItem(
-                    media = media,
-                    progress = progress,
-                    onPlay = { onPlayEpisode(media, progress.episodeNumber) },
-                    onRemove = { WatchHistoryManager.removeMediaProgress(media.id) }
-                )
+        val cwRowState = rememberLazyListState()
+        val isParentScrolling = LocalIsScrollInProgress.current
+        val isCwScrolling = isParentScrolling || cwRowState.isScrollInProgress
+
+        CompositionLocalProvider(LocalIsScrollInProgress provides isCwScrolling) {
+            LazyRow(
+                state = cwRowState,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(continueWatchingList, key = { it.first.id }) { (media, progress) ->
+                    ContinueWatchingRowItem(
+                        media = media,
+                        progress = progress,
+                        onPlay = { onPlayEpisode(media, progress.episodeNumber) },
+                        onRemove = { WatchHistoryManager.removeMediaProgress(media.id) }
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.height(18.dp))
