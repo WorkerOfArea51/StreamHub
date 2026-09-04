@@ -315,6 +315,7 @@ fun ProfileScreen(
     if (showAddContentDialog) {
         AdminEditorDialog(
             initialItem = null,
+            existingIds = repository.mediaCatalog.value.map { it.id }.toSet(),
             onDismiss = { showAddContentDialog = false },
             onSave = { newItem ->
                 repository.saveMediaItem(newItem)

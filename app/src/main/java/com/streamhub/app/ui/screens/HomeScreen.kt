@@ -636,6 +636,7 @@ fun HomeScreen(
     if (showAdminAddDialog) {
         AdminEditorDialog(
             initialItem = null,
+            existingIds = catalog.map { it.id }.toSet(),
             onDismiss = { showAdminAddDialog = false },
             onSave = { newItem ->
                 repository.saveMediaItem(newItem)

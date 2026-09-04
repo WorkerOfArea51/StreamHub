@@ -87,6 +87,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun AdminEditorDialog(
     initialItem: MediaItem? = null,
+    existingIds: Set<String> = emptySet(),
     onDismiss: () -> Unit,
     onSave: (MediaItem) -> Unit,
     onDelete: ((String) -> Unit)? = null
@@ -1540,8 +1541,22 @@ fun AdminEditorDialog(
 
                                     val generatedId = generateReadableMediaId(
                                         title = title,
-                                        releaseYear = premiered.take(4)
+                                        releaseYear = premiered.take(4),
+                                        seasonTitle = seasonTitle,
+                                        partNumber = partNumberText.toIntOrNull() ?: 0
                                     )
+
+                                    val finalId = if (initialItem != null && initialItem.id.isNotBlank()) {
+                                        initialItem.id
+                                    } else {
+                                        var uniqueId = generatedId
+                                        var suffix = 2
+                                        while (existingIds.contains(uniqueId)) {
+                                            uniqueId = "${generatedId}_$suffix"
+                                            suffix++
+                                        }
+                                        uniqueId
+                                    }
 
                                     val finalFranchiseId = franchiseId.ifBlank {
                                         com.streamhub.app.data.FranchiseManager.getFranchiseId(MediaItem(title = title))
@@ -1551,7 +1566,7 @@ fun AdminEditorDialog(
                                     }
 
                                     val mediaItem = MediaItem(
-                                        id = initialItem?.id ?: generatedId,
+                                        id = finalId,
                                         title = title,
                                         type = type,
                                         category = category,
@@ -1682,12 +1697,31 @@ private fun MetadataRow(
     }
 }
 
-private fun generateReadableMediaId(title: String, releaseYear: String): String {
-    val cleanSlug = title.lowercase()
+internal fun generateReadableMediaId(
+    title: String,
+    releaseYear: String,
+    seasonTitle: String = "",
+    partNumber: Int = 0
+): String {
+    var raw = title.lowercase()
         .replace("&", "and")
         .replace(Regex("[^a-z0-9]+"), "_")
         .trim('_')
-        .take(45)
+
+    val sTitleSlug = seasonTitle.lowercase()
+        .replace("&", "and")
+        .replace(Regex("[^a-z0-9]+"), "_")
+        .trim('_')
+
+    if (sTitleSlug.isNotBlank() && !raw.contains(sTitleSlug)) {
+        raw = "${raw}_$sTitleSlug"
+    }
+
+    if (partNumber > 0 && !raw.contains("part") && !raw.contains("pt")) {
+        raw = "${raw}_pt$partNumber"
+    }
+
+    val cleanSlug = raw.trim('_').take(120)
     val year = releaseYear.trim().take(4)
     return buildString {
         append(cleanSlug.ifBlank { "item_${System.currentTimeMillis()}" })

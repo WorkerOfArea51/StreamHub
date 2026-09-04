@@ -642,6 +642,7 @@ fun SearchScreen(
     if (showAddContentDialog) {
         com.streamhub.app.ui.components.AdminEditorDialog(
             initialItem = null,
+            existingIds = catalog.map { it.id }.toSet(),
             onDismiss = { showAddContentDialog = false },
             onSave = { newItem ->
                 repository.saveMediaItem(newItem)

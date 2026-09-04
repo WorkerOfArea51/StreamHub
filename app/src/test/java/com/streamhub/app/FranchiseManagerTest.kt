@@ -410,4 +410,20 @@ class FranchiseManagerTest {
         assertEquals("S1 Pt 2 should be SEQUEL relative to Eris", "SEQUEL • TV", FranchiseManager.getFranchiseTag(s1Pt2, erisOva))
         assertEquals("S2 Pt 1 should be SEQUEL relative to Eris", "SEQUEL • TV", FranchiseManager.getFranchiseTag(s2Pt1, erisOva))
     }
+
+    @Test
+    fun testGenerateReadableMediaId_doesNotTruncateUniqueSubtitles() {
+        val fitzId = com.streamhub.app.ui.components.generateReadableMediaId(
+            title = "Mushoku Tensei: Jobless Reincarnation Season 2 - Guardian Fitz",
+            releaseYear = "2023"
+        )
+        val s2Id = com.streamhub.app.ui.components.generateReadableMediaId(
+            title = "Mushoku Tensei: Jobless Reincarnation Season 2",
+            releaseYear = "2023"
+        )
+
+        // Must NOT collide!
+        org.junit.Assert.assertNotEquals("IDs must be distinct to prevent Firestore overwrite", fitzId, s2Id)
+        org.junit.Assert.assertTrue("fitzId should contain guardian_fitz", fitzId.contains("guardian_fitz"))
+    }
 }

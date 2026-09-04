@@ -508,7 +508,7 @@ object BulkCatalogImporter {
             .replace("&", "and")
             .replace(Regex("[^a-z0-9]+"), "_")
             .trim('_')
-            .take(45)
+            .take(120)
         val year = releaseYear.trim().take(4)
         return buildString {
             append(cleanSlug.ifBlank { "item_${System.currentTimeMillis()}" })
