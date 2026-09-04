@@ -173,9 +173,17 @@ class FirebaseRepository private constructor() {
                                         ?: doc.getTimestamp("updatedAt")?.toDate()?.time
                                         ?: createdAt
                                 }
+                                val franchiseOrder = if (item.franchiseOrder > 0.0) {
+                                    item.franchiseOrder
+                                } else {
+                                    doc.getDouble("franchiseOrder")
+                                        ?: doc.getLong("franchiseOrder")?.toDouble()
+                                        ?: 0.0
+                                }
                                 (if (item.id.isBlank()) item.copy(id = doc.id) else item).copy(
                                     category = finalCategory,
                                     type = finalType,
+                                    franchiseOrder = franchiseOrder,
                                     createdAt = createdAt,
                                     updatedAt = updatedAt,
                                     episodes = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(item.episodes)
@@ -323,6 +331,7 @@ class FirebaseRepository private constructor() {
             "franchiseTitle" to item.franchiseTitle,
             "seasonNumber" to item.seasonNumber,
             "partNumber" to item.partNumber,
+            "franchiseOrder" to item.franchiseOrder,
             "seasonTitle" to item.seasonTitle,
             "relationType" to item.relationType,
             "relatedMediaIds" to item.relatedMediaIds,

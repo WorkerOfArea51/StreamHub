@@ -141,6 +141,14 @@ fun AdminEditorDialog(
     var partNumberText by remember(initialItem) {
         mutableStateOf(if ((initialItem?.partNumber ?: 0) > 0) initialItem!!.partNumber.toString() else "")
     }
+    var franchiseOrderText by remember(initialItem) {
+        mutableStateOf(
+            if ((initialItem?.franchiseOrder ?: 0.0) > 0.0) {
+                val ord = initialItem!!.franchiseOrder
+                if (ord % 1.0 == 0.0) ord.toInt().toString() else ord.toString()
+            } else ""
+        )
+    }
     var seasonTitle by remember(initialItem) { mutableStateOf(initialItem?.seasonTitle ?: "") }
     var relationType by remember(initialItem) { mutableStateOf(initialItem?.relationType?.takeIf { it.isNotBlank() && !it.equals("Main Story", ignoreCase = true) } ?: if (isInitMovie) "Movie" else "TV") }
 
@@ -1348,6 +1356,16 @@ fun AdminEditorDialog(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         OutlinedTextField(
+                            value = franchiseOrderText,
+                            onValueChange = { franchiseOrderText = it },
+                            label = { Text("Franchise Watch Order # (e.g. 1, 2, 3... or 1.5)", color = TextSecondary) },
+                            placeholder = { Text("Master order slot (overrides auto sorting)", color = Color(0x66FFFFFF)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedTextField(
                             value = seasonTitle,
                             onValueChange = { seasonTitle = it },
                             label = { Text("Season/Arc Title (e.g. Arise from the Shadow)", color = TextSecondary) },
@@ -1563,6 +1581,7 @@ fun AdminEditorDialog(
                                         franchiseTitle = finalFranchiseTitle,
                                         seasonNumber = parsedSeasonNum,
                                         partNumber = partNumberText.toIntOrNull() ?: 0,
+                                        franchiseOrder = franchiseOrderText.toDoubleOrNull() ?: 0.0,
                                         seasonTitle = seasonTitle,
                                         relationType = relationType,
                                         mediaInfo = MediaInfo(

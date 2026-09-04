@@ -345,4 +345,69 @@ class FranchiseManagerTest {
         val subtitle = FranchiseManager.getSeasonCardSubtitle(brolyMovie)
         assertEquals("2018 • 100 min", subtitle)
     }
+
+    @Test
+    fun testFranchise_explicitFranchiseOrderOverridesReleaseYearAndFormats() {
+        // Scenario: Mushoku Tensei franchise timeline ordering
+        // S1 Pt 1 released in 2021
+        // S1 Pt 2 released in 2021
+        // Eris OVA released in 2022, but creator explicitly wants it ordered 2nd (between S1 and S1 Pt 2)
+        val s1Pt1 = MediaItem(
+            id = "mt_s1_pt1",
+            title = "Mushoku Tensei: Jobless Reincarnation",
+            category = "Anime",
+            type = "SERIES",
+            releaseYear = "2021",
+            seasonNumber = 1,
+            franchiseOrder = 1.0,
+            franchiseId = "mushoku-tensei"
+        )
+        val erisOva = MediaItem(
+            id = "mt_eris_ova",
+            title = "Mushoku Tensei: Jobless Reincarnation - Eris the Goblin Slayer",
+            category = "Anime",
+            type = "MOVIE",
+            relationType = "Side Story • Special",
+            releaseYear = "2022",
+            seasonNumber = 1,
+            franchiseOrder = 2.0,
+            franchiseId = "mushoku-tensei"
+        )
+        val s1Pt2 = MediaItem(
+            id = "mt_s1_pt2",
+            title = "Mushoku Tensei: Jobless Reincarnation Season 1 Pt 2",
+            category = "Anime",
+            type = "SERIES",
+            releaseYear = "2021",
+            seasonNumber = 1,
+            partNumber = 2,
+            franchiseOrder = 3.0,
+            franchiseId = "mushoku-tensei"
+        )
+        val s2Pt1 = MediaItem(
+            id = "mt_s2_pt1",
+            title = "Mushoku Tensei: Jobless Reincarnation Season 2",
+            category = "Anime",
+            type = "SERIES",
+            releaseYear = "2023",
+            seasonNumber = 2,
+            franchiseOrder = 4.0,
+            franchiseId = "mushoku-tensei"
+        )
+
+        val catalog = listOf(s2Pt1, s1Pt2, erisOva, s1Pt1)
+        val sorted = FranchiseManager.getFranchiseItems(erisOva, catalog)
+
+        assertEquals(4, sorted.size)
+        assertEquals("1st should be S1 Pt 1", "mt_s1_pt1", sorted[0].id)
+        assertEquals("2nd should be Eris OVA", "mt_eris_ova", sorted[1].id)
+        assertEquals("3rd should be S1 Pt 2", "mt_s1_pt2", sorted[2].id)
+        assertEquals("4th should be S2 Pt 1", "mt_s2_pt1", sorted[3].id)
+
+        // Verify badges when viewing Eris OVA:
+        assertEquals("S1 Pt 1 should be PREQUEL relative to Eris", "PREQUEL • TV", FranchiseManager.getFranchiseTag(s1Pt1, erisOva))
+        assertEquals("Eris should be CURRENT relative to itself", "CURRENT • SPECIAL", FranchiseManager.getFranchiseTag(erisOva, erisOva))
+        assertEquals("S1 Pt 2 should be SEQUEL relative to Eris", "SEQUEL • TV", FranchiseManager.getFranchiseTag(s1Pt2, erisOva))
+        assertEquals("S2 Pt 1 should be SEQUEL relative to Eris", "SEQUEL • TV", FranchiseManager.getFranchiseTag(s2Pt1, erisOva))
+    }
 }

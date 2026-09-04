@@ -42,6 +42,7 @@ data class MediaItem(
     val franchiseTitle: String = "",     // e.g. "Solo Leveling Franchise", "Naruto Universe"
     val seasonNumber: Int = 1,           // chronological season order (1, 2, 3... or 0 for movie/special)
     val partNumber: Int = 0,             // chronological part / cour order (e.g. 1 for Part 1, 2 for Part 2, 0 for none)
+    val franchiseOrder: Double = 0.0,    // explicit chronological master order across franchise (e.g. 1.0, 2.0, 3.0 or 1.5)
     val seasonTitle: String = "",        // e.g. "Season 2: Arise from the Shadow", "Land of Waves Arc"
     val relationType: String = "",       // e.g. "Main Story", "Sequel", "Prequel", "Movie", "Side Story", "Spin-Off"
     val relatedMediaIds: List<String> = emptyList(), // linked document IDs in Firestore

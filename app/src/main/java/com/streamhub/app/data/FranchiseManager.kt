@@ -127,6 +127,11 @@ object FranchiseManager {
     }
 
     fun getChronologicalScore(item: MediaItem): Double {
+        // Priority 0: Explicit Creator Master Order (e.g. 1.0, 2.0, 3.0 or 1.5)
+        if (item.franchiseOrder > 0.0) {
+            return item.franchiseOrder * 100_000_000.0
+        }
+
         val explicitSNum = item.seasonNumber.takeIf { it > 0 }
         val detectedSNum = detectSeasonNumber(item.title).takeIf { it > 1 }
         val partNum = getEffectivePartNumber(item) ?: 0
