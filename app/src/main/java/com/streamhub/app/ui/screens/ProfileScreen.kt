@@ -40,9 +40,11 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.ui.layout.ContentScale
@@ -379,30 +381,43 @@ private fun StreamHubUserProfileCard(
             )
         }
         isAccessKeyVerified -> {
-            // Verified by Access Key or 30-Day Voucher -> Tickmark ✅
-            val badgeLabel = if (remainingDays > 0) "✅ VIP ($remainingDays d)" else "✅ Lifetime VIP"
-            val subLabel = if (remainingDays > 0) "✨ 30-Day VIP Pass • $remainingDays days remaining" else "✨ Community VIP Key Active • Ultra HD"
-            UserProfileTier(
-                title = "StreamHub VIP",
-                badge = badgeLabel,
-                subtitle = subLabel,
-                cardBorder = listOf(Color(0xFF00E5FF), Color(0xFF7C4DFF)),
-                avatarColors = listOf(Color(0xFF00E5FF), Color(0xFF7C4DFF)),
-                avatarIcon = Icons.Default.Verified,
-                badgeBg = Color(0x2200E5FF),
-                badgeBorder = Color(0xFF00E5FF),
-                badgeTextColor = Color(0xFF00E5FF)
-            )
+            if (remainingDays > 0) {
+                // Verified 30-Day Voucher User -> 👤 User
+                UserProfileTier(
+                    title = "StreamHub User",
+                    badge = "✅ User ($remainingDays d)",
+                    subtitle = "✨ 30-Day User Pass • $remainingDays days remaining",
+                    cardBorder = listOf(Color(0xFF38BDF8), Color(0xFF0284C7)),
+                    avatarColors = listOf(Color(0xFF38BDF8), Color(0xFF0284C7)),
+                    avatarIcon = Icons.Default.Person,
+                    badgeBg = Color(0x2238BDF8),
+                    badgeBorder = Color(0xFF38BDF8),
+                    badgeTextColor = Color(0xFF38BDF8)
+                )
+            } else {
+                // Permanent Community Lifetime VIP -> ⭐ Lifetime VIP
+                UserProfileTier(
+                    title = "StreamHub VIP",
+                    badge = "⭐ Lifetime VIP",
+                    subtitle = "✨ Community VIP Key Active • Ultra HD",
+                    cardBorder = listOf(Color(0xFFFFD700), Color(0xFFFFA000)),
+                    avatarColors = listOf(Color(0xFFFFD700), Color(0xFFFFA000)),
+                    avatarIcon = Icons.Default.Star,
+                    badgeBg = Color(0x22FFD700),
+                    badgeBorder = Color(0xFFFFD700),
+                    badgeTextColor = Color(0xFFFFD700)
+                )
+            }
         }
         else -> {
-            // Free Tier / Guest -> 👤
+            // Standard User fallback
             UserProfileTier(
-                title = "StreamHub Guest",
-                badge = "🔒 Locked",
-                subtitle = "✨ Enter VIP Access Key to unlock streaming",
+                title = "StreamHub User",
+                badge = "👤 User",
+                subtitle = "✨ StreamHub Media Experience",
                 cardBorder = listOf(primaryColor.copy(alpha = 0.5f), Color(0xFF38BDF8).copy(alpha = 0.3f)),
                 avatarColors = listOf(primaryColor, Color(0xFF38BDF8)),
-                avatarIcon = Icons.Default.Lock,
+                avatarIcon = Icons.Default.Person,
                 badgeBg = Color(0x18FFFFFF),
                 badgeBorder = Color(0x33FFFFFF),
                 badgeTextColor = TextSecondary

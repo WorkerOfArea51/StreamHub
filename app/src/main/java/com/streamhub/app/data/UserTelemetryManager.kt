@@ -31,7 +31,7 @@ import java.util.UUID
 
 data class UserSessionInfo(
     val clientId: String = "",
-    val tier: String = "GUEST", // "OWNER", "VIP", "AD_PASS", "GUEST"
+    val tier: String = "USER", // "OWNER", "VIP", "USER"
     val deviceModel: String = "",
     val appVersion: String = "",
     val currentActivity: String = "Browsing Catalog",
@@ -69,10 +69,11 @@ data class UserSessionInfo(
 
 data class LiveAudienceMetrics(
     val totalOnline: Int = 0,
+    val standardUsers: Int = 0,
     val vipUsers: Int = 0,
-    val adPassUsers: Int = 0,
     val ownerUsers: Int = 0,
     val guestUsers: Int = 0,
+    val adPassUsers: Int = 0,
     val activeWatchers: List<UserSessionInfo> = emptyList(),
     val topWatchingTitles: List<Pair<String, Int>> = emptyList()
 )
@@ -229,8 +230,9 @@ object UserTelemetryManager {
     private fun getCurrentTier(): String {
         return when {
             AdminManager.isAdminMode.value -> "OWNER"
+            AccessGateManager.isUnlocked.value && AccessGateManager.remainingDays.value > 0 -> "USER"
             AccessGateManager.isUnlocked.value -> "VIP"
-            else -> "GUEST"
+            else -> "USER"
         }
     }
 
@@ -318,17 +320,17 @@ object UserTelemetryManager {
                 val now = System.currentTimeMillis()
                 val activeThreshold = now - SESSION_TIMEOUT_MS
 
+                var standardUsersCount = 0
                 var vip = 0
                 var adPass = 0
                 var owner = 0
-                var guest = 0
                 val activeList = mutableListOf<UserSessionInfo>()
                 val titleCountMap = mutableMapOf<String, Int>()
 
                 for (doc in snapshot.documents) {
                     val lastActive = doc.getLong("lastActiveTimestamp") ?: 0L
                     if (lastActive >= activeThreshold) {
-                        val tier = doc.getString("tier") ?: "GUEST"
+                        val tier = doc.getString("tier") ?: "USER"
                         val model = doc.getString("deviceModel") ?: "Android Device"
                         val version = doc.getString("appVersion") ?: "v4.8"
                         val activity = doc.getString("currentActivity") ?: "Browsing"
@@ -339,7 +341,7 @@ object UserTelemetryManager {
                             "OWNER" -> owner++
                             "VIP" -> vip++
                             "AD_PASS" -> adPass++
-                            else -> guest++
+                            else -> standardUsersCount++
                         }
 
                         val rawCode = doc.getString("countryCode") ?: "US"
@@ -397,10 +399,11 @@ object UserTelemetryManager {
 
                 _liveMetrics.value = LiveAudienceMetrics(
                     totalOnline = activeList.size,
+                    standardUsers = standardUsersCount,
                     vipUsers = vip,
                     adPassUsers = adPass,
                     ownerUsers = owner,
-                    guestUsers = guest,
+                    guestUsers = 0,
                     activeWatchers = activeList.sortedByDescending { it.lastActiveTimestamp },
                     topWatchingTitles = topTitles
                 )

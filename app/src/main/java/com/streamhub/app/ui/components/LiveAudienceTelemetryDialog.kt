@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
@@ -316,7 +317,7 @@ fun LiveAudienceTelemetryDialog(
                             }
                         }
 
-                        // ── Access Tier Grid (VIP vs Ad-Pass vs Owner vs Guest) ──
+                        // ── Access Tier Grid (User vs VIP vs Owner) ──
                         item {
                             Text(
                                 text = "ACCESS TIER BREAKDOWN",
@@ -332,6 +333,17 @@ fun LiveAudienceTelemetryDialog(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 TierMetricCard(
+                                    title = "User Access",
+                                    count = metrics.standardUsers,
+                                    total = metrics.totalOnline,
+                                    icon = Icons.Default.Person,
+                                    accentColor = Color(0xFF38BDF8),
+                                    bgColor = Color(0xFF14222E),
+                                    borderColor = Color(0x6638BDF8),
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                TierMetricCard(
                                     title = "VIP Access",
                                     count = metrics.vipUsers,
                                     total = metrics.totalOnline,
@@ -339,17 +351,6 @@ fun LiveAudienceTelemetryDialog(
                                     accentColor = AccentGold,
                                     bgColor = Color(0xFF261E14),
                                     borderColor = Color(0x66FFD700),
-                                    modifier = Modifier.weight(1f)
-                                )
-
-                                TierMetricCard(
-                                    title = "Guest / Locked",
-                                    count = metrics.guestUsers,
-                                    total = metrics.totalOnline,
-                                    icon = Icons.Default.Lock,
-                                    accentColor = Color(0xFF9E9E9E),
-                                    bgColor = Color(0xFF181820),
-                                    borderColor = Color(0x449E9E9E),
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -596,8 +597,9 @@ fun ActiveDeviceItem(
     val (badgeColor, badgeText) = when (session.tier) {
         "OWNER" -> Pair(Color(0xFFFF5252), "OWNER")
         "VIP" -> Pair(AccentGold, "VIP")
+        "USER" -> Pair(Color(0xFF38BDF8), "USER")
         "AD_PASS" -> Pair(Color(0xFF00E676), "AD PASS")
-        else -> Pair(Color(0xFF9E9E9E), "GUEST")
+        else -> Pair(Color(0xFF38BDF8), "USER")
     }
 
     Surface(
@@ -694,8 +696,9 @@ fun DeviceTelemetryDetailDialog(
     val (badgeColor, badgeText) = when (session.tier) {
         "OWNER" -> Pair(Color(0xFFFF5252), "OWNER")
         "VIP" -> Pair(AccentGold, "VIP")
+        "USER" -> Pair(Color(0xFF38BDF8), "USER")
         "AD_PASS" -> Pair(Color(0xFF00E676), "AD PASS")
-        else -> Pair(Color(0xFF9E9E9E), "GUEST")
+        else -> Pair(Color(0xFF38BDF8), "USER")
     }
 
     val activeDurationMinutes = ((System.currentTimeMillis() - session.sessionStartTimestamp) / (60 * 1000L)).coerceAtLeast(1)
