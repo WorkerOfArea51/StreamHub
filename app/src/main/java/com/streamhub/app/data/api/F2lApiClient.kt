@@ -1,6 +1,7 @@
 package com.streamhub.app.data.api
 
 import android.util.Log
+import com.streamhub.app.data.StreamBackendConfig
 import com.streamhub.app.data.models.Episode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -10,18 +11,18 @@ import org.json.JSONObject
 /**
  * High-Speed OmniArchiver-F2L REST API Client.
  *
- * Fetches batch episode manifests directly from the F2L Bot backend:
- * GET https://streamhub69.alwaysdata.net/api/batch/{batch_id}
+ * Fetches batch episode manifests directly from the F2L Bot backend on Serv00 VPS:
+ * GET https://midnighthawk.serv00.net/api/batch/{batch_id}
  */
 object F2lApiClient {
 
     private const val TAG = "F2lApiClient"
-    private const val DEFAULT_BASE_URL = "https://streamhub69.alwaysdata.net/api/batch/"
+    private const val DEFAULT_BASE_URL = StreamBackendConfig.DEFAULT_BATCH_API_BASE_URL
 
     /**
      * Fetches batch episode manifest from F2L API.
      *
-     * @param batchInput Either a full URL (e.g. "https://streamhub69.alwaysdata.net/api/batch/xyz")
+     * @param batchInput Either a full URL (e.g. "https://midnighthawk.serv00.net/api/batch/xyz")
      *                   or a raw batch ID (e.g. "eb76ab230b4d45ef32474cc414585f2471dc849fcf1c669d").
      * @param seasonNumber Season number to assign to generated episodes.
      * @param arcName Optional saga/arc name to prefix episode titles with.
@@ -36,11 +37,7 @@ object F2lApiClient {
             return@withContext Result.failure(IllegalArgumentException("Batch ID or URL cannot be empty"))
         }
 
-        val requestUrl = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-            trimmed
-        } else {
-            "$DEFAULT_BASE_URL$trimmed"
-        }
+        val requestUrl = StreamBackendConfig.resolveBatchApiUrl(trimmed)
 
         runCatching {
             val request = Request.Builder()

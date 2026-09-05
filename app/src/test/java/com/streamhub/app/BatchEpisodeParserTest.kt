@@ -91,13 +91,13 @@ class BatchEpisodeParserTest {
         assertEquals("EP - 01 - Undertaker", parsed[0].title)
         assertEquals(1421000L, parsed[0].durationMs)
         assertEquals("447.4 MB", parsed[0].fileSize)
-        assertEquals("https://streamhub69.alwaysdata.net/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc", parsed[0].streamUrl)
+        assertEquals("https://midnighthawk.serv00.net/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc", parsed[0].streamUrl)
 
         assertEquals(2, parsed[1].episodeNumber)
         assertEquals("EP - 02 - Spearhead", parsed[1].title)
         assertEquals(1429000L, parsed[1].durationMs)
         assertEquals("470.18 MB", parsed[1].fileSize)
-        assertEquals("https://streamhub69.alwaysdata.net/dl/1737eabf2d800430739c2d171cbeee18fe47f19fdc149412", parsed[1].streamUrl)
+        assertEquals("https://midnighthawk.serv00.net/dl/1737eabf2d800430739c2d171cbeee18fe47f19fdc149412", parsed[1].streamUrl)
     }
 
     @Test

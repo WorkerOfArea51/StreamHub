@@ -324,15 +324,18 @@ object TelegramLinkResolver {
     /**
      * Sanitizes a URL for playback.
      *
-     * Ensures any web-player landing page route (`/stream/`) on the F2L bot backend
-     * is resolved to the direct binary media stream route (`/dl/`), which serves
-     * HTTP 206 Partial Content (Accept-Ranges: bytes, video/x-matroska/mp4).
-     * Also performs cosmetic cleanup (trim + strip invisible/zero-width characters).
+     * 1. Migrates legacy backend domain (streamhub69.alwaysdata.net -> midnighthawk.serv00.net).
+     * 2. Ensures any web-player landing page route (`/stream/`) on the F2L bot backend
+     *    is resolved to the direct binary media stream route (`/dl/`), which serves
+     *    HTTP 206 Partial Content (Accept-Ranges: bytes, video/x-matroska/mp4).
+     * 3. Performs cosmetic cleanup (trim + strip invisible/zero-width characters).
      */
     fun sanitizePlayableUrl(url: String): String {
-        val cleaned = url.trim().replace(Regex("""[\s\u200B-\u200D\uFEFF]"""), "")
-        if (cleaned.contains("alwaysdata.net/stream/", ignoreCase = true)) {
-            return cleaned.replace(Regex("""(?i)alwaysdata\.net/stream/"""), "alwaysdata.net/dl/")
+        var cleaned = url.trim().replace(Regex("""[\s\u200B-\u200D\uFEFF]"""), "")
+        if (cleaned.isBlank()) return ""
+        cleaned = StreamBackendConfig.migrateUrl(cleaned)
+        if (StreamBackendConfig.isBackendHost(cleaned) && cleaned.contains("/stream/", ignoreCase = true)) {
+            cleaned = cleaned.replace(Regex("""(?i)/stream/"""), "/dl/")
         }
         return cleaned
     }
@@ -345,8 +348,10 @@ object TelegramLinkResolver {
      * (other hosts, YouTube-resolved URLs, local files) are never rewritten.
      */
     fun toDownloadUrl(url: String): String {
-        val trimmed = url.trim()
-        if (!trimmed.contains("alwaysdata.net", ignoreCase = true)) return trimmed
+        var trimmed = url.trim()
+        if (trimmed.isBlank()) return ""
+        trimmed = StreamBackendConfig.migrateUrl(trimmed)
+        if (!StreamBackendConfig.isBackendHost(trimmed)) return trimmed
         return if (trimmed.contains("/stream/", ignoreCase = true)) {
             trimmed.replace(Regex("""(?i)/stream/"""), "/dl/")
         } else {
@@ -361,8 +366,10 @@ object TelegramLinkResolver {
      * Never converts /dl/ to /stream/ since /stream/ is an HTML web-player page.
      */
     fun deriveMirrorUrl(url: String): String {
-        val trimmed = url.trim()
-        if (!trimmed.contains("alwaysdata.net", ignoreCase = true)) return ""
+        var trimmed = url.trim()
+        if (trimmed.isBlank()) return ""
+        trimmed = StreamBackendConfig.migrateUrl(trimmed)
+        if (!StreamBackendConfig.isBackendHost(trimmed)) return ""
         return if (trimmed.contains("/stream/", ignoreCase = true)) {
             trimmed.replace(Regex("""(?i)/stream/"""), "/dl/")
         } else {

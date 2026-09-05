@@ -415,8 +415,8 @@ class StreamPlayerViewModel : ViewModel() {
         return when (error) {
             is androidx.media3.common.PlaybackException -> {
                 when {
-                    // Server-side failure: the F2L backend is a single uvicorn worker
-                    // on alwaysdata that goes down/restarts under load. 502/503/504 is
+                    // Server-side failure: the F2L backend is a uvicorn worker
+                    // on the VPS/backend that goes down/restarts under load. 502/503/504 is
                     // the dominant real-world failure mode — surface it clearly
                     // instead of the opaque "Source error".
                     httpStatus in 500..599 -> PlayerErrorInfo(

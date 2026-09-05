@@ -42,8 +42,8 @@ class TelegramLinkResolverTest {
         assertEquals(1, episodes[0].episodeNumber)
         assertEquals("EP - 01 - Undertaker", episodes[0].title)
         assertEquals("447.4 MB", episodes[0].fileSize)
-        assertEquals("https://streamhub69.alwaysdata.net/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc", episodes[0].streamUrl)
-        assertEquals("https://streamhub69.alwaysdata.net/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc", episodes[0].mirrorStreamUrl)
+        assertEquals("https://midnighthawk.serv00.net/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc", episodes[0].streamUrl)
+        assertEquals("https://midnighthawk.serv00.net/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc", episodes[0].mirrorStreamUrl)
 
         // Ep 2
         assertEquals(2, episodes[1].episodeNumber)
@@ -94,23 +94,27 @@ class TelegramLinkResolverTest {
 
         assertEquals(2, episodes.size)
         assertEquals(1, episodes[0].episodeNumber)
-        assertEquals("https://streamhub69.alwaysdata.net/dl/eb76ab1", episodes[0].streamUrl)
-        assertEquals("https://streamhub69.alwaysdata.net/dl/eb76ab1", episodes[0].mirrorStreamUrl)
+        assertEquals("https://midnighthawk.serv00.net/dl/eb76ab1", episodes[0].streamUrl)
+        assertEquals("https://midnighthawk.serv00.net/dl/eb76ab1", episodes[0].mirrorStreamUrl)
         assertEquals(2, episodes[1].episodeNumber)
     }
 
     @Test
     fun sanitizePlayableUrl_resolvesStreamToDirectMediaDlRoute() {
         val stream = "https://streamhub69.alwaysdata.net/stream/abc123"
-        val dl = "https://streamhub69.alwaysdata.net/dl/abc123"
+        val expectedDl = "https://midnighthawk.serv00.net/dl/abc123"
+        val serv00Stream = "https://midnighthawk.serv00.net/stream/abc123"
+        val serv00Dl = "https://midnighthawk.serv00.net/dl/abc123"
 
-        // /stream/ web landing page must be sanitized to /dl/ direct media stream for ExoPlayer
-        assertEquals(dl, TelegramLinkResolver.sanitizePlayableUrl(stream))
-        assertEquals(dl, TelegramLinkResolver.sanitizePlayableUrl(dl))
+        // /stream/ web landing page must be sanitized to /dl/ direct media stream for ExoPlayer and migrated to Serv00
+        assertEquals(expectedDl, TelegramLinkResolver.sanitizePlayableUrl(stream))
+        assertEquals(serv00Dl, TelegramLinkResolver.sanitizePlayableUrl(serv00Stream))
+        assertEquals(serv00Dl, TelegramLinkResolver.sanitizePlayableUrl(serv00Dl))
 
         // Downloads also target the /dl/ twin
-        assertEquals(dl, TelegramLinkResolver.toDownloadUrl(stream))
-        assertEquals(dl, TelegramLinkResolver.toDownloadUrl(dl))
+        assertEquals(expectedDl, TelegramLinkResolver.toDownloadUrl(stream))
+        assertEquals(serv00Dl, TelegramLinkResolver.toDownloadUrl(serv00Stream))
+        assertEquals(serv00Dl, TelegramLinkResolver.toDownloadUrl(serv00Dl))
 
         // Non-F2L URLs are never rewritten
         val foreign = "https://example.com/stream/video.mkv"

@@ -4,6 +4,9 @@ import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
+import com.google.android.gms.tasks.Tasks
+import com.streamhub.app.data.StreamBackendConfig
+import com.streamhub.app.data.TelegramLinkResolver
 import com.streamhub.app.data.models.MediaItem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -13,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * State of the media catalog fetch.
@@ -180,13 +184,19 @@ class FirebaseRepository private constructor() {
                                         ?: doc.getLong("franchiseOrder")?.toDouble()
                                         ?: 0.0
                                 }
+                                val migratedEpisodes = item.episodes.map { ep ->
+                                    ep.copy(
+                                        streamUrl = StreamBackendConfig.migrateUrl(ep.streamUrl),
+                                        mirrorStreamUrl = StreamBackendConfig.migrateUrl(ep.mirrorStreamUrl)
+                                    )
+                                }
                                 (if (item.id.isBlank()) item.copy(id = doc.id) else item).copy(
                                     category = finalCategory,
                                     type = finalType,
                                     franchiseOrder = franchiseOrder,
                                     createdAt = createdAt,
                                     updatedAt = updatedAt,
-                                    episodes = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(item.episodes)
+                                    episodes = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(migratedEpisodes)
                                 )
                             }
                         } catch (e: Exception) {
@@ -225,7 +235,15 @@ class FirebaseRepository private constructor() {
 
         val finalCreatedAt = if (item.createdAt > 0L) item.createdAt else System.currentTimeMillis()
         val finalUpdatedAt = System.currentTimeMillis()
-        val normalizedEpisodes = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(item.episodes)
+        val migratedEpisodes = item.episodes.map { ep ->
+            ep.copy(
+                streamUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.streamUrl),
+                mirrorStreamUrl = TelegramLinkResolver.sanitizePlayableUrl(
+                    if (ep.mirrorStreamUrl.isNotBlank()) ep.mirrorStreamUrl else ep.streamUrl
+                )
+            )
+        }
+        val normalizedEpisodes = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(migratedEpisodes)
         val itemToSave = item.copy(
             createdAt = finalCreatedAt,
             updatedAt = finalUpdatedAt,
@@ -364,5 +382,84 @@ class FirebaseRepository private constructor() {
                 )
             }
         )
+    }
+
+    /**
+     * Scans all Firestore collections (movies, animes, web_series) and updates any document
+     * whose streamUrl, mirrorStreamUrl, or episode URLs contain legacy Alwaysdata hosts.
+     * Rewrites them to midnighthawk.serv00.net and normalizes /stream/ to /dl/.
+     *
+     * @param onProgress Callback receiving (currentProcessed, totalDocuments, updatedCount)
+     * @return Result with total number of documents successfully updated.
+     */
+    suspend fun migrateCatalogToServ00(
+        onProgress: (current: Int, total: Int, updated: Int) -> Unit = { _, _, _ -> }
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        val db = firestore ?: return@withContext Result.failure(IllegalStateException("Firestore not initialized"))
+
+        runCatching {
+            val collections = listOf(COLLECTION_ANIMES, COLLECTION_MOVIES, COLLECTION_SERIES)
+            val docsToProcess = mutableListOf<Pair<String, com.google.firebase.firestore.DocumentSnapshot>>()
+
+            for (col in collections) {
+                val snapshot = Tasks.await(db.collection(col).get())
+                for (doc in snapshot.documents) {
+                    docsToProcess.add(col to doc)
+                }
+            }
+            val totalDocs = docsToProcess.size
+            var processed = 0
+            var updated = 0
+
+            for ((col, doc) in docsToProcess) {
+                processed++
+                val item = doc.toObject(MediaItem::class.java)
+                if (item != null) {
+                    val rawDocStream = doc.getString("streamUrl").orEmpty()
+                    val rawDocMirror = doc.getString("mirrorStreamUrl").orEmpty()
+                    val hasLegacyInRoot = rawDocStream.contains("alwaysdata.net", ignoreCase = true) ||
+                                          rawDocMirror.contains("alwaysdata.net", ignoreCase = true) ||
+                                          rawDocStream.contains("/stream/", ignoreCase = true)
+                    val hasLegacyInEpisodes = item.episodes.any { ep ->
+                        ep.streamUrl.contains("alwaysdata.net", ignoreCase = true) ||
+                        ep.mirrorStreamUrl.contains("alwaysdata.net", ignoreCase = true) ||
+                        ep.streamUrl.contains("/stream/", ignoreCase = true)
+                    }
+
+                    if (hasLegacyInRoot || hasLegacyInEpisodes) {
+                        val migratedEpisodes = item.episodes.map { ep ->
+                            ep.copy(
+                                streamUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.streamUrl),
+                                mirrorStreamUrl = TelegramLinkResolver.sanitizePlayableUrl(
+                                    if (ep.mirrorStreamUrl.isNotBlank()) ep.mirrorStreamUrl else ep.streamUrl
+                                )
+                            )
+                        }
+
+                        val updatedItem = item.copy(
+                            id = doc.id,
+                            episodes = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(migratedEpisodes),
+                            updatedAt = System.currentTimeMillis()
+                        )
+
+                        val docMap = mediaItemToMap(updatedItem).toMutableMap()
+                        if (rawDocStream.isNotBlank()) {
+                            docMap["streamUrl"] = TelegramLinkResolver.sanitizePlayableUrl(rawDocStream)
+                        }
+                        if (rawDocMirror.isNotBlank()) {
+                            docMap["mirrorStreamUrl"] = TelegramLinkResolver.sanitizePlayableUrl(rawDocMirror)
+                        }
+
+                        Tasks.await(db.collection(col).document(doc.id).set(docMap))
+                        updated++
+                        Log.d(TAG, "Migrated document ${doc.id} in collection '$col' to Serv00")
+                    }
+                }
+                onProgress(processed, totalDocs, updated)
+            }
+
+            Log.i(TAG, "Completed Serv00 catalog migration: $updated of $totalDocs documents updated.")
+            updated
+        }
     }
 }

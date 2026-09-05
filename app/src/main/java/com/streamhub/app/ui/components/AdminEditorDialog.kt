@@ -28,10 +28,12 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Whatshot
+import com.streamhub.app.data.StreamBackendConfig
 import com.streamhub.app.data.repository.FirebaseRepository
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -192,6 +194,7 @@ fun AdminEditorDialog(
     var isCheckingHealth by remember { mutableStateOf(false) }
     var healthReport by remember { mutableStateOf<com.streamhub.app.data.api.StreamHealthReport?>(null) }
     var showBackupDialog by remember { mutableStateOf(false) }
+    var showMigrationDialog by remember { mutableStateOf(false) }
 
     if (showDeleteConfirmDialog && initialItem != null && onDelete != null) {
         AlertDialog(
@@ -223,6 +226,13 @@ fun AdminEditorDialog(
         CatalogBackupDialog(
             repository = FirebaseRepository.getInstance(),
             onDismiss = { showBackupDialog = false }
+        )
+    }
+
+    if (showMigrationDialog) {
+        Serv00MigrationDialog(
+            repository = FirebaseRepository.getInstance(),
+            onDismiss = { showMigrationDialog = false }
         )
     }
 
@@ -289,6 +299,22 @@ fun AdminEditorDialog(
                             ) {
                                 Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(13.dp))
                                 Text("Backup / Restore", color = Color(0xFF38BDF8), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFF10B981).copy(alpha = 0.2f),
+                            border = BorderStroke(1.dp, Color(0xFF10B981)),
+                            modifier = Modifier.clickable { showMigrationDialog = true }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                            ) {
+                                Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color(0xFF34D399), modifier = Modifier.size(13.dp))
+                                Text("Serv00 Migrate", color = Color(0xFF34D399), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
 
@@ -634,7 +660,7 @@ fun AdminEditorDialog(
 
                             Spacer(modifier = Modifier.height(12.dp))
 
-                            val isF2lLink = startBatchLink.contains("alwaysdata.net", ignoreCase = true)
+                            val isF2lLink = StreamBackendConfig.isBackendHost(startBatchLink)
                             val isF2lTruncated = isF2lLink && (
                                 (startBatchLink.contains("/dl/") && startBatchLink.substringAfter("/dl/").trim().length < 32) ||
                                 (startBatchLink.contains("/stream/") && startBatchLink.substringAfter("/stream/").trim().length < 32)
@@ -648,7 +674,7 @@ fun AdminEditorDialog(
                                     batchError = null
                                 },
                                 label = { Text("Movie Stream URL / Direct Link *", color = TextSecondary) },
-                                placeholder = { Text("https://streamhub69.alwaysdata.net/dl/xxx or direct link", color = TextSecondary) },
+                                placeholder = { Text("https://midnighthawk.serv00.net/dl/xxx or direct link", color = TextSecondary) },
                                 singleLine = true,
                                 isError = isF2lTruncated,
                                 modifier = Modifier.fillMaxWidth()
