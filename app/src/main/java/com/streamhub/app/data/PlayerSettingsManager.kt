@@ -17,7 +17,9 @@ data class PlayerSettings(
     val rememberAspectRatio: Boolean = true,
     val isAmbientEnabled: Boolean = true,
     val ambientMoodId: String = "COZY_CINEMA",
-    val ambientIntensity: Float = 0.15f // 0.05f to 0.50f (Default: 0.15f cozy)
+    val ambientIntensity: Float = 0.15f, // 0.05f to 0.50f (Default: 0.15f cozy)
+    val smartPrewarmEnabled: Boolean = true,
+    val bingePrecacheEnabled: Boolean = true
 )
 
 /**
@@ -40,6 +42,8 @@ object PlayerSettingsManager {
     private const val KEY_AMBIENT_ENABLED = "ambient_enabled"
     private const val KEY_AMBIENT_MOOD_ID = "ambient_mood_id"
     private const val KEY_AMBIENT_INTENSITY = "ambient_intensity"
+    private const val KEY_SMART_PREWARM = "smart_prewarm_enabled"
+    private const val KEY_BINGE_PRECACHE = "binge_precache_enabled"
 
     private lateinit var appContext: Context
 
@@ -64,7 +68,9 @@ object PlayerSettingsManager {
                 rememberAspectRatio = prefs.getBoolean(KEY_REMEMBER_ASPECT_RATIO, true),
                 isAmbientEnabled = prefs.getBoolean(KEY_AMBIENT_ENABLED, true),
                 ambientMoodId = prefs.getString(KEY_AMBIENT_MOOD_ID, "COZY_CINEMA") ?: "COZY_CINEMA",
-                ambientIntensity = prefs.getFloat(KEY_AMBIENT_INTENSITY, 0.15f)
+                ambientIntensity = prefs.getFloat(KEY_AMBIENT_INTENSITY, 0.15f),
+                smartPrewarmEnabled = prefs.getBoolean(KEY_SMART_PREWARM, true),
+                bingePrecacheEnabled = prefs.getBoolean(KEY_BINGE_PRECACHE, true)
             )
         } catch (e: Exception) {
             prefs.edit().clear().apply()
@@ -163,6 +169,26 @@ object PlayerSettingsManager {
         val clamped = intensity.coerceIn(0.05f, 0.50f)
         _settingsFlow.update { it.copy(ambientIntensity = clamped) }
         getPrefs().edit().putFloat(KEY_AMBIENT_INTENSITY, clamped).apply()
+    }
+
+    @Synchronized
+    fun updateSmartPrewarmEnabled(enabled: Boolean) {
+        if (!::appContext.isInitialized) {
+            Log.w(TAG, "updateSmartPrewarmEnabled called before init — no-op")
+            return
+        }
+        _settingsFlow.update { it.copy(smartPrewarmEnabled = enabled) }
+        getPrefs().edit().putBoolean(KEY_SMART_PREWARM, enabled).apply()
+    }
+
+    @Synchronized
+    fun updateBingePrecacheEnabled(enabled: Boolean) {
+        if (!::appContext.isInitialized) {
+            Log.w(TAG, "updateBingePrecacheEnabled called before init — no-op")
+            return
+        }
+        _settingsFlow.update { it.copy(bingePrecacheEnabled = enabled) }
+        getPrefs().edit().putBoolean(KEY_BINGE_PRECACHE, enabled).apply()
     }
 
     private fun getPrefs(): SharedPreferences {

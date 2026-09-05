@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Gesture
@@ -315,6 +316,117 @@ fun VideoSettingsScreen(
                                     onClick = { PlayerSettingsManager.updateSkipIntro(sec) }
                                 )
                             }
+                        }
+                    }
+                }
+            }
+
+            // ── Section 3.5: Stream Pre-Loading & Binge Caching ──
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, currentAccent.color.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Bolt,
+                                contentDescription = "Preload & Binge Caching",
+                                tint = currentAccent.color
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Stream Pre-Loading & Binge Caching",
+                                color = TextPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Eliminates initial server delay and enables instant transitions.",
+                            color = TextSecondary,
+                            fontSize = 11.sp
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Toggle 1: Smart Details Pre-Warming
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF1C1C26))
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Smart Details Pre-Warming (2 MB)",
+                                    color = TextPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Speculatively warms video container headers while browsing details for instant play.",
+                                    color = TextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Switch(
+                                checked = playerSettings.smartPrewarmEnabled,
+                                onCheckedChange = { PlayerSettingsManager.updateSmartPrewarmEnabled(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = currentAccent.color,
+                                    uncheckedThumbColor = TextSecondary,
+                                    uncheckedTrackColor = Color(0xFF2A2A38)
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Toggle 2: Binge Pre-Caching
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF1C1C26))
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Binge Pre-Caching (Episode N+1)",
+                                    color = TextPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Pre-buffers 25 MB of next episode into disk cache for zero-second episode transitions.",
+                                    color = TextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Switch(
+                                checked = playerSettings.bingePrecacheEnabled,
+                                onCheckedChange = { PlayerSettingsManager.updateBingePrecacheEnabled(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = currentAccent.color,
+                                    uncheckedThumbColor = TextSecondary,
+                                    uncheckedTrackColor = Color(0xFF2A2A38)
+                                )
+                            )
                         }
                     }
                 }

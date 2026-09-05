@@ -88,8 +88,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
+import com.streamhub.app.player.StreamPreloadManager
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.Alignment
@@ -205,6 +207,14 @@ fun DetailsScreen(
                   mediaItem?.type?.equals("MOVIE", true) == true
     val isAnime = mediaItem?.category?.equals("Anime", true) == true
 
+    val prewarmCoroutineScope = rememberCoroutineScope()
+    val savedProgress = remember(currentMediaId) { com.streamhub.app.data.WatchHistoryManager.getProgress(currentMediaId) }
+    val detailsTargetPlayIndex = remember(savedProgress, mediaItem?.episodes) {
+        if (savedProgress != null && mediaItem?.episodes != null && savedProgress.episodeNumber in mediaItem.episodes.indices) {
+            savedProgress.episodeNumber
+        } else 0
+    }
+
     LaunchedEffect(mediaItem?.id, mediaItem?.tmdbId, mediaItem?.malId) {
         val tId = mediaItem?.tmdbId?.trim() ?: ""
         val mId = mediaItem?.malId?.trim() ?: ""
@@ -273,6 +283,31 @@ fun DetailsScreen(
                 if (filtered.isEmpty() && (selectedSeasonNumber == 1 || selectedSeasonNumber == effectiveSeasonNumber)) allEps else filtered
             }
             else -> allEps
+        }
+    }
+
+    // Instant Pre-Warming for Current Show, Seasons & Franchise:
+    // Speculatively fetches the first 2MB (EBML container & initial keyframes) immediately upon opening
+    // the show, changing season, or navigating to another franchise entry.
+    val prewarmTargetEpisode = remember(detailsTargetPlayIndex, seasonFilteredEpisodes, mediaItem.episodes, selectedSeasonNumber) {
+        val resumeEp = mediaItem.episodes.getOrNull(detailsTargetPlayIndex)
+        if (resumeEp != null && (selectedSeasonNumber <= 0 || resumeEp.seasonNumber == selectedSeasonNumber)) {
+            resumeEp
+        } else {
+            seasonFilteredEpisodes.firstOrNull() ?: mediaItem.episodes.firstOrNull()
+        }
+    }
+
+    LaunchedEffect(currentMediaId, selectedSeasonNumber, selectedArcName, prewarmTargetEpisode?.streamUrl) {
+        val urlToPrewarm = prewarmTargetEpisode?.streamUrl?.ifEmpty { prewarmTargetEpisode.mirrorStreamUrl } ?: ""
+        if (urlToPrewarm.isNotBlank()) {
+            StreamPreloadManager.prewarmDetailsStream(context, urlToPrewarm, prewarmCoroutineScope)
+        }
+    }
+
+    DisposableEffect(currentMediaId) {
+        onDispose {
+            StreamPreloadManager.cancelDetailsPrewarm()
         }
     }
 

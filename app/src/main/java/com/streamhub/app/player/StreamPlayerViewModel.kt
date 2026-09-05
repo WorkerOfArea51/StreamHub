@@ -162,15 +162,15 @@ class StreamPlayerViewModel : ViewModel() {
                 // - bufferForPlaybackMs = 250: Playback starts immediately on arrival of first keyframes.
                 // - bufferForPlaybackAfterRebufferMs = 1_000: Fast 1s recovery after seek or rebuffering.
                 // - minBufferMs = 25_000: Maintains a steady 25-second buffer ahead during active playback.
-                // - maxBufferMs = 180_000: Continuously buffers up to 3 minutes ahead.
+                // - maxBufferMs = 14_400_000: Continuously buffers ahead (up to 4 hours) without pausing.
                 // - targetBufferBytes = C.LENGTH_UNSET: Track-based allocation avoids upfront memory spikes.
                 // - backBuffer = 30_000 (retainBackBufferFromKeyframe = true): Retains keyframes for smooth rewind.
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        25_000,     // minBufferMs (steady 25s buffer ahead)
-                        180_000,    // maxBufferMs (up to 3 minutes ahead)
-                        250,        // bufferForPlaybackMs (instant start in ~250ms)
-                        1_000       // bufferForPlaybackAfterRebufferMs (1s fast recovery)
+                        25_000,         // minBufferMs (steady 25s buffer ahead)
+                        14_400_000,     // maxBufferMs (up to 4 hours ahead continuous buffering)
+                        250,            // bufferForPlaybackMs (instant start in ~250ms)
+                        1_000           // bufferForPlaybackAfterRebufferMs (1s fast recovery)
                     )
                     .setBackBuffer(30_000, true)
                     .setPrioritizeTimeOverSizeThresholds(false)
@@ -591,6 +591,7 @@ class StreamPlayerViewModel : ViewModel() {
         }
 
         // FIX: Cancel previous preload job when starting a new episode — preloader will be eligible again.
+        StreamPreloadManager.cancelBingePrecache()
         nextEpisodePreloadJob?.cancel()
         nextEpisodePreloadJob = null
 
@@ -1036,25 +1037,34 @@ class StreamPlayerViewModel : ViewModel() {
 
                     if (player.isPlaying) {
                         val remainingMs = totalDuration - currentPos
-                        // FIX: Reset nextEpisodePreloadJob to null after completion so the
-                        // NEXT episode can also preload. Previously this was a one-shot.
-                        if (totalDuration > 30_000L && remainingMs in 1..120_000L &&
-                            nextEpisodePreloadJob == null) {
+
+                        // Bandwidth Protection: If active episode buffer is thin, prioritize current playback
+                        if (bufferSec < 12 && nextEpisodePreloadJob?.isActive == true) {
+                            StreamPreloadManager.cancelBingePrecache()
+                            nextEpisodePreloadJob = null
+                        }
+
+                        // Intelligent Binge Pre-Caching for Episode N+1:
+                        // Triggers when current playback is healthy (bufferSec >= 25) AND
+                        // (within final 5 minutes OR healthy forward buffer >= 45s).
+                        val isCurrentBufferHealthy = bufferSec >= 25
+                        val isEligibleForNextEpPrecache = remainingMs in 1..300_000L || bufferSec >= 45
+                        if (totalDuration > 30_000L && isCurrentBufferHealthy && isEligibleForNextEpPrecache &&
+                            nextEpisodePreloadJob == null &&
+                            com.streamhub.app.data.PlayerSettingsManager.settingsFlow.value.bingePrecacheEnabled) {
                             val nextIdx = _uiState.value.currentEpisodeIndex + 1
                             if (nextIdx in episodesList.indices) {
                                 val nextEp = episodesList[nextIdx]
                                 val nextUrl = nextEp.streamUrl.ifEmpty { nextEp.mirrorStreamUrl }
                                 if (nextUrl.isNotBlank()) {
-                                    nextEpisodePreloadJob = viewModelScope.launch(Dispatchers.IO) {
-                                        try {
-                                            Log.i("StreamPlayerViewModel", "Auto-prebuffering next episode: ${nextEp.title}")
-                                            TelegramLinkResolver.resolveAsync(nextUrl)
-                                        } catch (e: Exception) {
-                                            Log.w("StreamPlayerViewModel", "Next episode preload failed: ${e.message}")
-                                        } finally {
-                                            // FIX: Allow re-triggering preloader for subsequent episodes.
-                                            nextEpisodePreloadJob = null
-                                        }
+                                    appContext?.let { ctx ->
+                                        Log.i("StreamPlayerViewModel", "Active playback healthy ($bufferSec s ahead). Enqueuing binge pre-cache for: ${nextEp.title}")
+                                        nextEpisodePreloadJob = StreamPreloadManager.precacheNextEpisode(
+                                            context = ctx,
+                                            rawNextUrl = nextUrl,
+                                            targetBytes = StreamPreloadManager.BINGE_PRECACHE_BYTES,
+                                            scope = viewModelScope
+                                        )
                                     }
                                 }
                             }
@@ -1206,6 +1216,7 @@ class StreamPlayerViewModel : ViewModel() {
             positionTrackerJob = null
             resolutionJob?.cancel()
             resolutionJob = null
+            StreamPreloadManager.cancelBingePrecache()
             nextEpisodePreloadJob?.cancel()
             nextEpisodePreloadJob = null
             sleepTimerJob?.cancel()
@@ -1224,6 +1235,7 @@ class StreamPlayerViewModel : ViewModel() {
         positionTrackerJob = null
         resolutionJob?.cancel()
         resolutionJob = null
+        StreamPreloadManager.cancelBingePrecache()
         nextEpisodePreloadJob?.cancel()
         nextEpisodePreloadJob = null
         sleepTimerJob?.cancel()
