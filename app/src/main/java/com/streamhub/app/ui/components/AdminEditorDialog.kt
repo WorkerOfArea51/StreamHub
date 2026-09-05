@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Whatshot
@@ -195,6 +196,7 @@ fun AdminEditorDialog(
     var healthReport by remember { mutableStateOf<com.streamhub.app.data.api.StreamHealthReport?>(null) }
     var showBackupDialog by remember { mutableStateOf(false) }
     var showMigrationDialog by remember { mutableStateOf(false) }
+    var showVoucherDialog by remember { mutableStateOf(false) }
 
     if (showDeleteConfirmDialog && initialItem != null && onDelete != null) {
         AlertDialog(
@@ -233,6 +235,12 @@ fun AdminEditorDialog(
         Serv00MigrationDialog(
             repository = FirebaseRepository.getInstance(),
             onDismiss = { showMigrationDialog = false }
+        )
+    }
+
+    if (showVoucherDialog) {
+        VoucherManagerDialog(
+            onDismiss = { showVoucherDialog = false }
         )
     }
 
@@ -315,6 +323,22 @@ fun AdminEditorDialog(
                             ) {
                                 Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color(0xFF34D399), modifier = Modifier.size(13.dp))
                                 Text("Serv00 Migrate", color = Color(0xFF34D399), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFF59E0B).copy(alpha = 0.2f),
+                            border = BorderStroke(1.dp, Color(0xFFF59E0B)),
+                            modifier = Modifier.clickable { showVoucherDialog = true }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                            ) {
+                                Icon(Icons.Default.Key, contentDescription = null, tint = Color(0xFFFBBF24), modifier = Modifier.size(13.dp))
+                                Text("VIP Keys", color = Color(0xFFFBBF24), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
 

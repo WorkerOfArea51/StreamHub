@@ -62,6 +62,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamhub.app.data.AccessGateManager
+import androidx.compose.runtime.rememberCoroutineScope
+import com.streamhub.app.data.models.VoucherVerificationResult
+import kotlinx.coroutines.launch
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
@@ -74,7 +77,9 @@ fun AccessGateOverlay(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var accessCodeInput by remember { mutableStateOf("") }
+    var isVerifying by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val primaryColor = MaterialTheme.colorScheme.primary
 
@@ -239,10 +244,35 @@ fun AccessGateOverlay(
                                 errorMessage = "Please enter an access code"
                                 return@Button
                             }
-                            if (AccessGateManager.verifyAndUnlock(accessCodeInput)) {
-                                ToastManager.showToast("Welcome to StreamHub VIP! 🚀")
-                            } else {
-                                errorMessage = "Invalid access code. Use 12h Free Pass above or contact on Telegram."
+                            if (isVerifying) return@Button
+                            isVerifying = true
+                            errorMessage = null
+                            scope.launch {
+                                val result = AccessGateManager.verifyAndUnlockAsync(accessCodeInput, context)
+                                isVerifying = false
+                                when (result) {
+                                    is VoucherVerificationResult.Success -> {
+                                        if (result.isPermanent) {
+                                            ToastManager.showToast("Welcome to StreamHub Lifetime VIP! 🚀")
+                                        } else if (result.isReactivation) {
+                                            ToastManager.showToast("Welcome back! ${result.daysRemaining} days remaining 🎬")
+                                        } else {
+                                            ToastManager.showToast("30-Day VIP Pass Activated! (${result.daysRemaining} days) 🚀")
+                                        }
+                                    }
+                                    VoucherVerificationResult.BoundToAnotherDevice -> {
+                                        errorMessage = "❌ This VIP code is already bound to another phone. Code sharing is not allowed."
+                                    }
+                                    VoucherVerificationResult.Expired -> {
+                                        errorMessage = "❌ This 30-day VIP pass has expired. Contact on Telegram for renewal."
+                                    }
+                                    VoucherVerificationResult.InvalidCode -> {
+                                        errorMessage = "❌ Invalid access code. Use 12h Free Pass or contact on Telegram."
+                                    }
+                                    is VoucherVerificationResult.Error -> {
+                                        errorMessage = "⚠️ ${result.message}"
+                                    }
+                                }
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
@@ -251,12 +281,20 @@ fun AccessGateOverlay(
                             .fillMaxWidth()
                             .height(42.dp)
                     ) {
-                        Text(
-                            text = "Unlock Permanent Access 🚀",
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        if (isVerifying) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        } else {
+                            Text(
+                                text = "Unlock VIP Access 🚀",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))

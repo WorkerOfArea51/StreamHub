@@ -114,6 +114,7 @@ fun ProfileScreen(
     val streakDays by UserStatsManager.streakDays.collectAsState()
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
     val isAccessKeyUnlocked by com.streamhub.app.data.AccessGateManager.isUnlocked.collectAsState()
+    val remainingVoucherDays by com.streamhub.app.data.AccessGateManager.remainingDays.collectAsState()
     androidx.compose.runtime.LaunchedEffect(isAdminMode) {
         if (isAdminMode) {
             com.streamhub.app.data.UserTelemetryManager.startObservingLiveMetrics()
@@ -155,6 +156,7 @@ fun ProfileScreen(
             StreamHubUserProfileCard(
                 isAdmin = isAdminMode,
                 isAccessKeyVerified = isAccessKeyUnlocked,
+                remainingDays = remainingVoucherDays,
                 primaryColor = primaryColor,
                 onSecretTapUnlock = { showAdminPasswordDialog = true },
                 onOpenStudio = { showAddContentDialog = true },
@@ -336,6 +338,7 @@ fun ProfileScreen(
 private fun StreamHubUserProfileCard(
     isAdmin: Boolean,
     isAccessKeyVerified: Boolean,
+    remainingDays: Int = -1,
     primaryColor: Color,
     onSecretTapUnlock: () -> Unit,
     onOpenStudio: () -> Unit,
@@ -376,11 +379,13 @@ private fun StreamHubUserProfileCard(
             )
         }
         isAccessKeyVerified -> {
-            // Verified by Access Key -> Tickmark ✅
+            // Verified by Access Key or 30-Day Voucher -> Tickmark ✅
+            val badgeLabel = if (remainingDays > 0) "✅ VIP ($remainingDays d)" else "✅ Lifetime VIP"
+            val subLabel = if (remainingDays > 0) "✨ 30-Day VIP Pass • $remainingDays days remaining" else "✨ Community VIP Key Active • Ultra HD"
             UserProfileTier(
                 title = "StreamHub VIP",
-                badge = "✅ VIP Active",
-                subtitle = "✨ Community VIP Key Active • Ultra HD",
+                badge = badgeLabel,
+                subtitle = subLabel,
                 cardBorder = listOf(Color(0xFF00E5FF), Color(0xFF7C4DFF)),
                 avatarColors = listOf(Color(0xFF00E5FF), Color(0xFF7C4DFF)),
                 avatarIcon = Icons.Default.Verified,
