@@ -21,17 +21,23 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,6 +53,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -60,18 +68,21 @@ import com.streamhub.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
 /**
- * 1-Tap Admin Catalog URL Migration Dialog.
+ * 1-Tap Universal VPS / Server Domain Migration Dialog.
  *
- * Scans all Firestore documents across animes, movies, and web_series,
- * migrating legacy streamhub69.alwaysdata.net URLs to midnighthawk.serv00.net
- * and normalizing /stream/ landing pages to /dl/ binary media stream endpoints.
+ * Allows migrating media stream URLs in Firestore across animes, movies, and web_series
+ * whenever switching VPS servers, updating domains, or normalizing /stream/ to /dl/.
  */
 @Composable
-fun Serv00MigrationDialog(
+fun ServerMigrationDialog(
     repository: FirebaseRepository,
     onDismiss: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
+
+    var sourceHost by remember { mutableStateOf(StreamBackendConfig.DEFAULT_STREAMING_HOST) }
+    var targetHost by remember { mutableStateOf(StreamBackendConfig.DEFAULT_STREAMING_HOST) }
+    var includeAlwaysdata by remember { mutableStateOf(true) }
 
     var isRunning by remember { mutableStateOf(false) }
     var isFinished by remember { mutableStateOf(false) }
@@ -115,11 +126,11 @@ fun Serv00MigrationDialog(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(38.dp)
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(Color(0xFF0284C7).copy(alpha = 0.2f)),
                             contentAlignment = Alignment.Center
@@ -128,18 +139,18 @@ fun Serv00MigrationDialog(
                                 Icons.Default.CloudSync,
                                 contentDescription = null,
                                 tint = Color(0xFF38BDF8),
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                         Column {
                             Text(
-                                text = "Serv00 VPS Migration",
+                                text = "Server & VPS Migration",
                                 color = TextPrimary,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "1-Tap Firestore Catalog URL Rewriter",
+                                text = "1-Tap Firestore Catalog Domain Rewriter",
                                 color = Color(0xFF38BDF8),
                                 fontSize = 11.sp
                             )
@@ -158,74 +169,142 @@ fun Serv00MigrationDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Domain Transition Card
+                // Domain Configuration Card
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     color = Color(0xFF1A1A28),
                     border = BorderStroke(1.dp, Color(0xFF2C2C3E)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
-                        Text(
-                            text = "DOMAIN TRANSITION",
-                            color = TextSecondary,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Legacy Domain
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Legacy (Alwaysdata)",
-                                    color = Color(0xFFFF6B6B),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text(
-                                    text = StreamBackendConfig.LEGACY_STREAMING_HOST,
-                                    color = TextPrimary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = null,
-                                tint = Color(0xFF38BDF8),
-                                modifier = Modifier.size(16.dp)
+                            Text(
+                                text = "DOMAIN CONFIGURATION",
+                                color = TextSecondary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
                             )
 
-                            // New VPS Domain
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                horizontalAlignment = Alignment.End
-                            ) {
-                                Text(
-                                    text = "Target (Serv00 VPS)",
-                                    color = Color(0xFF4ADE80),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text(
-                                    text = StreamBackendConfig.DEFAULT_STREAMING_HOST,
-                                    color = TextPrimary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
+                            // Quick Reset preset
+                            if (!isRunning) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.clip(RoundedCornerShape(6.dp))
+                                ) {
+                                    IconButton(
+                                        onClick = {
+                                            sourceHost = StreamBackendConfig.DEFAULT_STREAMING_HOST
+                                            targetHost = StreamBackendConfig.DEFAULT_STREAMING_HOST
+                                            includeAlwaysdata = true
+                                        },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = "Reset Defaults", tint = TextSecondary, modifier = Modifier.size(14.dp))
+                                    }
+                                }
                             }
                         }
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        // Features / Rules
+                        // Source Host Field
+                        Text(
+                            text = "Old Server Host (To Replace):",
+                            color = Color(0xFF38BDF8),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        OutlinedTextField(
+                            value = sourceHost,
+                            onValueChange = { sourceHost = it },
+                            enabled = !isRunning,
+                            placeholder = { Text("e.g. midnighthawk.serv00.net", color = TextSecondary.copy(alpha = 0.5f), fontSize = 12.sp) },
+                            textStyle = TextStyle(color = TextPrimary, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+                            singleLine = true,
+                            leadingIcon = {
+                                Icon(Icons.Default.Storage, contentDescription = null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(16.dp))
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF38BDF8),
+                                unfocusedBorderColor = Color(0xFF3A3A52),
+                                focusedContainerColor = Color(0xFF13131F),
+                                unfocusedContainerColor = Color(0xFF13131F)
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Target Host Field
+                        Text(
+                            text = "New VPS Host (Target Domain):",
+                            color = Color(0xFF4ADE80),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        OutlinedTextField(
+                            value = targetHost,
+                            onValueChange = { targetHost = it },
+                            enabled = !isRunning,
+                            placeholder = { Text("e.g. new-vps.yourdomain.com", color = TextSecondary.copy(alpha = 0.5f), fontSize = 12.sp) },
+                            textStyle = TextStyle(color = TextPrimary, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+                            singleLine = true,
+                            leadingIcon = {
+                                Icon(Icons.Default.Dns, contentDescription = null, tint = Color(0xFF4ADE80), modifier = Modifier.size(16.dp))
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF4ADE80),
+                                unfocusedBorderColor = Color(0xFF3A3A52),
+                                focusedContainerColor = Color(0xFF13131F),
+                                unfocusedContainerColor = Color(0xFF13131F)
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Alwaysdata toggle
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Checkbox(
+                                checked = includeAlwaysdata,
+                                onCheckedChange = { if (!isRunning) includeAlwaysdata = it },
+                                enabled = !isRunning,
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = Color(0xFF38BDF8),
+                                    uncheckedColor = Color(0xFF5A5A72)
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Column {
+                                Text(
+                                    text = "Also rewrite legacy Alwaysdata URLs",
+                                    color = TextPrimary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = "Replaces streamhub69.alwaysdata.net across catalog",
+                                    color = TextSecondary,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Features / Rules Chips
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -237,7 +316,7 @@ fun Serv00MigrationDialog(
                                 Text(
                                     text = "animes, movies, web_series",
                                     color = Color(0xFF38BDF8),
-                                    fontSize = 10.sp,
+                                    fontSize = 9.sp,
                                     fontWeight = FontWeight.Medium,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                                 )
@@ -249,7 +328,7 @@ fun Serv00MigrationDialog(
                                 Text(
                                     text = "/stream/ ➔ /dl/",
                                     color = Color(0xFF4ADE80),
-                                    fontSize = 10.sp,
+                                    fontSize = 9.sp,
                                     fontWeight = FontWeight.Medium,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                                 )
@@ -258,7 +337,53 @@ fun Serv00MigrationDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Live Preview
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFF0D0D17),
+                    border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text(
+                            text = "URL REWRITE PREVIEW",
+                            color = TextSecondary,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "https://${sourceHost.ifBlank { "..." }}/dl/451",
+                                color = Color(0xFFFF8080),
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1
+                            )
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                tint = TextSecondary,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Text(
+                                text = "https://${targetHost.ifBlank { "..." }}/dl/451",
+                                color = Color(0xFF4ADE80),
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Status & Progress Area
                 if (isRunning) {
@@ -342,7 +467,7 @@ fun Serv00MigrationDialog(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Successfully inspected $totalDocuments items. Updated $updatedCount documents to Serv00 VPS.",
+                                    text = "Inspected $totalDocuments items. Updated $updatedCount documents to '$targetHost'.",
                                     color = TextPrimary,
                                     fontSize = 11.sp
                                 )
@@ -384,7 +509,7 @@ fun Serv00MigrationDialog(
                     }
                 } else {
                     Text(
-                        text = "ℹ️ StreamHub already migrates legacy Alwaysdata links dynamically on read. Running this migration permanently updates your Firestore documents so all URLs reflect midnighthawk.serv00.net directly in the database.",
+                        text = "ℹ️ Running this migration permanently updates your Firestore documents across all shows so playback and downloads connect to your new VPS domain immediately.",
                         color = TextSecondary,
                         fontSize = 11.sp,
                         lineHeight = 15.sp
@@ -408,6 +533,10 @@ fun Serv00MigrationDialog(
                     }
 
                     if (!isFinished) {
+                        val canMigrate = targetHost.isNotBlank() && (
+                            !sourceHost.equals(targetHost, ignoreCase = true) || includeAlwaysdata
+                        )
+
                         Button(
                             onClick = {
                                 isRunning = true
@@ -419,7 +548,11 @@ fun Serv00MigrationDialog(
                                 progressFraction = 0f
 
                                 scope.launch {
-                                    val result = repository.migrateCatalogToServ00 { current, total, updated ->
+                                    val result = repository.migrateCatalogServer(
+                                        sourceHost = sourceHost,
+                                        targetHost = targetHost,
+                                        includeAlwaysdata = includeAlwaysdata
+                                    ) { current, total, updated ->
                                         currentProcessed = current
                                         totalDocuments = total
                                         updatedCount = updated
@@ -434,7 +567,7 @@ fun Serv00MigrationDialog(
                                     }
                                 }
                             },
-                            enabled = !isRunning,
+                            enabled = !isRunning && canMigrate,
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
                             modifier = Modifier.weight(1.3f)
@@ -463,4 +596,15 @@ fun Serv00MigrationDialog(
             }
         }
     }
+}
+
+/**
+ * Backward compatibility alias for Serv00MigrationDialog.
+ */
+@Composable
+fun Serv00MigrationDialog(
+    repository: FirebaseRepository,
+    onDismiss: () -> Unit
+) {
+    ServerMigrationDialog(repository = repository, onDismiss = onDismiss)
 }

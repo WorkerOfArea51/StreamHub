@@ -232,7 +232,7 @@ fun AdminEditorDialog(
     }
 
     if (showMigrationDialog) {
-        Serv00MigrationDialog(
+        ServerMigrationDialog(
             repository = FirebaseRepository.getInstance(),
             onDismiss = { showMigrationDialog = false }
         )
@@ -322,7 +322,7 @@ fun AdminEditorDialog(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                             ) {
                                 Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color(0xFF34D399), modifier = Modifier.size(13.dp))
-                                Text("Serv00 Migrate", color = Color(0xFF34D399), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("Server Migrate", color = Color(0xFF34D399), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
 

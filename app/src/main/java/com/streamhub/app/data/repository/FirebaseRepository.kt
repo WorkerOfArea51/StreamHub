@@ -392,12 +392,33 @@ class FirebaseRepository private constructor() {
      * @param onProgress Callback receiving (currentProcessed, totalDocuments, updatedCount)
      * @return Result with total number of documents successfully updated.
      */
-    suspend fun migrateCatalogToServ00(
+    /**
+     * Scans all Firestore documents across animes, movies, and web_series.
+     * Rewrites URLs matching sourceHost (and optionally legacy Alwaysdata) to targetHost,
+     * and normalizes /stream/ to /dl/.
+     *
+     * @param sourceHost The old VPS host domain (e.g., midnighthawk.serv00.net)
+     * @param targetHost The new VPS host domain (e.g., stream.myvps.com)
+     * @param includeAlwaysdata Also rewrite any legacy Alwaysdata URLs found
+     * @param onProgress Callback receiving (currentProcessed, totalDocuments, updatedCount)
+     * @return Result with total number of documents successfully updated.
+     */
+    suspend fun migrateCatalogServer(
+        sourceHost: String,
+        targetHost: String,
+        includeAlwaysdata: Boolean = true,
         onProgress: (current: Int, total: Int, updated: Int) -> Unit = { _, _, _ -> }
     ): Result<Int> = withContext(Dispatchers.IO) {
         val db = firestore ?: return@withContext Result.failure(IllegalStateException("Firestore not initialized"))
 
-        runCatching {
+        val cleanSource = sourceHost.trim().removePrefix("http://").removePrefix("https://").trimEnd('/')
+        val cleanTarget = targetHost.trim().removePrefix("http://").removePrefix("https://").trimEnd('/')
+
+        if (cleanTarget.isBlank()) {
+            return@withContext Result.failure(IllegalArgumentException("Target host cannot be empty"))
+        }
+
+        try {
             val collections = listOf(COLLECTION_ANIMES, COLLECTION_MOVIES, COLLECTION_SERIES)
             val docsToProcess = mutableListOf<Pair<String, com.google.firebase.firestore.DocumentSnapshot>>()
 
@@ -411,28 +432,41 @@ class FirebaseRepository private constructor() {
             var processed = 0
             var updated = 0
 
+            fun needsMigration(url: String): Boolean {
+                if (url.isBlank()) return false
+                val matchesAlwaysdata = includeAlwaysdata && url.contains("alwaysdata.net", ignoreCase = true)
+                val matchesSource = cleanSource.isNotBlank() && url.contains(cleanSource, ignoreCase = true) && !cleanSource.equals(cleanTarget, ignoreCase = true)
+                val hasStreamRoute = url.contains("/stream/", ignoreCase = true)
+                return matchesAlwaysdata || matchesSource || hasStreamRoute
+            }
+
+            fun rewrite(url: String): String {
+                return com.streamhub.app.data.StreamBackendConfig.rewriteServerUrl(
+                    url = url,
+                    sourceHost = cleanSource,
+                    targetHost = cleanTarget,
+                    includeAlwaysdata = includeAlwaysdata,
+                    normalizeRoute = true
+                )
+            }
+
             for ((col, doc) in docsToProcess) {
                 processed++
                 val item = doc.toObject(MediaItem::class.java)
                 if (item != null) {
                     val rawDocStream = doc.getString("streamUrl").orEmpty()
                     val rawDocMirror = doc.getString("mirrorStreamUrl").orEmpty()
-                    val hasLegacyInRoot = rawDocStream.contains("alwaysdata.net", ignoreCase = true) ||
-                                          rawDocMirror.contains("alwaysdata.net", ignoreCase = true) ||
-                                          rawDocStream.contains("/stream/", ignoreCase = true)
+
+                    val hasLegacyInRoot = needsMigration(rawDocStream) || needsMigration(rawDocMirror)
                     val hasLegacyInEpisodes = item.episodes.any { ep ->
-                        ep.streamUrl.contains("alwaysdata.net", ignoreCase = true) ||
-                        ep.mirrorStreamUrl.contains("alwaysdata.net", ignoreCase = true) ||
-                        ep.streamUrl.contains("/stream/", ignoreCase = true)
+                        needsMigration(ep.streamUrl) || needsMigration(ep.mirrorStreamUrl)
                     }
 
                     if (hasLegacyInRoot || hasLegacyInEpisodes) {
                         val migratedEpisodes = item.episodes.map { ep ->
                             ep.copy(
-                                streamUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.streamUrl),
-                                mirrorStreamUrl = TelegramLinkResolver.sanitizePlayableUrl(
-                                    if (ep.mirrorStreamUrl.isNotBlank()) ep.mirrorStreamUrl else ep.streamUrl
-                                )
+                                streamUrl = rewrite(ep.streamUrl),
+                                mirrorStreamUrl = rewrite(if (ep.mirrorStreamUrl.isNotBlank()) ep.mirrorStreamUrl else ep.streamUrl)
                             )
                         }
 
@@ -444,22 +478,37 @@ class FirebaseRepository private constructor() {
 
                         val docMap = mediaItemToMap(updatedItem).toMutableMap()
                         if (rawDocStream.isNotBlank()) {
-                            docMap["streamUrl"] = TelegramLinkResolver.sanitizePlayableUrl(rawDocStream)
+                            docMap["streamUrl"] = rewrite(rawDocStream)
                         }
                         if (rawDocMirror.isNotBlank()) {
-                            docMap["mirrorStreamUrl"] = TelegramLinkResolver.sanitizePlayableUrl(rawDocMirror)
+                            docMap["mirrorStreamUrl"] = rewrite(rawDocMirror)
                         }
 
                         Tasks.await(db.collection(col).document(doc.id).set(docMap))
                         updated++
-                        Log.d(TAG, "Migrated document ${doc.id} in collection '$col' to Serv00")
+                        Log.d(TAG, "Migrated document ${doc.id} in collection '$col' to $cleanTarget")
                     }
                 }
                 onProgress(processed, totalDocs, updated)
             }
 
-            Log.i(TAG, "Completed Serv00 catalog migration: $updated of $totalDocs documents updated.")
-            updated
+            Log.i(TAG, "Completed catalog migration to $cleanTarget: $updated of $totalDocs documents updated.")
+            Result.success(updated)
+        } catch (e: Exception) {
+            Log.e(TAG, "Catalog migration failed", e)
+            Result.failure(e)
         }
     }
+
+    /**
+     * Legacy helper retained for backward compatibility.
+     */
+    suspend fun migrateCatalogToServ00(
+        onProgress: (current: Int, total: Int, updated: Int) -> Unit = { _, _, _ -> }
+    ): Result<Int> = migrateCatalogServer(
+        sourceHost = com.streamhub.app.data.StreamBackendConfig.LEGACY_STREAMING_HOST,
+        targetHost = com.streamhub.app.data.StreamBackendConfig.DEFAULT_STREAMING_HOST,
+        includeAlwaysdata = true,
+        onProgress = onProgress
+    )
 }

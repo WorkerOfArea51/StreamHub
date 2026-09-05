@@ -69,4 +69,43 @@ class StreamBackendConfigTest {
         assertFalse(StreamBackendConfig.isLegacyBackendHost("https://midnighthawk.serv00.net/dl/123"))
         assertFalse(StreamBackendConfig.isLegacyBackendHost("midnighthawk.serv00.net"))
     }
+
+    @Test
+    fun rewriteServerUrl_customVpsMigration_rewritesDomainAndRoute() {
+        val oldServ00Url = "https://midnighthawk.serv00.net/stream/hash_999?token=abc"
+        val expected = "https://stream.newvps.com/dl/hash_999?token=abc"
+        val result = StreamBackendConfig.rewriteServerUrl(
+            url = oldServ00Url,
+            sourceHost = "midnighthawk.serv00.net",
+            targetHost = "stream.newvps.com",
+            includeAlwaysdata = true,
+            normalizeRoute = true
+        )
+        assertEquals(expected, result)
+    }
+
+    @Test
+    fun rewriteServerUrl_withAlwaysdataFallback_rewritesAlwaysdataToo() {
+        val legacyUrl = "http://streamhub69.alwaysdata.net/stream/hash_111"
+        val expected = "https://stream.newvps.com/dl/hash_111"
+        val result = StreamBackendConfig.rewriteServerUrl(
+            url = legacyUrl,
+            sourceHost = "midnighthawk.serv00.net",
+            targetHost = "stream.newvps.com",
+            includeAlwaysdata = true,
+            normalizeRoute = true
+        )
+        assertEquals(expected, result)
+    }
+
+    @Test
+    fun rewriteServerUrl_externalUrl_untouched() {
+        val external = "https://cdn.cloudflare.net/sample.m3u8"
+        val result = StreamBackendConfig.rewriteServerUrl(
+            url = external,
+            sourceHost = "midnighthawk.serv00.net",
+            targetHost = "stream.newvps.com"
+        )
+        assertEquals(external, result)
+    }
 }

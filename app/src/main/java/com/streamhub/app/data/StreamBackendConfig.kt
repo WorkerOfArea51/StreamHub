@@ -74,6 +74,44 @@ object StreamBackendConfig {
     }
 
     /**
+     * Migrates a URL from a specific source host to a target host.
+     * Also handles legacy alwaysdata if requested, normalizes /stream/ to /dl/,
+     * and ensures https:// scheme.
+     */
+    fun rewriteServerUrl(
+        url: String,
+        sourceHost: String,
+        targetHost: String,
+        includeAlwaysdata: Boolean = true,
+        normalizeRoute: Boolean = true
+    ): String {
+        if (url.isBlank()) return url
+        var migrated = url.trim()
+
+        val cleanSource = sourceHost.trim().removePrefix("http://").removePrefix("https://").trimEnd('/')
+        val cleanTarget = targetHost.trim().removePrefix("http://").removePrefix("https://").trimEnd('/')
+
+        if (includeAlwaysdata && migrated.contains("alwaysdata.net", ignoreCase = true) && cleanTarget.isNotBlank()) {
+            migrated = migrated.replace(LEGACY_HOST_REGEX, cleanTarget)
+        }
+
+        if (cleanSource.isNotBlank() && cleanTarget.isNotBlank() && !cleanSource.equals(cleanTarget, ignoreCase = true)) {
+            val sourceRegex = Regex("""(?i)\b${Regex.escape(cleanSource)}\b""")
+            migrated = migrated.replace(sourceRegex, cleanTarget)
+        }
+
+        if (normalizeRoute && migrated.contains("/stream/", ignoreCase = true)) {
+            migrated = migrated.replace(Regex("""(?i)/stream/"""), "/dl/")
+        }
+
+        if (migrated.startsWith("http://", ignoreCase = true) && cleanTarget.isNotBlank() && migrated.contains(cleanTarget, ignoreCase = true)) {
+            migrated = "https://" + migrated.substring(7)
+        }
+
+        return migrated
+    }
+
+    /**
      * Resolves an F2L / batch API endpoint URL.
      * If the input contains a legacy host, rewrites to [targetHost].
      */
