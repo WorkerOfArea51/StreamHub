@@ -158,28 +158,23 @@ class StreamPlayerViewModel : ViewModel() {
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)
                     .build()
 
-                // Dynamically scale buffer durations & RAM allocations based on device hardware memory class.
-                // High-end (largeMemoryClass >= 512): 10 minutes min buffer, up to 300MB RAM cap
-                // Mid-range (largeMemoryClass >= 256): 5 minutes min buffer, up to 180MB RAM cap
-                // Budget (< 256): 2.5 minutes min buffer, up to 100MB RAM cap
-                val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
-                val memoryClass = activityManager?.largeMemoryClass ?: 256
-                val (minBufferMs, maxBufferMs, targetBufferBytes) = when {
-                    memoryClass >= 512 -> Triple(600_000, 14_400_000, 300 * 1024 * 1024)
-                    memoryClass >= 256 -> Triple(300_000, 14_400_000, 180 * 1024 * 1024)
-                    else -> Triple(150_000, 7_200_000, 100 * 1024 * 1024)
-                }
-
+                // Low-latency instant startup with smooth progressive background buffering:
+                // - bufferForPlaybackMs = 250: Playback starts immediately on arrival of first keyframes.
+                // - bufferForPlaybackAfterRebufferMs = 1_000: Fast 1s recovery after seek or rebuffering.
+                // - minBufferMs = 25_000: Maintains a steady 25-second buffer ahead during active playback.
+                // - maxBufferMs = 180_000: Continuously buffers up to 3 minutes ahead.
+                // - targetBufferBytes = C.LENGTH_UNSET: Track-based allocation avoids upfront memory spikes.
+                // - backBuffer = 30_000 (retainBackBufferFromKeyframe = true): Retains keyframes for smooth rewind.
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        minBufferMs,    // Dynamic: 10m / 5m / 2.5m minimum buffer ahead
-                        maxBufferMs,    // Up to 4 hours ahead
-                        1_000,          // 1s smooth instant start
-                        2_000           // 2s fast recovery
+                        25_000,     // minBufferMs (steady 25s buffer ahead)
+                        180_000,    // maxBufferMs (up to 3 minutes ahead)
+                        250,        // bufferForPlaybackMs (instant start in ~250ms)
+                        1_000       // bufferForPlaybackAfterRebufferMs (1s fast recovery)
                     )
-                    .setBackBuffer(30_000, false) // 30s back buffer in RAM (disk SimpleCache handles full movie persistence)
-                    .setPrioritizeTimeOverSizeThresholds(true) // Prioritize time so buffering uses full peak internet speed until minBuffer is reached
-                    .setTargetBufferBytes(targetBufferBytes)
+                    .setBackBuffer(30_000, true)
+                    .setPrioritizeTimeOverSizeThresholds(false)
+                    .setTargetBufferBytes(androidx.media3.common.C.LENGTH_UNSET)
                     .build()
                 val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
                     .setConstantBitrateSeekingEnabled(true)
@@ -187,7 +182,6 @@ class StreamPlayerViewModel : ViewModel() {
                         androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_EMIT_RAW_SUBTITLE_DATA
                     )
                 ExoPlayer.Builder(context, renderersFactory)
-                    .setBandwidthMeter(tracker.bandwidthMeter)
                     .setTrackSelector(trackSelector!!)
                     .setAudioAttributes(audioAttributes, true)
                     .setHandleAudioBecomingNoisy(true)

@@ -308,7 +308,6 @@ fun DetailsScreen(
                 val isRecent = (System.currentTimeMillis() - progress.lastUpdated) < 60_000L
                 if (isRecent) {
                     hasScrolledForCurrentSession = true
-                    delay(350)
                     val targetEp = mediaItem.episodes.getOrNull(progress.episodeNumber)
                         ?: mediaItem.episodes.find { it.episodeNumber == progress.episodeNumber }
                     if (targetEp != null) {
@@ -318,14 +317,6 @@ fun DetailsScreen(
                         if (targetEp.seasonNumber > 0 && selectedSeasonNumber != targetEp.seasonNumber) {
                             selectedSeasonNumber = targetEp.seasonNumber
                         }
-                        delay(200)
-                        val filteredIdx = seasonFilteredEpisodes.indexOf(targetEp).takeIf { it >= 0 } ?: 0
-                        val headerItems = if (franchiseItems.size > 1) 7 else 6
-                        val targetScrollItem = (headerItems + filteredIdx).coerceAtLeast(0)
-                        detailsListState.animateScrollToItem(
-                            index = targetScrollItem,
-                            scrollOffset = -80
-                        )
                     }
                 }
             }
@@ -732,9 +723,7 @@ fun DetailsScreen(
                                         isScrolling = isFranchiseScrolling,
                                         onClick = {
                                             if (fItem.id != mediaItem.id) {
-                                                currentMediaId = fItem.id
-                                                selectedSeasonNumber = com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(fItem)
-                                                selectedArcName = ""
+                                                onMediaClick(fItem)
                                             }
                                         }
                                     )
@@ -1042,9 +1031,7 @@ fun DetailsScreen(
                                                     (cat.title.isNotBlank() && (cat.title.equals(recItem.title, ignoreCase = true) || cat.title.replace(":", "").equals(recItem.title.replace(":", ""), ignoreCase = true)))
                                                 }
                                                 if (catalogMatch != null) {
-                                                    currentMediaId = catalogMatch.id
-                                                    selectedSeasonNumber = com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(catalogMatch)
-                                                    selectedArcName = ""
+                                                    onMediaClick(catalogMatch)
                                                 } else {
                                                     onMediaClick(recItem)
                                                 }
@@ -1089,8 +1076,7 @@ fun DetailsScreen(
             onSelectOption = { opt ->
                 isSeasonSheetOpen = false
                 if (opt.isExternalMedia && opt.targetMediaItem != null) {
-                    currentMediaId = opt.targetMediaItem.id
-                    selectedSeasonNumber = com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(opt.targetMediaItem)
+                    onMediaClick(opt.targetMediaItem)
                 }
             }
         )

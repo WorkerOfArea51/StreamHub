@@ -92,6 +92,7 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
                 Log.d(TAG, "App returned to foreground — caches preserved")
                 runCatching { DownloadManager.resumeProgressPolling() }
                 runCatching { StreamDownloadManager.resumeDownloads(this@StreamHubApplication) }
+                runCatching { com.streamhub.app.data.UserTelemetryManager.onAppForegrounded() }
             }
 
             override fun onStop(owner: LifecycleOwner) {
@@ -100,6 +101,7 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
                 // FIX: Only pause download progress and active downloads, do NOT wipe media caches.
                 runCatching { DownloadManager.pauseProgressPolling() }
                 runCatching { StreamDownloadManager.pauseDownloads() }
+                runCatching { com.streamhub.app.data.UserTelemetryManager.onAppBackgrounded() }
             }
         })
     }

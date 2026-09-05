@@ -195,6 +195,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         unregisterPipActionReceiver()
+        runCatching { com.streamhub.app.data.UserTelemetryManager.onAppBackgrounded() }
     }
 
     /**

@@ -90,8 +90,8 @@ object UserTelemetryManager {
     private const val PREFS_NAME = "streamhub_telemetry_prefs"
     private const val KEY_CLIENT_ID = "telemetry_client_id"
     private const val KEY_LAST_BROADCAST_TS = "last_seen_broadcast_ts"
-    private const val HEARTBEAT_INTERVAL_MS = 45_000L // 45 seconds
-    private const val SESSION_TIMEOUT_MS = 180_000L   // 3 minutes inactivity timeout
+    private const val HEARTBEAT_INTERVAL_MS = 15_000L // 15 seconds
+    private const val SESSION_TIMEOUT_MS = 35_000L    // 35 seconds inactivity timeout (fast ghost removal)
 
     private var clientId: String = ""
     private var prefs: SharedPreferences? = null
@@ -220,11 +220,21 @@ object UserTelemetryManager {
             try {
                 if (clientId.isNotBlank()) {
                     FirebaseFirestore.getInstance().collection(COLLECTION_SESSIONS).document(clientId).delete()
+                    Log.d(TAG, "Successfully purged live session on stop/exit: $clientId")
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to delete session on stop: ${e.message}")
             }
         }
+    }
+
+    fun onAppBackgrounded() {
+        stopHeartbeat()
+    }
+
+    fun onAppForegrounded() {
+        startHeartbeat()
+        publishHeartbeat()
     }
 
     private fun getCurrentTier(): String {
