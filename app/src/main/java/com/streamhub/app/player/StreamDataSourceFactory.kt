@@ -21,7 +21,8 @@ import com.streamhub.app.data.api.SharedHttpClient
  */
 @OptIn(UnstableApi::class)
 class StreamDataSourceFactory(
-    context: Context
+    context: Context,
+    private val transferListener: androidx.media3.datasource.TransferListener? = null
 ) : DataSource.Factory {
 
     private val appContext: Context = context.applicationContext
@@ -32,6 +33,9 @@ class StreamDataSourceFactory(
 
     private val okHttpDataSourceFactory = OkHttpDataSource.Factory(SharedHttpClient.streamingClient)
         .setUserAgent(USER_AGENT)
+        .apply {
+            transferListener?.let { setTransferListener(it) }
+        }
 
     private val simpleCache by lazy { StreamCacheManager.getCache(appContext) }
 

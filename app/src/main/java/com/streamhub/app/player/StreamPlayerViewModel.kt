@@ -1,5 +1,6 @@
 package com.streamhub.app.player
 
+import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.util.Log
@@ -119,33 +120,7 @@ class StreamPlayerViewModel : ViewModel() {
     private var sleepTimerJob: Job? = null
     private val triedMirrorUrls = mutableSetOf<String>()
 
-    private var lastBufferedBytes: Long = 0L
-    private var lastSpeedSampleMs: Long = 0L
-    private val speedSamples = ArrayDeque<Long>(5)  // rolling window
-
-    private fun estimateNetworkSpeedKbps(currentBuffered: Long): Long {
-        val now = System.currentTimeMillis()
-        if (lastSpeedSampleMs == 0L) {
-            lastSpeedSampleMs = now
-            lastBufferedBytes = currentBuffered
-            return 0L
-        }
-        val elapsedMs = now - lastSpeedSampleMs
-        if (elapsedMs < 1000L) return _uiState.value.networkSpeedKbps  // Sample at most 1/sec
-
-        val deltaBytes = (currentBuffered - lastBufferedBytes).coerceAtLeast(0L)
-        val bps = (deltaBytes * 1000L) / elapsedMs  // bytes per second
-        val kbps = bps / 1024L
-
-        // Rolling average of last 5 samples for stability
-        speedSamples.addLast(kbps)
-        if (speedSamples.size > 5) speedSamples.removeFirst()
-        val avgKbps = speedSamples.sum() / speedSamples.size.coerceAtLeast(1)
-
-        lastSpeedSampleMs = now
-        lastBufferedBytes = currentBuffered
-        return avgKbps
-    }
+    private var bandwidthTracker: StreamBandwidthTracker? = null
 
     fun getPlayer(): ExoPlayer? = exoPlayer
 
@@ -156,7 +131,11 @@ class StreamPlayerViewModel : ViewModel() {
 
         if (exoPlayer == null) {
             val createResult = runCatching {
-                val dataSourceFactory = StreamDataSourceFactory(context)
+                if (bandwidthTracker == null) {
+                    bandwidthTracker = StreamBandwidthTracker(context)
+                }
+                val tracker = bandwidthTracker!!
+                val dataSourceFactory = StreamDataSourceFactory(context, tracker)
                 val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
                     setEnableDecoderFallback(true) // Software decoder fallback if hardware EAC3/DTS/AC3 decoder missing
                     setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
@@ -178,16 +157,29 @@ class StreamPlayerViewModel : ViewModel() {
                     .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)
                     .build()
+
+                // Dynamically scale buffer durations & RAM allocations based on device hardware memory class.
+                // High-end (largeMemoryClass >= 512): 10 minutes min buffer, up to 300MB RAM cap
+                // Mid-range (largeMemoryClass >= 256): 5 minutes min buffer, up to 180MB RAM cap
+                // Budget (< 256): 2.5 minutes min buffer, up to 100MB RAM cap
+                val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+                val memoryClass = activityManager?.largeMemoryClass ?: 256
+                val (minBufferMs, maxBufferMs, targetBufferBytes) = when {
+                    memoryClass >= 512 -> Triple(600_000, 14_400_000, 300 * 1024 * 1024)
+                    memoryClass >= 256 -> Triple(300_000, 14_400_000, 180 * 1024 * 1024)
+                    else -> Triple(150_000, 7_200_000, 100 * 1024 * 1024)
+                }
+
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        60_000,         // minBufferMs (keep steady 60s minimum ahead)
-                        14_400_000,     // maxBufferMs (up to 4 hours / whole movie buffer ahead without stopping)
-                        1_000,          // bufferForPlaybackMs (1s smooth instant start)
-                        2_000           // bufferForPlaybackAfterRebufferMs (2s fast recovery)
+                        minBufferMs,    // Dynamic: 10m / 5m / 2.5m minimum buffer ahead
+                        maxBufferMs,    // Up to 4 hours ahead
+                        1_000,          // 1s smooth instant start
+                        2_000           // 2s fast recovery
                     )
                     .setBackBuffer(30_000, false) // 30s back buffer in RAM (disk SimpleCache handles full movie persistence)
-                    .setPrioritizeTimeOverSizeThresholds(true) // Crucial: prioritize time so buffering is never throttled by byte threshold
-                    .setTargetBufferBytes(androidx.media3.common.C.LENGTH_UNSET)
+                    .setPrioritizeTimeOverSizeThresholds(true) // Prioritize time so buffering uses full peak internet speed until minBuffer is reached
+                    .setTargetBufferBytes(targetBufferBytes)
                     .build()
                 val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
                     .setConstantBitrateSeekingEnabled(true)
@@ -195,6 +187,7 @@ class StreamPlayerViewModel : ViewModel() {
                         androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_EMIT_RAW_SUBTITLE_DATA
                     )
                 ExoPlayer.Builder(context, renderersFactory)
+                    .setBandwidthMeter(tracker.bandwidthMeter)
                     .setTrackSelector(trackSelector!!)
                     .setAudioAttributes(audioAttributes, true)
                     .setHandleAudioBecomingNoisy(true)
@@ -1004,8 +997,8 @@ class StreamPlayerViewModel : ViewModel() {
                     val effectiveBuffered = buffered
                     val bufferHealthSec = ((effectiveBuffered - currentPos).coerceAtLeast(0L) / 1000L)
 
-                    // Estimate network speed from total bytes downloaded
-                    val speedKbps = estimateNetworkSpeedKbps(effectiveBuffered)
+                    // Estimate real network throughput from TransferListener byte window
+                    val speedKbps = bandwidthTracker?.sampleSpeedKBps() ?: 0L
 
                     _uiState.update {
                         it.copy(
@@ -1284,9 +1277,7 @@ class StreamPlayerViewModel : ViewModel() {
         PlayerHolder.onPlayPrevAction = null
         trackSelector = null
         pendingSeekTargetMs = null
-        lastBufferedBytes = 0L
-        lastSpeedSampleMs = 0L
-        speedSamples.clear()
+        bandwidthTracker = null
         com.streamhub.app.data.UserStatsManager.flushToDisk()
         com.streamhub.app.data.UserTelemetryManager.clearPlaybackState()
     }

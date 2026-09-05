@@ -2407,9 +2407,19 @@ private fun StatsForNerdsOverlay(
             StatRowItem("Audio Codec", audioCodec)
             StatRowItem("Playback Speed", "${uiState.playbackSpeed}x")
             StatRowItem("Buffer Health", "${uiState.bufferHealthSeconds}s ahead")
-            if (uiState.networkSpeedKbps > 0) {
-                StatRowItem("Network Speed", "${uiState.networkSpeedKbps} kbps")
+            val speedDisplay = when {
+                uiState.networkSpeedKbps >= 1024L -> {
+                    String.format(java.util.Locale.US, "%.1f MB/s", uiState.networkSpeedKbps / 1024.0)
+                }
+                uiState.networkSpeedKbps > 0L -> {
+                    "${uiState.networkSpeedKbps} KB/s"
+                }
+                uiState.bufferHealthSeconds >= 60L -> {
+                    "Idle (Buffer Full)"
+                }
+                else -> "0 KB/s"
             }
+            StatRowItem("Network Speed", speedDisplay)
             StatRowItem("Aspect Mode", uiState.aspectRatioMode.name)
         }
     }
