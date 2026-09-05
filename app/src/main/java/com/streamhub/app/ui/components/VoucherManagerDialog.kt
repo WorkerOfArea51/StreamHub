@@ -118,13 +118,13 @@ fun VoucherManagerDialog(
                         }
                         Column {
                             Text(
-                                text = "VIP Voucher Keys (30 Days)",
+                                text = "User Access Codes (30 Days)",
                                 color = TextPrimary,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Single-device, hardware-locked passes. Auto-expires in 30 days.",
+                                text = "Single-device 30-day passes. Auto-expires in 30 days.",
                                 color = TextSecondary,
                                 fontSize = 11.sp
                             )
@@ -174,10 +174,10 @@ fun VoucherManagerDialog(
                                     VoucherManager.createVoucher(label = labelInput, durationDays = 30)
                                         .onSuccess {
                                             labelInput = ""
-                                            ToastManager.showToast("Generated key: ${it.code} 🔑")
+                                            ToastManager.showToast("Generated code: ${it.code} 🔑")
                                         }
                                         .onFailure {
-                                            ToastManager.showToast("Failed to generate key: ${it.message}")
+                                            ToastManager.showToast("Failed to generate code: ${it.message}")
                                         }
                                     isGenerating = false
                                 }
@@ -191,7 +191,7 @@ fun VoucherManagerDialog(
                             } else {
                                 Icon(Icons.Default.Add, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Generate 30d Key", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Text("Generate Code", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             }
                         }
                     }
@@ -208,7 +208,7 @@ fun VoucherManagerDialog(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "No VIP keys generated yet.\nTap 'Generate 30d Key' to create a single-device pass.",
+                            text = "No user access codes generated yet.\nTap 'Generate Code' to create a single-device pass.",
                             color = TextSecondary,
                             fontSize = 12.sp,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -226,13 +226,13 @@ fun VoucherManagerDialog(
                                 voucher = voucher,
                                 onCopy = {
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("StreamHub VIP Key", voucher.code))
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("StreamHub User Code", voucher.code))
                                     ToastManager.showToast("Copied ${voucher.code} to clipboard! 📋")
                                 },
                                 onDelete = {
                                     scope.launch {
                                         VoucherManager.deleteVoucher(voucher.code)
-                                        ToastManager.showToast("Deleted voucher ${voucher.code}")
+                                        ToastManager.showToast("Deleted code ${voucher.code}")
                                     }
                                 }
                             )
