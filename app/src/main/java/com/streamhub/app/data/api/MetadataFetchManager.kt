@@ -1357,11 +1357,8 @@ object MetadataFetchManager {
                 result.fold(
                     onSuccess = { meta ->
                         val hasBrokenGenres = item.genres.isEmpty() || item.genres.all { 
-                            it.equals("Movie", ignoreCase = true) || 
-                            it.equals("Movies", ignoreCase = true) || 
-                            it.equals("TV Series", ignoreCase = true) || 
-                            it.equals("Series", ignoreCase = true) || 
-                            it.equals("Anime", ignoreCase = true)
+                            val g = it.trim().lowercase()
+                            g.isBlank() || g == "movie" || g == "movies" || g == "tv series" || g == "series" || g == "anime"
                         }
                         val repairedGenres = if (deepSync && meta.genres.isNotEmpty()) {
                             meta.genres

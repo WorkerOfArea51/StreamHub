@@ -62,6 +62,10 @@ object StreamCacheManager {
         }
     }
 
+    fun activeReaderCountSnapshot(): Int {
+        return cacheLock.read { activeReaderCount }
+    }
+
     fun acquireReader() {
         cacheLock.write {
             activeReaderCount++

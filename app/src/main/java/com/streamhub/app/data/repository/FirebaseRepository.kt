@@ -8,6 +8,7 @@ import com.google.android.gms.tasks.Tasks
 import com.streamhub.app.data.StreamBackendConfig
 import com.streamhub.app.data.TelegramLinkResolver
 import com.streamhub.app.data.models.MediaItem
+import kotlin.coroutines.resume
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 
 /**
@@ -226,6 +228,75 @@ class FirebaseRepository private constructor() {
     private fun removeFirestoreListeners() {
         activeListeners.forEach { it.remove() }
         activeListeners.clear()
+    }
+
+    /**
+     * Suspending version of saveMediaItem that suspends until the Firestore atomic batch write completes or fails.
+     * Returns Result.success(Unit) or Result.failure(Exception).
+     */
+    suspend fun saveMediaItemSuspending(item: MediaItem): Result<Unit> = suspendCancellableCoroutine { cont ->
+        _adminOperationState.value = AdminOperationState.Loading
+
+        val finalCreatedAt = if (item.createdAt > 0L) item.createdAt else System.currentTimeMillis()
+        val finalUpdatedAt = System.currentTimeMillis()
+        val migratedEpisodes = item.episodes.map { ep ->
+            ep.copy(
+                streamUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.streamUrl),
+                mirrorStreamUrl = TelegramLinkResolver.sanitizePlayableUrl(
+                    if (ep.mirrorStreamUrl.isNotBlank()) ep.mirrorStreamUrl else ep.streamUrl
+                )
+            )
+        }
+        val normalizedEpisodes = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(migratedEpisodes)
+        val itemToSave = item.copy(
+            createdAt = finalCreatedAt,
+            updatedAt = finalUpdatedAt,
+            episodes = normalizedEpisodes
+        )
+
+        // 1. Optimistic instant UI update
+        _mediaCatalog.update { current ->
+            val list = current.toMutableList()
+            val index = list.indexOfFirst { it.id == itemToSave.id }
+            if (index >= 0) list[index] = itemToSave else list.add(0, itemToSave)
+            list
+        }
+        _catalogState.value = CatalogState.Ready
+
+        val db = firestore
+        if (db == null) {
+            Log.e(TAG, "CRITICAL: Cannot save media item ${itemToSave.id} because Firestore instance is null!")
+            _adminOperationState.value = AdminOperationState.Error("Firebase database not initialized")
+            if (cont.isActive) cont.resume(Result.failure(IllegalStateException("Firebase database not initialized")))
+            return@suspendCancellableCoroutine
+        }
+
+        val targetCollection = getCollectionForCategory(itemToSave.category, itemToSave.type)
+        val docMap = mediaItemToMap(itemToSave)
+        Log.d(TAG, "Writing media item ${itemToSave.id} to Firestore collection '$targetCollection'...")
+
+        val batch = db.batch()
+        val targetRef = db.collection(targetCollection).document(itemToSave.id)
+        batch.set(targetRef, docMap)
+
+        // Clean up from other collections if category was moved/changed
+        for (col in ALL_COLLECTIONS) {
+            if (col != targetCollection) {
+                batch.delete(db.collection(col).document(itemToSave.id))
+            }
+        }
+
+        batch.commit()
+            .addOnSuccessListener {
+                Log.d(TAG, "Successfully synced media item to Firestore collection '$targetCollection': ${itemToSave.id}")
+                _adminOperationState.value = AdminOperationState.Success()
+                if (cont.isActive) cont.resume(Result.success(Unit))
+            }
+            .addOnFailureListener { e ->
+                Log.w(TAG, "Batch write to '$targetCollection' failed: ${e.message}")
+                _adminOperationState.value = AdminOperationState.Error(e.message ?: "Write failed")
+                if (cont.isActive) cont.resume(Result.failure(e))
+            }
     }
 
     /**

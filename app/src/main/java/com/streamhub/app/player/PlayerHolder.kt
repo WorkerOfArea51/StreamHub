@@ -22,6 +22,8 @@ object PlayerHolder {
         }
 
     var currentBandwidthTracker: StreamBandwidthTracker? = null
+    var currentMediaId: String? = null
+    var currentEpisodeIndex: Int = 0
 
     var onPlayNextAction: (() -> Unit)? = null
     var onPlayPrevAction: (() -> Unit)? = null
@@ -33,6 +35,8 @@ object PlayerHolder {
     fun clear() {
         _currentPlayerFlow.value = null
         currentBandwidthTracker = null
+        currentMediaId = null
+        currentEpisodeIndex = 0
         onPlayNextAction = null
         onPlayPrevAction = null
     }

@@ -39,8 +39,10 @@ import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
 enum class MetadataIssueType(val title: String, val shortBadge: String) {
@@ -60,8 +62,9 @@ enum class MetadataIssueType(val title: String, val shortBadge: String) {
 private val GENERIC_GENRES = setOf("movie", "movies", "tv series", "series", "anime")
 
 fun isGenreBroken(genres: List<String>): Boolean {
-    if (genres.isEmpty()) return true
-    return genres.all { it.trim().lowercase() in GENERIC_GENRES }
+    val clean = genres.map { it.trim() }.filter { it.isNotBlank() }
+    if (clean.isEmpty()) return true
+    return clean.all { it.lowercase() in GENERIC_GENRES }
 }
 
 fun getMediaItemIssues(item: MediaItem): List<MetadataIssueType> {
@@ -114,6 +117,12 @@ fun MetadataInspectorDialog(
     var batchProgress by remember { mutableStateOf(0f) }
     var batchStatusText by remember { mutableStateOf("") }
     var batchJob by remember { mutableStateOf<Job?>(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            batchJob?.cancel()
+        }
+    }
 
     val issuesMap = remember(catalog) {
         catalog.associateWith { getMediaItemIssues(it) }

@@ -30,6 +30,10 @@ class StreamDataSourceFactory(
 
     companion object {
         private const val USER_AGENT = "StreamHub/4.8 (Linux; Android 14; Mobile)"
+        private val VOLATILE_QUERY_PARAMS = setOf(
+            "token", "sign", "signature", "sig", "expires", "expiry", "exp",
+            "key", "auth", "timestamp", "ts", "hash"
+        )
     }
 
     private val okHttpDataSourceFactory = OkHttpDataSource.Factory(SharedHttpClient.streamingClient)
@@ -54,7 +58,40 @@ class StreamDataSourceFactory(
         val scheme = uri.scheme ?: "https"
         val host = uri.host ?: ""
         val path = uri.path ?: ""
-        return if (host.isNotEmpty()) "$scheme://$host$path" else uri.toString()
+        if (host.isEmpty()) return uri.toString()
+
+        val queryParameterNames = try {
+            uri.queryParameterNames
+        } catch (_: Exception) {
+            emptySet<String>()
+        }
+
+        if (queryParameterNames.isEmpty()) {
+            return "$scheme://$host$path"
+        }
+
+        // Strip only volatile params (tokens, signatures, expiration) to avoid cache pollution,
+        // while preserving content-identifying parameters (e.g. video id, filename, resolution)
+        val stableParams = queryParameterNames
+            .filter { param -> !VOLATILE_QUERY_PARAMS.contains(param.lowercase()) }
+            .sorted()
+
+        if (stableParams.isEmpty()) {
+            return "$scheme://$host$path"
+        }
+
+        val queryBuilder = StringBuilder()
+        for (param in stableParams) {
+            val values = uri.getQueryParameters(param)
+            for (value in values) {
+                if (queryBuilder.isNotEmpty()) queryBuilder.append("&")
+                queryBuilder.append(android.net.Uri.encode(param))
+                queryBuilder.append("=")
+                queryBuilder.append(android.net.Uri.encode(value))
+            }
+        }
+
+        return "$scheme://$host$path?$queryBuilder"
     }
 
     private val cachedHttpDataSourceFactory by lazy {

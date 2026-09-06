@@ -80,6 +80,9 @@ object HttpRangeResumeEngine {
                             206 -> {
                                 val body = response.body ?: throw IOException("Empty body on 206")
                                 val contentLength = body.contentLength()
+                                if (contentLength == 0L && alreadyHave > 0L) {
+                                    throw IOException("Range beyond EOF or empty 206 body — restart required")
+                                }
                                 total = if (contentLength > 0) alreadyHave + contentLength else 0L
                                 FileOutputStream(partFile, true).use { out ->   // APPEND — preserves existing data
                                     val src = body.byteStream()
@@ -95,7 +98,7 @@ object HttpRangeResumeEngine {
                                     }
                                     out.flush()
                                 }
-                                completed = written >= alreadyHave && (total <= 0L || written >= total)
+                                completed = (total > 0L && written >= total) || (total <= 0L && written > alreadyHave)
                                 if (!completed && total > 0L && written < total) {
                                     error = "Incomplete append: $written/$total bytes"
                                 }

@@ -142,7 +142,10 @@ class StreamPlayerViewModel : ViewModel() {
         PlayerHolder.currentPlayer = orphaned
 
         if (!hasAcquiredReader) {
-            StreamCacheManager.acquireReader()
+            val currentReaders = StreamCacheManager.activeReaderCountSnapshot()
+            if (currentReaders == 0) {
+                StreamCacheManager.acquireReader()
+            }
             hasAcquiredReader = true
         }
 
@@ -162,6 +165,7 @@ class StreamPlayerViewModel : ViewModel() {
         val duration = orphaned.duration.coerceAtLeast(0L)
         val buffered = orphaned.bufferedPosition.coerceAtLeast(0L)
         val currentPos = orphaned.currentPosition.coerceAtLeast(0L)
+        val restoredEpisodeIndex = PlayerHolder.currentEpisodeIndex
 
         _playbackProgress.value = PlaybackProgress(
             currentPositionMs = currentPos,
@@ -176,6 +180,7 @@ class StreamPlayerViewModel : ViewModel() {
                 currentPositionMs = currentPos,
                 durationMs = if (duration > 0) duration else it.durationMs,
                 bufferedPositionMs = buffered,
+                currentEpisodeIndex = restoredEpisodeIndex,
                 playerError = null,
                 playerErrorInfo = null
             )
@@ -310,11 +315,22 @@ class StreamPlayerViewModel : ViewModel() {
 
         // CRITICAL FIX (ghost player): if a previous ViewModel handed its player to
         // StreamMediaService via PlayerHolder, ADOPT it instead of constructing a second
-        // instance (which causes double-audio and leaks memory).
+        // instance (which causes double-audio and leaks memory), provided it is playing the SAME media.
         val orphanedPlayer = PlayerHolder.currentPlayer
         if (exoPlayer == null && orphanedPlayer != null && orphanedPlayer.playbackState != Player.STATE_IDLE) {
-            adoptOrphanedPlayer(orphanedPlayer)
-            return
+            val orphanedMediaId = PlayerHolder.currentMediaId
+                ?: (orphanedPlayer.currentMediaItem?.localConfiguration?.tag as? String)
+
+            if (orphanedMediaId != null && orphanedMediaId == mediaItem.id) {
+                adoptOrphanedPlayer(orphanedPlayer)
+                return
+            } else {
+                // Different media item! Stop and clear orphaned player to avoid Show A audio playing in Show B
+                Log.i("StreamPlayerViewModel", "Orphaned player playing different media ($orphanedMediaId != ${mediaItem.id}) — stopping orphaned player")
+                orphanedPlayer.stop()
+                orphanedPlayer.clearMediaItems()
+                PlayerHolder.clear()
+            }
         }
 
         if (exoPlayer == null) {
@@ -708,6 +724,12 @@ class StreamPlayerViewModel : ViewModel() {
             }
             val uri = if (resolvedUrl.startsWith("/")) android.net.Uri.fromFile(java.io.File(resolvedUrl)) else android.net.Uri.parse(resolvedUrl)
             val mediaItem = ExoMediaItem.fromUri(uri)
+                .buildUpon()
+                .setTag(currentMediaItem?.id)
+                .build()
+
+            PlayerHolder.currentMediaId = currentMediaItem?.id
+            PlayerHolder.currentEpisodeIndex = index
 
             exoPlayer?.apply {
                 setMediaItem(mediaItem)
@@ -774,6 +796,12 @@ class StreamPlayerViewModel : ViewModel() {
         }
         val uri = if (rawUrl.startsWith("/")) android.net.Uri.fromFile(java.io.File(rawUrl)) else android.net.Uri.parse(rawUrl)
         val mediaItem = ExoMediaItem.fromUri(uri)
+            .buildUpon()
+            .setTag(currentMediaItem?.id)
+            .build()
+
+        PlayerHolder.currentMediaId = currentMediaItem?.id
+        PlayerHolder.currentEpisodeIndex = index
 
         exoPlayer?.apply {
             setMediaItem(mediaItem)
