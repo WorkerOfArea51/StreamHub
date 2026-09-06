@@ -245,9 +245,9 @@ fun CatalogBackupDialog(
                         // EXPORT TAB
                         // ==========================================
                         val totalEps = catalog.sumOf { it.episodes.size }
-                        val moviesCount = catalog.count { it.category.equals("MOVIE", ignoreCase = true) || it.type.equals("MOVIE", ignoreCase = true) }
                         val animeCount = catalog.count { it.category.equals("ANIME", ignoreCase = true) }
-                        val seriesCount = catalog.size - moviesCount - animeCount
+                        val moviesCount = catalog.count { !it.category.equals("ANIME", ignoreCase = true) && (it.category.equals("MOVIE", ignoreCase = true) || it.category.equals("MOVIES", ignoreCase = true) || it.type.equals("MOVIE", ignoreCase = true)) }
+                        val seriesCount = (catalog.size - animeCount - moviesCount).coerceAtLeast(0)
 
                         Surface(
                             shape = RoundedCornerShape(14.dp),
@@ -256,16 +256,35 @@ fun CatalogBackupDialog(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.padding(14.dp)) {
-                                Text("📦 Current Live Catalog Stats", color = Color(0xFF38BDF8), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("📦 Current Live Catalog Stats", color = Color(0xFF38BDF8), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Surface(
+                                        color = Color(0xFF0284C7).copy(alpha = 0.2f),
+                                        shape = RoundedCornerShape(6.dp),
+                                        border = BorderStroke(0.5.dp, Color(0xFF0284C7).copy(alpha = 0.5f))
+                                    ) {
+                                        Text(
+                                            text = "${catalog.size} Total Titles",
+                                            color = Color(0xFF38BDF8),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    StatChip("📺 Total Titles", "${catalog.size}")
-                                    StatChip("🎬 Episodes/Links", "$totalEps")
+                                    StatChip("🎬 Links/Eps", "$totalEps")
                                     StatChip("🎌 Anime", "$animeCount")
                                     StatChip("🍿 Movies", "$moviesCount")
+                                    StatChip("📺 Web Series", "$seriesCount")
                                 }
                             }
                         }
@@ -299,11 +318,12 @@ fun CatalogBackupDialog(
                                 enabled = !isExporting && catalog.isNotEmpty(),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
                                 shape = RoundedCornerShape(10.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 10.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Downloads", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Downloads", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
 
                             // 2. Copy JSON
@@ -318,11 +338,12 @@ fun CatalogBackupDialog(
                                 enabled = !isExporting && catalog.isNotEmpty(),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
                                 shape = RoundedCornerShape(10.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 10.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Copy JSON", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Copy JSON", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
 
                             // 3. Share File / Intent
@@ -340,11 +361,12 @@ fun CatalogBackupDialog(
                                 enabled = !isExporting && catalog.isNotEmpty(),
                                 colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
                                 shape = RoundedCornerShape(10.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 10.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Share", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Share", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
                         }
 
@@ -455,11 +477,16 @@ fun CatalogBackupDialog(
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold
                                     )
+                                    val resAnime = payload.mediaCatalog.count { it.category.equals("ANIME", ignoreCase = true) }
+                                    val resMovies = payload.mediaCatalog.count { !it.category.equals("ANIME", ignoreCase = true) && (it.category.equals("MOVIE", ignoreCase = true) || it.category.equals("MOVIES", ignoreCase = true) || it.type.equals("MOVIE", ignoreCase = true)) }
+                                    val resSeries = (payload.mediaCatalog.size - resAnime - resMovies).coerceAtLeast(0)
+
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "Exported: ${payload.header.exportDateFormatted} • App: v${payload.header.appVersion}",
-                                        color = TextSecondary,
-                                        fontSize = 10.sp
+                                        text = "🎌 Anime: $resAnime • 🍿 Movies: $resMovies • 📺 Web Series: $resSeries",
+                                        color = Color(0xFF38BDF8),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold
                                     )
 
                                     Spacer(modifier = Modifier.height(10.dp))
