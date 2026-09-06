@@ -34,6 +34,8 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Whatshot
+import androidx.compose.material.icons.filled.HealthAndSafety
+import androidx.compose.material.icons.filled.AutoFixHigh
 import com.streamhub.app.data.StreamBackendConfig
 import com.streamhub.app.data.repository.FirebaseRepository
 import androidx.compose.material3.AlertDialog
@@ -51,6 +53,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -197,6 +200,7 @@ fun AdminEditorDialog(
     var showBackupDialog by remember { mutableStateOf(false) }
     var showMigrationDialog by remember { mutableStateOf(false) }
     var showVoucherDialog by remember { mutableStateOf(false) }
+    var showMetadataInspector by remember { mutableStateOf(false) }
 
     if (showDeleteConfirmDialog && initialItem != null && onDelete != null) {
         AlertDialog(
@@ -241,6 +245,29 @@ fun AdminEditorDialog(
     if (showVoucherDialog) {
         VoucherManagerDialog(
             onDismiss = { showVoucherDialog = false }
+        )
+    }
+
+    if (showMetadataInspector) {
+        MetadataInspectorDialog(
+            repository = FirebaseRepository.getInstance(),
+            onDismiss = { showMetadataInspector = false },
+            onEditShow = { itemToEdit ->
+                showMetadataInspector = false
+                title = itemToEdit.title
+                type = itemToEdit.type
+                category = itemToEdit.category
+                malId = itemToEdit.malId
+                tmdbId = itemToEdit.tmdbId
+                rating = itemToEdit.rating
+                maturityRating = itemToEdit.maturityRating
+                studio = itemToEdit.studio
+                genresText = itemToEdit.genres.joinToString(", ")
+                posterUrl = itemToEdit.posterUrl
+                bannerUrl = itemToEdit.bannerUrl
+                description = itemToEdit.description
+                selectedTab = 0
+            }
         )
     }
 
@@ -298,78 +325,9 @@ fun AdminEditorDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Studio Utilities Bar (User Codes, Backup/Restore, Server Migrate)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // 1. User Codes
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFFF59E0B).copy(alpha = 0.15f),
-                        border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.6f)),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { showVoucherDialog = true }
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.padding(vertical = 7.dp, horizontal = 4.dp)
-                        ) {
-                            Icon(Icons.Default.Key, contentDescription = null, tint = Color(0xFFFBBF24), modifier = Modifier.size(13.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("User Codes", color = Color(0xFFFBBF24), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                        }
-                    }
-
-                    // 2. Backup / Restore
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFF0284C7).copy(alpha = 0.15f),
-                        border = BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.6f)),
-                        modifier = Modifier
-                            .weight(1.2f)
-                            .clickable { showBackupDialog = true }
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.padding(vertical = 7.dp, horizontal = 4.dp)
-                        ) {
-                            Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(13.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Backup/Restore", color = Color(0xFF38BDF8), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                        }
-                    }
-
-                    // 3. Server Migrate
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFF10B981).copy(alpha = 0.15f),
-                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.6f)),
-                        modifier = Modifier
-                            .weight(1.1f)
-                            .clickable { showMigrationDialog = true }
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center,
-                            modifier = Modifier.padding(vertical = 7.dp, horizontal = 4.dp)
-                        ) {
-                            Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color(0xFF34D399), modifier = Modifier.size(13.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Server Migrate", color = Color(0xFF34D399), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Segment Tab Bar
+                // Segment Tab Bar (Overview, Stream Links, Full Specs, Studio Tools)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -378,9 +336,10 @@ fun AdminEditorDialog(
                         .padding(3.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    TabButton("🎬 Overview", isSelected = selectedTab == 0, modifier = Modifier.weight(1f)) { selectedTab = 0 }
-                    TabButton("🔗 Stream Links", isSelected = selectedTab == 1, modifier = Modifier.weight(1f)) { selectedTab = 1 }
-                    TabButton("⚙️ Full Specs", isSelected = selectedTab == 2, modifier = Modifier.weight(1f)) { selectedTab = 2 }
+                    TabButton("🎬 Overview", isSelected = selectedTab == 0, modifier = Modifier.weight(1.05f)) { selectedTab = 0 }
+                    TabButton("🔗 Links", isSelected = selectedTab == 1, modifier = Modifier.weight(0.95f)) { selectedTab = 1 }
+                    TabButton("⚙️ Specs", isSelected = selectedTab == 2, modifier = Modifier.weight(0.95f)) { selectedTab = 2 }
+                    TabButton("🛠️ Tools", isSelected = selectedTab == 3, modifier = Modifier.weight(1.05f)) { selectedTab = 3 }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -1507,6 +1466,245 @@ fun AdminEditorDialog(
 
                         Spacer(modifier = Modifier.height(16.dp))
                     }
+
+                    3 -> {
+                        // ==========================================
+                        // TAB 3: STUDIO TOOLS & METADATA INSPECTOR
+                        // ==========================================
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Text("Studio Tools & Catalog Management", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+
+                            // 1. Metadata Health Inspector Hero Card
+                            val catalog by FirebaseRepository.getInstance().mediaCatalog.collectAsState()
+                            val brokenGenresCount = remember(catalog) { catalog.count { isGenreBroken(it.genres) } }
+                            val incompleteCount = remember(catalog) {
+                                catalog.count {
+                                    it.description.isBlank() || it.description == "No synopsis available." || it.posterUrl.isBlank() || it.rating.isBlank()
+                                }
+                            }
+                            val totalIssues = brokenGenresCount + incompleteCount
+                            val healthScore = remember(catalog) {
+                                if (catalog.isEmpty()) 100 else (((catalog.size - totalIssues).coerceAtLeast(0).toFloat() / catalog.size.toFloat()) * 100).toInt()
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = Color(0xFF1B182A),
+                                border = BorderStroke(1.dp, if (totalIssues > 0) Color(0xFF7C4DFF) else Color(0xFF28283C)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF7C4DFF).copy(alpha = 0.2f))
+                                                .border(1.dp, Color(0xFF7C4DFF).copy(alpha = 0.5f), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.HealthAndSafety, contentDescription = null, tint = Color(0xFFB388FF), modifier = Modifier.size(22.dp))
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = "Metadata Health Inspector",
+                                                    color = TextPrimary,
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Surface(
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    color = if (totalIssues > 0) Color(0x33FF9800) else Color(0x2210B981),
+                                                    border = BorderStroke(1.dp, if (totalIssues > 0) Color(0x66FF9800) else Color(0x4410B981))
+                                                ) {
+                                                    Text(
+                                                        text = "$healthScore% Quality",
+                                                        color = if (totalIssues > 0) Color(0xFFFFB74D) else Color(0xFF34D399),
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                            Text(
+                                                text = if (totalIssues > 0) "$brokenGenresCount shows have generic/missing genres" else "All ${catalog.size} shows have healthy, complete metadata",
+                                                color = if (totalIssues > 0) Color(0xFFFFB74D) else TextSecondary,
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    Text(
+                                        text = "Scan all shows across your catalog, detect broken/missing genres, and auto-repair them from TMDb/MAL with a single tap.",
+                                        color = TextSecondary,
+                                        fontSize = 12.sp,
+                                        lineHeight = 16.sp
+                                    )
+
+                                    Spacer(modifier = Modifier.height(14.dp))
+
+                                    Button(
+                                        onClick = { showMetadataInspector = true },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Launch Metadata Inspector & Auto-Repair", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            // 2. User Codes & Voucher Manager Card
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFF181824),
+                                border = BorderStroke(1.dp, Color(0xFF28283C)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFFF59E0B).copy(alpha = 0.15f))
+                                                .border(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.Key, contentDescription = null, tint = Color(0xFFFBBF24), modifier = Modifier.size(18.dp))
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text("Access Codes & Vouchers 🔑", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                            Text("Manage private community gate access codes", color = TextSecondary, fontSize = 11.sp)
+                                        }
+                                    }
+                                    Button(
+                                        onClick = { showVoucherDialog = true },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Text("Manage", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            // 3. Backup / Restore Card
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFF181824),
+                                border = BorderStroke(1.dp, Color(0xFF28283C)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF0284C7).copy(alpha = 0.15f))
+                                                .border(1.dp, Color(0xFF0284C7).copy(alpha = 0.4f), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text("Cloud Backup & Restore ☁️", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                            Text("Export or restore catalog JSON backups", color = TextSecondary, fontSize = 11.sp)
+                                        }
+                                    }
+                                    Button(
+                                        onClick = { showBackupDialog = true },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Text("Backup/Restore", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            // 4. Server Migrate Card
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFF181824),
+                                border = BorderStroke(1.dp, Color(0xFF28283C)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF10B981).copy(alpha = 0.15f))
+                                                .border(1.dp, Color(0xFF10B981).copy(alpha = 0.4f), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color(0xFF34D399), modifier = Modifier.size(18.dp))
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text("Server Migration 🚀", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                            Text("Migrate database between Firestore servers", color = TextSecondary, fontSize = 11.sp)
+                                        }
+                                    }
+                                    Button(
+                                        onClick = { showMigrationDialog = true },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Text("Migrate", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+                    }
                 }
             }
 
@@ -1517,6 +1715,7 @@ fun AdminEditorDialog(
                 Spacer(modifier = Modifier.height(6.dp))
             }
 
+            if (selectedTab != 3) {
                 // ==========================================
                 // BOTTOM SAVE BAR (Fixed Footer)
                 // ==========================================
@@ -1705,9 +1904,22 @@ fun AdminEditorDialog(
                         )
                     }
                 }
+            } else {
+                // Fixed Footer for Tools Tab
+                Button(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF28283C)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                ) {
+                    Text("Close Studio", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
+}
 }
 
 @Composable

@@ -130,7 +130,7 @@ import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun DetailsScreen(
     mediaId: String,
@@ -607,6 +607,40 @@ fun DetailsScreen(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium
                             )
+
+                            // Genre Badges in Header
+                            val headerGenres = remember(mediaItem.genres) {
+                                mediaItem.genres.filter {
+                                    !it.equals("Movie", ignoreCase = true) &&
+                                    !it.equals("Movies", ignoreCase = true) &&
+                                    !it.equals("TV Series", ignoreCase = true) &&
+                                    !it.equals("Series", ignoreCase = true) &&
+                                    !it.equals("Anime", ignoreCase = true)
+                                }
+                            }
+                            if (headerGenres.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                androidx.compose.foundation.layout.FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    headerGenres.take(4).forEach { genre ->
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = Color(0xFF1E1E2E),
+                                            border = BorderStroke(1.dp, Color(0xFF38384E))
+                                        ) {
+                                            Text(
+                                                text = genre,
+                                                color = Color(0xFFD0BCFF),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -1030,6 +1064,16 @@ fun DetailsScreen(
                                       mediaItem.category.equals("Movies", ignoreCase = true) || 
                                       mediaItem.type.equals("MOVIE", ignoreCase = true)
 
+                        val cleanGenres = remember(mediaItem.genres) {
+                            mediaItem.genres.filter {
+                                !it.equals("Movie", ignoreCase = true) &&
+                                !it.equals("Movies", ignoreCase = true) &&
+                                !it.equals("TV Series", ignoreCase = true) &&
+                                !it.equals("Series", ignoreCase = true) &&
+                                !it.equals("Anime", ignoreCase = true)
+                            }
+                        }
+                        if (cleanGenres.isNotEmpty()) InfoDetailRow("Genres", cleanGenres.joinToString(", "))
                         if (mediaItem.franchiseTitle.isNotEmpty()) InfoDetailRow("Franchise Universe", mediaItem.franchiseTitle)
                         if (!isMovie && mediaItem.seasonNumber > 0) InfoDetailRow("Season Number", "Season ${mediaItem.seasonNumber}")
                         if (mediaItem.relationType.isNotEmpty()) InfoDetailRow("Franchise Relation", mediaItem.relationType)

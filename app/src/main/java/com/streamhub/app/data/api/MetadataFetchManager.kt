@@ -57,8 +57,46 @@ object MetadataFetchManager {
     private val httpClient: OkHttpClient
         get() = TmdbClient.okHttpClient
 
-    private val movieGenreMap = ConcurrentHashMap<Int, String>()
-    private val tvGenreMap = ConcurrentHashMap<Int, String>()
+    private val movieGenreMap = ConcurrentHashMap<Int, String>().apply {
+        put(28, "Action")
+        put(12, "Adventure")
+        put(16, "Animation")
+        put(35, "Comedy")
+        put(80, "Crime")
+        put(99, "Documentary")
+        put(18, "Drama")
+        put(10751, "Family")
+        put(14, "Fantasy")
+        put(36, "History")
+        put(27, "Horror")
+        put(10402, "Music")
+        put(9648, "Mystery")
+        put(10749, "Romance")
+        put(878, "Sci-Fi")
+        put(10770, "TV Movie")
+        put(53, "Thriller")
+        put(10752, "War")
+        put(37, "Western")
+    }
+
+    private val tvGenreMap = ConcurrentHashMap<Int, String>().apply {
+        put(10759, "Action & Adventure")
+        put(16, "Animation")
+        put(35, "Comedy")
+        put(80, "Crime")
+        put(99, "Documentary")
+        put(18, "Drama")
+        put(10751, "Family")
+        put(10762, "Kids")
+        put(9648, "Mystery")
+        put(10763, "News")
+        put(10764, "Reality")
+        put(10765, "Sci-Fi & Fantasy")
+        put(10766, "Soap")
+        put(10767, "Talk")
+        put(10768, "War & Politics")
+        put(37, "Western")
+    }
 
     fun extractMalId(query: String): Int? {
         val trimmed = query.trim()
@@ -261,10 +299,11 @@ object MetadataFetchManager {
         val genreMap = if (isMovie) movieGenreMap else tvGenreMap
         val genresList = mutableListOf<String>()
         for (id in genreIdsList) {
-            genreMap[id]?.let { genresList.add(it) }
-        }
-        if (genresList.isEmpty() && genreIdsList.isEmpty()) {
-            genresList.add(if (isMovie) "Movie" else "TV Series")
+            genreMap[id]?.let {
+                if (!it.equals("Movie", ignoreCase = true) && !it.equals("TV Series", ignoreCase = true)) {
+                    genresList.add(it)
+                }
+            }
         }
 
         // Detailed lookup for extra metadata (trailer, producers, cast, status, maturity rating, season specifics)
@@ -297,12 +336,25 @@ object MetadataFetchManager {
                                 backdropPath = dJson.optString("backdrop_path", backdropPath)
                                 releaseDate = if (isMovie) dJson.optString("release_date", "") else dJson.optString("first_air_date", "")
                                 voteAverage = dJson.optDouble("vote_average", voteAverage)
-                                val dGenres = dJson.optJSONArray("genres")
-                                if (dGenres != null && genresList.isEmpty()) {
-                                    for (gi in 0 until dGenres.length()) {
-                                        val gName = dGenres.getJSONObject(gi).optString("name", "")
-                                        if (gName.isNotBlank()) genresList.add(gName)
+                            }
+
+                            // Always extract official real genres from the detail response
+                            val dGenres = dJson.optJSONArray("genres")
+                            if (dGenres != null && dGenres.length() > 0) {
+                                val detailGenres = mutableListOf<String>()
+                                for (gi in 0 until dGenres.length()) {
+                                    val gName = dGenres.getJSONObject(gi).optString("name", "").trim()
+                                    if (gName.isNotBlank() &&
+                                        !gName.equals("Movie", ignoreCase = true) &&
+                                        !gName.equals("Movies", ignoreCase = true) &&
+                                        !gName.equals("TV Series", ignoreCase = true) &&
+                                        !gName.equals("Series", ignoreCase = true)) {
+                                        detailGenres.add(gName)
                                     }
+                                }
+                                if (detailGenres.isNotEmpty()) {
+                                    genresList.clear()
+                                    genresList.addAll(detailGenres)
                                 }
                             }
 
@@ -750,11 +802,12 @@ object MetadataFetchManager {
             val genresArr = node.optJSONArray("genres")
             if (genresArr != null) {
                 for (i in 0 until genresArr.length()) {
-                    val gName = genresArr.getJSONObject(i).optString("name", "")
-                    if (gName.isNotBlank()) genresList.add(gName)
+                    val gName = genresArr.getJSONObject(i).optString("name", "").trim()
+                    if (gName.isNotBlank() && !gName.equals("Anime", ignoreCase = true)) {
+                        genresList.add(gName)
+                    }
                 }
             }
-            if (genresList.isEmpty()) genresList.add("Anime")
 
             val airedRange = if (startDate.isNotBlank()) {
                 if (endDate.isNotBlank()) "$startDate to $endDate" else "$startDate to Ongoing"
@@ -971,4 +1024,76 @@ object MetadataFetchManager {
 
     private fun String.capitalizeWords(): String =
         this.split(" ").joinToString(" ") { it.replaceFirstChar { char -> if (char.isLowerCase()) char.titlecase() else char.toString() } }
+
+    /**
+     * Re-queries TMDb or MAL to audit and repair missing/broken genres, synopsis, ratings,
+     * studios, and technical IDs for an existing catalog item, without modifying custom
+     * stream links or local document IDs.
+     */
+    suspend fun repairMediaItem(item: com.streamhub.app.data.models.MediaItem): Result<com.streamhub.app.data.models.MediaItem> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val isAnime = item.category.equals("Anime", ignoreCase = true)
+                val isMovie = item.category.equals("Movie", ignoreCase = true) ||
+                              item.category.equals("Movies", ignoreCase = true) ||
+                              item.type.equals("MOVIE", ignoreCase = true)
+
+                val result = when {
+                    isAnime -> {
+                        if (item.malId.isNotBlank() && item.malId.toIntOrNull() != null) {
+                            fetchFromMAL(item.title, directMalId = item.malId.toInt())
+                        } else {
+                            fetchFromMAL(item.title)
+                        }
+                    }
+                    item.tmdbId.isNotBlank() && item.tmdbId.toIntOrNull() != null -> {
+                        val effectiveCat = if (isMovie) "Movies" else "Series"
+                        fetchFromTMDB(item.title, effectiveCat, targetSeason = item.seasonNumber.coerceAtLeast(1), directTmdbId = item.tmdbId.toInt(), explicitIsMovie = isMovie)
+                    }
+                    else -> {
+                        val effectiveCat = if (isMovie) "Movies" else "Series"
+                        fetchFromTMDB(item.title, effectiveCat, targetSeason = item.seasonNumber.coerceAtLeast(1), explicitIsMovie = isMovie)
+                    }
+                }
+
+                result.fold(
+                    onSuccess = { meta ->
+                        val hasBrokenGenres = item.genres.isEmpty() || item.genres.all { 
+                            it.equals("Movie", ignoreCase = true) || 
+                            it.equals("Movies", ignoreCase = true) || 
+                            it.equals("TV Series", ignoreCase = true) || 
+                            it.equals("Series", ignoreCase = true) || 
+                            it.equals("Anime", ignoreCase = true)
+                        }
+                        val repairedGenres = if (hasBrokenGenres && meta.genres.isNotEmpty()) meta.genres else item.genres.ifEmpty { meta.genres }
+
+                        val repairedItem = item.copy(
+                            genres = repairedGenres,
+                            rating = if (item.rating.isBlank()) meta.rating else item.rating,
+                            maturityRating = if (item.maturityRating.isBlank()) meta.maturityRating else item.maturityRating,
+                            description = if (item.description.isBlank() || item.description == "No synopsis available.") meta.synopsis else item.description,
+                            posterUrl = if (item.posterUrl.isBlank()) meta.posterUrl else item.posterUrl,
+                            bannerUrl = if (item.bannerUrl.isBlank()) meta.backdropUrl else item.bannerUrl,
+                            studio = if (item.studio.isBlank()) meta.studio else item.studio,
+                            producers = if (item.producers.isBlank()) meta.producers else item.producers,
+                            duration = if (item.duration.isBlank()) meta.duration else item.duration,
+                            status = if (item.status.isBlank()) meta.status else item.status,
+                            releaseYear = if (item.releaseYear.isBlank() && meta.releaseYear > 0) meta.releaseYear.toString() else item.releaseYear,
+                            aired = if (item.aired.isBlank()) meta.aired else item.aired,
+                            tmdbId = if (item.tmdbId.isBlank()) meta.tmdbId else item.tmdbId,
+                            malId = if (item.malId.isBlank()) meta.malId else item.malId,
+                            trailerId = if (item.trailerId.isBlank()) meta.youtubeTrailerId else item.trailerId,
+                            updatedAt = System.currentTimeMillis()
+                        )
+                        Result.success(repairedItem)
+                    },
+                    onFailure = { err ->
+                        Result.failure(err)
+                    }
+                )
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
 }
