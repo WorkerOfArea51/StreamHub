@@ -103,7 +103,7 @@ object MetadataFetchManager {
         Regex("""(?i)myanimelist\.net/anime/(\d+)""").find(trimmed)?.let {
             return it.groupValues[1].toIntOrNull()
         }
-        Regex("""(?i)^mal:\s*(\d+)""").find(trimmed)?.let {
+        Regex("""(?i)^mal[:/\s-]+(\d+)""").find(trimmed)?.let {
             return it.groupValues[1].toIntOrNull()
         }
         return null
@@ -147,7 +147,13 @@ object MetadataFetchManager {
                         fetchFromTMDB(cleanQuery, effectiveCat, targetSeason, directTmdbId = tmdbTarget.first, explicitIsMovie = tmdbTarget.second)
                     }
                     category.equals("Anime", ignoreCase = true) -> {
-                        fetchFromMAL(cleanQuery)
+                        val malRes = fetchFromMAL(cleanQuery)
+                        if (malRes.isSuccess) {
+                            malRes
+                        } else {
+                            Log.i(TAG, "MAL search failed for '$cleanQuery', attempting TMDB anime search fallback...")
+                            fetchFromTMDB(cleanQuery, "Anime", targetSeason)
+                        }
                     }
                     else -> {
                         fetchFromTMDB(cleanQuery, category, targetSeason)
@@ -708,253 +714,527 @@ object MetadataFetchManager {
         return Result.success(fetched)
         }
 
+    private val malHttpClient: OkHttpClient
+        get() = SharedHttpClient.baseClient
+
     /**
      * MyAnimeList Search for Anime — prefers English title over Romaji/Japanese title
-     * and fetches full specs (studio, source, duration, status, episodes, MAL ID, synonyms).
+     * and fetches full specs (studio, source, duration, status, episodes, MAL ID, synonyms, trailers, cast, 16:9 backdrop).
+     * Includes automated multi-tier query cleaning, Jikan open API fallback, and TMDb cinematic banner backfill.
      */
     private suspend fun fetchFromMAL(
         query: String,
         directMalId: Int? = null
     ): Result<FetchedMetadata> {
-        val clientId = Secrets.MAL_CLIENT_ID
-        if (clientId.isBlank()) {
-            return Result.failure(Exception("MAL Client ID is missing. Add STREAMHUB_MAL_CLIENT_ID secret."))
-        }
+        val cleanQuery = query
+            .replace(Regex("(?i)\\[.*?\\]"), "")
+            .replace(Regex("(?i)\\b(?:1080p|720p|2160p|4k|uhd|hdr|hevc|x265|x264|dual\\s+audio|hindi|eng|sub|dub|multi\\s+sub|batch|remux)\\b.*$"), "")
+            .replace(Regex("\\s*\\(\\d{4}\\).*$"), "")
+            .trim()
+            .ifBlank { query.trim() }
 
-        val url = if (directMalId != null) {
-            "${Secrets.MAL_BASE_URL}anime/$directMalId?fields=id,title,main_picture,synopsis,mean,start_date,end_date,genres,alternative_titles,num_episodes,status,media_type,source,average_episode_duration,studios,producers,rating"
+        val baseCleanQuery = cleanQuery
+            .replace(Regex("(?i)(?:\\s*:\\s*|\\s*-\\s*|\\s+)\\b(?:season|s)\\s*\\d+.*$"), "")
+            .replace(Regex("(?i)\\s*\\(\\s*(?:season|s)\\s*\\d+\\s*\\)"), "")
+            .replace(Regex("(?i)\\s*\\b(?:2nd|3rd|4th|5th|1st)\\s+season\\b.*$"), "")
+            .replace(Regex("(?i)\\s*\\bpart\\s*\\d+.*$"), "")
+            .trim()
+
+        val searchCandidates = if (baseCleanQuery.isNotBlank() && !baseCleanQuery.equals(cleanQuery, ignoreCase = true)) {
+            listOf(cleanQuery, baseCleanQuery)
         } else {
-            val encodedQuery = URLEncoder.encode(query.trim(), Charsets.UTF_8.name())
-            "${Secrets.MAL_BASE_URL}anime?q=$encodedQuery&limit=1&fields=id,title,main_picture,synopsis,mean,start_date,end_date,genres,alternative_titles,num_episodes,status,media_type,source,average_episode_duration,studios,producers,rating"
+            listOf(cleanQuery)
         }
 
-        val request = Request.Builder()
-            .url(url)
-            .header("X-MAL-CLIENT-ID", clientId)
-            .build()
+        val clientId = Secrets.MAL_CLIENT_ID
+        if (clientId.isNotBlank()) {
+            val malRes = queryMalApi(searchCandidates, directMalId, clientId)
+            if (malRes.isSuccess) return malRes
+            Log.w(TAG, "MAL v2 query failed (${malRes.exceptionOrNull()?.message}), attempting Jikan open API fallback...")
+        }
 
-        httpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                return Result.failure(Exception("MyAnimeList API returned HTTP ${response.code}"))
-            }
+        // Fallback to Jikan v4 (Open MyAnimeList REST API - requires NO API KEY)
+        val jikanRes = queryJikanApi(searchCandidates, directMalId)
+        if (jikanRes.isSuccess) return jikanRes
 
-            val body = response.body?.string()
-                ?: return Result.failure(Exception("Empty response from MyAnimeList"))
+        // Final fallback to TMDb anime search if both MAL and Jikan failed
+        Log.w(TAG, "Jikan query failed (${jikanRes.exceptionOrNull()?.message}), attempting TMDB anime fallback...")
+        return fetchFromTMDB(cleanQuery, "Anime")
+    }
 
-            val json = JSONObject(body)
-            val node = if (directMalId != null) {
-                json
+    private suspend fun queryMalApi(
+        searchCandidates: List<String>,
+        directMalId: Int?,
+        clientId: String
+    ): Result<FetchedMetadata> {
+        val fields = "id,title,main_picture,synopsis,mean,start_date,end_date,genres,alternative_titles,num_episodes,status,media_type,source,average_episode_duration,studios,producers,rating"
+
+        var node: JSONObject? = null
+        var matchedQuery = searchCandidates.first()
+
+        try {
+            if (directMalId != null) {
+                val url = "${Secrets.MAL_BASE_URL}anime/$directMalId?fields=$fields"
+                val req = Request.Builder().url(url).header("X-MAL-CLIENT-ID", clientId).build()
+                malHttpClient.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        val body = resp.body?.string()
+                        if (!body.isNullOrBlank()) node = JSONObject(body)
+                    }
+                }
             } else {
-                val data = json.optJSONArray("data")
-                if (data == null || data.length() == 0) {
-                    return Result.failure(Exception("No anime results found on MyAnimeList for '$query'"))
+                for (cand in searchCandidates) {
+                    val encodedQuery = URLEncoder.encode(cand, Charsets.UTF_8.name())
+                    val url = "${Secrets.MAL_BASE_URL}anime?q=$encodedQuery&limit=1&fields=$fields"
+                    val req = Request.Builder().url(url).header("X-MAL-CLIENT-ID", clientId).build()
+                    malHttpClient.newCall(req).execute().use { resp ->
+                        if (resp.isSuccessful) {
+                            val body = resp.body?.string()
+                            if (!body.isNullOrBlank()) {
+                                val json = JSONObject(body)
+                                val data = json.optJSONArray("data")
+                                if (data != null && data.length() > 0) {
+                                    node = data.getJSONObject(0).optJSONObject("node")
+                                    matchedQuery = cand
+                                }
+                            }
+                        }
+                    }
+                    if (node != null) break
                 }
-                data.getJSONObject(0).optJSONObject("node")
-                    ?: return Result.failure(Exception("Invalid node structure from MAL"))
             }
 
-            val malIdNum = node.optInt("id", directMalId ?: 0)
-            val defaultTitle = node.optString("title", if (directMalId != null) "Anime #$directMalId" else query)
-            val synopsis = node.optString("synopsis", "No synopsis available.")
-            val mainPic = node.optJSONObject("main_picture")
-            val posterUrl = mainPic?.optString("large", mainPic.optString("medium", "")) ?: ""
-            val mean = node.optDouble("mean", 0.0)
-            val startDate = node.optString("start_date", "")
-            val endDate = node.optString("end_date", "")
+            if (node == null) {
+                return Result.failure(Exception("No anime results found on MyAnimeList"))
+            }
 
-            val releaseYear = if (startDate.length >= 4) {
-                startDate.substring(0, 4).toIntOrNull() ?: 0
-            } else 0
+            return parseMalNode(node!!, directMalId, matchedQuery)
+        } catch (e: Exception) {
+            return Result.failure(e)
+        }
+    }
 
-            // 1. Prefer English title if available, otherwise Romaji title
-            var englishTitle = ""
-            var japaneseTitle = ""
-            val synonymsList = mutableListOf<String>()
+    private suspend fun parseMalNode(
+        node: JSONObject,
+        directMalId: Int?,
+        fallbackQuery: String
+    ): Result<FetchedMetadata> {
+        val malIdNum = node.optInt("id", directMalId ?: 0)
+        val defaultTitle = node.optString("title", if (directMalId != null) "Anime #$directMalId" else fallbackQuery)
+        val synopsis = node.optString("synopsis", "No synopsis available.")
+        val mainPic = node.optJSONObject("main_picture")
+        val posterUrl = mainPic?.optString("large", mainPic.optString("medium", "")) ?: ""
+        val mean = node.optDouble("mean", 0.0)
+        val startDate = node.optString("start_date", "")
+        val endDate = node.optString("end_date", "")
 
-            val altTitlesObj = node.optJSONObject("alternative_titles")
-            if (altTitlesObj != null) {
-                englishTitle = altTitlesObj.optString("en", "").trim()
-                japaneseTitle = altTitlesObj.optString("ja", "").trim()
-                val synonymsArr = altTitlesObj.optJSONArray("synonyms")
-                if (synonymsArr != null) {
-                    for (si in 0 until synonymsArr.length()) {
-                        val s = synonymsArr.optString(si, "").trim()
-                        if (s.isNotBlank()) synonymsList.add(s)
+        val releaseYear = if (startDate.length >= 4) {
+            startDate.substring(0, 4).toIntOrNull() ?: 0
+        } else 0
+
+        // 1. Prefer English title if available, otherwise Romaji title
+        var englishTitle = ""
+        var japaneseTitle = ""
+        val synonymsList = mutableListOf<String>()
+
+        val altTitlesObj = node.optJSONObject("alternative_titles")
+        if (altTitlesObj != null) {
+            englishTitle = altTitlesObj.optString("en", "").trim()
+            japaneseTitle = altTitlesObj.optString("ja", "").trim()
+            val synonymsArr = altTitlesObj.optJSONArray("synonyms")
+            if (synonymsArr != null) {
+                for (si in 0 until synonymsArr.length()) {
+                    val s = synonymsArr.optString(si, "").trim()
+                    if (s.isNotBlank()) synonymsList.add(s)
+                }
+            }
+        }
+
+        val finalTitle = if (englishTitle.isNotBlank()) englishTitle else defaultTitle
+
+        val altTitlesCombo = mutableListOf<String>()
+        if (defaultTitle.isNotBlank() && !defaultTitle.equals(finalTitle, ignoreCase = true)) {
+            altTitlesCombo.add(defaultTitle)
+        }
+        if (japaneseTitle.isNotBlank()) {
+            altTitlesCombo.add(japaneseTitle)
+        }
+        altTitlesCombo.addAll(synonymsList)
+
+        val numEp = node.optInt("num_episodes", 0)
+        val totalEpisodesStr = if (numEp > 0) numEp.toString() else ""
+
+        val rawStatus = node.optString("status", "")
+        val formattedStatus = when (rawStatus.lowercase()) {
+            "finished_airing" -> "Finished Airing"
+            "currently_airing" -> "Currently Airing"
+            "not_yet_aired" -> "Not Yet Aired"
+            else -> rawStatus.replace("_", " ").capitalizeWords()
+        }
+
+        val rawSource = node.optString("source", "")
+        val formattedSource = when (rawSource.lowercase()) {
+            "web_manga" -> "Web manga"
+            "light_novel" -> "Light novel"
+            "original" -> "Original"
+            "game" -> "Game"
+            "manga" -> "Manga"
+            else -> rawSource.replace("_", " ").capitalizeWords()
+        }
+
+        val avgDurationSec = node.optInt("average_episode_duration", 0)
+        val durationStr = if (avgDurationSec > 0) "${avgDurationSec / 60} min. per ep." else ""
+
+        val studioList = mutableListOf<String>()
+        val studiosArr = node.optJSONArray("studios")
+        if (studiosArr != null) {
+            for (stI in 0 until studiosArr.length()) {
+                val stName = studiosArr.getJSONObject(stI).optString("name", "")
+                if (stName.isNotBlank()) studioList.add(stName)
+            }
+        }
+        val studioStr = studioList.joinToString(", ")
+
+        val producerList = mutableListOf<String>()
+        val producersArr = node.optJSONArray("producers")
+        if (producersArr != null) {
+            for (pi in 0 until producersArr.length()) {
+                val pName = producersArr.getJSONObject(pi).optString("name", "")
+                if (pName.isNotBlank() && !studioList.contains(pName) && !pName.equalsIgnoreCase(studioStr)) {
+                    producerList.add(pName)
+                }
+            }
+        }
+        var producerStr = producerList.joinToString(", ")
+
+        val rawMaturity = node.optString("rating", "")
+        var maturityStr = when (rawMaturity.lowercase()) {
+            "g" -> "G - All Ages"
+            "pg" -> "PG - Children"
+            "pg_13" -> "PG-13 - Teens 13+"
+            "r" -> "R - 17+ (violence & profanity)"
+            "r+" -> "R+ - Mild Nudity"
+            "rx" -> "Rx - Hentai"
+            else -> rawMaturity.uppercase()
+        }
+
+        val genresList = mutableListOf<String>()
+        val genresArr = node.optJSONArray("genres")
+        if (genresArr != null) {
+            for (i in 0 until genresArr.length()) {
+                val gName = genresArr.getJSONObject(i).optString("name", "").trim()
+                if (gName.isNotBlank() && !gName.equals("Anime", ignoreCase = true)) {
+                    genresList.add(gName)
+                }
+            }
+        }
+
+        val airedRange = if (startDate.isNotBlank()) {
+            if (endDate.isNotBlank()) "$startDate to $endDate" else "$startDate to Ongoing"
+        } else ""
+
+        val detectedSeason = com.streamhub.app.data.FranchiseManager.detectSeasonNumber(finalTitle).let {
+            if (it > 1) it else com.streamhub.app.data.FranchiseManager.detectSeasonNumber(fallbackQuery)
+        }
+        val detectedFranchiseId = com.streamhub.app.data.FranchiseManager.getFranchiseId(com.streamhub.app.data.models.MediaItem(title = finalTitle))
+        val detectedFranchiseTitle = com.streamhub.app.data.FranchiseManager.getFranchiseTitle(com.streamhub.app.data.models.MediaItem(title = finalTitle))
+        val rawMediaType = node.optString("media_type", "").lowercase(java.util.Locale.ROOT)
+        val detectedFormat = when {
+            rawMediaType == "special" || finalTitle.contains("special", ignoreCase = true) -> "TV Special"
+            rawMediaType == "ova" || finalTitle.contains("ova", ignoreCase = true) -> "OVA"
+            rawMediaType == "ona" || finalTitle.contains("ona", ignoreCase = true) -> "ONA"
+            rawMediaType == "movie" || finalTitle.contains("movie", ignoreCase = true) -> "Movie"
+            else -> "TV"
+        }
+        val detectedRelation = when {
+            detectedFormat == "Movie" -> "Movie"
+            detectedFormat == "OVA" -> "Side Story • OVA"
+            detectedSeason > 1 && detectedFormat == "TV Special" -> "Sequel • TV Special"
+            detectedSeason > 1 -> "Sequel • TV"
+            else -> detectedFormat
+        }
+
+        // Fetch YouTube Trailer from Jikan first if malIdNum > 0
+        var youtubeTrailerId = if (malIdNum > 0) fetchJikanTrailer(malIdNum) else ""
+        var castListStr = ""
+        var finalBackdropUrl = posterUrl
+        var linkedTmdbId = ""
+
+        try {
+            val queryForTmdb = if (finalTitle.contains(" Season ", ignoreCase = true) || finalTitle.contains(":")) {
+                finalTitle.substringBefore(" Season ").substringBefore(":").trim()
+            } else finalTitle
+
+            val tmdbResult = fetchFromTMDB(queryForTmdb, "Anime", targetSeason = detectedSeason)
+            tmdbResult.getOrNull()?.let { tmdbMeta ->
+                if (youtubeTrailerId.isBlank()) youtubeTrailerId = tmdbMeta.youtubeTrailerId
+                if (castListStr.isBlank()) castListStr = tmdbMeta.castList
+                if (maturityStr.isBlank() && tmdbMeta.maturityRating.isNotBlank()) maturityStr = tmdbMeta.maturityRating
+                if (finalBackdropUrl.isBlank() || finalBackdropUrl == posterUrl) {
+                    if (tmdbMeta.backdropUrl.isNotBlank()) finalBackdropUrl = tmdbMeta.backdropUrl
+                }
+                if (producerStr.isBlank() && tmdbMeta.producers.isNotBlank()) {
+                    producerStr = tmdbMeta.producers.split(", ")
+                        .map { it.trim() }
+                        .filter { p -> p.isNotBlank() && !studioList.contains(p) && !p.equalsIgnoreCase(studioStr) }
+                        .joinToString(", ")
+                }
+                if (tmdbMeta.tmdbId.isNotBlank()) linkedTmdbId = tmdbMeta.tmdbId
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "TMDB anime fallback failed: ${e.message}")
+        }
+
+        if (castListStr.isBlank() && malIdNum > 0) {
+            castListStr = fetchJikanCharacters(malIdNum)
+        }
+
+        val formattedRating = if (mean > 0) String.format(java.util.Locale.US, "%.2f", mean).trimEnd('0').trimEnd('.') else ""
+
+        val fetched = FetchedMetadata(
+            title = finalTitle,
+            synopsis = synopsis,
+            posterUrl = posterUrl,
+            backdropUrl = finalBackdropUrl,
+            releaseYear = releaseYear,
+            rating = formattedRating,
+            category = "Anime",
+            genres = genresList.take(5),
+            studio = studioStr,
+            producers = producerStr,
+            source = formattedSource,
+            duration = durationStr,
+            status = formattedStatus,
+            totalEpisodes = totalEpisodesStr,
+            alternativeTitles = altTitlesCombo.distinct().take(4).joinToString(", "),
+            malId = if (malIdNum > 0) malIdNum.toString() else "",
+            tmdbId = linkedTmdbId,
+            castList = castListStr,
+            youtubeTrailerId = youtubeTrailerId,
+            aired = airedRange,
+            maturityRating = maturityStr,
+            franchiseId = detectedFranchiseId,
+            franchiseTitle = detectedFranchiseTitle,
+            seasonNumber = detectedSeason,
+            seasonTitle = if (detectedSeason > 1) "Season $detectedSeason" else "",
+            relationType = detectedRelation
+        )
+        return Result.success(fetched)
+    }
+
+    private suspend fun queryJikanApi(
+        searchCandidates: List<String>,
+        directMalId: Int?
+    ): Result<FetchedMetadata> {
+        var dataObj: JSONObject? = null
+        var matchedQuery = searchCandidates.first()
+
+        try {
+            if (directMalId != null) {
+                val url = "https://api.jikan.moe/v4/anime/$directMalId"
+                val req = Request.Builder().url(url).header("Accept", "application/json").build()
+                malHttpClient.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        val body = resp.body?.string()
+                        if (!body.isNullOrBlank()) {
+                            dataObj = JSONObject(body).optJSONObject("data")
+                        }
                     }
                 }
-            }
-
-            // Use English title as main title if present (e.g. "Solo Leveling"), fallback to defaultTitle (e.g. "Ore dake Level Up na Ken")
-            val finalTitle = if (englishTitle.isNotBlank()) englishTitle else defaultTitle
-
-            // Build alternative titles list for Full Specs
-            val altTitlesCombo = mutableListOf<String>()
-            if (defaultTitle.isNotBlank() && !defaultTitle.equals(finalTitle, ignoreCase = true)) {
-                altTitlesCombo.add(defaultTitle)
-            }
-            if (japaneseTitle.isNotBlank()) {
-                altTitlesCombo.add(japaneseTitle)
-            }
-            altTitlesCombo.addAll(synonymsList)
-
-            // 2. Fetch Full Specs fields from MAL response
-            val numEp = node.optInt("num_episodes", 0)
-            val totalEpisodesStr = if (numEp > 0) numEp.toString() else ""
-
-            val rawStatus = node.optString("status", "")
-            val formattedStatus = when (rawStatus.lowercase()) {
-                "finished_airing" -> "Finished Airing"
-                "currently_airing" -> "Currently Airing"
-                "not_yet_aired" -> "Not Yet Aired"
-                else -> rawStatus.replace("_", " ").capitalizeWords()
-            }
-
-            val rawSource = node.optString("source", "")
-            val formattedSource = when (rawSource.lowercase()) {
-                "web_manga" -> "Web manga"
-                "light_novel" -> "Light novel"
-                "original" -> "Original"
-                "game" -> "Game"
-                "manga" -> "Manga"
-                else -> rawSource.replace("_", " ").capitalizeWords()
-            }
-
-            val avgDurationSec = node.optInt("average_episode_duration", 0)
-            val durationStr = if (avgDurationSec > 0) "${avgDurationSec / 60} min. per ep." else ""
-
-            // Studios
-            val studioList = mutableListOf<String>()
-            val studiosArr = node.optJSONArray("studios")
-            if (studiosArr != null) {
-                for (stI in 0 until studiosArr.length()) {
-                    val stName = studiosArr.getJSONObject(stI).optString("name", "")
-                    if (stName.isNotBlank()) studioList.add(stName)
-                }
-            }
-            val studioStr = studioList.joinToString(", ")
-
-            // Producers (filtering out Studio names so studios never appear in producers list)
-            val producerList = mutableListOf<String>()
-            val producersArr = node.optJSONArray("producers")
-            if (producersArr != null) {
-                for (pi in 0 until producersArr.length()) {
-                    val pName = producersArr.getJSONObject(pi).optString("name", "")
-                    if (pName.isNotBlank() && !studioList.contains(pName) && !pName.equalsIgnoreCase(studioStr)) {
-                        producerList.add(pName)
+            } else {
+                for (cand in searchCandidates) {
+                    val enc = URLEncoder.encode(cand, Charsets.UTF_8.name())
+                    val url = "https://api.jikan.moe/v4/anime?q=$enc&limit=1"
+                    val req = Request.Builder().url(url).header("Accept", "application/json").build()
+                    malHttpClient.newCall(req).execute().use { resp ->
+                        if (resp.isSuccessful) {
+                            val body = resp.body?.string()
+                            if (!body.isNullOrBlank()) {
+                                val root = JSONObject(body)
+                                val arr = root.optJSONArray("data")
+                                if (arr != null && arr.length() > 0) {
+                                    dataObj = arr.getJSONObject(0)
+                                    matchedQuery = cand
+                                }
+                            }
+                        }
                     }
-                }
-            }
-            var producerStr = producerList.joinToString(", ")
-
-            // Rating / Maturity
-            val rawMaturity = node.optString("rating", "")
-            var maturityStr = when (rawMaturity.lowercase()) {
-                "g" -> "G - All Ages"
-                "pg" -> "PG - Children"
-                "pg_13" -> "PG-13 - Teens 13+"
-                "r" -> "R - 17+ (violence & profanity)"
-                "r+" -> "R+ - Mild Nudity"
-                "rx" -> "Rx - Hentai"
-                else -> rawMaturity.uppercase()
-            }
-
-            // Genres
-            val genresList = mutableListOf<String>()
-            val genresArr = node.optJSONArray("genres")
-            if (genresArr != null) {
-                for (i in 0 until genresArr.length()) {
-                    val gName = genresArr.getJSONObject(i).optString("name", "").trim()
-                    if (gName.isNotBlank() && !gName.equals("Anime", ignoreCase = true)) {
-                        genresList.add(gName)
-                    }
+                    if (dataObj != null) break
                 }
             }
 
-            val airedRange = if (startDate.isNotBlank()) {
-                if (endDate.isNotBlank()) "$startDate to $endDate" else "$startDate to Ongoing"
-            } else ""
-
-            val detectedSeason = com.streamhub.app.data.FranchiseManager.detectSeasonNumber(finalTitle).let {
-                if (it > 1) it else com.streamhub.app.data.FranchiseManager.detectSeasonNumber(query)
-            }
-            val detectedFranchiseId = com.streamhub.app.data.FranchiseManager.getFranchiseId(com.streamhub.app.data.models.MediaItem(title = finalTitle))
-            val detectedFranchiseTitle = com.streamhub.app.data.FranchiseManager.getFranchiseTitle(com.streamhub.app.data.models.MediaItem(title = finalTitle))
-            val rawMediaType = node.optString("media_type", "").lowercase(java.util.Locale.ROOT)
-            val detectedFormat = when {
-                rawMediaType == "special" || finalTitle.contains("special", ignoreCase = true) -> "TV Special"
-                rawMediaType == "ova" || finalTitle.contains("ova", ignoreCase = true) -> "OVA"
-                rawMediaType == "ona" || finalTitle.contains("ona", ignoreCase = true) -> "ONA"
-                rawMediaType == "movie" || finalTitle.contains("movie", ignoreCase = true) -> "Movie"
-                else -> "TV"
-            }
-            val detectedRelation = when {
-                detectedFormat == "Movie" -> "Movie"
-                detectedFormat == "OVA" -> "Side Story • OVA"
-                detectedSeason > 1 && detectedFormat == "TV Special" -> "Sequel • TV Special"
-                detectedSeason > 1 -> "Sequel • TV"
-                else -> detectedFormat
+            if (dataObj == null) {
+                return Result.failure(Exception("No anime results found on Jikan for '$matchedQuery'"))
             }
 
-            // Fetch YouTube Trailer ID & Cast List via TMDB fallback if needed
-            var youtubeTrailerId = ""
-            var castListStr = ""
-            var finalBackdropUrl = posterUrl
+            return parseJikanData(dataObj!!, directMalId, matchedQuery)
+        } catch (e: Exception) {
+            return Result.failure(e)
+        }
+    }
 
-            try {
-                val queryForTmdb = if (finalTitle.contains(" Season ", ignoreCase = true) || finalTitle.contains(":")) {
-                    finalTitle.substringBefore(" Season ").substringBefore(":").trim()
-                } else finalTitle
+    private suspend fun parseJikanData(
+        dataObj: JSONObject,
+        directMalId: Int?,
+        fallbackQuery: String
+    ): Result<FetchedMetadata> {
+        val malId = dataObj.optInt("mal_id", directMalId ?: 0)
+        val defaultTitle = dataObj.optString("title", fallbackQuery)
+        val enTitle = dataObj.optString("title_english", "").trim()
+        val jaTitle = dataObj.optString("title_japanese", "").trim()
+        val finalTitle = if (enTitle.isNotBlank()) enTitle else defaultTitle
 
-                val tmdbResult = fetchFromTMDB(queryForTmdb, "Anime", targetSeason = detectedSeason)
-                tmdbResult.getOrNull()?.let { tmdbMeta ->
-                    if (youtubeTrailerId.isBlank()) youtubeTrailerId = tmdbMeta.youtubeTrailerId
-                    if (castListStr.isBlank()) castListStr = tmdbMeta.castList
-                    if (maturityStr.isBlank() && tmdbMeta.maturityRating.isNotBlank()) maturityStr = tmdbMeta.maturityRating
-                    if (finalBackdropUrl.isBlank() || finalBackdropUrl == posterUrl) {
-                        if (tmdbMeta.backdropUrl.isNotBlank()) finalBackdropUrl = tmdbMeta.backdropUrl
-                    }
-                    if (producerStr.isBlank()) {
-                        producerStr = tmdbMeta.producers.split(", ")
-                            .map { it.trim() }
-                            .filter { p -> p.isNotBlank() && !studioList.contains(p) && !p.equalsIgnoreCase(studioStr) }
-                            .joinToString(", ")
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "TMDB anime fallback failed: ${e.message}")
+        val synopsis = dataObj.optString("synopsis", "No synopsis available.")
+        val images = dataObj.optJSONObject("images")?.optJSONObject("jpg")
+        val posterUrl = images?.optString("large_image_url", images.optString("image_url", "")) ?: ""
+        val score = dataObj.optDouble("score", 0.0)
+        val scoreStr = if (score > 0) String.format(java.util.Locale.US, "%.2f", score).trimEnd('0').trimEnd('.') else ""
+
+        val episodes = dataObj.optInt("episodes", 0)
+        val totalEpisodesStr = if (episodes > 0) episodes.toString() else ""
+        val duration = dataObj.optString("duration", "")
+        val status = dataObj.optString("status", "")
+        val source = dataObj.optString("source", "")
+        val rating = dataObj.optString("rating", "")
+
+        val airedObj = dataObj.optJSONObject("aired")
+        val airedStr = airedObj?.optString("string", "") ?: ""
+        val year = dataObj.optInt("year", 0)
+
+        val genresList = mutableListOf<String>()
+        val gArr = dataObj.optJSONArray("genres")
+        if (gArr != null) {
+            for (i in 0 until gArr.length()) {
+                val g = gArr.getJSONObject(i).optString("name", "").trim()
+                if (g.isNotBlank() && !g.equals("Anime", ignoreCase = true)) genresList.add(g)
             }
+        }
 
-            // Score precision: e.g. 8.14 instead of 8.1
-            val formattedRating = if (mean > 0) String.format(java.util.Locale.US, "%.2f", mean).trimEnd('0').trimEnd('.') else ""
+        val studiosList = mutableListOf<String>()
+        val sArr = dataObj.optJSONArray("studios")
+        if (sArr != null) {
+            for (i in 0 until sArr.length()) {
+                val s = sArr.getJSONObject(i).optString("name", "").trim()
+                if (s.isNotBlank()) studiosList.add(s)
+            }
+        }
 
-            val fetched = FetchedMetadata(
-                title = finalTitle,
-                synopsis = synopsis,
-                posterUrl = posterUrl,
-                backdropUrl = finalBackdropUrl,
-                releaseYear = releaseYear,
-                rating = formattedRating,
-                category = "Anime",
-                genres = genresList.take(5),
-                studio = studioStr,
-                producers = producerStr,
-                source = formattedSource,
-                duration = durationStr,
-                status = formattedStatus,
-                totalEpisodes = totalEpisodesStr,
-                alternativeTitles = altTitlesCombo.distinct().take(4).joinToString(", "),
-                malId = if (malIdNum > 0) malIdNum.toString() else "",
-                castList = castListStr,
-                youtubeTrailerId = youtubeTrailerId,
-                aired = airedRange,
-                maturityRating = maturityStr,
-                franchiseId = detectedFranchiseId,
-                franchiseTitle = detectedFranchiseTitle,
-                seasonNumber = detectedSeason,
-                seasonTitle = if (detectedSeason > 1) "Season $detectedSeason" else "",
-                relationType = detectedRelation
-            )
-            return Result.success(fetched)
+        val producersList = mutableListOf<String>()
+        val pArr = dataObj.optJSONArray("producers")
+        if (pArr != null) {
+            for (i in 0 until pArr.length()) {
+                val p = pArr.getJSONObject(i).optString("name", "").trim()
+                if (p.isNotBlank()) producersList.add(p)
+            }
+        }
+
+        val trailerObj = dataObj.optJSONObject("trailer")
+        var youtubeTrailerId = trailerObj?.optString("youtube_id", "") ?: ""
+
+        val altTitles = mutableListOf<String>()
+        if (defaultTitle.isNotBlank() && !defaultTitle.equals(finalTitle, ignoreCase = true)) altTitles.add(defaultTitle)
+        if (jaTitle.isNotBlank()) altTitles.add(jaTitle)
+
+        var castListStr = ""
+        var finalBackdropUrl = posterUrl
+        var linkedTmdbId = ""
+
+        // TMDB fallback for wide backdrop banner & trailer
+        try {
+            val tmdbRes = fetchFromTMDB(finalTitle, "Anime")
+            tmdbRes.getOrNull()?.let { tmdbMeta ->
+                if (youtubeTrailerId.isBlank()) youtubeTrailerId = tmdbMeta.youtubeTrailerId
+                if (castListStr.isBlank()) castListStr = tmdbMeta.castList
+                if (tmdbMeta.backdropUrl.isNotBlank()) finalBackdropUrl = tmdbMeta.backdropUrl
+                if (tmdbMeta.tmdbId.isNotBlank()) linkedTmdbId = tmdbMeta.tmdbId
+            }
+        } catch (_: Exception) {}
+
+        if (castListStr.isBlank() && malId > 0) {
+            castListStr = fetchJikanCharacters(malId)
+        }
+
+        val detectedSeason = com.streamhub.app.data.FranchiseManager.detectSeasonNumber(finalTitle).let {
+            if (it > 1) it else com.streamhub.app.data.FranchiseManager.detectSeasonNumber(fallbackQuery)
+        }
+        val detectedFranchiseId = com.streamhub.app.data.FranchiseManager.getFranchiseId(com.streamhub.app.data.models.MediaItem(title = finalTitle))
+        val detectedFranchiseTitle = com.streamhub.app.data.FranchiseManager.getFranchiseTitle(com.streamhub.app.data.models.MediaItem(title = finalTitle))
+
+        val fetched = FetchedMetadata(
+            title = finalTitle,
+            synopsis = synopsis,
+            posterUrl = posterUrl,
+            backdropUrl = finalBackdropUrl,
+            releaseYear = year,
+            rating = scoreStr,
+            category = "Anime",
+            genres = genresList.take(5),
+            studio = studiosList.joinToString(", "),
+            producers = producersList.joinToString(", "),
+            source = source,
+            duration = duration,
+            status = status,
+            totalEpisodes = totalEpisodesStr,
+            alternativeTitles = altTitles.distinct().joinToString(", "),
+            malId = if (malId > 0) malId.toString() else "",
+            tmdbId = linkedTmdbId,
+            castList = castListStr,
+            youtubeTrailerId = youtubeTrailerId,
+            aired = airedStr,
+            maturityRating = rating,
+            franchiseId = detectedFranchiseId,
+            franchiseTitle = detectedFranchiseTitle,
+            seasonNumber = detectedSeason,
+            seasonTitle = if (detectedSeason > 1) "Season $detectedSeason" else "",
+            relationType = if (detectedSeason > 1) "Sequel • TV" else "TV"
+        )
+        return Result.success(fetched)
+    }
+
+    private suspend fun fetchJikanTrailer(malId: Int): String {
+        if (malId <= 0) return ""
+        return try {
+            val url = "https://api.jikan.moe/v4/anime/$malId"
+            val req = Request.Builder().url(url).header("Accept", "application/json").build()
+            malHttpClient.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val body = resp.body?.string()
+                    if (!body.isNullOrBlank()) {
+                        val data = JSONObject(body).optJSONObject("data")
+                        val trailer = data?.optJSONObject("trailer")
+                        trailer?.optString("youtube_id", "") ?: ""
+                    } else ""
+                } else ""
+            }
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    private suspend fun fetchJikanCharacters(malId: Int): String {
+        if (malId <= 0) return ""
+        return try {
+            val url = "https://api.jikan.moe/v4/anime/$malId/characters"
+            val req = Request.Builder().url(url).header("Accept", "application/json").build()
+            malHttpClient.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val body = resp.body?.string()
+                    if (!body.isNullOrBlank()) {
+                        val data = JSONObject(body).optJSONArray("data")
+                        if (data != null && data.length() > 0) {
+                            val names = mutableListOf<String>()
+                            for (i in 0 until minOf(6, data.length())) {
+                                val cObj = data.getJSONObject(i).optJSONObject("character")
+                                val cName = cObj?.optString("name", "") ?: ""
+                                if (cName.isNotBlank()) names.add(cName)
+                            }
+                            names.joinToString(", ")
+                        } else ""
+                    } else ""
+                } else ""
+            }
+        } catch (e: Exception) {
+            ""
         }
     }
 
@@ -1192,7 +1472,24 @@ object MetadataFetchManager {
                             relationType = if (item.relationType.isBlank()) meta.relationType else item.relationType,
                             updatedAt = System.currentTimeMillis()
                         )
-                        Result.success(repairedItem)
+
+                        var enrichedItem = repairedItem
+                        if (isAnime && (enrichedItem.trailerId.isBlank() || enrichedItem.bannerUrl == enrichedItem.posterUrl || enrichedItem.bannerUrl.isBlank() || enrichedItem.castList.isEmpty() || enrichedItem.tmdbId.isBlank())) {
+                            try {
+                                val tmdbIdNum = item.tmdbId.toIntOrNull()
+                                val tmdbRes = fetchFromTMDB(item.title, "Anime", targetSeason = item.seasonNumber.coerceAtLeast(1), directTmdbId = tmdbIdNum)
+                                tmdbRes.getOrNull()?.let { tmdbMeta ->
+                                    enrichedItem = enrichedItem.copy(
+                                        trailerId = if (enrichedItem.trailerId.isBlank()) tmdbMeta.youtubeTrailerId else enrichedItem.trailerId,
+                                        bannerUrl = if ((enrichedItem.bannerUrl.isBlank() || enrichedItem.bannerUrl == enrichedItem.posterUrl) && tmdbMeta.backdropUrl.isNotBlank()) tmdbMeta.backdropUrl else enrichedItem.bannerUrl,
+                                        castList = if (enrichedItem.castList.isEmpty() && tmdbMeta.castList.isNotBlank()) tmdbMeta.castList.split(", ").map { it.trim() }.filter { it.isNotBlank() } else enrichedItem.castList,
+                                        tmdbId = if (enrichedItem.tmdbId.isBlank()) tmdbMeta.tmdbId else enrichedItem.tmdbId
+                                    )
+                                }
+                            } catch (_: Exception) {}
+                        }
+
+                        Result.success(enrichedItem)
                     },
                     onFailure = { err ->
                         Result.failure(err)
