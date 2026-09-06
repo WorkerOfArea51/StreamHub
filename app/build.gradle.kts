@@ -55,7 +55,6 @@ android {
 
         buildConfigField("String", "TMDB_API_KEY", "\"${secret("streamhub.tmdb_api_key")}\"")
         buildConfigField("String", "MAL_CLIENT_ID", "\"${secret("streamhub.mal_client_id")}\"")
-        buildConfigField("String", "MAL_CLIENT_SECRET", "\"${secret("streamhub.mal_client_secret")}\"")
         buildConfigField("boolean", "DEBUG_LOGGING", "false")
         buildConfigField("String", "ADMIN_MASTER_PASSWORD", "\"${secret("streamhub.admin_master_password", "")}\"")
         buildConfigField("String", "APP_ACCESS_CODE", "\"${secret("streamhub.app_access_code", "")}\"")
@@ -164,6 +163,7 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
 
@@ -172,6 +172,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.material3.window.size)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
 

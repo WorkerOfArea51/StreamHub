@@ -77,16 +77,25 @@ import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.models.PlaybackProgress
 import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.data.models.matchesCategory
 import com.streamhub.app.ui.components.AdminEditorDialog
 import com.streamhub.app.ui.components.HeroBanner
 import com.streamhub.app.ui.components.MediaCard
+import com.streamhub.app.ui.components.MinTouchTarget
+import com.streamhub.app.ui.components.SkeletonCardRow
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.CardBorderDark
-import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 
 @Composable
 fun HomeScreen(
@@ -103,6 +112,9 @@ fun HomeScreen(
     val watchHistoryMap by WatchHistoryManager.historyFlow.collectAsState()
     val updateState by com.streamhub.app.data.AppUpdateManager.updateState.collectAsState()
     val layoutConfig by com.streamhub.app.data.HomeScreenLayoutManager.layoutConfig.collectAsState()
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
     var selectedCategoryFilter by rememberSaveable { mutableStateOf("ALL") }
     var showAdminAddDialog by remember { mutableStateOf(false) }
@@ -148,12 +160,8 @@ fun HomeScreen(
     }
 
     val filteredCatalog = remember(sortedCatalog, selectedCategoryFilter) {
-        when (selectedCategoryFilter) {
-            "ANIME" -> sortedCatalog.filter { it.category.equals("ANIME", ignoreCase = true) }
-            "MOVIES" -> sortedCatalog.filter { it.category.equals("MOVIE", ignoreCase = true) || it.category.equals("MOVIES", ignoreCase = true) }
-            "SERIES" -> sortedCatalog.filter { it.category.equals("WEB_SERIES", ignoreCase = true) || it.category.equals("SERIES", ignoreCase = true) }
-            else -> sortedCatalog
-        }
+        if (selectedCategoryFilter == "ALL") sortedCatalog
+        else sortedCatalog.filter { it.matchesCategory(selectedCategoryFilter) }
     }
 
     val selectedCategoryDisplayName = remember(selectedCategoryFilter) {
@@ -175,12 +183,7 @@ fun HomeScreen(
         watchHistoryMap.values
             .mapNotNull { progress ->
                 val media = catalogMap[progress.mediaId] ?: return@mapNotNull null
-                val isMatchingCategory = when (selectedCategoryFilter) {
-                    "ANIME" -> media.category.equals("ANIME", ignoreCase = true)
-                    "MOVIES" -> media.category.equals("MOVIE", ignoreCase = true) || media.category.equals("MOVIES", ignoreCase = true)
-                    "SERIES" -> media.category.equals("WEB_SERIES", ignoreCase = true) || media.category.equals("SERIES", ignoreCase = true)
-                    else -> true
-                }
+                val isMatchingCategory = media.matchesCategory(selectedCategoryFilter)
                 if (!isMatchingCategory) return@mapNotNull null
                 val completed = progress.durationMs > 0 && progress.positionMs >= (progress.durationMs * 0.95)
                 if (completed) null else Pair(media, progress)
@@ -280,13 +283,13 @@ fun HomeScreen(
 
         filteredCatalog.forEachIndexed { index, item ->
             if (item.isTrending) trending.add(item)
-            if (item.category.equals("ANIME", ignoreCase = true)) {
+            if (item.matchesCategory("ANIME")) {
                 anime.add(item)
                 if (firstAnimeIndex == Int.MAX_VALUE) firstAnimeIndex = index
-            } else if (item.category.equals("MOVIE", ignoreCase = true) || item.category.equals("MOVIES", ignoreCase = true)) {
+            } else if (item.matchesCategory("MOVIES")) {
                 movies.add(item)
                 if (firstMovieIndex == Int.MAX_VALUE) firstMovieIndex = index
-            } else if (item.category.equals("WEB_SERIES", ignoreCase = true) || item.category.equals("SERIES", ignoreCase = true)) {
+            } else if (item.matchesCategory("SERIES")) {
                 series.add(item)
                 if (firstSeriesIndex == Int.MAX_VALUE) firstSeriesIndex = index
             }
@@ -474,19 +477,13 @@ fun HomeScreen(
                 }
             }
 
-            // Loading state — Firestore hasn't responded yet
-            if (catalog.isEmpty() && catalogState is com.streamhub.app.data.repository.CatalogState.Loading) {
-                item(key = "catalog_loading") {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(400.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(
-                            color = androidx.compose.material3.MaterialTheme.colorScheme.primary
-                        )
-                    }
+            // Skeleton Loading state (Layout-shaped preview)
+            if (catalogState is com.streamhub.app.data.repository.CatalogState.Loading) {
+                item(key = "catalog_loading_1") {
+                    SkeletonCardRow(cardCount = 4)
+                }
+                item(key = "catalog_loading_2") {
+                    SkeletonCardRow(cardCount = 4)
                 }
             }
 
@@ -527,7 +524,21 @@ fun HomeScreen(
                         continueWatchingList = continueWatchingList,
                         onPlayEpisode = onPlayEpisode,
                         onNavigateToHistory = onNavigateToHistory,
-                        onClearClick = { showClearHistoryDialog = true }
+                        onClearClick = { showClearHistoryDialog = true },
+                        onRemove = { media, progress ->
+                            WatchHistoryManager.removeMediaProgress(media.id)
+                            coroutineScope.launch {
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                                val result = snackbarHostState.showSnackbar(
+                                    message = "Removed \"${media.title}\"",
+                                    actionLabel = "Undo",
+                                    duration = SnackbarDuration.Short
+                                )
+                                if (result == SnackbarResult.ActionPerformed) {
+                                    WatchHistoryManager.restoreMediaProgress(progress)
+                                }
+                            }
+                        }
                     )
                 }
             }
@@ -551,7 +562,21 @@ fun HomeScreen(
                         continueWatchingList = continueWatchingList,
                         onPlayEpisode = onPlayEpisode,
                         onNavigateToHistory = onNavigateToHistory,
-                        onClearClick = { showClearHistoryDialog = true }
+                        onClearClick = { showClearHistoryDialog = true },
+                        onRemove = { media, progress ->
+                            WatchHistoryManager.removeMediaProgress(media.id)
+                            coroutineScope.launch {
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                                val result = snackbarHostState.showSnackbar(
+                                    message = "Removed \"${media.title}\"",
+                                    actionLabel = "Undo",
+                                    duration = SnackbarDuration.Short
+                                )
+                                if (result == SnackbarResult.ActionPerformed) {
+                                    WatchHistoryManager.restoreMediaProgress(progress)
+                                }
+                            }
+                        }
                     )
                 }
             }
@@ -622,7 +647,7 @@ fun HomeScreen(
         if (isAdminMode) {
             FloatingActionButton(
                 onClick = { showAdminAddDialog = true },
-                containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = Color.White,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -631,6 +656,13 @@ fun HomeScreen(
                 Icon(Icons.Default.Add, contentDescription = "Add Show")
             }
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 80.dp)
+        )
     }
 
     if (showAdminAddDialog) {
@@ -668,7 +700,7 @@ fun HomeScreen(
                         WatchHistoryManager.clearAllHistory()
                     }
                 ) {
-                    Text("Clear", color = PrimaryRed, fontWeight = FontWeight.Bold)
+                    Text("Clear", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -730,13 +762,11 @@ fun ContinueWatchingSection(
     onPlayEpisode: (MediaItem, Int) -> Unit,
     onNavigateToHistory: () -> Unit,
     onClearClick: () -> Unit,
+    onRemove: (MediaItem, PlaybackProgress) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp)
-    ) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    Column(modifier = modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -756,12 +786,12 @@ fun ContinueWatchingSection(
                 )
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = PrimaryRed.copy(alpha = 0.15f),
-                    border = BorderStroke(1.dp, PrimaryRed.copy(alpha = 0.4f))
+                    color = primaryColor.copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, color = primaryColor.copy(alpha = 0.4f))
                 ) {
                     Text(
                         text = "${continueWatchingList.size}",
-                        color = PrimaryRed,
+                        color = primaryColor,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp)
@@ -770,21 +800,29 @@ fun ContinueWatchingSection(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "History ↗",
-                    color = PrimaryRed,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable { onNavigateToHistory() }
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = "Clear",
-                    color = TextSecondary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.clickable { onClearClick() }
-                )
+                MinTouchTarget(
+                    onClick = onNavigateToHistory,
+                    contentDescription = "Navigate to watch history"
+                ) {
+                    Text(
+                        text = "History ↗",
+                        color = primaryColor,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+                MinTouchTarget(
+                    onClick = onClearClick,
+                    contentDescription = "Clear continue watching history"
+                ) {
+                    Text(
+                        text = "Clear",
+                        color = TextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
         }
 
@@ -806,7 +844,7 @@ fun ContinueWatchingSection(
                         media = media,
                         progress = progress,
                         onPlay = { onPlayEpisode(media, progress.episodeNumber) },
-                        onRemove = { WatchHistoryManager.removeMediaProgress(media.id) }
+                        onRemove = { onRemove(media, progress) }
                     )
                 }
             }
@@ -871,7 +909,7 @@ fun ContinueWatchingRowItem(
                     Box(
                         modifier = Modifier
                             .clip(CircleShape)
-                            .background(PrimaryRed.copy(alpha = 0.92f))
+                            .background(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.92f))
                             .padding(9.dp)
                     ) {
                         Icon(
@@ -903,29 +941,38 @@ fun ContinueWatchingRowItem(
                     }
                 }
 
-                // Remove from History Close Icon
+                // Remove from History Close Icon with 48dp minimum touch target
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(6.dp)
-                        .size(22.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xCC000000))
-                        .clickable { onRemove() },
+                        .padding(2.dp)
+                        .size(48.dp)
+                        .clickable(
+                            onClick = onRemove,
+                            onClickLabel = "Remove ${media.title} from history"
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Remove from history",
-                        tint = Color.White,
-                        modifier = Modifier.size(13.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xCC000000)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Remove from history",
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                 }
 
                 // Progress Bar at bottom of card
                 LinearProgressIndicator(
                     progress = { progressFraction },
-                    color = PrimaryRed,
+                    color = MaterialTheme.colorScheme.primary,
                     trackColor = Color(0x55000000),
                     modifier = Modifier
                         .fillMaxWidth()

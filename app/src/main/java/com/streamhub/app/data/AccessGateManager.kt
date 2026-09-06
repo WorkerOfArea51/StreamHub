@@ -74,12 +74,20 @@ object AccessGateManager {
                     _remainingDays.value = daysLeft
                     Log.i(TAG, "AccessGate: Voucher active. Days remaining: $daysLeft")
 
-                    // Asynchronously check with Firestore that voucher hasn't been revoked
+                    // CRITICAL FIX: only an affirmative Revoked verdict may relock the app.
+                    // Offline / timeout / Firestore errors keep the local unlock intact.
                     managerScope.launch {
-                        val activeVoucher = VoucherManager.checkDeviceActiveVoucher(appContext)
-                        if (activeVoucher == null) {
-                            Log.w(TAG, "Voucher revoked on Firestore or device mismatch. Relocking.")
-                            lockApp()
+                        when (val status = VoucherManager.checkDeviceActiveVoucherStatus(appContext)) {
+                            VoucherStatusCheck.Revoked -> {
+                                Log.w(TAG, "Voucher revoked on Firestore. Relocking.")
+                                lockApp()
+                            }
+                            is VoucherStatusCheck.VerificationFailed -> {
+                                Log.w(TAG, "Voucher verification inconclusive (${status.reason}) — keeping local unlock.")
+                            }
+                            is VoucherStatusCheck.Active -> {
+                                Log.i(TAG, "Voucher confirmed active on Firestore.")
+                            }
                         }
                     }
                 }

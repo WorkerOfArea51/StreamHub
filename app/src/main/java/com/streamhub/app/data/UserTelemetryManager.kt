@@ -246,11 +246,21 @@ object UserTelemetryManager {
         }
     }
 
+    private var publishJob: Job? = null
+    private var lastPublishTimeMs = 0L
+
     private fun publishHeartbeat() {
         val ctx = appContext ?: return
         if (clientId.isBlank()) return
 
-        scope.launch {
+        val now = System.currentTimeMillis()
+        if (now - lastPublishTimeMs < 500L && publishJob?.isActive == true) {
+            return
+        }
+
+        publishJob?.cancel()
+        publishJob = scope.launch {
+            lastPublishTimeMs = System.currentTimeMillis()
             try {
                 val db = FirebaseFirestore.getInstance()
                 val (batteryPct, isCharging) = getBatteryInfo(ctx)

@@ -62,10 +62,12 @@ import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.components.EmptyStateCard
 import com.streamhub.app.ui.components.MediaCard
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.streamhub.app.data.repository.CatalogState
+import com.streamhub.app.ui.components.AppErrorState
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.CardBorderDark
-import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
@@ -83,10 +85,11 @@ fun SearchScreen(
     onMediaClick: (MediaItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val catalogState by repository.catalogState.collectAsState()
     val catalog by repository.mediaCatalog.collectAsState()
     val searchHistory by com.streamhub.app.data.SearchHistoryManager.historyFlow.collectAsState()
 
-    var searchQuery by remember { mutableStateOf("") }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     var debouncedQuery by remember { mutableStateOf("") }
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
     var showAddContentDialog by remember { mutableStateOf(false) }
@@ -104,10 +107,10 @@ fun SearchScreen(
         }
     }
 
-    var selectedTypeFilter by remember { mutableStateOf("ALL") }
+    var selectedTypeFilter by rememberSaveable { mutableStateOf("ALL") }
     var selectedGenres by remember { mutableStateOf(setOf<String>()) }
-    var minRatingFilter by remember { mutableStateOf(0.0) }
-    var selectedYearFilter by remember { mutableStateOf("ALL") }
+    var minRatingFilter by rememberSaveable { mutableStateOf(0.0) }
+    var selectedYearFilter by rememberSaveable { mutableStateOf("ALL") }
     var sortOption by remember { mutableStateOf(SortOption.LATEST) }
     var isSortMenuExpanded by remember { mutableStateOf(false) }
 
@@ -534,8 +537,8 @@ fun SearchScreen(
                     items(popularQueries) { popTitle ->
                         Surface(
                             shape = RoundedCornerShape(16.dp),
-                            color = PrimaryRed.copy(alpha = 0.12f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, PrimaryRed.copy(alpha = 0.4f)),
+                            color = primaryColor.copy(alpha = 0.12f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, primaryColor.copy(alpha = 0.4f)),
                             modifier = Modifier.clickable {
                                 searchQuery = popTitle
                                 debouncedQuery = popTitle
@@ -590,8 +593,16 @@ fun SearchScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Results Grid
-        if (sortedCatalog.isEmpty()) {
+        // Results Grid / State Handling
+        val currentCatalogState = catalogState
+        if (currentCatalogState is CatalogState.Error && sortedCatalog.isEmpty()) {
+            AppErrorState(
+                message = currentCatalogState.message,
+                onRetry = { repository.refreshCatalog() },
+                title = "Failed to load catalog",
+                modifier = Modifier.weight(1f)
+            )
+        } else if (sortedCatalog.isEmpty()) {
             EmptyStateCard(
                 icon = Icons.Default.Search,
                 title = if (searchQuery.isEmpty()) "No matching shows" else "No results found",

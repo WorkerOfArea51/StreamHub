@@ -83,6 +83,14 @@ data class PlayerUiState(
     val streamRestoredToast: Boolean = false
 )
 
+data class PlaybackProgress(
+    val currentPositionMs: Long = 0L,
+    val bufferedPositionMs: Long = 0L,
+    val durationMs: Long = 0L,
+    val bufferHealthSeconds: Long = 0L,
+    val networkSpeedKbps: Long = 0L
+)
+
 @OptIn(UnstableApi::class)
 class StreamPlayerViewModel : ViewModel() {
 
@@ -104,6 +112,9 @@ class StreamPlayerViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
 
+    private val _playbackProgress = MutableStateFlow(PlaybackProgress())
+    val playbackProgress: StateFlow<PlaybackProgress> = _playbackProgress.asStateFlow()
+
     private var currentMediaItem: MediaItem? = null
     private var episodesList: List<Episode> = emptyList()
     private var appContext: Context? = null
@@ -124,26 +135,199 @@ class StreamPlayerViewModel : ViewModel() {
 
     fun getPlayer(): ExoPlayer? = exoPlayer
 
+    private fun adoptOrphanedPlayer(orphaned: ExoPlayer) {
+        Log.i("StreamPlayerViewModel", "Adopting active background player (state=${orphaned.playbackState}, isPlaying=${orphaned.isPlaying})")
+        exoPlayer = orphaned
+        currentPlayer = orphaned
+        PlayerHolder.currentPlayer = orphaned
+
+        if (!hasAcquiredReader) {
+            StreamCacheManager.acquireReader()
+            hasAcquiredReader = true
+        }
+
+        val listener = createPlayerListener()
+        playerListener = listener
+        orphaned.addListener(listener)
+
+        orphaned.audioSessionId.let { sessionId ->
+            volumeBoostManager.attachToAudioSession(sessionId)
+        }
+
+        val isBuffering = orphaned.playbackState == Player.STATE_BUFFERING
+        val duration = orphaned.duration.coerceAtLeast(0L)
+        val buffered = orphaned.bufferedPosition.coerceAtLeast(0L)
+        val currentPos = orphaned.currentPosition.coerceAtLeast(0L)
+
+        _playbackProgress.value = PlaybackProgress(
+            currentPositionMs = currentPos,
+            bufferedPositionMs = buffered,
+            durationMs = duration
+        )
+
+        _uiState.update {
+            it.copy(
+                isPlaying = orphaned.isPlaying,
+                isBuffering = isBuffering,
+                currentPositionMs = currentPos,
+                durationMs = if (duration > 0) duration else it.durationMs,
+                bufferedPositionMs = buffered,
+                playerError = null,
+                playerErrorInfo = null
+            )
+        }
+
+        updateAvailableTracks(orphaned.currentTracks)
+        startPositionTracker()
+
+        PlayerHolder.onPlayNextAction = { playNextEpisode() }
+        PlayerHolder.onPlayPrevAction = { playPreviousEpisode() }
+    }
+
+    private fun createPlayerListener(): Player.Listener {
+        return object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                _uiState.update { it.copy(isPlaying = isPlaying) }
+                syncTelemetry(if (isPlaying) "PLAYING" else "PAUSED")
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                val isBuffering = playbackState == Player.STATE_BUFFERING
+                val duration = exoPlayer?.duration?.coerceAtLeast(0L) ?: 0L
+                val buffered = exoPlayer?.bufferedPosition?.coerceAtLeast(0L) ?: 0L
+                _uiState.update {
+                    it.copy(
+                        isBuffering = isBuffering,
+                        durationMs = if (duration > 0) duration else it.durationMs,
+                        bufferedPositionMs = buffered
+                    )
+                }
+
+                if (playbackState == Player.STATE_READY) {
+                    exoPlayer?.let { updateAvailableTracks(it.currentTracks) }
+                    resetRetryCounter()  // NEW: clear retry counter on successful playback
+                }
+
+                val state = when {
+                    isBuffering -> "BUFFERING"
+                    playbackState == Player.STATE_ENDED -> "IDLE"
+                    exoPlayer?.isPlaying == true -> "PLAYING"
+                    else -> "PAUSED"
+                }
+                syncTelemetry(state)
+
+                if (playbackState == Player.STATE_ENDED) {
+                    // FIX: Clear stale pending seek target before next episode starts.
+                    pendingSeekTargetMs = null
+                    playNextEpisode()
+                }
+            }
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int
+            ) {
+                if (reason == Player.DISCONTINUITY_REASON_SEEK) {
+                    pendingSeekTargetMs = null
+                    // FIX: Cancel the seek timeout — the seek completed successfully.
+                    pendingSeekTimeoutJob?.cancel()
+                    pendingSeekTimeoutJob = null
+                    _uiState.update { it.copy(currentPositionMs = newPosition.positionMs) }
+                }
+                // FIX: Also clear pending seek on auto-transition (e.g. next episode).
+                if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) {
+                    pendingSeekTargetMs = null
+                    pendingSeekTimeoutJob?.cancel()
+                    pendingSeekTimeoutJob = null
+                }
+            }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                Log.e("StreamPlayerViewModel", "ExoPlayer error occurred (errorCode=${error.errorCode})", error)
+                val errorInfo = classifyError(error)
+                val currentPos = _uiState.value.currentPositionMs
+
+                // Only evict cached resource on non-retryable fatal container/source errors
+                if (!errorInfo.canRetry) {
+                    _uiState.value.resolvedStreamUrl.let { currentUrl ->
+                        if (currentUrl.isNotBlank()) {
+                            StreamCacheManager.removeResource(currentUrl)
+                        }
+                    }
+                }
+
+                // Smart Auto-Reconnect: attempt budget bounded by maxAutoRetries.
+                // Server-side (5xx) failures use longer backoff so we do not hammer
+                // an already struggling single-worker backend into a crash loop.
+                val serverDown = errorInfo.httpStatusCode in 500..599
+                if (errorInfo.canRetry && autoRetryCount < maxAutoRetries) {
+                    autoRetryCount++
+                    _uiState.update {
+                        it.copy(
+                            isBuffering = true,
+                            isPlaying = false,
+                            isReconnecting = true,
+                            reconnectAttempt = autoRetryCount.coerceIn(1, maxAutoRetries),
+                            playerError = null,
+                            playerErrorInfo = null
+                        )
+                    }
+                    scheduleAutoReconnect(currentPos, serverDown)
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isBuffering = false,
+                            isPlaying = false,
+                            isReconnecting = false,
+                            reconnectAttempt = 0,
+                            playerError = errorInfo.message,
+                            playerErrorInfo = errorInfo
+                        )
+                    }
+                }
+            }
+
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                updateAvailableTracks(tracks)
+            }
+
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                volumeBoostManager.attachToAudioSession(audioSessionId)
+            }
+        }
+    }
+
     fun initializePlayer(context: Context, mediaItem: MediaItem, initialEpisodeIndex: Int = 0) {
-        appContext = context.applicationContext
+        val safeContext = context.applicationContext
+        appContext = safeContext
         currentMediaItem = mediaItem
         episodesList = mediaItem.episodes
+
+        // CRITICAL FIX (ghost player): if a previous ViewModel handed its player to
+        // StreamMediaService via PlayerHolder, ADOPT it instead of constructing a second
+        // instance (which causes double-audio and leaks memory).
+        val orphanedPlayer = PlayerHolder.currentPlayer
+        if (exoPlayer == null && orphanedPlayer != null && orphanedPlayer.playbackState != Player.STATE_IDLE) {
+            adoptOrphanedPlayer(orphanedPlayer)
+            return
+        }
 
         if (exoPlayer == null) {
             val createResult = runCatching {
                 if (bandwidthTracker == null) {
-                    bandwidthTracker = StreamBandwidthTracker(context)
+                    bandwidthTracker = StreamBandwidthTracker(safeContext)
                 }
                 val tracker = bandwidthTracker!!
-                val dataSourceFactory = StreamDataSourceFactory(context, tracker)
-                val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(context).apply {
+                val dataSourceFactory = StreamDataSourceFactory(safeContext, tracker)
+                val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(safeContext).apply {
                     setEnableDecoderFallback(true) // Software decoder fallback if hardware EAC3/DTS/AC3 decoder missing
                     setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
                     setEnableAudioTrackPlaybackParams(true)
                 }
-                trackSelector = DefaultTrackSelector(context).apply {
+                trackSelector = DefaultTrackSelector(safeContext).apply {
                     parameters = buildUponParameters()
-                        .setViewportSizeToPhysicalDisplaySize(context, true)
+                        .setViewportSizeToPhysicalDisplaySize(safeContext, true)
                         .setExceedRendererCapabilitiesIfNecessary(true) // Ensure EAC3/AC3/DTS audio and all video tracks play on all devices
                         .setAllowAudioMixedMimeTypeAdaptiveness(true)
                         .setAllowAudioMixedChannelCountAdaptiveness(true)
@@ -181,7 +365,7 @@ class StreamPlayerViewModel : ViewModel() {
                     .setMatroskaExtractorFlags(
                         androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_EMIT_RAW_SUBTITLE_DATA
                     )
-                ExoPlayer.Builder(context, renderersFactory)
+                ExoPlayer.Builder(safeContext, renderersFactory)
                     .setTrackSelector(trackSelector!!)
                     .setAudioAttributes(audioAttributes, true)
                     .setHandleAudioBecomingNoisy(true)
@@ -205,6 +389,7 @@ class StreamPlayerViewModel : ViewModel() {
 
             exoPlayer = createResult.getOrNull()
             currentPlayer = exoPlayer
+            PlayerHolder.currentPlayer = exoPlayer
 
             // FIX: Only acquire reader ONCE per ViewModel instance — releasePlayer releases once.
             if (!hasAcquiredReader) {
@@ -212,117 +397,7 @@ class StreamPlayerViewModel : ViewModel() {
                 hasAcquiredReader = true
             }
 
-            val listener = object : Player.Listener {
-                override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    _uiState.update { it.copy(isPlaying = isPlaying) }
-                    syncTelemetry(if (isPlaying) "PLAYING" else "PAUSED")
-                }
-
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    val isBuffering = playbackState == Player.STATE_BUFFERING
-                    val duration = exoPlayer?.duration?.coerceAtLeast(0L) ?: 0L
-                    val buffered = exoPlayer?.bufferedPosition?.coerceAtLeast(0L) ?: 0L
-                    _uiState.update {
-                        it.copy(
-                            isBuffering = isBuffering,
-                            durationMs = if (duration > 0) duration else it.durationMs,
-                            bufferedPositionMs = buffered
-                        )
-                    }
-
-                    if (playbackState == Player.STATE_READY) {
-                        exoPlayer?.let { updateAvailableTracks(it.currentTracks) }
-                        resetRetryCounter()  // NEW: clear retry counter on successful playback
-                    }
-
-                    val state = when {
-                        isBuffering -> "BUFFERING"
-                        playbackState == Player.STATE_ENDED -> "IDLE"
-                        exoPlayer?.isPlaying == true -> "PLAYING"
-                        else -> "PAUSED"
-                    }
-                    syncTelemetry(state)
-
-                    if (playbackState == Player.STATE_ENDED) {
-                        // FIX: Clear stale pending seek target before next episode starts.
-                        pendingSeekTargetMs = null
-                        playNextEpisode()
-                    }
-                }
-
-                override fun onPositionDiscontinuity(
-                    oldPosition: Player.PositionInfo,
-                    newPosition: Player.PositionInfo,
-                    reason: Int
-                ) {
-                    if (reason == Player.DISCONTINUITY_REASON_SEEK) {
-                        pendingSeekTargetMs = null
-                        // FIX: Cancel the seek timeout — the seek completed successfully.
-                        pendingSeekTimeoutJob?.cancel()
-                        pendingSeekTimeoutJob = null
-                        _uiState.update { it.copy(currentPositionMs = newPosition.positionMs) }
-                    }
-                    // FIX: Also clear pending seek on auto-transition (e.g. next episode).
-                    if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) {
-                        pendingSeekTargetMs = null
-                        pendingSeekTimeoutJob?.cancel()
-                        pendingSeekTimeoutJob = null
-                    }
-                }
-
-                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                    Log.e("StreamPlayerViewModel", "ExoPlayer error occurred (errorCode=${error.errorCode})", error)
-                    val errorInfo = classifyError(error)
-                    val currentPos = _uiState.value.currentPositionMs
-
-                    // Only evict cached resource on non-retryable fatal container/source errors
-                    if (!errorInfo.canRetry) {
-                        _uiState.value.resolvedStreamUrl.let { currentUrl ->
-                            if (currentUrl.isNotBlank()) {
-                                StreamCacheManager.removeResource(currentUrl)
-                            }
-                        }
-                    }
-
-                    // Smart Auto-Reconnect: attempt budget bounded by maxAutoRetries.
-                    // Server-side (5xx) failures use longer backoff so we do not hammer
-                    // an already struggling single-worker backend into a crash loop.
-                    val serverDown = errorInfo.httpStatusCode in 500..599
-                    if (errorInfo.canRetry && autoRetryCount < maxAutoRetries) {
-                        autoRetryCount++
-                        _uiState.update {
-                            it.copy(
-                                isBuffering = true,
-                                isPlaying = false,
-                                isReconnecting = true,
-                                reconnectAttempt = autoRetryCount.coerceIn(1, maxAutoRetries),
-                                playerError = null,
-                                playerErrorInfo = null
-                            )
-                        }
-                        scheduleAutoReconnect(currentPos, serverDown)
-                    } else {
-                        _uiState.update {
-                            it.copy(
-                                isBuffering = false,
-                                isPlaying = false,
-                                isReconnecting = false,
-                                reconnectAttempt = 0,
-                                playerError = errorInfo.message,
-                                playerErrorInfo = errorInfo
-                            )
-                        }
-                    }
-                }
-
-                override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
-                    updateAvailableTracks(tracks)
-                }
-
-                override fun onAudioSessionIdChanged(audioSessionId: Int) {
-                    volumeBoostManager.attachToAudioSession(audioSessionId)
-                }
-            }
+            val listener = createPlayerListener()
             playerListener = listener
             exoPlayer?.addListener(listener)
             exoPlayer?.audioSessionId?.let { sessionId ->
@@ -847,6 +922,10 @@ class StreamPlayerViewModel : ViewModel() {
         Log.i("StreamPlayerViewModel", "seekTo: requested $positionMs ms -> target $target ms (duration: $duration ms)")
         pendingSeekTargetMs = target
         player.seekTo(target)
+        _playbackProgress.value = _playbackProgress.value.copy(
+            currentPositionMs = target,
+            bufferedPositionMs = player.bufferedPosition.coerceAtLeast(target)
+        )
         _uiState.update {
             it.copy(
                 currentPositionMs = target,
@@ -995,45 +1074,21 @@ class StreamPlayerViewModel : ViewModel() {
                     // Estimate real network throughput from TransferListener byte window
                     val speedKbps = bandwidthTracker?.sampleSpeedKBps() ?: 0L
 
-                    _uiState.update {
-                        it.copy(
-                            currentPositionMs = currentPos,
-                            durationMs = if (totalDuration > 0) totalDuration else it.durationMs,
-                            bufferedPositionMs = effectiveBuffered,
-                            isBuffering = isBuffering,
-                            bufferHealthSeconds = bufferHealthSec,
-                            networkSpeedKbps = speedKbps
-                        )
+                    _playbackProgress.value = PlaybackProgress(
+                        currentPositionMs = currentPos,
+                        durationMs = if (totalDuration > 0) totalDuration else _playbackProgress.value.durationMs,
+                        bufferedPositionMs = effectiveBuffered,
+                        bufferHealthSeconds = bufferHealthSec,
+                        networkSpeedKbps = speedKbps
+                    )
+
+                    // Only update _uiState if buffering state actually changed to avoid 200ms recomposition storms
+                    if (_uiState.value.isBuffering != isBuffering) {
+                        _uiState.update { it.copy(isBuffering = isBuffering) }
                     }
 
-                    // FIX: Smart auto-quality — if buffer is healthy (>60s) and network is fast (>2 MB/s),
-                    // allow higher bitrates. If buffer drops below 15s, force lower quality.
+                    // Keep bufferSec for bandwidth protection below, but do not constrain video track sizes
                     val bufferSec = (buffered - currentPos) / 1000L
-                    if (bufferSec < 15L && speedKbps < 500L) {
-                        // Poor network — force low quality
-                        trackSelector?.let { ts ->
-                            val params = ts.buildUponParameters()
-                                .setMaxVideoBitrate(800_000)  // Force 480p
-                                .setMaxVideoSize(854, 480)
-                                .build()
-                            if (ts.parameters != params) {
-                                ts.parameters = params
-                                Log.i("StreamPlayerViewModel", "Auto-quality: DOWN to 480p (buffer=${bufferSec}s, speed=${speedKbps}KB/s)")
-                            }
-                        }
-                    } else if (bufferSec > 60L && speedKbps > 2_000L) {
-                        // Healthy network — restore max quality
-                        trackSelector?.let { ts ->
-                            val params = ts.buildUponParameters()
-                                .setMaxVideoBitrate(12_000_000)
-                                .setMaxVideoSize(1920, 1080)
-                                .build()
-                            if (ts.parameters != params) {
-                                ts.parameters = params
-                                Log.i("StreamPlayerViewModel", "Auto-quality: UP to 1080p (buffer=${bufferSec}s, speed=${speedKbps}KB/s)")
-                            }
-                        }
-                    }
 
                     if (player.isPlaying) {
                         val remainingMs = totalDuration - currentPos

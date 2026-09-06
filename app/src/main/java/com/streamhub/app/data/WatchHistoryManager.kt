@@ -247,6 +247,22 @@ object WatchHistoryManager {
     }
 
     @Synchronized
+    fun restoreMediaProgress(progress: PlaybackProgress) {
+        saveProgress(
+            mediaId = progress.mediaId,
+            episodeNumber = progress.episodeNumber,
+            positionMs = progress.positionMs,
+            durationMs = progress.durationMs,
+            title = progress.title,
+            posterUrl = progress.posterUrl,
+            backdropUrl = progress.backdropUrl,
+            mediaType = progress.mediaType,
+            episodeTitle = progress.episodeTitle,
+            seasonNumber = progress.seasonNumber
+        )
+    }
+
+    @Synchronized
     fun clearAllHistory() {
         if (!::appContext.isInitialized) {
             Log.w(TAG, "clearAllHistory called before init — no-op")

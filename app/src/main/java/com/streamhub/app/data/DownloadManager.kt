@@ -170,6 +170,7 @@ object DownloadManager {
         saveToDisk()
     }
 
+    @Synchronized
     private fun startProgressPolling() {
         if (progressPollJob?.isActive == true) return
         progressPollJob = scope.launch {
@@ -185,6 +186,7 @@ object DownloadManager {
      * Stops the polling coroutine (CPU cost) without unregistering the completion receiver,
      * so downloads still complete in the background and the UI is updated when app returns.
      */
+    @Synchronized
     fun pauseProgressPolling() {
         progressPollJob?.cancel()
         progressPollJob = null
@@ -571,6 +573,26 @@ object DownloadManager {
     }
 
     fun pauseDownload(item: DownloadedItem) {
+        val targetFile = File(item.localFilePath)
+        val partFile = File(item.localFilePath + ".part")
+
+        // CRITICAL FIX: GUARD the partial file BEFORE systemDownloadManager.remove().
+        // The OS unlinks the destination on remove() — measuring first only fixed the
+        // bookkeeping, not the data. Renaming the file away means the OS cannot
+        // delete it, and the bytes survive for a true HTTP Range resume.
+        val guardedBytes = runCatching {
+            if (targetFile.exists() && targetFile.length() > 0L) {
+                if (!targetFile.renameTo(partFile)) {
+                    Log.w(TAG, "Failed to guard partial as ${partFile.name} — pause will lose resume data")
+                    targetFile.length()
+                } else {
+                    partFile.length()
+                }
+            } else if (partFile.exists()) {
+                partFile.length()
+            } else 0L
+        }.getOrDefault(0L)
+
         if (item.downloadId != -1L) {
             systemDownloadManager?.remove(item.downloadId)
         }
@@ -581,12 +603,10 @@ object DownloadManager {
             val mutableList = currentList.toMutableList()
             val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
             if (index != -1) {
-                val partialFile = File(mutableList[index].localFilePath)
-                val partialBytes = if (partialFile.exists()) partialFile.length() else 0L
                 mutableList[index] = mutableList[index].copy(
                     isPaused = true,
                     downloadId = -1L,
-                    resumeFromBytes = partialBytes
+                    resumeFromBytes = guardedBytes
                 )
             }
             mutableList
@@ -611,7 +631,7 @@ object DownloadManager {
      */
     fun resumeDownload(item: DownloadedItem, context: Context? = null) {
         if (item.isCompleted) return
-        val ctx = context ?: appContext ?: return
+        val ctx = context?.applicationContext ?: appContext ?: return
 
         val url = item.streamUrl
         if (url.isBlank() || !url.startsWith("http")) {
@@ -620,7 +640,10 @@ object DownloadManager {
         }
 
         // Storage verification before resume
-        val remainingMb = if (item.fileSizeMb > 0) (item.fileSizeMb - (item.resumeFromBytes / (1024.0 * 1024.0))).coerceAtLeast(50.0) else 150.0
+        val remainingMb = if (item.fileSizeMb > 0)
+            (item.fileSizeMb - (item.resumeFromBytes / (1024.0 * 1024.0))).coerceAtLeast(50.0)
+        else
+            150.0
         val storageCheck = checkStorageAvailability(ctx, remainingMb)
         if (storageCheck is StorageCheckResult.Insufficient) {
             val msg = "⚠️ Low Storage: Only ${storageCheck.freeMb.toInt()} MB free to resume ${item.mediaTitle}."
@@ -631,23 +654,106 @@ object DownloadManager {
         }
 
         val targetFile = File(item.localFilePath)
+        val partFile = File(item.localFilePath + ".part")
+        val key = getDownloadKey(item.mediaId, item.episodeIndex)
 
+        // PATH 1 — guarded partial exists: true HTTP Range resume via the engine.
+        if (partFile.exists() && partFile.length() > 0L) {
+            _downloads.update { currentList ->
+                val mutableList = currentList.toMutableList()
+                val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
+                if (index != -1) {
+                    // downloadId = -1 keeps this item OUT of the system-DM polling loop
+                    // (poll filter requires downloadId != -1L); progress comes from the engine.
+                    mutableList[index] = mutableList[index].copy(
+                        downloadId = -1L,
+                        isPaused = false
+                    )
+                }
+                mutableList
+            }
+            saveToDisk()
+
+            HttpRangeResumeEngine.resume(
+                key = key,
+                url = url,
+                partFile = partFile,
+                client = com.streamhub.app.data.api.SharedHttpClient.streamingClient,
+                onProgress = { percent ->
+                    _downloads.update { currentList ->
+                        val mutableList = currentList.toMutableList()
+                        val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
+                        if (index != -1 && !mutableList[index].isCompleted) {
+                            mutableList[index] = mutableList[index].copy(progressPercent = percent.coerceIn(1, 99))
+                        }
+                        mutableList
+                    }
+                },
+                onFinished = { result ->
+                    if (result.completed && result.error == null) {
+                        // Atomic-ish finalize: replace any stale target, then promote the .part.
+                        if (targetFile.exists()) targetFile.delete()
+                        if (partFile.renameTo(targetFile)) {
+                            _downloads.update { currentList ->
+                                val mutableList = currentList.toMutableList()
+                                val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
+                                if (index != -1) {
+                                    mutableList[index] = mutableList[index].copy(
+                                        progressPercent = 100,
+                                        isCompleted = true,
+                                        isPaused = false,
+                                        downloadId = -1L,
+                                        resumeFromBytes = 0L,
+                                        fileSizeMb = targetFile.length() / (1024.0 * 1024.0)
+                                    )
+                                }
+                                mutableList
+                            }
+                            saveToDisk()
+                            appContext?.let { appCtx ->
+                                DownloadNotificationHelper.showCompleted(
+                                    context = appCtx,
+                                    downloadId = getNotificationId(item.mediaId, item.episodeIndex),
+                                    mediaTitle = item.mediaTitle,
+                                    episodeTitle = item.episodeTitle
+                                )
+                            }
+                        } else {
+                            Log.e(TAG, "Failed to promote .part to final file for ${item.mediaTitle}")
+                            markAsPaused(item)
+                        }
+                    } else {
+                        Log.w(TAG, "Resume engine stopped for ${item.mediaTitle}: ${result.error} (${result.bytesWritten}/${result.totalBytes} bytes)")
+                        // Keep the partial for the next resume attempt — only mark paused.
+                        _downloads.update { currentList ->
+                            val mutableList = currentList.toMutableList()
+                            val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
+                            if (index != -1) {
+                                mutableList[index] = mutableList[index].copy(
+                                    isPaused = true,
+                                    resumeFromBytes = result.bytesWritten
+                                )
+                            }
+                            mutableList
+                        }
+                        saveToDisk()
+                    }
+                }
+            )
+            return
+        }
+
+        // PATH 2 — no guarded partial: fresh system-DM enqueue.
+        // FIX: setDestinationUri is now ALWAYS set.
         try {
             val requestBuilder = SystemDownloadManager.Request(Uri.parse(url))
                 .setTitle("${item.mediaTitle} - ${item.episodeTitle}")
-                .setDescription("Resuming download...")
+                .setDescription("Downloading...")
                 .setNotificationVisibility(SystemDownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 .setAllowedNetworkTypes(SystemDownloadManager.Request.NETWORK_WIFI or SystemDownloadManager.Request.NETWORK_MOBILE)
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(true)
-
-            val partialBytes = if (targetFile.exists()) targetFile.length() else 0L
-            if (partialBytes > 0L) {
-                requestBuilder.addRequestHeader("Range", "bytes=$partialBytes-")
-                Log.i(TAG, "Resuming ${item.mediaTitle} from byte $partialBytes (Range header set)")
-            } else {
-                requestBuilder.setDestinationUri(Uri.fromFile(targetFile))
-            }
+                .setDestinationUri(Uri.fromFile(targetFile))
 
             val newDownloadId = systemDownloadManager?.enqueue(requestBuilder) ?: -1L
 
@@ -657,20 +763,19 @@ object DownloadManager {
                 if (index != -1) {
                     mutableList[index] = item.copy(
                         downloadId = newDownloadId,
-                        isPaused = false
+                        isPaused = false,
+                        resumeFromBytes = 0L
                     )
                 }
                 mutableList
             }
             saveToDisk()
             startProgressPolling()
-            Log.i(TAG, "Resumed download for ${item.mediaTitle} with new downloadId=$newDownloadId")
-            return
+            Log.i(TAG, "Restarted download for ${item.mediaTitle} with new downloadId=$newDownloadId")
         } catch (e: Exception) {
             Log.e(TAG, "Resume re-enqueue failed for ${item.mediaTitle}", e)
+            markAsPaused(item)
         }
-
-        markAsPaused(item)
     }
 
     private fun markAsPaused(item: DownloadedItem) {
@@ -722,6 +827,9 @@ object DownloadManager {
         val notifId = if (item.downloadId != -1L) item.downloadId else getNotificationId(item.mediaId, item.episodeIndex)
 
         try {
+            HttpRangeResumeEngine.cancel(getDownloadKey(item.mediaId, item.episodeIndex))
+            File(item.localFilePath + ".part").delete()
+
             if (item.downloadId != -1L) {
                 systemDownloadManager?.remove(item.downloadId)
             }
@@ -746,7 +854,7 @@ object DownloadManager {
             val parentDir = file.parentFile
             val baseName = file.nameWithoutExtension
             parentDir?.listFiles()?.forEach { sibling ->
-                if (sibling.name.startsWith(baseName) && (sibling.name.endsWith(".part") || sibling.name.endsWith(".temp"))) {
+                if (sibling.name.startsWith("$baseName.") && (sibling.name.endsWith(".part") || sibling.name.endsWith(".temp"))) {
                     sibling.delete()
                 }
             }

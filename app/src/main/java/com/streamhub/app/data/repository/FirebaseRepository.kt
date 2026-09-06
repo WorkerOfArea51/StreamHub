@@ -123,6 +123,8 @@ class FirebaseRepository private constructor() {
         attachFirestoreListener()
     }
 
+    fun refreshCatalog() = retry()
+
     fun resetAdminOperationState() {
         _adminOperationState.value = AdminOperationState.Idle
     }
@@ -270,29 +272,30 @@ class FirebaseRepository private constructor() {
         val docMap = mediaItemToMap(itemToSave)
         Log.d(TAG, "Writing media item ${itemToSave.id} to Firestore collection '$targetCollection'...")
 
-        // Primary collection write (movies, animes, web_series)
-        db.collection(targetCollection)
-            .document(itemToSave.id)
-            .set(docMap)
+        val batch = db.batch()
+        val targetRef = db.collection(targetCollection).document(itemToSave.id)
+        batch.set(targetRef, docMap)
+
+        // Clean up from other collections if category was moved/changed
+        for (col in ALL_COLLECTIONS) {
+            if (col != targetCollection) {
+                batch.delete(db.collection(col).document(itemToSave.id))
+            }
+        }
+
+        batch.commit()
             .addOnSuccessListener {
                 Log.d(TAG, "Successfully synced media item to Firestore collection '$targetCollection': ${itemToSave.id}")
                 _adminOperationState.value = AdminOperationState.Success()
             }
             .addOnFailureListener { e ->
-                Log.w(TAG, "Primary write to '$targetCollection' failed (check security rules): ${e.message}")
+                Log.w(TAG, "Batch write to '$targetCollection' failed: ${e.message}")
+                _adminOperationState.value = AdminOperationState.Error(e.message ?: "Write failed")
             }
-
-        // Clean up from other collections if category was moved/changed
-        for (col in ALL_COLLECTIONS) {
-            if (col != targetCollection) {
-                db.collection(col).document(itemToSave.id).delete()
-                    .addOnFailureListener { /* Ignore if document didn't exist in this collection */ }
-            }
-        }
     }
 
     /**
-     * Delete a media item from all collections.
+     * Delete a media item from all collections using an atomic batch.
      */
     fun deleteMediaItem(itemId: String) {
         _adminOperationState.value = AdminOperationState.Loading
@@ -303,13 +306,21 @@ class FirebaseRepository private constructor() {
             return
         }
 
+        val batch = db.batch()
         for (col in ALL_COLLECTIONS) {
-            db.collection(col).document(itemId).delete()
+            batch.delete(db.collection(col).document(itemId))
         }
 
-        _mediaCatalog.update { current -> current.filterNot { it.id == itemId } }
-        _adminOperationState.value = AdminOperationState.Success()
-        Log.d(TAG, "Successfully deleted media item $itemId across all collections")
+        batch.commit()
+            .addOnSuccessListener {
+                _mediaCatalog.update { current -> current.filterNot { it.id == itemId } }
+                _adminOperationState.value = AdminOperationState.Success()
+                Log.d(TAG, "Successfully deleted media item $itemId across all collections")
+            }
+            .addOnFailureListener { e ->
+                Log.w(TAG, "Batch delete for $itemId failed: ${e.message}")
+                _adminOperationState.value = AdminOperationState.Error(e.message ?: "Delete failed")
+            }
     }
 
     private fun loadInitialCatalog() {

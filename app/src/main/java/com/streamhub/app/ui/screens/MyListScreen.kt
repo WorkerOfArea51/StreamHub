@@ -90,11 +90,13 @@ import com.streamhub.app.data.models.PlaybackProgress
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.components.FolderSelectionDialog
 import com.streamhub.app.ui.components.MediaCard
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.streamhub.app.data.repository.CatalogState
+import com.streamhub.app.ui.components.AppErrorState
 import com.streamhub.app.ui.theme.AccentGold
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.CardBorderDark
-import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
@@ -128,6 +130,7 @@ fun MyListScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val catalogState by repository.catalogState.collectAsState()
     val catalog by repository.mediaCatalog.collectAsState()
     val myItemsMap by MyListManager.itemsFlow.collectAsState()
     val historyMap by WatchHistoryManager.historyFlow.collectAsState()
@@ -135,12 +138,12 @@ fun MyListScreen(
     val primaryColor = MaterialTheme.colorScheme.primary
 
     // View States
-    var selectedStatus by remember { mutableStateOf(MyListStatusCategory.ALL) }
-    var selectedSort by remember { mutableStateOf(MyListSortOption.RECENTLY_ADDED) }
-    var selectedType by remember { mutableStateOf(MyListTypeFilter.ALL) }
-    var selectedGenre by remember { mutableStateOf("All") }
-    var selectedCollection by remember { mutableStateOf("All") }
-    var isGridView by remember { mutableStateOf(true) }
+    var selectedStatus by rememberSaveable { mutableStateOf(MyListStatusCategory.ALL) }
+    var selectedSort by rememberSaveable { mutableStateOf(MyListSortOption.RECENTLY_ADDED) }
+    var selectedType by rememberSaveable { mutableStateOf(MyListTypeFilter.ALL) }
+    var selectedGenre by rememberSaveable { mutableStateOf("All") }
+    var selectedCollection by rememberSaveable { mutableStateOf("All") }
+    var isGridView by rememberSaveable { mutableStateOf(true) }
     var showSortMenu by remember { mutableStateOf(false) }
     var showNewCollectionDialog by remember { mutableStateOf(false) }
     var newCollectionName by remember { mutableStateOf("") }
@@ -402,13 +405,13 @@ fun MyListScreen(
                     val isSel = selectedType == t
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = if (isSel) Color(0x33FF3366) else SurfaceDark,
-                        border = BorderStroke(1.dp, if (isSel) PrimaryRed else CardBorderDark),
+                        color = if (isSel) primaryColor.copy(alpha = 0.2f) else SurfaceDark,
+                        border = BorderStroke(1.dp, if (isSel) primaryColor else CardBorderDark),
                         modifier = Modifier.clickable { selectedType = t }
                     ) {
                         Text(
                             text = t.label,
-                            color = if (isSel) PrimaryRed else TextSecondary,
+                            color = if (isSel) primaryColor else TextSecondary,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -490,7 +493,17 @@ fun MyListScreen(
         Spacer(modifier = Modifier.height(12.dp))
 
         // ── Main Content Area ──
-        if (finalDisplayList.isEmpty()) {
+        val currentCatalogState = catalogState
+        if (currentCatalogState is CatalogState.Error && finalDisplayList.isEmpty()) {
+            AppErrorState(
+                message = currentCatalogState.message,
+                onRetry = { repository.refreshCatalog() },
+                title = "Failed to load watchlist",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            )
+        } else if (finalDisplayList.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -764,7 +777,7 @@ fun MyListGridCard(
                             .fillMaxWidth()
                             .height(3.dp)
                             .align(Alignment.BottomCenter),
-                        color = PrimaryRed,
+                        color = MaterialTheme.colorScheme.primary,
                         trackColor = Color(0x44FFFFFF)
                     )
                 }
@@ -851,7 +864,7 @@ fun MyListRowItem(
                             .fillMaxWidth()
                             .height(3.dp)
                             .align(Alignment.BottomCenter),
-                        color = PrimaryRed,
+                        color = MaterialTheme.colorScheme.primary,
                         trackColor = Color(0x44FFFFFF)
                     )
                 }

@@ -56,6 +56,7 @@ object SearchHistoryManager {
     fun addQuery(query: String) {
         val trimmed = query.trim()
         if (trimmed.isBlank() || trimmed.startsWith("#")) return
+        if (_historyFlow.value.firstOrNull()?.equals(trimmed, ignoreCase = true) == true) return
 
         val current = _historyFlow.value.toMutableList()
         current.removeAll { it.equals(trimmed, ignoreCase = true) }

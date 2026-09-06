@@ -20,6 +20,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.streamhub.app.player.PlayerHolder
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -223,9 +225,11 @@ fun PlayerScreen(
     val activity = context as? Activity
     val scope = rememberCoroutineScope()
 
-    val uiState by viewModel.uiState.collectAsState()
-    val playerSettings by PlayerSettingsManager.settingsFlow.collectAsState()
-    val subConfig by SubtitleSettingsManager.subtitleConfig.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val playbackProgress by viewModel.playbackProgress.collectAsStateWithLifecycle()
+    val playerSettings by PlayerSettingsManager.settingsFlow.collectAsStateWithLifecycle()
+    val subConfig by SubtitleSettingsManager.subtitleConfig.collectAsStateWithLifecycle()
+    val activePlayer by PlayerHolder.currentPlayerFlow.collectAsStateWithLifecycle()
 
     var isPipMode by remember { mutableStateOf(activity?.isInPictureInPictureMode == true) }
     DisposableEffect(activity) {
@@ -721,7 +725,7 @@ fun PlayerScreen(
         val isSubOff = uiState.selectedSubtitleTrack.equals("Off", ignoreCase = true)
 
         // Live Subtitle Styling Engine — propagates custom font size, colors & outlines to dedicated SubtitleView
-        val exoPlayerInstance = viewModel.getPlayer()
+        val exoPlayerInstance = activePlayer ?: viewModel.getPlayer()
         LaunchedEffect(subConfig, rememberSubtitleViewRef, isSubOff) {
             val sv = rememberSubtitleViewRef ?: return@LaunchedEffect
             if (isSubOff) {
@@ -793,13 +797,13 @@ fun PlayerScreen(
                     factory = { ctx ->
                         PlayerView(ctx).apply {
                             useController = false
-                            player = viewModel.getPlayer()
+                            player = exoPlayerInstance
                             subtitleView?.visibility = android.view.View.GONE
                             rememberPlayerViewRef = this
                         }
                     },
                     update = { playerView ->
-                        playerView.player = viewModel.getPlayer()
+                        playerView.player = exoPlayerInstance
                         playerView.subtitleView?.visibility = android.view.View.GONE
                         rememberPlayerViewRef = playerView
                         // Standard/Cinema ratios: scale to fill the custom-ratio container Box.
@@ -1352,7 +1356,7 @@ fun PlayerScreen(
 
             // mpvEx Horizontal Swipe Scrubbing HUD Card
             if (isScrubbing) {
-                val deltaMs = scrubbingPositionMs - uiState.currentPositionMs
+                val deltaMs = scrubbingPositionMs - playbackProgress.currentPositionMs
                 val deltaText = if (deltaMs >= 0) "+${formatMpvTime(deltaMs)}" else "-${formatMpvTime(-deltaMs)}"
                 Surface(
                     shape = RoundedCornerShape(16.dp),
@@ -1447,8 +1451,8 @@ fun PlayerScreen(
         val nextEpIndex = uiState.currentEpisodeIndex + 1
         val nextEp = if (nextEpIndex in episodes.indices) episodes[nextEpIndex] else null
         val nextEpThresholdSec = playerSettings.nextEpisodeThresholdSeconds
-        val remainingSeconds = if (uiState.durationMs > 0L) {
-            ((uiState.durationMs - uiState.currentPositionMs) / 1000L).toInt().coerceAtLeast(0)
+        val remainingSeconds = if (playbackProgress.durationMs > 0L) {
+            ((playbackProgress.durationMs - playbackProgress.currentPositionMs) / 1000L).toInt().coerceAtLeast(0)
         } else 0
 
         val showNextEpCountdown = nextEp != null &&
@@ -2027,9 +2031,9 @@ fun PlayerScreen(
 
                         // Row B: High-Precision mpvEx Seekbar with Timers and Thumbnails
                         MpvSeekbar(
-                            currentPositionMs = uiState.currentPositionMs,
-                            durationMs = uiState.durationMs,
-                            bufferedPositionMs = uiState.bufferedPositionMs,
+                            currentPositionMs = playbackProgress.currentPositionMs,
+                            durationMs = playbackProgress.durationMs,
+                            bufferedPositionMs = playbackProgress.bufferedPositionMs,
                             onSeek = { viewModel.seekTo(it) },
                             thumbnailBitmap = scrubberThumbnailBitmap,
                             sourceUrl = uiState.resolvedStreamUrl,
@@ -2177,8 +2181,8 @@ fun PlayerScreen(
         // 9. Frame Navigation Modal Sheet
         if (showFrameNavSheet) {
             FrameNavigationSheet(
-                currentPositionMs = uiState.currentPositionMs,
-                durationMs = uiState.durationMs,
+                currentPositionMs = playbackProgress.currentPositionMs,
+                durationMs = playbackProgress.durationMs,
                 onSeekTo = { viewModel.seekTo(it) },
                 onStepBackward = { viewModel.seekBackward(it) },
                 onStepForward = { viewModel.seekForward(it) },
@@ -2314,7 +2318,7 @@ fun PlayerScreen(
                 contentAlignment = Alignment.TopEnd
             ) {
                 StatsForNerdsOverlay(
-                    player = viewModel.getPlayer(),
+                    player = exoPlayerInstance,
                     uiState = uiState,
                     onDismiss = { showStatsForNerds = false }
                 )

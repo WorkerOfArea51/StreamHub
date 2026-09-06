@@ -17,6 +17,13 @@ import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 import java.security.SecureRandom
 
+/** Outcome of a startup voucher revalidation — distinguishes revocation from inconclusive checks. */
+sealed class VoucherStatusCheck {
+    data class Active(val voucher: VipVoucher) : VoucherStatusCheck()
+    object Revoked : VoucherStatusCheck()
+    data class VerificationFailed(val reason: String) : VoucherStatusCheck()
+}
+
 /**
  * High-Security 1-Device 30-Day VIP Voucher Engine for StreamHub.
  *
@@ -127,62 +134,63 @@ object VoucherManager {
 
         runCatching {
             val docRef = db.collection(COLLECTION_VOUCHERS).document(cleanCode)
-            val snapshot = Tasks.await(docRef.get())
-
-            if (!snapshot.exists()) {
-                Log.w(TAG, "Voucher $cleanCode does not exist")
-                return@withContext VoucherVerificationResult.InvalidCode
-            }
-
-            val voucher = mapToVoucher(snapshot.data ?: emptyMap(), cleanCode)
-
-            when (voucher.status) {
-                VipVoucher.STATUS_AVAILABLE -> {
-                    // First-time activation: bind to this phone and start 30-day clock
-                    val expiresAt = now + (voucher.durationDays.toLong() * 24 * 60 * 60 * 1000L)
-                    val updatedVoucher = voucher.copy(
-                        status = VipVoucher.STATUS_ACTIVE,
-                        activatedAt = now,
-                        expiresAt = expiresAt,
-                        boundDeviceId = deviceId,
-                        deviceModel = getDeviceModel()
-                    )
-
-                    Tasks.await(docRef.set(voucherToMap(updatedVoucher)))
-                    Log.i(TAG, "Voucher $cleanCode successfully activated and bound to device $deviceId")
-                    VoucherVerificationResult.Success(
-                        daysRemaining = voucher.durationDays,
-                        isReactivation = false
-                    )
+            Tasks.await(db.runTransaction { transaction ->
+                val snapshot = transaction.get(docRef)
+                if (!snapshot.exists()) {
+                    Log.w(TAG, "Voucher $cleanCode does not exist")
+                    return@runTransaction VoucherVerificationResult.InvalidCode
                 }
 
-                VipVoucher.STATUS_ACTIVE -> {
-                    // Check if 30 days have elapsed
-                    if (now >= voucher.expiresAt) {
-                        Log.i(TAG, "Voucher $cleanCode has expired. Purging from Firestore.")
-                        Tasks.await(docRef.delete())
-                        VoucherVerificationResult.Expired
-                    } else if (voucher.boundDeviceId == deviceId) {
-                        // Same physical device returning after clear data or reinstall
-                        val daysRemaining = (((voucher.expiresAt - now) / (1000L * 60 * 60 * 24L)).toInt()).coerceAtLeast(1)
-                        Log.i(TAG, "Voucher $cleanCode reactivated on same device. Days remaining: $daysRemaining")
-                        VoucherVerificationResult.Success(
-                            daysRemaining = daysRemaining,
-                            isReactivation = true
+                val voucher = mapToVoucher(snapshot.data ?: emptyMap(), cleanCode)
+
+                when (voucher.status) {
+                    VipVoucher.STATUS_AVAILABLE -> {
+                        // First-time activation: bind to this phone and start 30-day clock
+                        val expiresAt = now + (voucher.durationDays.toLong() * 24 * 60 * 60 * 1000L)
+                        val updatedVoucher = voucher.copy(
+                            status = VipVoucher.STATUS_ACTIVE,
+                            activatedAt = now,
+                            expiresAt = expiresAt,
+                            boundDeviceId = deviceId,
+                            deviceModel = getDeviceModel()
                         )
-                    } else {
-                        // Different device attempting to redeem — anti-sharing block!
-                        Log.w(TAG, "Voucher $cleanCode sharing blocked! Bound to ${voucher.boundDeviceId}, attempted by $deviceId")
-                        VoucherVerificationResult.BoundToAnotherDevice
+
+                        transaction.set(docRef, voucherToMap(updatedVoucher))
+                        Log.i(TAG, "Voucher $cleanCode successfully activated and bound to device $deviceId")
+                        VoucherVerificationResult.Success(
+                            daysRemaining = voucher.durationDays,
+                            isReactivation = false
+                        )
+                    }
+
+                    VipVoucher.STATUS_ACTIVE -> {
+                        // Check if 30 days have elapsed
+                        if (now >= voucher.expiresAt) {
+                            Log.i(TAG, "Voucher $cleanCode has expired. Purging from Firestore.")
+                            transaction.delete(docRef)
+                            VoucherVerificationResult.Expired
+                        } else if (voucher.boundDeviceId == deviceId) {
+                            // Same physical device returning after clear data or reinstall
+                            val daysRemaining = (((voucher.expiresAt - now) / (1000L * 60 * 60 * 24L)).toInt()).coerceAtLeast(1)
+                            Log.i(TAG, "Voucher $cleanCode reactivated on same device. Days remaining: $daysRemaining")
+                            VoucherVerificationResult.Success(
+                                daysRemaining = daysRemaining,
+                                isReactivation = true
+                            )
+                        } else {
+                            // Different device attempting to redeem — anti-sharing block!
+                            Log.w(TAG, "Voucher $cleanCode sharing blocked! Bound to ${voucher.boundDeviceId}, attempted by $deviceId")
+                            VoucherVerificationResult.BoundToAnotherDevice
+                        }
+                    }
+
+                    else -> {
+                        // Expired or invalid status — purge and reject
+                        transaction.delete(docRef)
+                        VoucherVerificationResult.Expired
                     }
                 }
-
-                else -> {
-                    // Expired or invalid status — purge and reject
-                    Tasks.await(docRef.delete())
-                    VoucherVerificationResult.Expired
-                }
-            }
+            })
         }.getOrElse { e ->
             Log.e(TAG, "Error redeeming voucher $cleanCode", e)
             VoucherVerificationResult.Error(e.localizedMessage ?: "Failed to verify access code")
@@ -191,32 +199,57 @@ object VoucherManager {
 
     /**
      * Checks if this device currently has an active valid voucher on Firestore.
-     * Used on app startup to verify that access has not been revoked or expired.
+     * Backward-compatible wrapper: null means "no active voucher OR inconclusive" —
+     * callers that need the distinction must use [checkDeviceActiveVoucherStatus].
      */
-    suspend fun checkDeviceActiveVoucher(context: Context): VipVoucher? = withContext(Dispatchers.IO) {
-        val db = firestore ?: return@withContext null
-        val deviceId = getHashedDeviceId(context)
-        val now = System.currentTimeMillis()
+    suspend fun checkDeviceActiveVoucher(context: Context): VipVoucher? =
+        when (val check = checkDeviceActiveVoucherStatus(context)) {
+            is VoucherStatusCheck.Active -> check.voucher
+            VoucherStatusCheck.Revoked,
+            is VoucherStatusCheck.VerificationFailed -> null
+        }
 
-        runCatching {
-            val query = db.collection(COLLECTION_VOUCHERS)
-                .whereEqualTo("boundDeviceId", deviceId)
-                .whereEqualTo("status", VipVoucher.STATUS_ACTIVE)
-                .get()
+    /**
+     * CRITICAL FIX (offline lockout): sealed outcome so the caller can lock the app ONLY
+     * on an affirmative server verdict. Offline / timeout / Firestore failure returns
+     * VerificationFailed and must never wipe the local unlock state.
+     *
+     * Schema: collection "vip_vouchers", document ID = voucher code,
+     * device binding in field "boundDeviceId", status in "status".
+     */
+    suspend fun checkDeviceActiveVoucherStatus(context: Context): VoucherStatusCheck =
+        withContext(Dispatchers.IO) {
+            val db = firestore
+                ?: return@withContext VoucherStatusCheck.VerificationFailed("Firestore unavailable")
+            val deviceId = getHashedDeviceId(context)
+            val now = System.currentTimeMillis()
 
-            val snapshot = Tasks.await(query)
-            for (doc in snapshot.documents) {
-                val voucher = mapToVoucher(doc.data ?: emptyMap(), doc.id)
-                if (now >= voucher.expiresAt) {
-                    // Purge expired voucher
-                    doc.reference.delete()
-                } else {
-                    return@withContext voucher
+            try {
+                val query = db.collection(COLLECTION_VOUCHERS)
+                    .whereEqualTo("boundDeviceId", deviceId)
+                    .whereEqualTo("status", VipVoucher.STATUS_ACTIVE)
+                    .get()
+
+                // Bounded wait: without a timeout, an offline device hangs this check
+                // indefinitely (Firestore retries transparently under the hood).
+                val snapshot = Tasks.await(query, 10, java.util.concurrent.TimeUnit.SECONDS)
+
+                for (doc in snapshot.documents) {
+                    val voucher = mapToVoucher(doc.data ?: emptyMap(), doc.id)
+                    if (now >= voucher.expiresAt) {
+                        // Purge expired voucher
+                        doc.reference.delete()
+                    } else {
+                        return@withContext VoucherStatusCheck.Active(voucher)
+                    }
                 }
+                VoucherStatusCheck.Revoked
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                VoucherStatusCheck.VerificationFailed(e.localizedMessage ?: e.javaClass.simpleName)
             }
-            null
-        }.getOrNull()
-    }
+        }
 
     /**
      * Deletes a voucher permanently from Firestore (called from Creator Studio).

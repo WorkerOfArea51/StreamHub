@@ -107,3 +107,17 @@ data class PlaybackProgress(
     val seasonNumber: Int = 1,
     val isCompleted: Boolean = false
 )
+
+/**
+ * Canonical helper for category matching across StreamHub.
+ * Safely handles plurals and synonyms (e.g. MOVIE/MOVIES, SERIES/WEB_SERIES).
+ */
+fun MediaItem.matchesCategory(targetCategory: String): Boolean {
+    return when (targetCategory.uppercase()) {
+        "ALL" -> true
+        "ANIME" -> category.equals("ANIME", ignoreCase = true)
+        "MOVIE", "MOVIES" -> category.equals("MOVIE", ignoreCase = true) || category.equals("MOVIES", ignoreCase = true)
+        "SERIES", "WEB_SERIES" -> category.equals("SERIES", ignoreCase = true) || category.equals("WEB_SERIES", ignoreCase = true)
+        else -> category.equals(targetCategory, ignoreCase = true)
+    }
+}

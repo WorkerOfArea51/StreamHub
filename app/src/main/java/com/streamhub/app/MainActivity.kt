@@ -36,11 +36,13 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -434,11 +436,6 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
         navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
     }
 
-    val playViaDetails: (com.streamhub.app.data.models.MediaItem, Int) -> Unit = { media, episodeIndex ->
-        navController.navigate(Screen.Details.createRoute(media.id))
-        navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
-    }
-
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             bottomBar = {
@@ -516,9 +513,9 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                 HomeScreen(
                     repository = repository,
                     onMediaClick = { media ->
-                        navController.navigate(Screen.Details.createRoute(media.id))
+                        navController.navigate(Screen.Details.createRoute(media.id)) { launchSingleTop = true }
                     },
-                    onPlayEpisode = playViaDetails,
+                    onPlayEpisode = safePlayEpisode,
                     onNavigateToHistory = {
                         navController.navigate(Screen.History.route)
                     }
@@ -529,7 +526,7 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                 SearchScreen(
                     repository = repository,
                     onMediaClick = { media ->
-                        navController.navigate(Screen.Details.createRoute(media.id))
+                        navController.navigate(Screen.Details.createRoute(media.id)) { launchSingleTop = true }
                     }
                 )
             }
@@ -544,7 +541,7 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                 MyListScreen(
                     repository = repository,
                     onMediaClick = { media ->
-                        navController.navigate(Screen.Details.createRoute(media.id))
+                        navController.navigate(Screen.Details.createRoute(media.id)) { launchSingleTop = true }
                     }
                 )
             }
@@ -571,9 +568,9 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                     repository = repository,
                     onBackClick = { navController.popBackStack() },
                     onMediaClick = { media ->
-                        navController.navigate(Screen.Details.createRoute(media.id))
+                        navController.navigate(Screen.Details.createRoute(media.id)) { launchSingleTop = true }
                     },
-                    onPlayEpisode = playViaDetails
+                    onPlayEpisode = safePlayEpisode
                 )
             }
 
@@ -635,23 +632,37 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                     navArgument("episodeIndex") { type = NavType.IntType }
                 )
             ) { backStackEntry ->
+                val activity = androidx.compose.ui.platform.LocalContext.current as? MainActivity
                 val playerViewModel: StreamPlayerViewModel = viewModel()
+                val playerRouteScope = rememberCoroutineScope()
+                DisposableEffect(playerViewModel, activity) {
+                    val collectJob = playerRouteScope.launch {
+                        playerViewModel.uiState.collect { state ->
+                            activity?.shouldAutoEnterPip = state.isPlaying
+                        }
+                    }
+                    onDispose {
+                        collectJob.cancel()
+                        activity?.shouldAutoEnterPip = false
+                    }
+                }
                 val rawMediaId = backStackEntry.arguments?.getString("mediaId") ?: ""
                 val mediaId = runCatching { java.net.URLDecoder.decode(rawMediaId, "UTF-8") }.getOrDefault(rawMediaId)
                 val episodeIndex = backStackEntry.arguments?.getInt("episodeIndex") ?: 0
                 val catalogState by repository.catalogState.collectAsState()
                 val catalog by repository.mediaCatalog.collectAsState()
+                val downloadsList by com.streamhub.app.data.DownloadManager.downloads.collectAsState()
 
                 // FIX: Handle offline playback — if mediaId starts with "offline:", construct
                 // a MediaItem from the DownloadManager instead of looking up the catalog.
                 // This allows playing downloaded files without internet (true offline mode).
-                val mediaItem = remember(mediaId, catalog) {
+                val mediaItem = remember(mediaId, catalog, downloadsList) {
                     if (mediaId.startsWith("offline:")) {
                         // Format: offline:{mediaId}:{episodeIndex}
                         val parts = mediaId.removePrefix("offline:").split(":")
                         val realMediaId = parts.getOrNull(0) ?: ""
                         val epIdx = parts.getOrNull(1)?.toIntOrNull() ?: 0
-                        com.streamhub.app.data.DownloadManager.downloads.value
+                        downloadsList
                             .firstOrNull { it.mediaId == realMediaId && it.episodeIndex == epIdx }
                             ?.let { downloadItem ->
                                 val localEpisode = com.streamhub.app.data.models.Episode(

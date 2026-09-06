@@ -117,6 +117,10 @@ import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.components.AdminEditorDialog
 import com.streamhub.app.ui.components.MediaCard
 import com.streamhub.app.ui.components.MediaInfoBadges
+import com.streamhub.app.data.repository.CatalogState
+import com.streamhub.app.ui.components.AppEmptyState
+import com.streamhub.app.ui.components.AppErrorState
+import com.streamhub.app.ui.components.AppLoadingState
 import com.streamhub.app.ui.theme.AccentGold
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
@@ -240,19 +244,27 @@ fun DetailsScreen(
         }
     }
 
+    val catalogState by repository.catalogState.collectAsState()
+
     if (mediaItem == null) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(BackgroundDark),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Content not found", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(12.dp))
-                TextButton(onClick = onBackClick) {
-                    Text("Go Back", color = PrimaryRed)
-                }
+        when (val state = catalogState) {
+            is CatalogState.Loading -> {
+                AppLoadingState(message = "Loading details…")
+            }
+            is CatalogState.Error -> {
+                AppErrorState(
+                    message = state.message,
+                    onRetry = { repository.refreshCatalog() },
+                    title = "Failed to load content"
+                )
+            }
+            is CatalogState.Ready -> {
+                AppEmptyState(
+                    title = "Content Not Found",
+                    subtitle = "This title may have been moved or removed from the catalog.",
+                    ctaLabel = "Go Back",
+                    onCtaClick = onBackClick
+                )
             }
         }
         return

@@ -17,9 +17,6 @@ object Secrets {
     /** MyAnimeList v2 client ID. Sent as X-MAL-CLIENT-ID header. */
     val MAL_CLIENT_ID: String get() = BuildConfig.MAL_CLIENT_ID
 
-    /** MyAnimeList v2 client secret. Empty for public clients (PKCE flow). */
-    val MAL_CLIENT_SECRET: String get() = BuildConfig.MAL_CLIENT_SECRET
-
     /** Master Admin password for Creator Studio unlock. */
     val ADMIN_MASTER_PASSWORD: String get() = BuildConfig.ADMIN_MASTER_PASSWORD
 

@@ -7,7 +7,6 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.util.Log
-import com.streamhub.app.player.StreamDownloadManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -127,7 +126,6 @@ object DownloadSettingsManager {
         scope.launch {
             Log.i(TAG, "Wi-Fi connected — auto-resuming paused and interrupted downloads...")
             runCatching {
-                StreamDownloadManager.resumeDownloads(appContext)
                 DownloadManager.resumeAllInterruptedDownloads(appContext)
             }.onFailure {
                 Log.e(TAG, "Failed to auto-resume downloads on Wi-Fi recovery", it)
@@ -139,11 +137,18 @@ object DownloadSettingsManager {
         scope.launch {
             Log.i(TAG, "Wi-Fi disconnected and downloadOverWifiOnly is enabled — pausing downloads...")
             runCatching {
-                StreamDownloadManager.pauseDownloads()
                 DownloadManager.pauseAllActiveDownloads()
             }.onFailure {
                 Log.e(TAG, "Failed to pause downloads on cellular switch", it)
             }
+        }
+    }
+
+    fun unregisterNetworkObserver() {
+        val connectivityManager = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        networkCallback?.let {
+            runCatching { connectivityManager.unregisterNetworkCallback(it) }
+            networkCallback = null
         }
     }
 }

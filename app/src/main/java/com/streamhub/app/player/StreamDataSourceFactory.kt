@@ -7,6 +7,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.cache.CacheDataSink
 import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.CacheKeyFactory
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import com.streamhub.app.data.api.SharedHttpClient
 
@@ -45,11 +46,23 @@ class StreamDataSourceFactory(
             .setFragmentSize(4 * 1024 * 1024L) // 4 MB fine-grained chunk fragments for fast seeking & cache persistence
     }
 
+    private val cacheKeyFactory = CacheKeyFactory { dataSpec ->
+        dataSpec.key ?: sanitizeCacheKey(dataSpec.uri)
+    }
+
+    private fun sanitizeCacheKey(uri: android.net.Uri): String {
+        val scheme = uri.scheme ?: "https"
+        val host = uri.host ?: ""
+        val path = uri.path ?: ""
+        return if (host.isNotEmpty()) "$scheme://$host$path" else uri.toString()
+    }
+
     private val cachedHttpDataSourceFactory by lazy {
         CacheDataSource.Factory()
             .setCache(simpleCache)
             .setUpstreamDataSourceFactory(okHttpDataSourceFactory)
             .setCacheWriteDataSinkFactory(cacheDataSinkFactory)
+            .setCacheKeyFactory(cacheKeyFactory)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     }
 

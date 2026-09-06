@@ -121,7 +121,7 @@ object StreamCacheManager {
     }
 
     fun removeResource(key: String) {
-        cacheLock.read {
+        cacheLock.write {
             val cache = simpleCache ?: return
             try {
                 cache.removeResource(key)

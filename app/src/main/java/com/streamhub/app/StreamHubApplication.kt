@@ -16,7 +16,6 @@ import com.streamhub.app.data.UserStatsManager
 import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.YoutubeStreamExtractor
 import com.streamhub.app.player.StreamCacheManager
-import com.streamhub.app.player.StreamDownloadManager
 import com.streamhub.app.player.VideoThumbnailHelper
 import com.streamhub.app.ui.theme.ThemeManager
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -85,22 +84,21 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
         startBackgroundServices()
 
         // FIX: Track foreground/background transitions WITHOUT releasing caches on every stop.
-        // StreamDownloadManager / StreamCacheManager are kept warm so video resumes instantly.
+        // FIX: Track foreground/background transitions WITHOUT releasing caches on every stop.
+        // StreamCacheManager is kept warm so video resumes instantly.
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {
                 lastForegroundTimeMs = System.currentTimeMillis()
                 Log.d(TAG, "App returned to foreground — caches preserved")
                 runCatching { DownloadManager.resumeProgressPolling() }
-                runCatching { StreamDownloadManager.resumeDownloads(this@StreamHubApplication) }
                 runCatching { com.streamhub.app.data.UserTelemetryManager.onAppForegrounded() }
             }
 
             override fun onStop(owner: LifecycleOwner) {
                 val backgroundDuration = System.currentTimeMillis() - lastForegroundTimeMs
                 Log.d(TAG, "App moved to background (foreground lasted ${backgroundDuration}ms)")
-                // FIX: Only pause download progress and active downloads, do NOT wipe media caches.
+                // FIX: Only pause download progress polling, do NOT wipe media caches.
                 runCatching { DownloadManager.pauseProgressPolling() }
-                runCatching { StreamDownloadManager.pauseDownloads() }
                 runCatching { com.streamhub.app.data.UserTelemetryManager.onAppBackgrounded() }
             }
         })
@@ -123,7 +121,6 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
      */
     fun performEmergencyCacheFlush() {
         Log.w(TAG, "Emergency cache flush invoked by user/system pressure")
-        runCatching { StreamDownloadManager.release() }
         runCatching { StreamCacheManager.release() }
         runCatching { DownloadManager.pauseProgressPolling() }
     }
