@@ -315,11 +315,14 @@ object MetadataFetchManager {
         var youtubeTrailerId = ""
         var castList = ""
         var maturityRating = ""
+        var alternativeTitlesStr = ""
+
+        val videoLangs = "en,hi,ja,ko,es,fr,de,it,zh,te,ta,ml,kn,ru,ar,tr,th,id,vi,pl,pt,null"
 
         if (tmdbIdNum > 0) {
             try {
-                val appendParams = if (isMovie) "credits,videos,release_dates,images" else "credits,videos,content_ratings,images"
-                val detailUrl = "$TMDB_BASE/$detailType/$tmdbIdNum?append_to_response=$appendParams"
+                val appendParams = if (isMovie) "credits,videos,release_dates,images,alternative_titles" else "credits,videos,content_ratings,images,alternative_titles"
+                val detailUrl = "$TMDB_BASE/$detailType/$tmdbIdNum?append_to_response=$appendParams&include_video_language=$videoLangs"
                 val detailReq = Request.Builder().url(detailUrl).header("Accept", "application/json").build()
 
                 httpClient.newCall(detailReq).execute().use { dResp ->
@@ -475,6 +478,57 @@ object MetadataFetchManager {
                                 }
                             }
 
+                            // Secondary fallback if trailer is still blank
+                            if (youtubeTrailerId.isBlank()) {
+                                try {
+                                    val origLang = dJson.optString("original_language", "").trim()
+                                    val langParam = if (origLang.isNotBlank()) "$origLang,en,null" else "null"
+                                    val fbUrl = "$TMDB_BASE/$detailType/$tmdbIdNum/videos?include_video_language=$langParam"
+                                    val fbReq = Request.Builder().url(fbUrl).header("Accept", "application/json").build()
+                                    httpClient.newCall(fbReq).execute().use { fbResp ->
+                                        if (fbResp.isSuccessful) {
+                                            val fbBody = fbResp.body?.string()
+                                            if (!fbBody.isNullOrBlank()) {
+                                                val fbResults = JSONObject(fbBody).optJSONArray("results")
+                                                if (fbResults != null && fbResults.length() > 0) {
+                                                    for (vi in 0 until fbResults.length()) {
+                                                        val vObj = fbResults.getJSONObject(vi)
+                                                        val site = vObj.optString("site", "")
+                                                        val keyStr = vObj.optString("key", "")
+                                                        if (site.equals("YouTube", ignoreCase = true) && keyStr.isNotBlank()) {
+                                                            youtubeTrailerId = keyStr
+                                                            break
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Fallback video fetch failed: ${e.message}")
+                                }
+                            }
+
+                            // Extract alternative titles / synonyms
+                            val altTitlesList = mutableListOf<String>()
+                            if (originalTitle.isNotBlank() && !originalTitle.equals(title, ignoreCase = true)) {
+                                altTitlesList.add(originalTitle)
+                            }
+                            val altObj = dJson.optJSONObject("alternative_titles")
+                            val altArr = if (isMovie) altObj?.optJSONArray("titles") else altObj?.optJSONArray("results")
+                            if (altArr != null && altArr.length() > 0) {
+                                for (ai in 0 until altArr.length()) {
+                                    val aTitle = altArr.getJSONObject(ai).optString("title", "").trim()
+                                        .ifBlank { altArr.getJSONObject(ai).optString("name", "").trim() }
+                                    if (aTitle.isNotBlank() && !aTitle.equals(title, ignoreCase = true) && aTitle !in altTitlesList) {
+                                        altTitlesList.add(aTitle)
+                                    }
+                                }
+                            }
+                            if (altTitlesList.isNotEmpty()) {
+                                alternativeTitlesStr = altTitlesList.distinct().take(6).joinToString(", ")
+                            }
+
                             // Multi-Season Specific Overrides (Poster, Backdrop Still, Synopsis, Release Date, Trailer)
                             val hasExplicitSeason = cleanQuery.contains("Season", ignoreCase = true) || 
                                                     cleanQuery.contains(Regex("(?i)\\bS\\d+\\b")) ||
@@ -520,7 +574,7 @@ object MetadataFetchManager {
 
                                 // Fetch Season-Specific Details (Episodes with Stills, Poster & Trailer)
                                 try {
-                                    val sDetailUrl = "$TMDB_BASE/tv/$tmdbIdNum/season/$effectiveSeason?append_to_response=videos,images"
+                                    val sDetailUrl = "$TMDB_BASE/tv/$tmdbIdNum/season/$effectiveSeason?append_to_response=videos,images&include_video_language=$videoLangs"
                                     val sDetailReq = Request.Builder().url(sDetailUrl).header("Accept", "application/json").build()
                                     httpClient.newCall(sDetailReq).execute().use { sResp ->
                                         if (sResp.isSuccessful) {
@@ -633,7 +687,7 @@ object MetadataFetchManager {
             duration = duration,
             status = status,
             totalEpisodes = totalEpisodes,
-            alternativeTitles = if (originalTitle.isNotBlank() && !originalTitle.equals(title, ignoreCase = true)) originalTitle else "",
+            alternativeTitles = if (alternativeTitlesStr.isNotBlank()) alternativeTitlesStr else if (originalTitle.isNotBlank() && !originalTitle.equals(title, ignoreCase = true)) originalTitle else "",
             tmdbId = if (tmdbIdNum > 0) tmdbIdNum.toString() else "",
             castList = castList,
             youtubeTrailerId = youtubeTrailerId,
@@ -1083,6 +1137,11 @@ object MetadataFetchManager {
                             tmdbId = if (item.tmdbId.isBlank()) meta.tmdbId else item.tmdbId,
                             malId = if (item.malId.isBlank()) meta.malId else item.malId,
                             trailerId = if (item.trailerId.isBlank()) meta.youtubeTrailerId else item.trailerId,
+                            synonyms = if (item.synonyms.isBlank()) meta.alternativeTitles else item.synonyms,
+                            castList = if (item.castList.isEmpty() && meta.castList.isNotBlank()) meta.castList.split(", ").filter { it.isNotBlank() } else item.castList,
+                            source = if (item.source.isBlank()) meta.source else item.source,
+                            premiered = if (item.premiered.isBlank() && meta.releaseYear > 0) meta.releaseYear.toString() else item.premiered,
+                            totalEpisodes = if (item.totalEpisodes.isBlank()) meta.totalEpisodes else item.totalEpisodes,
                             updatedAt = System.currentTimeMillis()
                         )
                         Result.success(repairedItem)

@@ -111,7 +111,8 @@ fun MetadataInspectorDialog(
             item.description.isBlank() ||
             item.description == "No synopsis available." ||
             item.posterUrl.isBlank() ||
-            item.rating.isBlank()
+            item.rating.isBlank() ||
+            item.trailerId.isBlank()
         }
     }
 
@@ -515,11 +516,13 @@ private fun InspectorItemRow(
     val genreBroken = isGenreBroken(item.genres)
     val hasSynopsis = item.description.isNotBlank() && item.description != "No synopsis available."
     val hasPoster = item.posterUrl.isNotBlank()
+    val hasTrailer = item.trailerId.isNotBlank()
+    val needsAttention = genreBroken || !hasTrailer || !hasSynopsis || !hasPoster
 
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = Color(0xFF181824),
-        border = BorderStroke(1.dp, if (genreBroken) Color(0x66FF9800) else CardBorderDark),
+        border = BorderStroke(1.dp, if (needsAttention) Color(0x66FF9800) else CardBorderDark),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -591,6 +594,12 @@ private fun InspectorItemRow(
                         BadgeTag("⚠️ No Poster", Color(0xFFEF4444))
                     }
 
+                    if (!hasTrailer) {
+                        BadgeTag("⚠️ No Trailer", Color(0xFFFF9800))
+                    } else {
+                        BadgeTag("🎬 Trailer", Color(0xFF10B981))
+                    }
+
                     if (item.malId.isNotBlank()) {
                         BadgeTag("MAL: ${item.malId}", Color(0xFF64748B))
                     } else if (item.tmdbId.isNotBlank()) {
@@ -605,7 +614,7 @@ private fun InspectorItemRow(
             Button(
                 onClick = onQuickRepair,
                 enabled = !isRepairing,
-                colors = ButtonDefaults.buttonColors(containerColor = if (genreBroken) Color(0xFF7C4DFF) else Color(0xFF28283C)),
+                colors = ButtonDefaults.buttonColors(containerColor = if (needsAttention) Color(0xFF7C4DFF) else Color(0xFF28283C)),
                 shape = RoundedCornerShape(8.dp),
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
             ) {
@@ -617,14 +626,14 @@ private fun InspectorItemRow(
                     )
                 } else {
                     Icon(
-                        imageVector = if (genreBroken) Icons.Default.AutoFixHigh else Icons.Default.Refresh,
+                        imageVector = if (needsAttention) Icons.Default.AutoFixHigh else Icons.Default.Refresh,
                         contentDescription = "Fix",
                         tint = Color.White,
                         modifier = Modifier.size(13.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = if (genreBroken) "Fix" else "Sync",
+                        text = if (needsAttention) "Fix" else "Sync",
                         color = Color.White,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold

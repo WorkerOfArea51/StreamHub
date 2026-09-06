@@ -1480,13 +1480,18 @@ fun AdminEditorDialog(
                             // 1. Metadata Health Inspector Hero Card
                             val catalog by FirebaseRepository.getInstance().mediaCatalog.collectAsState()
                             val brokenGenresCount = remember(catalog) { catalog.count { isGenreBroken(it.genres) } }
-                            val incompleteCount = remember(catalog) {
+                            val missingTrailersCount = remember(catalog) { catalog.count { it.trailerId.isBlank() } }
+                            val totalIssues = remember(catalog) {
                                 catalog.count {
-                                    it.description.isBlank() || it.description == "No synopsis available." || it.posterUrl.isBlank() || it.rating.isBlank()
+                                    isGenreBroken(it.genres) ||
+                                    it.description.isBlank() ||
+                                    it.description == "No synopsis available." ||
+                                    it.posterUrl.isBlank() ||
+                                    it.rating.isBlank() ||
+                                    it.trailerId.isBlank()
                                 }
                             }
-                            val totalIssues = brokenGenresCount + incompleteCount
-                            val healthScore = remember(catalog) {
+                            val healthScore = remember(catalog, totalIssues) {
                                 if (catalog.isEmpty()) 100 else (((catalog.size - totalIssues).coerceAtLeast(0).toFloat() / catalog.size.toFloat()) * 100).toInt()
                             }
 
@@ -1536,7 +1541,7 @@ fun AdminEditorDialog(
                                                 }
                                             }
                                             Text(
-                                                text = if (totalIssues > 0) "$brokenGenresCount shows have generic/missing genres" else "All ${catalog.size} shows have healthy, complete metadata",
+                                                text = if (totalIssues > 0) "$totalIssues shows have missing trailers, genres or specs" else "All ${catalog.size} shows have healthy, complete metadata",
                                                 color = if (totalIssues > 0) Color(0xFFFFB74D) else TextSecondary,
                                                 fontSize = 12.sp
                                             )
@@ -1546,7 +1551,7 @@ fun AdminEditorDialog(
                                     Spacer(modifier = Modifier.height(10.dp))
 
                                     Text(
-                                        text = "Scan all shows across your catalog, detect broken/missing genres, and auto-repair them from TMDb/MAL with a single tap.",
+                                        text = "Scan all shows across your catalog, detect missing YouTube trailers, broken genres, and incomplete specs, and auto-repair them from TMDb/MAL with a single tap.",
                                         color = TextSecondary,
                                         fontSize = 12.sp,
                                         lineHeight = 16.sp
