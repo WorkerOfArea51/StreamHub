@@ -270,6 +270,7 @@ fun DetailsScreen(
     // High-Res Cinematic Backdrop Image (Prioritize TMDB Banner -> YouTube MaxRes -> Poster)
     val backdropUrl = remember(mediaItem.bannerUrl, mediaItem.trailerId, mediaItem.posterUrl) {
         val cleanTrailerId = when {
+            mediaItem.trailerId.isBlank() || mediaItem.trailerId.equals("null", ignoreCase = true) -> ""
             mediaItem.trailerId.contains("v=") -> mediaItem.trailerId.substringAfter("v=").substringBefore("&")
             mediaItem.trailerId.contains("youtu.be/") -> mediaItem.trailerId.substringAfter("youtu.be/").substringBefore("?")
             else -> mediaItem.trailerId.trim()
@@ -406,6 +407,7 @@ fun DetailsScreen(
                 val rawId = mediaItem.trailerId.trim()
                 val cleanTrailerId = remember(rawId) {
                     when {
+                        rawId.isBlank() || rawId.equals("null", ignoreCase = true) -> ""
                         rawId.contains("v=") -> rawId.substringAfter("v=").substringBefore("&")
                         rawId.contains("youtu.be/") -> rawId.substringAfter("youtu.be/").substringBefore("?")
                         else -> rawId
@@ -753,9 +755,10 @@ fun DetailsScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Characters & Voice Actors BELOW Synopsis
+                    // Cast & Voice Actors BELOW Synopsis
                     if (mediaItem.castList.isNotEmpty()) {
-                        Text("CHARACTERS & VOICE ACTORS", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        val castHeader = if (mediaItem.category.equals("Anime", ignoreCase = true)) "VOICE CAST" else "TOP CAST"
+                        Text(castHeader, color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(6.dp))
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(mediaItem.castList) { castName ->
@@ -1088,7 +1091,7 @@ fun DetailsScreen(
                         if (mediaItem.source.isNotEmpty()) InfoDetailRow("Source", mediaItem.source)
                         if (mediaItem.duration.isNotEmpty()) InfoDetailRow("Duration", mediaItem.duration)
                         if (isAnime && mediaItem.malId.isNotEmpty()) InfoDetailRow("MAL ID", mediaItem.malId)
-                        if (mediaItem.trailerId.isNotEmpty()) InfoDetailRow("YouTube Trailer ID", mediaItem.trailerId)
+                        if (mediaItem.trailerId.isNotBlank() && !mediaItem.trailerId.equals("null", ignoreCase = true)) InfoDetailRow("YouTube Trailer ID", mediaItem.trailerId)
                         if (mediaItem.tmdbId.isNotEmpty()) InfoDetailRow("TMDB ID", mediaItem.tmdbId)
                     }
                 }

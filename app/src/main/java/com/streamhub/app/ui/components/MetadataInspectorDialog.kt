@@ -70,7 +70,7 @@ fun isGenreBroken(genres: List<String>): Boolean {
 fun getMediaItemIssues(item: MediaItem): List<MetadataIssueType> {
     val issues = mutableListOf<MetadataIssueType>()
     if (isGenreBroken(item.genres)) issues.add(MetadataIssueType.GENRE)
-    if (item.trailerId.isBlank()) issues.add(MetadataIssueType.TRAILER)
+    if (item.trailerId.isBlank() || item.trailerId.equals("null", ignoreCase = true)) issues.add(MetadataIssueType.TRAILER)
     if (item.description.isBlank() || item.description == "No synopsis available.") issues.add(MetadataIssueType.SYNOPSIS)
     if (item.posterUrl.isBlank()) issues.add(MetadataIssueType.POSTER)
     if (item.bannerUrl.isBlank() || item.bannerUrl == item.posterUrl) issues.add(MetadataIssueType.BACKDROP)
@@ -141,7 +141,7 @@ fun MetadataInspectorDialog(
     }
 
     val brokenGenresCount = remember(catalog) { catalog.count { isGenreBroken(it.genres) } }
-    val noTrailerCount = remember(catalog) { catalog.count { it.trailerId.isBlank() } }
+    val noTrailerCount = remember(catalog) { catalog.count { it.trailerId.isBlank() || it.trailerId.equals("null", ignoreCase = true) } }
     val noCastCount = remember(catalog) { catalog.count { it.castList.isEmpty() } }
     val noSynopsisCount = remember(catalog) { catalog.count { it.description.isBlank() || it.description == "No synopsis available." } }
     val noBackdropCount = remember(catalog) { catalog.count { it.bannerUrl.isBlank() || it.bannerUrl == it.posterUrl } }
@@ -150,7 +150,7 @@ fun MetadataInspectorDialog(
     val filteredList: List<MediaItem> = remember(catalog, issuesMap, selectedFilter, searchQuery) {
         val baseList = when (selectedFilter) {
             InspectorFilter.ALL_ISSUES -> needsRepairItems
-            InspectorFilter.NO_TRAILER -> catalog.filter { it.trailerId.isBlank() }
+            InspectorFilter.NO_TRAILER -> catalog.filter { it.trailerId.isBlank() || it.trailerId.equals("null", ignoreCase = true) }
             InspectorFilter.BROKEN_GENRES -> catalog.filter { isGenreBroken(it.genres) }
             InspectorFilter.NO_CAST -> catalog.filter { it.castList.isEmpty() }
             InspectorFilter.NO_SYNOPSIS -> catalog.filter { it.description.isBlank() || it.description == "No synopsis available." }

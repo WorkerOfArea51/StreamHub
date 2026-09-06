@@ -107,7 +107,7 @@ fun AdminEditorDialog(
     var category by remember(initialItem) { mutableStateOf(initialItem?.category ?: "ANIME") }
     var malId by remember(initialItem) { mutableStateOf(initialItem?.malId ?: "") }
     var tmdbId by remember(initialItem) { mutableStateOf(initialItem?.tmdbId ?: "") }
-    var trailerId by remember(initialItem) { mutableStateOf(initialItem?.trailerId ?: "") }
+    var trailerId by remember(initialItem) { mutableStateOf(initialItem?.trailerId?.takeIf { !it.equals("null", ignoreCase = true) } ?: "") }
     var rating by remember(initialItem) { mutableStateOf(initialItem?.rating ?: "") }
     var maturityRating by remember(initialItem) { mutableStateOf(initialItem?.maturityRating ?: "") }
     var studio by remember(initialItem) { mutableStateOf(initialItem?.studio ?: "") }
@@ -537,7 +537,7 @@ fun AdminEditorDialog(
                                             if (meta.malId.isNotBlank()) malId = meta.malId
                                             if (meta.tmdbId.isNotBlank()) tmdbId = meta.tmdbId
                                             if (meta.castList.isNotBlank()) castText = meta.castList
-                                            if (meta.youtubeTrailerId.isNotBlank()) trailerId = meta.youtubeTrailerId
+                                            if (meta.youtubeTrailerId.isNotBlank() && !meta.youtubeTrailerId.equals("null", ignoreCase = true)) trailerId = meta.youtubeTrailerId
                                             if (meta.aired.isNotBlank()) aired = meta.aired
                                             if (meta.maturityRating.isNotBlank()) maturityRating = meta.maturityRating
                                             if (meta.franchiseId.isNotBlank()) franchiseId = meta.franchiseId
@@ -1835,7 +1835,7 @@ fun AdminEditorDialog(
                                         releaseYear = premiered.take(4),
                                         maturityRating = maturityRating,
                                         studio = studio,
-                                        trailerId = trailerId,
+                                        trailerId = trailerId.trim().takeIf { !it.equals("null", ignoreCase = true) } ?: "",
                                         malId = malId,
                                         tmdbId = tmdbId,
                                         synonyms = synonyms,

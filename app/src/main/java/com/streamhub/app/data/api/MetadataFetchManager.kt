@@ -741,19 +741,106 @@ object MetadataFetchManager {
         }
 
         val clientId = Secrets.MAL_CLIENT_ID
-        if (clientId.isNotBlank()) {
-            val malRes = queryMalApi(searchCandidates, directMalId, clientId)
-            if (malRes.isSuccess) return malRes
-            Log.w(TAG, "MAL v2 query failed (${malRes.exceptionOrNull()?.message}), attempting Jikan open API fallback...")
+        val malMeta = when {
+            clientId.isNotBlank() -> {
+                val malRes = queryMalApi(searchCandidates, directMalId, clientId)
+                if (malRes.isSuccess) {
+                    malRes.getOrNull()
+                } else {
+                    Log.w(TAG, "MAL v2 query failed (${malRes.exceptionOrNull()?.message}), attempting Jikan open API fallback...")
+                    queryJikanApi(searchCandidates, directMalId).getOrNull()
+                }
+            }
+            else -> queryJikanApi(searchCandidates, directMalId).getOrNull()
         }
 
-        // Fallback to Jikan v4 (Open MyAnimeList REST API - requires NO API KEY)
-        val jikanRes = queryJikanApi(searchCandidates, directMalId)
-        if (jikanRes.isSuccess) return jikanRes
+        if (malMeta != null) {
+            val enriched = enrichAnimeWithTmdb(malMeta, cleanQuery)
+            return Result.success(enriched)
+        }
 
         // Final fallback to TMDb anime search if both MAL and Jikan failed
-        Log.w(TAG, "Jikan query failed (${jikanRes.exceptionOrNull()?.message}), attempting TMDB anime fallback...")
+        Log.w(TAG, "MAL & Jikan queries failed, attempting TMDB anime fallback...")
         return fetchFromTMDB(cleanQuery, "Anime")
+    }
+
+    private suspend fun enrichAnimeWithTmdb(
+        meta: FetchedMetadata,
+        fallbackTitle: String
+    ): FetchedMetadata {
+        val needsBackdrop = meta.backdropUrl.isBlank() || meta.backdropUrl == meta.posterUrl
+        val needsTrailer = meta.youtubeTrailerId.isBlank() || meta.youtubeTrailerId.equals("null", ignoreCase = true)
+        val needsCast = meta.castList.isBlank()
+        val needsTmdbId = meta.tmdbId.isBlank()
+
+        if (!needsBackdrop && !needsTrailer && !needsCast && !needsTmdbId) {
+            return meta
+        }
+
+        return try {
+            val isMovie = meta.totalEpisodes == "1" || 
+                          meta.title.contains("Movie", ignoreCase = true) || 
+                          meta.relationType.equals("Movie", ignoreCase = true)
+
+            val queryForTmdb = if (meta.title.contains(" Season ", ignoreCase = true) || meta.title.contains(":")) {
+                meta.title.substringBefore(" Season ").substringBefore(":").trim()
+            } else meta.title
+
+            val searchTitle = if (queryForTmdb.isNotBlank()) queryForTmdb else fallbackTitle
+            val tmdbRes = fetchFromTMDB(
+                query = searchTitle,
+                category = "Anime",
+                targetSeason = meta.seasonNumber.coerceAtLeast(1),
+                explicitIsMovie = isMovie
+            )
+
+            val tmdbMeta = tmdbRes.getOrNull() ?: return meta
+
+            // High-confidence validation: check if title or synonyms align
+            val normAnime = meta.title.lowercase().replace(Regex("[^a-z0-9]"), "")
+            val normTmdb = tmdbMeta.title.lowercase().replace(Regex("[^a-z0-9]"), "")
+            val titleMatches = normAnime.contains(normTmdb) || 
+                               normTmdb.contains(normAnime) ||
+                               meta.alternativeTitles.split(",").any { alt ->
+                                   val nAlt = alt.trim().lowercase().replace(Regex("[^a-z0-9]"), "")
+                                   nAlt.isNotBlank() && (nAlt.contains(normTmdb) || normTmdb.contains(nAlt))
+                               }
+
+            if (!titleMatches && normTmdb.length >= 4) {
+                return meta
+            }
+
+            var enriched = meta
+
+            // 1. 16:9 Cinematic Backdrop
+            if (needsBackdrop && tmdbMeta.backdropUrl.isNotBlank() && 
+                tmdbMeta.backdropUrl != tmdbMeta.posterUrl && 
+                tmdbMeta.backdropUrl != meta.posterUrl &&
+                tmdbMeta.backdropUrl.contains("image.tmdb.org")) {
+                enriched = enriched.copy(backdropUrl = tmdbMeta.backdropUrl)
+            }
+
+            // 2. Verified YouTube Trailer
+            if (needsTrailer && tmdbMeta.youtubeTrailerId.isNotBlank() && 
+                !tmdbMeta.youtubeTrailerId.equals("null", ignoreCase = true)) {
+                enriched = enriched.copy(youtubeTrailerId = tmdbMeta.youtubeTrailerId)
+            }
+
+            // 3. Fallback Cast (only if Jikan timed out or was empty)
+            if (needsCast && tmdbMeta.castList.isNotBlank()) {
+                enriched = enriched.copy(castList = tmdbMeta.castList)
+            }
+
+            // 4. Link TMDB ID
+            if (needsTmdbId && tmdbMeta.tmdbId.isNotBlank()) {
+                enriched = enriched.copy(tmdbId = tmdbMeta.tmdbId)
+            }
+
+            enriched
+        } catch (e: Exception) {
+            Log.w(TAG, "Selective TMDB enrichment for anime '${meta.title}' skipped: ${e.message}")
+            meta
+        }
     }
 
     private suspend fun queryMalApi(
@@ -1094,7 +1181,7 @@ object MetadataFetchManager {
         }
 
         val trailerObj = dataObj.optJSONObject("trailer")
-        var youtubeTrailerId = trailerObj?.optString("youtube_id", "") ?: ""
+        var youtubeTrailerId = trailerObj?.optString("youtube_id", "")?.trim()?.takeIf { !it.equals("null", ignoreCase = true) } ?: ""
 
         val altTitles = mutableListOf<String>()
         if (defaultTitle.isNotBlank() && !defaultTitle.equals(finalTitle, ignoreCase = true)) altTitles.add(defaultTitle)
@@ -1153,13 +1240,25 @@ object MetadataFetchManager {
                     if (!body.isNullOrBlank()) {
                         val data = JSONObject(body).optJSONObject("data")
                         val trailer = data?.optJSONObject("trailer")
-                        trailer?.optString("youtube_id", "") ?: ""
+                        val yId = trailer?.optString("youtube_id", "")?.trim() ?: ""
+                        if (yId.isNotBlank() && !yId.equals("null", ignoreCase = true)) yId else ""
                     } else ""
                 } else ""
             }
         } catch (e: Exception) {
             ""
         }
+    }
+
+    private fun formatMalPersonName(rawName: String): String {
+        val trimmed = rawName.trim()
+        if (trimmed.contains(",")) {
+            val parts = trimmed.split(",").map { it.trim() }
+            if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) {
+                return "${parts[1]} ${parts[0]}"
+            }
+        }
+        return trimmed
     }
 
     private suspend fun fetchJikanCharacters(malId: Int): String {
@@ -1173,13 +1272,71 @@ object MetadataFetchManager {
                     if (!body.isNullOrBlank()) {
                         val data = JSONObject(body).optJSONArray("data")
                         if (data != null && data.length() > 0) {
-                            val names = mutableListOf<String>()
-                            for (i in 0 until minOf(6, data.length())) {
-                                val cObj = data.getJSONObject(i).optJSONObject("character")
-                                val cName = cObj?.optString("name", "") ?: ""
-                                if (cName.isNotBlank()) names.add(cName)
+                            data class MalCharacterEntry(
+                                val isMain: Boolean,
+                                val favorites: Int,
+                                val japaneseVoiceActor: String?,
+                                val anyVoiceActor: String?
+                            )
+                            val entries = mutableListOf<MalCharacterEntry>()
+
+                            for (i in 0 until data.length()) {
+                                val item = data.optJSONObject(i) ?: continue
+                                val role = item.optString("role", "").trim()
+                                val isMain = role.equals("Main", ignoreCase = true)
+                                val favorites = item.optInt("favorites", 0)
+
+                                val vaArr = item.optJSONArray("voice_actors")
+                                var jaActor: String? = null
+                                var firstActor: String? = null
+
+                                if (vaArr != null && vaArr.length() > 0) {
+                                    for (vi in 0 until vaArr.length()) {
+                                        val vaObj = vaArr.optJSONObject(vi) ?: continue
+                                        val personObj = vaObj.optJSONObject("person") ?: continue
+                                        val rawName = personObj.optString("name", "").trim()
+                                        if (rawName.isBlank() || rawName.equals("null", ignoreCase = true)) continue
+
+                                        val formattedName = formatMalPersonName(rawName)
+                                        val lang = vaObj.optString("language", "").trim()
+
+                                        if (lang.equals("Japanese", ignoreCase = true) && jaActor == null) {
+                                            jaActor = formattedName
+                                        }
+                                        if (firstActor == null) {
+                                            firstActor = formattedName
+                                        }
+                                    }
+                                }
+
+                                if (jaActor != null || firstActor != null) {
+                                    entries.add(
+                                        MalCharacterEntry(
+                                            isMain = isMain,
+                                            favorites = favorites,
+                                            japaneseVoiceActor = jaActor,
+                                            anyVoiceActor = firstActor
+                                        )
+                                    )
+                                }
                             }
-                            names.joinToString(", ")
+
+                            // Prioritize Main roles first, then sort by character popularity
+                            val sortedEntries = entries.sortedWith(
+                                compareByDescending<MalCharacterEntry> { it.isMain }
+                                    .thenByDescending { it.favorites }
+                            )
+
+                            val actors = mutableListOf<String>()
+                            for (entry in sortedEntries) {
+                                val actor = entry.japaneseVoiceActor ?: entry.anyVoiceActor ?: continue
+                                if (!actors.contains(actor)) {
+                                    actors.add(actor)
+                                }
+                                if (actors.size >= 10) break
+                            }
+
+                            actors.joinToString(", ")
                         } else ""
                     } else ""
                 } else ""
@@ -1398,10 +1555,13 @@ object MetadataFetchManager {
                             aired = if (deepSync || item.aired.isBlank()) meta.aired.ifBlank { item.aired } else item.aired,
                             tmdbId = if (item.tmdbId.isBlank()) meta.tmdbId else item.tmdbId,
                             malId = if (item.malId.isBlank()) meta.malId else item.malId,
-                            trailerId = if (deepSync || item.trailerId.isBlank()) meta.youtubeTrailerId.ifBlank { item.trailerId } else item.trailerId,
+                            trailerId = if (deepSync || item.trailerId.isBlank() || item.trailerId.equals("null", ignoreCase = true)) {
+                                val tid = meta.youtubeTrailerId.takeIf { !it.equals("null", ignoreCase = true) } ?: ""
+                                tid.ifBlank { if (item.trailerId.equals("null", ignoreCase = true)) "" else item.trailerId }
+                            } else item.trailerId,
                             synonyms = if (deepSync || item.synonyms.isBlank()) meta.alternativeTitles.ifBlank { item.synonyms } else item.synonyms,
                             castList = if (deepSync || item.castList.isEmpty()) {
-                                if (meta.castList.isNotBlank()) meta.castList.split(", ").map { it.trim() }.filter { it.isNotBlank() } else item.castList
+                                if (meta.castList.isNotBlank()) meta.castList.split(",").map { it.trim() }.filter { it.isNotBlank() } else item.castList
                             } else item.castList,
                             source = if (deepSync || item.source.isBlank()) meta.source.ifBlank { item.source } else item.source,
                             premiered = if (deepSync || (item.premiered.isBlank() && meta.releaseYear > 0)) {
@@ -1416,7 +1576,51 @@ object MetadataFetchManager {
                             updatedAt = System.currentTimeMillis()
                         )
 
-                        Result.success(repairedItem)
+                        var enrichedItem = repairedItem
+                        val needsBackdrop = enrichedItem.bannerUrl.isBlank() || enrichedItem.bannerUrl == enrichedItem.posterUrl
+                        val needsTrailer = enrichedItem.trailerId.isBlank() || enrichedItem.trailerId.equals("null", ignoreCase = true)
+                        val needsCast = enrichedItem.castList.isEmpty()
+                        val needsTmdbId = enrichedItem.tmdbId.isBlank()
+
+                        if (isAnime && (needsBackdrop || needsTrailer || needsCast || needsTmdbId)) {
+                            try {
+                                val tmdbIdNum = item.tmdbId.toIntOrNull()
+                                val isMovie = enrichedItem.type.equals("MOVIE", ignoreCase = true) ||
+                                              enrichedItem.totalEpisodes == "1" ||
+                                              enrichedItem.title.contains("Movie", ignoreCase = true) ||
+                                              enrichedItem.relationType.equals("Movie", ignoreCase = true)
+                                val tmdbRes = fetchFromTMDB(
+                                    query = enrichedItem.title,
+                                    category = "Anime",
+                                    targetSeason = enrichedItem.seasonNumber.coerceAtLeast(1),
+                                    directTmdbId = tmdbIdNum,
+                                    explicitIsMovie = isMovie
+                                )
+                                tmdbRes.getOrNull()?.let { tmdbMeta ->
+                                    val normAnime = enrichedItem.title.lowercase().replace(Regex("[^a-z0-9]"), "")
+                                    val normTmdb = tmdbMeta.title.lowercase().replace(Regex("[^a-z0-9]"), "")
+                                    val titleMatches = tmdbIdNum != null || 
+                                                       normAnime.contains(normTmdb) || 
+                                                       normTmdb.contains(normAnime) ||
+                                                       enrichedItem.synonyms.split(",").any { syn ->
+                                                           val nSyn = syn.trim().lowercase().replace(Regex("[^a-z0-9]"), "")
+                                                           nSyn.isNotBlank() && (nSyn.contains(normTmdb) || normTmdb.contains(nSyn))
+                                                       }
+                                    if (titleMatches) {
+                                        enrichedItem = enrichedItem.copy(
+                                            trailerId = if (needsTrailer && tmdbMeta.youtubeTrailerId.isNotBlank() && !tmdbMeta.youtubeTrailerId.equals("null", ignoreCase = true)) tmdbMeta.youtubeTrailerId else enrichedItem.trailerId,
+                                            bannerUrl = if (needsBackdrop && tmdbMeta.backdropUrl.isNotBlank() && tmdbMeta.backdropUrl != tmdbMeta.posterUrl && tmdbMeta.backdropUrl != enrichedItem.posterUrl) tmdbMeta.backdropUrl else enrichedItem.bannerUrl,
+                                            castList = if (needsCast && tmdbMeta.castList.isNotBlank()) tmdbMeta.castList.split(",").map { it.trim() }.filter { it.isNotBlank() } else enrichedItem.castList,
+                                            tmdbId = if (needsTmdbId && tmdbMeta.tmdbId.isNotBlank()) tmdbMeta.tmdbId else enrichedItem.tmdbId
+                                        )
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Selective TMDB repair enrichment failed for '${item.title}': ${e.message}")
+                            }
+                        }
+
+                        Result.success(enrichedItem)
                     },
                     onFailure = { err ->
                         Result.failure(err)
