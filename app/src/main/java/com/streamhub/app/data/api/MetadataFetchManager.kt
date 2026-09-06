@@ -230,15 +230,22 @@ object MetadataFetchManager {
         val genreIdsList = mutableListOf<Int>()
 
         if (resolvedTmdbId == null) {
-            val searchCleanTerm = if (!isMovie) {
-                cleanQuery
-                    .replace(Regex("(?i)(?:\\s*:\\s*|\\s*-\\s*|\\s+)\\b(?:season|s)\\s*\\d+.*$"), "")
-                    .replace(Regex("(?i)\\s*\\(\\s*(?:season|s)\\s*\\d+\\s*\\)"), "")
-                    .replace(Regex("(?i)\\s*\\b(?:2nd|3rd|4th|5th|1st)\\s+season\\b.*$"), "")
-                    .replace(Regex("(?i)\\s*\\bpart\\s*\\d+.*$"), "")
-                    .trim()
-                    .ifBlank { cleanQuery }
-            } else cleanQuery
+            val searchCleanTerm = cleanQuery
+                .replace(Regex("(?i)\\[.*?\\]"), "")
+                .replace(Regex("(?i)\\b(?:1080p|720p|2160p|4k|uhd|hdr|hevc|x265|x264|dual\\s+audio|hindi|eng|sub|dub)\\b.*$"), "")
+                .let { base ->
+                    if (!isMovie) {
+                        base
+                            .replace(Regex("(?i)(?:\\s*:\\s*|\\s*-\\s*|\\s+)\\b(?:season|s)\\s*\\d+.*$"), "")
+                            .replace(Regex("(?i)\\s*\\(\\s*(?:season|s)\\s*\\d+\\s*\\)"), "")
+                            .replace(Regex("(?i)\\s*\\b(?:2nd|3rd|4th|5th|1st)\\s+season\\b.*$"), "")
+                            .replace(Regex("(?i)\\s*\\bpart\\s*\\d+.*$"), "")
+                    } else {
+                        base.replace(Regex("\\s*\\(\\d{4}\\).*$"), "")
+                    }
+                }
+                .trim()
+                .ifBlank { cleanQuery }
 
             val encodedQuery = URLEncoder.encode(searchCleanTerm, Charsets.UTF_8.name())
             val searchUrl = "$TMDB_BASE/$endpoint?query=$encodedQuery&include_adult=false"
@@ -1081,10 +1088,16 @@ object MetadataFetchManager {
 
     /**
      * Re-queries TMDb or MAL to audit and repair missing/broken genres, synopsis, ratings,
-     * studios, and technical IDs for an existing catalog item, without modifying custom
-     * stream links or local document IDs.
+     * studios, cast, trailers, and technical IDs for an existing catalog item, without modifying
+     * custom stream links or local document IDs.
+     *
+     * @param deepSync When true, overwrites existing metadata with fresh official data from TMDb/MAL.
+     *                 When false (default), only backfills missing, blank, or broken fields.
      */
-    suspend fun repairMediaItem(item: com.streamhub.app.data.models.MediaItem): Result<com.streamhub.app.data.models.MediaItem> {
+    suspend fun repairMediaItem(
+        item: com.streamhub.app.data.models.MediaItem,
+        deepSync: Boolean = false
+    ): Result<com.streamhub.app.data.models.MediaItem> {
         return withContext(Dispatchers.IO) {
             try {
                 val isAnime = item.category.equals("Anime", ignoreCase = true)
@@ -1094,10 +1107,15 @@ object MetadataFetchManager {
 
                 val result = when {
                     isAnime -> {
-                        if (item.malId.isNotBlank() && item.malId.toIntOrNull() != null) {
+                        val malRes = if (item.malId.isNotBlank() && item.malId.toIntOrNull() != null) {
                             fetchFromMAL(item.title, directMalId = item.malId.toInt())
                         } else {
                             fetchFromMAL(item.title)
+                        }
+                        if (malRes.isSuccess) malRes else {
+                            // Robust fallback to TMDB for anime if MAL lookup failed
+                            val tmdbIdNum = item.tmdbId.toIntOrNull()
+                            fetchFromTMDB(item.title, "Anime", targetSeason = item.seasonNumber.coerceAtLeast(1), directTmdbId = tmdbIdNum)
                         }
                     }
                     item.tmdbId.isNotBlank() && item.tmdbId.toIntOrNull() != null -> {
@@ -1119,29 +1137,59 @@ object MetadataFetchManager {
                             it.equals("Series", ignoreCase = true) || 
                             it.equals("Anime", ignoreCase = true)
                         }
-                        val repairedGenres = if (hasBrokenGenres && meta.genres.isNotEmpty()) meta.genres else item.genres.ifEmpty { meta.genres }
+                        val repairedGenres = if (deepSync && meta.genres.isNotEmpty()) {
+                            meta.genres
+                        } else if (hasBrokenGenres && meta.genres.isNotEmpty()) {
+                            meta.genres
+                        } else {
+                            item.genres.ifEmpty { meta.genres }
+                        }
+
+                        val bannerNeedsUpdate = item.bannerUrl.isBlank() || item.bannerUrl == item.posterUrl
+                        val repairedBanner = if (deepSync || bannerNeedsUpdate) {
+                            meta.backdropUrl.ifBlank { item.bannerUrl }
+                        } else {
+                            item.bannerUrl
+                        }
+
+                        val repairedSynopsis = if (deepSync || item.description.isBlank() || item.description == "No synopsis available.") {
+                            meta.synopsis.ifBlank { item.description }
+                        } else {
+                            item.description
+                        }
 
                         val repairedItem = item.copy(
                             genres = repairedGenres,
-                            rating = if (item.rating.isBlank()) meta.rating else item.rating,
-                            maturityRating = if (item.maturityRating.isBlank()) meta.maturityRating else item.maturityRating,
-                            description = if (item.description.isBlank() || item.description == "No synopsis available.") meta.synopsis else item.description,
-                            posterUrl = if (item.posterUrl.isBlank()) meta.posterUrl else item.posterUrl,
-                            bannerUrl = if (item.bannerUrl.isBlank()) meta.backdropUrl else item.bannerUrl,
-                            studio = if (item.studio.isBlank()) meta.studio else item.studio,
-                            producers = if (item.producers.isBlank()) meta.producers else item.producers,
-                            duration = if (item.duration.isBlank()) meta.duration else item.duration,
-                            status = if (item.status.isBlank()) meta.status else item.status,
-                            releaseYear = if (item.releaseYear.isBlank() && meta.releaseYear > 0) meta.releaseYear.toString() else item.releaseYear,
-                            aired = if (item.aired.isBlank()) meta.aired else item.aired,
+                            rating = if (deepSync || item.rating.isBlank()) meta.rating.ifBlank { item.rating } else item.rating,
+                            maturityRating = if (deepSync || item.maturityRating.isBlank()) meta.maturityRating.ifBlank { item.maturityRating } else item.maturityRating,
+                            description = repairedSynopsis,
+                            posterUrl = if (deepSync || item.posterUrl.isBlank()) meta.posterUrl.ifBlank { item.posterUrl } else item.posterUrl,
+                            bannerUrl = repairedBanner,
+                            studio = if (deepSync || item.studio.isBlank()) meta.studio.ifBlank { item.studio } else item.studio,
+                            producers = if (deepSync || item.producers.isBlank()) meta.producers.ifBlank { item.producers } else item.producers,
+                            duration = if (deepSync || item.duration.isBlank()) meta.duration.ifBlank { item.duration } else item.duration,
+                            status = if (deepSync || item.status.isBlank()) meta.status.ifBlank { item.status } else item.status,
+                            releaseYear = if (deepSync || (item.releaseYear.isBlank() && meta.releaseYear > 0)) {
+                                if (meta.releaseYear > 0) meta.releaseYear.toString() else item.releaseYear
+                            } else item.releaseYear,
+                            aired = if (deepSync || item.aired.isBlank()) meta.aired.ifBlank { item.aired } else item.aired,
                             tmdbId = if (item.tmdbId.isBlank()) meta.tmdbId else item.tmdbId,
                             malId = if (item.malId.isBlank()) meta.malId else item.malId,
-                            trailerId = if (item.trailerId.isBlank()) meta.youtubeTrailerId else item.trailerId,
-                            synonyms = if (item.synonyms.isBlank()) meta.alternativeTitles else item.synonyms,
-                            castList = if (item.castList.isEmpty() && meta.castList.isNotBlank()) meta.castList.split(", ").filter { it.isNotBlank() } else item.castList,
-                            source = if (item.source.isBlank()) meta.source else item.source,
-                            premiered = if (item.premiered.isBlank() && meta.releaseYear > 0) meta.releaseYear.toString() else item.premiered,
-                            totalEpisodes = if (item.totalEpisodes.isBlank()) meta.totalEpisodes else item.totalEpisodes,
+                            trailerId = if (deepSync || item.trailerId.isBlank()) meta.youtubeTrailerId.ifBlank { item.trailerId } else item.trailerId,
+                            synonyms = if (deepSync || item.synonyms.isBlank()) meta.alternativeTitles.ifBlank { item.synonyms } else item.synonyms,
+                            castList = if (deepSync || item.castList.isEmpty()) {
+                                if (meta.castList.isNotBlank()) meta.castList.split(", ").map { it.trim() }.filter { it.isNotBlank() } else item.castList
+                            } else item.castList,
+                            source = if (deepSync || item.source.isBlank()) meta.source.ifBlank { item.source } else item.source,
+                            premiered = if (deepSync || (item.premiered.isBlank() && meta.releaseYear > 0)) {
+                                if (meta.releaseYear > 0) meta.releaseYear.toString() else item.premiered
+                            } else item.premiered,
+                            totalEpisodes = if (deepSync || item.totalEpisodes.isBlank()) meta.totalEpisodes.ifBlank { item.totalEpisodes } else item.totalEpisodes,
+                            franchiseId = if (item.franchiseId.isBlank()) meta.franchiseId else item.franchiseId,
+                            franchiseTitle = if (item.franchiseTitle.isBlank()) meta.franchiseTitle else item.franchiseTitle,
+                            seasonNumber = if (item.seasonNumber <= 1 && meta.seasonNumber > 1) meta.seasonNumber else item.seasonNumber,
+                            seasonTitle = if (item.seasonTitle.isBlank()) meta.seasonTitle else item.seasonTitle,
+                            relationType = if (item.relationType.isBlank()) meta.relationType else item.relationType,
                             updatedAt = System.currentTimeMillis()
                         )
                         Result.success(repairedItem)
