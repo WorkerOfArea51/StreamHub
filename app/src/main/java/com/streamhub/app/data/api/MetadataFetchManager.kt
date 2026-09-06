@@ -147,13 +147,7 @@ object MetadataFetchManager {
                         fetchFromTMDB(cleanQuery, effectiveCat, targetSeason, directTmdbId = tmdbTarget.first, explicitIsMovie = tmdbTarget.second)
                     }
                     category.equals("Anime", ignoreCase = true) -> {
-                        val malRes = fetchFromMAL(cleanQuery)
-                        if (malRes.isSuccess) {
-                            malRes
-                        } else {
-                            Log.i(TAG, "MAL search failed for '$cleanQuery', attempting TMDB anime search fallback...")
-                            fetchFromTMDB(cleanQuery, "Anime", targetSeason)
-                        }
+                        fetchFromMAL(cleanQuery)
                     }
                     else -> {
                         fetchFromTMDB(cleanQuery, category, targetSeason)
@@ -954,40 +948,11 @@ object MetadataFetchManager {
             else -> detectedFormat
         }
 
-        // Fetch YouTube Trailer from Jikan first if malIdNum > 0
-        var youtubeTrailerId = if (malIdNum > 0) fetchJikanTrailer(malIdNum) else ""
-        var castListStr = ""
-        var finalBackdropUrl = posterUrl
-        var linkedTmdbId = ""
-
-        try {
-            val queryForTmdb = if (finalTitle.contains(" Season ", ignoreCase = true) || finalTitle.contains(":")) {
-                finalTitle.substringBefore(" Season ").substringBefore(":").trim()
-            } else finalTitle
-
-            val tmdbResult = fetchFromTMDB(queryForTmdb, "Anime", targetSeason = detectedSeason)
-            tmdbResult.getOrNull()?.let { tmdbMeta ->
-                if (youtubeTrailerId.isBlank()) youtubeTrailerId = tmdbMeta.youtubeTrailerId
-                if (castListStr.isBlank()) castListStr = tmdbMeta.castList
-                if (maturityStr.isBlank() && tmdbMeta.maturityRating.isNotBlank()) maturityStr = tmdbMeta.maturityRating
-                if (finalBackdropUrl.isBlank() || finalBackdropUrl == posterUrl) {
-                    if (tmdbMeta.backdropUrl.isNotBlank()) finalBackdropUrl = tmdbMeta.backdropUrl
-                }
-                if (producerStr.isBlank() && tmdbMeta.producers.isNotBlank()) {
-                    producerStr = tmdbMeta.producers.split(", ")
-                        .map { it.trim() }
-                        .filter { p -> p.isNotBlank() && !studioList.contains(p) && !p.equalsIgnoreCase(studioStr) }
-                        .joinToString(", ")
-                }
-                if (tmdbMeta.tmdbId.isNotBlank()) linkedTmdbId = tmdbMeta.tmdbId
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "TMDB anime fallback failed: ${e.message}")
-        }
-
-        if (castListStr.isBlank() && malIdNum > 0) {
-            castListStr = fetchJikanCharacters(malIdNum)
-        }
+        // Fetch YouTube Trailer and Cast exclusively from MAL / Jikan
+        val youtubeTrailerId = if (malIdNum > 0) fetchJikanTrailer(malIdNum) else ""
+        val castListStr = if (malIdNum > 0) fetchJikanCharacters(malIdNum) else ""
+        val finalBackdropUrl = posterUrl
+        val linkedTmdbId = ""
 
         val formattedRating = if (mean > 0) String.format(java.util.Locale.US, "%.2f", mean).trimEnd('0').trimEnd('.') else ""
 
@@ -1135,24 +1100,10 @@ object MetadataFetchManager {
         if (defaultTitle.isNotBlank() && !defaultTitle.equals(finalTitle, ignoreCase = true)) altTitles.add(defaultTitle)
         if (jaTitle.isNotBlank()) altTitles.add(jaTitle)
 
-        var castListStr = ""
-        var finalBackdropUrl = posterUrl
-        var linkedTmdbId = ""
-
-        // TMDB fallback for wide backdrop banner & trailer
-        try {
-            val tmdbRes = fetchFromTMDB(finalTitle, "Anime")
-            tmdbRes.getOrNull()?.let { tmdbMeta ->
-                if (youtubeTrailerId.isBlank()) youtubeTrailerId = tmdbMeta.youtubeTrailerId
-                if (castListStr.isBlank()) castListStr = tmdbMeta.castList
-                if (tmdbMeta.backdropUrl.isNotBlank()) finalBackdropUrl = tmdbMeta.backdropUrl
-                if (tmdbMeta.tmdbId.isNotBlank()) linkedTmdbId = tmdbMeta.tmdbId
-            }
-        } catch (_: Exception) {}
-
-        if (castListStr.isBlank() && malId > 0) {
-            castListStr = fetchJikanCharacters(malId)
-        }
+        // Cast and details exclusively from MAL / Jikan
+        val castListStr = if (malId > 0) fetchJikanCharacters(malId) else ""
+        val finalBackdropUrl = posterUrl
+        val linkedTmdbId = ""
 
         val detectedSeason = com.streamhub.app.data.FranchiseManager.detectSeasonNumber(finalTitle).let {
             if (it > 1) it else com.streamhub.app.data.FranchiseManager.detectSeasonNumber(fallbackQuery)
@@ -1387,15 +1338,10 @@ object MetadataFetchManager {
 
                 val result = when {
                     isAnime -> {
-                        val malRes = if (item.malId.isNotBlank() && item.malId.toIntOrNull() != null) {
+                        if (item.malId.isNotBlank() && item.malId.toIntOrNull() != null) {
                             fetchFromMAL(item.title, directMalId = item.malId.toInt())
                         } else {
                             fetchFromMAL(item.title)
-                        }
-                        if (malRes.isSuccess) malRes else {
-                            // Robust fallback to TMDB for anime if MAL lookup failed
-                            val tmdbIdNum = item.tmdbId.toIntOrNull()
-                            fetchFromTMDB(item.title, "Anime", targetSeason = item.seasonNumber.coerceAtLeast(1), directTmdbId = tmdbIdNum)
                         }
                     }
                     item.tmdbId.isNotBlank() && item.tmdbId.toIntOrNull() != null -> {
@@ -1473,23 +1419,7 @@ object MetadataFetchManager {
                             updatedAt = System.currentTimeMillis()
                         )
 
-                        var enrichedItem = repairedItem
-                        if (isAnime && (enrichedItem.trailerId.isBlank() || enrichedItem.bannerUrl == enrichedItem.posterUrl || enrichedItem.bannerUrl.isBlank() || enrichedItem.castList.isEmpty() || enrichedItem.tmdbId.isBlank())) {
-                            try {
-                                val tmdbIdNum = item.tmdbId.toIntOrNull()
-                                val tmdbRes = fetchFromTMDB(item.title, "Anime", targetSeason = item.seasonNumber.coerceAtLeast(1), directTmdbId = tmdbIdNum)
-                                tmdbRes.getOrNull()?.let { tmdbMeta ->
-                                    enrichedItem = enrichedItem.copy(
-                                        trailerId = if (enrichedItem.trailerId.isBlank()) tmdbMeta.youtubeTrailerId else enrichedItem.trailerId,
-                                        bannerUrl = if ((enrichedItem.bannerUrl.isBlank() || enrichedItem.bannerUrl == enrichedItem.posterUrl) && tmdbMeta.backdropUrl.isNotBlank()) tmdbMeta.backdropUrl else enrichedItem.bannerUrl,
-                                        castList = if (enrichedItem.castList.isEmpty() && tmdbMeta.castList.isNotBlank()) tmdbMeta.castList.split(", ").map { it.trim() }.filter { it.isNotBlank() } else enrichedItem.castList,
-                                        tmdbId = if (enrichedItem.tmdbId.isBlank()) tmdbMeta.tmdbId else enrichedItem.tmdbId
-                                    )
-                                }
-                            } catch (_: Exception) {}
-                        }
-
-                        Result.success(enrichedItem)
+                        Result.success(repairedItem)
                     },
                     onFailure = { err ->
                         Result.failure(err)
