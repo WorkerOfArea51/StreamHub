@@ -182,9 +182,6 @@ fun DetailsScreen(
     var selectedArcForEdit by remember { mutableStateOf<com.streamhub.app.data.SeasonArcOption?>(null) }
     var showFolderSelectionDialog by remember { mutableStateOf(false) }
 
-    BackHandler(enabled = currentMediaId != mediaId) {
-        currentMediaId = mediaId
-    }
 
     // Derive Franchise universe items
     val franchiseItems = remember(mediaItem, catalog) {
@@ -347,22 +344,49 @@ fun DetailsScreen(
         val historyMap by WatchHistoryManager.historyFlow.collectAsState()
         val mediaProgress = historyMap[mediaItem.id] ?: remember(mediaItem.id) { WatchHistoryManager.getProgress(mediaItem.id) }
 
-        var hasScrolledForCurrentSession by remember(mediaItem.id) { mutableStateOf(false) }
+        // Auto-scroll to exact episode in list (when opening from Continue Watching or returning from playback)
+        var lastScrolledEpisodeNumber by remember(mediaItem.id) { mutableIntStateOf(-1) }
+        var lastScrolledTimestamp by remember(mediaItem.id) { mutableStateOf(0L) }
 
-        LaunchedEffect(mediaItem.id, mediaProgress?.lastUpdated) {
+        LaunchedEffect(
+            mediaItem.id,
+            mediaProgress?.episodeNumber,
+            mediaProgress?.lastUpdated,
+            seasonFilteredEpisodes.size
+        ) {
             val progress = mediaProgress ?: WatchHistoryManager.getProgress(mediaItem.id)
-            if (progress != null && !isMovie && mediaItem.episodes.isNotEmpty() && !hasScrolledForCurrentSession) {
-                val isRecent = (System.currentTimeMillis() - progress.lastUpdated) < 60_000L
-                if (isRecent) {
-                    hasScrolledForCurrentSession = true
-                    val targetEp = mediaItem.episodes.getOrNull(progress.episodeNumber)
-                        ?: mediaItem.episodes.find { it.episodeNumber == progress.episodeNumber }
+            if (progress != null && !isMovie && mediaItem.episodes.isNotEmpty()) {
+                val targetEpNumber = progress.episodeNumber
+                val progressUpdated = progress.lastUpdated
+
+                val isNewTarget = lastScrolledEpisodeNumber != targetEpNumber || progressUpdated > lastScrolledTimestamp
+                if (isNewTarget) {
+                    val targetEp = mediaItem.episodes.find { it.episodeNumber == targetEpNumber }
+                        ?: mediaItem.episodes.getOrNull(targetEpNumber)
+
                     if (targetEp != null) {
+                        selectedTabIndex = 0
+                        if (targetEp.seasonNumber > 0 && selectedSeasonNumber != targetEp.seasonNumber) {
+                            selectedSeasonNumber = targetEp.seasonNumber
+                        }
                         if (targetEp.arcName.isNotBlank() && !selectedArcName.equals(targetEp.arcName, ignoreCase = true)) {
                             selectedArcName = targetEp.arcName
                         }
-                        if (targetEp.seasonNumber > 0 && selectedSeasonNumber != targetEp.seasonNumber) {
-                            selectedSeasonNumber = targetEp.seasonNumber
+
+                        // Give Compose a brief delay to apply season/arc filter updates to the list
+                        kotlinx.coroutines.delay(120)
+
+                        val filteredIndex = seasonFilteredEpisodes.indexOfFirst {
+                            it == targetEp || it.episodeNumber == targetEp.episodeNumber
+                        }
+                        if (filteredIndex >= 0) {
+                            lastScrolledEpisodeNumber = targetEpNumber
+                            lastScrolledTimestamp = progressUpdated
+                            // Item 0 is Hero/Details/TabRow, Item 1 is Season/Arc capsule row, Item 2+ are episodes
+                            detailsListState.animateScrollToItem(
+                                index = 2 + filteredIndex,
+                                scrollOffset = -40
+                            )
                         }
                     }
                 }
@@ -475,13 +499,7 @@ fun DetailsScreen(
 
                         // Top-Left Back Button
                         IconButton(
-                            onClick = {
-                                if (currentMediaId != mediaId) {
-                                    currentMediaId = mediaId
-                                } else {
-                                    onBackClick()
-                                }
-                            },
+                            onClick = onBackClick,
                             modifier = Modifier
                                 .align(Alignment.TopStart)
                                 .padding(12.dp)

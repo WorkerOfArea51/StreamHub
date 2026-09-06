@@ -21,6 +21,8 @@ object PlayerHolder {
             _currentPlayerFlow.value = value
         }
 
+    var currentBandwidthTracker: StreamBandwidthTracker? = null
+
     var onPlayNextAction: (() -> Unit)? = null
     var onPlayPrevAction: (() -> Unit)? = null
 
@@ -30,6 +32,7 @@ object PlayerHolder {
 
     fun clear() {
         _currentPlayerFlow.value = null
+        currentBandwidthTracker = null
         onPlayNextAction = null
         onPlayPrevAction = null
     }

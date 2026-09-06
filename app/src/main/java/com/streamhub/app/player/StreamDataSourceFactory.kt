@@ -67,7 +67,9 @@ class StreamDataSourceFactory(
     }
 
     private val defaultDataSourceFactory by lazy {
-        DefaultDataSource.Factory(appContext, cachedHttpDataSourceFactory)
+        DefaultDataSource.Factory(appContext, cachedHttpDataSourceFactory).apply {
+            transferListener?.let { setTransferListener(it) }
+        }
     }
 
     override fun createDataSource(): DataSource {

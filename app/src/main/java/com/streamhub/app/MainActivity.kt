@@ -515,7 +515,10 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                     onMediaClick = { media ->
                         navController.navigate(Screen.Details.createRoute(media.id)) { launchSingleTop = true }
                     },
-                    onPlayEpisode = safePlayEpisode,
+                    onPlayEpisode = { media, episodeIndex ->
+                        navController.navigate(Screen.Details.createRoute(media.id))
+                        navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
+                    },
                     onNavigateToHistory = {
                         navController.navigate(Screen.History.route)
                     }
@@ -570,7 +573,10 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                     onMediaClick = { media ->
                         navController.navigate(Screen.Details.createRoute(media.id)) { launchSingleTop = true }
                     },
-                    onPlayEpisode = safePlayEpisode
+                    onPlayEpisode = { media, episodeIndex ->
+                        navController.navigate(Screen.Details.createRoute(media.id))
+                        navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
+                    }
                 )
             }
 
@@ -620,7 +626,10 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
                     onBackClick = { navController.popBackStack() },
                     onPlayEpisode = safePlayEpisode,
                     onMediaClick = { media ->
-                        navController.navigate(Screen.Details.createRoute(media.id))
+                        navController.navigate(Screen.Details.createRoute(media.id)) {
+                            popUpTo(Screen.Details.route) { inclusive = true }
+                            launchSingleTop = true
+                        }
                     }
                 )
             }

@@ -53,19 +53,40 @@ class StreamBandwidthTracker(context: Context) : TransferListener {
         bandwidthMeter.onTransferEnd(source, dataSpec, isNetwork)
     }
 
+    private var lastTransferTimeMs = 0L
+    private var smoothedSpeedKBps = 0L
+
     /**
      * Samples the transferred bytes over the elapsed window (min 500ms)
-     * and calculates the real-time download throughput in KB/s.
+     * and calculates the real-time download throughput in KB/s with exponential
+     * moving average smoothing across network chunk intervals.
      */
     fun sampleSpeedKBps(): Long {
         val now = System.currentTimeMillis()
         val elapsed = now - lastSampleTimeMs
         if (elapsed >= 500L) {
             val bytes = bytesInWindow.getAndSet(0L)
-            currentSpeedKBps = if (bytes > 0L) {
-                (bytes * 1000L) / (elapsed * 1024L)
+            if (bytes > 0L) {
+                val instantSpeed = (bytes * 1000L) / (elapsed * 1024L)
+                lastTransferTimeMs = now
+                // Smooth with exponential moving average (0.7 current sample, 0.3 historical)
+                smoothedSpeedKBps = if (smoothedSpeedKBps > 0L) {
+                    ((smoothedSpeedKBps * 3 + instantSpeed * 7) / 10).coerceAtLeast(1L)
+                } else {
+                    instantSpeed
+                }
+                currentSpeedKBps = smoothedSpeedKBps
             } else {
-                0L
+                // If no bytes transferred in this 500ms window:
+                // If it's been less than 1.5 seconds since the last active byte transfer,
+                // decay gently rather than instantly plunging to 0 (accommodates HTTP 206 chunk gaps)
+                if (now - lastTransferTimeMs < 1500L && smoothedSpeedKBps > 0L) {
+                    smoothedSpeedKBps = (smoothedSpeedKBps * 7) / 10
+                    currentSpeedKBps = smoothedSpeedKBps
+                } else {
+                    smoothedSpeedKBps = 0L
+                    currentSpeedKBps = 0L
+                }
             }
             if (currentSpeedKBps > peakSpeedKBps) {
                 peakSpeedKBps = currentSpeedKBps

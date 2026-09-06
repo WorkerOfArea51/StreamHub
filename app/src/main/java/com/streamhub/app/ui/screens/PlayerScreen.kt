@@ -21,6 +21,7 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.streamhub.app.player.PlaybackProgress
 import com.streamhub.app.player.PlayerHolder
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -1313,8 +1314,8 @@ fun PlayerScreen(
         } else if (uiState.isBuffering && !uiState.isReconnecting) {
             BufferingHud(
                 visible = true,
-                networkSpeedKbps = uiState.networkSpeedKbps,
-                bufferHealthSeconds = uiState.bufferHealthSeconds,
+                networkSpeedKbps = playbackProgress.networkSpeedKbps,
+                bufferHealthSeconds = playbackProgress.bufferHealthSeconds,
                 modifier = Modifier.align(Alignment.TopCenter)
             )
         }
@@ -2320,6 +2321,7 @@ fun PlayerScreen(
                 StatsForNerdsOverlay(
                     player = exoPlayerInstance,
                     uiState = uiState,
+                    playbackProgress = playbackProgress,
                     onDismiss = { showStatsForNerds = false }
                 )
             }
@@ -2346,10 +2348,12 @@ fun PlayerScreen(
 }
 }
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 private fun StatsForNerdsOverlay(
     player: androidx.media3.common.Player?,
     uiState: PlayerUiState,
+    playbackProgress: PlaybackProgress,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -2357,8 +2361,63 @@ private fun StatsForNerdsOverlay(
     val vWidth = videoSize?.width ?: 0
     val vHeight = videoSize?.height ?: 0
     val resolution = if (vWidth > 0 && vHeight > 0) "${vWidth}x${vHeight}" else "1920x1080"
-    val videoCodec = "H.264 / AVC"
-    val audioCodec = "AAC / Stereo 48kHz"
+
+    val exo = player as? androidx.media3.exoplayer.ExoPlayer
+    val vFmt = exo?.videoFormat
+    val aFmt = exo?.audioFormat
+
+    val videoCodec = vFmt?.sampleMimeType?.let { mime ->
+        when {
+            mime.contains("avc", ignoreCase = true) || mime.contains("h264", ignoreCase = true) -> "H.264 / AVC"
+            mime.contains("hevc", ignoreCase = true) || mime.contains("h265", ignoreCase = true) -> "H.265 / HEVC"
+            mime.contains("vp9", ignoreCase = true) -> "VP9"
+            mime.contains("av01", ignoreCase = true) || mime.contains("av1", ignoreCase = true) -> "AV1"
+            else -> mime.substringAfter("/")
+        }
+    } ?: run {
+        var foundCodec: String? = null
+        player?.currentTracks?.groups?.firstOrNull { it.type == androidx.media3.common.C.TRACK_TYPE_VIDEO && it.isSelected }?.let { group ->
+            for (i in 0 until group.length) {
+                if (group.isTrackSelected(i)) {
+                    val mime = group.getTrackFormat(i).sampleMimeType ?: ""
+                    foundCodec = when {
+                        mime.contains("avc", ignoreCase = true) || mime.contains("h264", ignoreCase = true) -> "H.264 / AVC"
+                        mime.contains("hevc", ignoreCase = true) || mime.contains("h265", ignoreCase = true) -> "H.265 / HEVC"
+                        mime.contains("vp9", ignoreCase = true) -> "VP9"
+                        mime.contains("av01", ignoreCase = true) || mime.contains("av1", ignoreCase = true) -> "AV1"
+                        else -> mime.substringAfter("/")
+                    }
+                    break
+                }
+            }
+        }
+        foundCodec ?: "H.264 / AVC"
+    }
+
+    val audioCodec = aFmt?.let { af ->
+        val mime = af.sampleMimeType?.substringAfter("/")?.uppercase() ?: "AAC"
+        val channels = if (af.channelCount == 6) "5.1" else if (af.channelCount == 2) "Stereo" else "${af.channelCount}ch"
+        val rate = if (af.sampleRate > 0) "${af.sampleRate / 1000}kHz" else "48kHz"
+        "$mime / $channels $rate"
+    } ?: run {
+        var foundAudio: String? = null
+        player?.currentTracks?.groups?.firstOrNull { it.type == androidx.media3.common.C.TRACK_TYPE_AUDIO && it.isSelected }?.let { group ->
+            for (i in 0 until group.length) {
+                if (group.isTrackSelected(i)) {
+                    val format = group.getTrackFormat(i)
+                    val mime = format.sampleMimeType?.substringAfter("/")?.uppercase() ?: "AAC"
+                    val channels = if (format.channelCount == 6) "5.1" else if (format.channelCount == 2) "Stereo" else "${format.channelCount}ch"
+                    val rate = if (format.sampleRate > 0) "${format.sampleRate / 1000}kHz" else "48kHz"
+                    foundAudio = "$mime / $channels $rate"
+                    break
+                }
+            }
+        }
+        foundAudio ?: "AAC / Stereo 48kHz"
+    }
+
+    val bufferHealthSeconds = playbackProgress.bufferHealthSeconds
+    val networkSpeedKbps = playbackProgress.networkSpeedKbps
 
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -2410,16 +2469,16 @@ private fun StatsForNerdsOverlay(
             StatRowItem("Video Codec", videoCodec)
             StatRowItem("Audio Codec", audioCodec)
             StatRowItem("Playback Speed", "${uiState.playbackSpeed}x")
-            StatRowItem("Buffer Health", "${uiState.bufferHealthSeconds}s ahead")
+            StatRowItem("Buffer Health", "${bufferHealthSeconds}s ahead")
             val speedDisplay = when {
-                uiState.networkSpeedKbps >= 1024L -> {
-                    String.format(java.util.Locale.US, "%.1f MB/s", uiState.networkSpeedKbps / 1024.0)
+                networkSpeedKbps >= 1024L -> {
+                    String.format(java.util.Locale.US, "%.1f MB/s", networkSpeedKbps / 1024.0)
                 }
-                uiState.networkSpeedKbps > 0L -> {
-                    "${uiState.networkSpeedKbps} KB/s"
+                networkSpeedKbps > 0L -> {
+                    "$networkSpeedKbps KB/s"
                 }
-                uiState.bufferHealthSeconds >= 60L -> {
-                    "Idle (Buffer Full)"
+                bufferHealthSeconds >= 15L -> {
+                    "Idle (Buffered)"
                 }
                 else -> "0 KB/s"
             }
