@@ -102,6 +102,7 @@ fun AdminEditorDialog(
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Overview & Auto-Fetch, 1: Telegram Links, 2: All Metadata & Tech Specs
 
     // --- State: Core Metadata ---
+    var activeEditItem by remember(initialItem) { mutableStateOf(initialItem) }
     var title by remember(initialItem) { mutableStateOf(initialItem?.title ?: "") }
     var type by remember(initialItem) { mutableStateOf(initialItem?.type ?: "SERIES") }
     var category by remember(initialItem) { mutableStateOf(initialItem?.category ?: "ANIME") }
@@ -254,18 +255,51 @@ fun AdminEditorDialog(
             onDismiss = { showMetadataInspector = false },
             onEditShow = { itemToEdit ->
                 showMetadataInspector = false
+                activeEditItem = itemToEdit
                 title = itemToEdit.title
                 type = itemToEdit.type
                 category = itemToEdit.category
                 malId = itemToEdit.malId
                 tmdbId = itemToEdit.tmdbId
+                trailerId = itemToEdit.trailerId.takeIf { !it.equals("null", ignoreCase = true) } ?: ""
                 rating = itemToEdit.rating
                 maturityRating = itemToEdit.maturityRating
                 studio = itemToEdit.studio
+                synonyms = itemToEdit.synonyms
+                totalEpisodes = itemToEdit.totalEpisodes
+                status = itemToEdit.status
+                aired = itemToEdit.aired
+                premiered = itemToEdit.premiered
+                producers = itemToEdit.producers
+                source = itemToEdit.source
+                duration = itemToEdit.duration
                 genresText = itemToEdit.genres.joinToString(", ")
+                castText = itemToEdit.castList.joinToString(", ")
                 posterUrl = itemToEdit.posterUrl
                 bannerUrl = itemToEdit.bannerUrl
                 description = itemToEdit.description
+                isFeatured = itemToEdit.isFeatured
+                isTrending = itemToEdit.isTrending
+                franchiseId = itemToEdit.franchiseId
+                franchiseTitle = itemToEdit.franchiseTitle
+                seasonNumberText = if (itemToEdit.seasonNumber > 0) itemToEdit.seasonNumber.toString() else ""
+                partNumberText = if (itemToEdit.partNumber > 0) itemToEdit.partNumber.toString() else ""
+                franchiseOrderText = if (itemToEdit.franchiseOrder > 0.0) {
+                    val ord = itemToEdit.franchiseOrder
+                    if (ord % 1.0 == 0.0) ord.toInt().toString() else ord.toString()
+                } else ""
+                seasonTitle = itemToEdit.seasonTitle
+                relationType = itemToEdit.relationType
+                resolution = itemToEdit.mediaInfo.resolution
+                videoCodec = itemToEdit.mediaInfo.videoCodec
+                bitrate = itemToEdit.mediaInfo.bitrate
+                frameRate = itemToEdit.mediaInfo.frameRate
+                aspectRatio = itemToEdit.mediaInfo.aspectRatio
+                fileSize = itemToEdit.mediaInfo.fileSize
+                audioTracksText = itemToEdit.mediaInfo.audioTracks.joinToString(", ")
+                subtitleTracksText = itemToEdit.mediaInfo.subtitleTracks.joinToString(", ")
+                currentEpisodes.clear()
+                currentEpisodes.addAll(itemToEdit.episodes)
                 selectedTab = 0
             }
         )
@@ -1825,7 +1859,8 @@ fun AdminEditorDialog(
                                         com.streamhub.app.data.FranchiseManager.getFranchiseTitle(MediaItem(title = title))
                                     }
 
-                                    val mediaItem = MediaItem(
+                                    val baseItem = activeEditItem ?: initialItem ?: MediaItem(id = finalId)
+                                    val mediaItem = baseItem.copy(
                                         id = finalId,
                                         title = title,
                                         type = type,

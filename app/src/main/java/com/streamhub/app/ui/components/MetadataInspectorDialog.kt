@@ -411,6 +411,7 @@ fun MetadataInspectorDialog(
                                             batchProgress = 0f
                                             batchJob = scope.launch {
                                                 var repaired = 0
+                                                var failed = 0
                                                 val total = needsRepairItems.size
                                                 for ((index, item) in needsRepairItems.withIndex()) {
                                                     val issues = getMediaItemIssues(item)
@@ -418,16 +419,26 @@ fun MetadataInspectorDialog(
                                                     batchStatusText = "Repairing (${index + 1}/$total): ${item.title} [$issueSummary]"
                                                     batchProgress = (index + 1).toFloat() / total.toFloat()
                                                     val res = MetadataFetchManager.repairMediaItem(item, deepSync = deepSyncMode)
-                                                    res.onSuccess { updated ->
-                                                        repository.saveMediaItem(updated)
-                                                        repaired++
-                                                    }
+                                                    res.fold(
+                                                        onSuccess = { updated ->
+                                                            val writeRes = repository.saveMediaItemSuspending(updated)
+                                                            if (writeRes.isSuccess) {
+                                                                repaired++
+                                                            } else {
+                                                                failed++
+                                                            }
+                                                        },
+                                                        onFailure = {
+                                                            failed++
+                                                        }
+                                                    )
                                                     delay(350)
                                                 }
-                                                ToastManager.showToast("Repaired $repaired shows successfully!", Icons.Default.CheckCircle)
+                                                val summaryMsg = if (failed > 0) "Repaired $repaired shows ($failed failed)!" else "Repaired $repaired shows successfully!"
+                                                ToastManager.showToast(summaryMsg, if (failed > 0) Icons.Default.Warning else Icons.Default.CheckCircle)
                                                 isBatchRepairing = false
                                                 batchProgress = 1f
-                                                batchStatusText = "Completed!"
+                                                batchStatusText = summaryMsg
                                             }
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
@@ -595,8 +606,12 @@ fun MetadataInspectorDialog(
                                         val result = MetadataFetchManager.repairMediaItem(item, deepSync = deepSyncMode)
                                         result.fold(
                                             onSuccess = { repaired ->
-                                                repository.saveMediaItem(repaired)
-                                                ToastManager.showToast("Repaired \"${item.title}\"!", Icons.Default.CheckCircle)
+                                                val writeRes = repository.saveMediaItemSuspending(repaired)
+                                                if (writeRes.isSuccess) {
+                                                    ToastManager.showToast("Repaired \"${item.title}\"!", Icons.Default.CheckCircle)
+                                                } else {
+                                                    ToastManager.showToast("Save failed: ${writeRes.exceptionOrNull()?.message}", Icons.Default.Warning)
+                                                }
                                             },
                                             onFailure = { err ->
                                                 ToastManager.showToast("Failed: ${err.message}", Icons.Default.Warning)

@@ -20,6 +20,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import androidx.core.content.ContextCompat
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
+import com.streamhub.app.ui.navigation.AdaptiveNavShell
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -181,9 +185,14 @@ class MainActivity : ComponentActivity() {
         handleDeepLink(intent)
         registerPipActionReceiver()
 
+        @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
         setContent {
+            val windowSizeClass = calculateWindowSizeClass(this)
             StreamHubTheme {
-                StreamHubApp(deepLinkMediaId = deepLinkMediaId)
+                StreamHubApp(
+                    deepLinkMediaId = deepLinkMediaId,
+                    windowSizeClass = windowSizeClass
+                )
             }
         }
 
@@ -367,8 +376,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
-fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>? = null) {
+fun StreamHubApp(
+    deepLinkMediaId: androidx.compose.runtime.MutableState<String?>? = null,
+    windowSizeClass: WindowSizeClass
+) {
     val navController = rememberNavController()
     val repository = remember { FirebaseRepository.getInstance() }
 
@@ -437,67 +450,25 @@ fun StreamHubApp(deepLinkMediaId: androidx.compose.runtime.MutableState<String?>
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Scaffold(
-            bottomBar = {
-            if (showBottomBar) {
-                NavigationBar(
-                    containerColor = SurfaceDark,
-                    contentColor = TextPrimary
-                ) {
-                    bottomBarScreens.forEach { screen ->
-                        val selected = currentRoute == screen.route
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = {
-                                navController.navigate(screen.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = {
-                                screen.icon?.let {
-                                    Icon(
-                                        imageVector = it,
-                                        contentDescription = screen.title,
-                                        tint = if (selected) androidx.compose.material3.MaterialTheme.colorScheme.primary else TextSecondary
-                                    )
-                                }
-                            },
-                            label = {
-                                Text(
-                                    text = screen.title,
-                                    color = if (selected) androidx.compose.material3.MaterialTheme.colorScheme.primary else TextSecondary,
-                                    fontSize = 10.sp,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                                )
-                            },
-                            colors = NavigationBarItemDefaults.colors(
-                                indicatorColor = Color.Transparent
-                            )
-                        )
-                    }
-                }
-            }
-        },
-        containerColor = BackgroundDark,
-        modifier = Modifier
-            .fillMaxSize()
-            .then(
-                if (!isAppUnlocked && currentRoute != Screen.Splash.route) {
-                    Modifier.blur(14.dp)
-                } else {
-                    Modifier
-                }
-            )
-    ) { innerPadding ->
-        NavHost(
+        AdaptiveNavShell(
+            windowSizeClass = windowSizeClass,
             navController = navController,
-            startDestination = Screen.Splash.route,
-            modifier = Modifier.padding(innerPadding)
-        ) {
+            bottomBarScreens = bottomBarScreens,
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (!isAppUnlocked && currentRoute != Screen.Splash.route) {
+                        Modifier.blur(14.dp)
+                    } else {
+                        Modifier
+                    }
+                )
+        ) { navContentModifier ->
+            NavHost(
+                navController = navController,
+                startDestination = Screen.Splash.route,
+                modifier = navContentModifier
+            ) {
             composable(Screen.Splash.route) {
                 SplashScreen(
                     repository = repository,

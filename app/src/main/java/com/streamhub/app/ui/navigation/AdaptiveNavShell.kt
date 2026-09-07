@@ -7,10 +7,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.Composable
@@ -75,7 +78,10 @@ fun AdaptiveNavShell(
                                 color = if (selected) MaterialTheme.colorScheme.primary
                                 else MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        }
+                        },
+                        colors = NavigationRailItemDefaults.colors(
+                            indicatorColor = Color.Transparent
+                        )
                     )
                 }
             }
@@ -113,12 +119,15 @@ fun AdaptiveNavShell(
                                     color = if (selected) MaterialTheme.colorScheme.primary
                                     else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                            }
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                indicatorColor = Color.Transparent
+                            )
                         )
                     }
                 }
             },
-            containerColor = MaterialTheme.colorScheme.background,
+            containerColor = com.streamhub.app.ui.theme.BackgroundDark,
             modifier = modifier.fillMaxSize()
         ) { innerPadding ->
             content(Modifier.fillMaxSize().padding(bottom = innerPadding.calculateBottomPadding()))

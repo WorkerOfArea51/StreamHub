@@ -213,9 +213,9 @@ object MetadataFetchManager {
         val effectiveSeason = if (detectedFromQuery > 1) detectedFromQuery else if (targetSeason > 1) targetSeason else 1
 
         val resolvedTmdbId = directTmdbId ?: when {
-            cleanQuery.toIntOrNull() != null -> cleanQuery.toInt()
             cleanQuery.contains("themoviedb.org/movie/") -> cleanQuery.substringAfter("themoviedb.org/movie/").substringBefore("-").substringBefore("/").substringBefore("?").toIntOrNull()
             cleanQuery.contains("themoviedb.org/tv/") -> cleanQuery.substringAfter("themoviedb.org/tv/").substringBefore("-").substringBefore("/").substringBefore("?").toIntOrNull()
+            cleanQuery.startsWith("tmdb:", ignoreCase = true) -> cleanQuery.substringAfter(":").trim().toIntOrNull()
             else -> null
         }
 
@@ -284,7 +284,7 @@ object MetadataFetchManager {
                 return Result.failure(Exception("No results found on TMDB for '$query'"))
             }
 
-            val first = results.getJSONObject(0)
+            val first = findBestMatchingTmdbResult(results, searchCleanTerm, isMovie)
             tmdbIdNum = first.optInt("id", 0)
             title = if (isMovie) first.optString("title", query) else first.optString("name", query)
             originalTitle = if (isMovie) first.optString("original_title", "") else first.optString("original_name", "")
@@ -1259,6 +1259,64 @@ object MetadataFetchManager {
             }
         }
         return trimmed
+    }
+
+    private fun findBestMatchingTmdbResult(
+        results: JSONArray,
+        searchCleanTerm: String,
+        isMovie: Boolean
+    ): JSONObject {
+        if (results.length() <= 1) return results.getJSONObject(0)
+
+        val targetYear = Regex("\\b(19\\d{2}|20\\d{2})\\b").find(searchCleanTerm)?.value?.toIntOrNull()
+        val cleanTarget = searchCleanTerm
+            .replace(Regex("\\(\\d{4}\\)"), "")
+            .lowercase()
+            .replace(Regex("[^a-z0-9]"), "")
+            .trim()
+
+        var bestObj: JSONObject = results.getJSONObject(0)
+        var highestScore = -1.0
+
+        for (i in 0 until minOf(10, results.length())) {
+            val obj = results.optJSONObject(i) ?: continue
+            val rTitle = if (isMovie) obj.optString("title", "") else obj.optString("name", "")
+            val rOrigTitle = if (isMovie) obj.optString("original_title", "") else obj.optString("original_name", "")
+            val rDate = if (isMovie) obj.optString("release_date", "") else obj.optString("first_air_date", "")
+            val rYear = if (rDate.length >= 4) rDate.substring(0, 4).toIntOrNull() else null
+            val popularity = obj.optDouble("popularity", 0.0)
+
+            val cleanRTitle = rTitle.lowercase().replace(Regex("[^a-z0-9]"), "").trim()
+            val cleanROrig = rOrigTitle.lowercase().replace(Regex("[^a-z0-9]"), "").trim()
+
+            var score = 0.0
+            if (cleanRTitle == cleanTarget || cleanROrig == cleanTarget) {
+                score += 100.0
+            } else if (cleanRTitle.startsWith(cleanTarget) || cleanTarget.startsWith(cleanRTitle)) {
+                score += 50.0
+            } else if (cleanRTitle.contains(cleanTarget) || cleanTarget.contains(cleanRTitle)) {
+                score += 30.0
+            }
+
+            if (targetYear != null && rYear != null) {
+                if (targetYear == rYear) {
+                    score += 40.0
+                } else if (kotlin.math.abs(targetYear - rYear) == 1) {
+                    score += 20.0
+                } else {
+                    score -= 30.0
+                }
+            }
+
+            // Popularity tie-breaker
+            score += (popularity / 100.0).coerceAtMost(10.0)
+
+            if (score > highestScore) {
+                highestScore = score
+                bestObj = obj
+            }
+        }
+        return bestObj
     }
 
     private suspend fun fetchJikanCharacters(malId: Int): String {
