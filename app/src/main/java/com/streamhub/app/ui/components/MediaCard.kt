@@ -38,6 +38,7 @@ import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
+import com.streamhub.app.ui.theme.bouncyClickable
 
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -95,7 +96,7 @@ fun MediaCard(
 
     Column(
         modifier = modifier
-            .clickable { onClick() }
+            .bouncyClickable { onClick() }
     ) {
         Box(
             modifier = Modifier

@@ -235,7 +235,7 @@ fun ProfileScreen(
                     icon = Icons.Default.Sensors,
                     iconTint = Color(0xFF00E676),
                     title = "Live Audience & Telemetry",
-                    subtitle = "Real-time active users, VIP vs Ad pass breakdown & live streams",
+                    subtitle = "Real-time active users, audience breakdown & live streams",
                     badge = "LIVE 🟢 (${liveMetrics.totalOnline})",
                     onClick = { showLiveTelemetryDialog = true }
                 )
@@ -395,11 +395,11 @@ private fun StreamHubUserProfileCard(
                     badgeTextColor = Color(0xFF38BDF8)
                 )
             } else {
-                // Permanent Community Lifetime VIP -> ⭐ Lifetime VIP
+                // Permanent Community Lifetime Member -> ⭐ Lifetime Member
                 UserProfileTier(
-                    title = "StreamHub VIP",
-                    badge = "⭐ Lifetime VIP",
-                    subtitle = "✨ Community VIP Key Active • Ultra HD",
+                    title = "StreamHub Member",
+                    badge = "⭐ Lifetime Member",
+                    subtitle = "✨ Community Key Active • 1080p Full HD",
                     cardBorder = listOf(Color(0xFFFFD700), Color(0xFFFFA000)),
                     avatarColors = listOf(Color(0xFFFFD700), Color(0xFFFFA000)),
                     avatarIcon = Icons.Default.Star,

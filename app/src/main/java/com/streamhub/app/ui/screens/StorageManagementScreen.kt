@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import com.streamhub.app.ui.theme.bouncyTouch
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -98,6 +99,7 @@ fun StorageManagementScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(BackgroundDark)
+            .statusBarsPadding()
     ) {
         Column(
             modifier = Modifier
@@ -113,7 +115,10 @@ fun StorageManagementScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBackClick) {
+                    IconButton(
+                        onClick = onBackClick,
+                        modifier = Modifier.bouncyTouch()
+                    ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",

@@ -115,7 +115,7 @@ fun EditProfileDialog(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Default.Edit, contentDescription = null, tint = primaryColor, modifier = Modifier.size(20.dp))
-                    Text("Customize VIP Persona", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("Customize Profile Persona", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
                 IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
                     Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary, modifier = Modifier.size(18.dp))
@@ -274,7 +274,7 @@ fun EditProfileDialog(
                     OutlinedTextField(
                         value = taglineInput,
                         onValueChange = { if (it.length <= 60) taglineInput = it },
-                        placeholder = { Text("e.g. Streaming 4K anime into the night 🌙", color = TextSecondary.copy(alpha = 0.6f)) },
+                        placeholder = { Text("e.g. Streaming anime into the night 🌙", color = TextSecondary.copy(alpha = 0.6f)) },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = primaryColor,
@@ -298,7 +298,7 @@ fun EditProfileDialog(
                         avatarUri = avatarUriInput,
                         presetIndex = selectedPresetIdx
                     )
-                    ToastManager.showToast("VIP Profile updated! ✨")
+                    ToastManager.showToast("Profile updated! ✨")
                     onDismiss()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = primaryColor),

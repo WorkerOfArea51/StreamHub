@@ -26,7 +26,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import com.streamhub.app.ui.theme.bouncyTouch
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -468,7 +470,9 @@ fun DetailsScreen(
                                 color = Color(0xCC181824),
                                 border = BorderStroke(1.dp, Color(0x44FFFFFF)),
                                 shadowElevation = 8.dp,
-                                modifier = Modifier.align(Alignment.Center)
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .bouncyTouch()
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -499,12 +503,14 @@ fun DetailsScreen(
                             }
                         }
 
-                        // Top-Left Back Button
+                        // Top-Left Back Button (safely inset below the status bar / notification hood)
                         IconButton(
                             onClick = onBackClick,
                             modifier = Modifier
                                 .align(Alignment.TopStart)
+                                .statusBarsPadding()
                                 .padding(12.dp)
+                                .bouncyTouch()
                                 .clip(CircleShape)
                                 .background(Color(0x99181824))
                                 .border(1.dp, Color(0x33FFFFFF), CircleShape)
@@ -676,6 +682,7 @@ fun DetailsScreen(
                             modifier = Modifier
                                 .weight(1.3f)
                                 .height(46.dp)
+                                .bouncyTouch()
                         ) {
                             Icon(Icons.Default.PlayArrow, contentDescription = "Play", tint = Color.White, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(6.dp))
@@ -696,6 +703,7 @@ fun DetailsScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(46.dp)
+                                .bouncyTouch()
                                 .clip(RoundedCornerShape(12.dp))
                                 .combinedClickable(
                                     onClick = {

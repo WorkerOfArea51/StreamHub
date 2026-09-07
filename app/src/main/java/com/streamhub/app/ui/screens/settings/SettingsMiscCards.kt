@@ -205,7 +205,7 @@ fun SpeedTestCard(currentAccent: AppThemeAccent) {
                             Column {
                                 Text("RATING", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 Text(
-                                    text = if (res.speedMbps >= 35.0) "4K Ready" else if (res.speedMbps >= 15.0) "1080p Ready" else "720p Ready",
+                                    text = if (res.speedMbps >= 15.0) "1080p FHD Ready" else if (res.speedMbps >= 8.0) "720p HD Ready" else "Standard Ready",
                                     color = currentAccent.color,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp

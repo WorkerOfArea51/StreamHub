@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import com.streamhub.app.ui.theme.bouncyTouch
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -175,7 +176,9 @@ fun HeroBanner(
                     onClick = { onPlayClick(media) },
                     colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primary),
                     shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .bouncyTouch()
                 ) {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
@@ -197,6 +200,7 @@ fun HeroBanner(
                     modifier = Modifier
                         .weight(1f)
                         .height(40.dp)
+                        .bouncyTouch()
                         .clip(RoundedCornerShape(8.dp))
                         .combinedClickable(
                             onClick = {

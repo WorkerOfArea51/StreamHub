@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import com.streamhub.app.ui.theme.bouncyTouch
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -105,6 +106,7 @@ fun HistoryScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(BackgroundDark)
+            .statusBarsPadding()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Top Bar
@@ -116,7 +118,10 @@ fun HistoryScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBackClick) {
+                    IconButton(
+                        onClick = onBackClick,
+                        modifier = Modifier.bouncyTouch()
+                    ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",

@@ -38,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import com.streamhub.app.ui.theme.bouncyTouch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -216,7 +217,9 @@ fun HeroCarousel(
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .bouncyTouch()
                         ) {
                             Icon(Icons.Default.PlayArrow, contentDescription = "Watch Now", tint = Color.White)
                             Spacer(modifier = Modifier.width(6.dp))
@@ -230,6 +233,7 @@ fun HeroCarousel(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(44.dp)
+                                .bouncyTouch()
                                 .clip(RoundedCornerShape(12.dp))
                                 .combinedClickable(
                                     onClick = {

@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import com.streamhub.app.ui.theme.bouncyTouch
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -61,6 +63,7 @@ fun SettingsScreen(
         modifier = modifier
             .fillMaxSize()
             .background(BackgroundDark)
+            .statusBarsPadding()
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -72,7 +75,10 @@ fun SettingsScreen(
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onBackClick) {
+                    IconButton(
+                        onClick = onBackClick,
+                        modifier = Modifier.bouncyTouch()
+                    ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
                     }
                     Spacer(modifier = Modifier.width(8.dp))

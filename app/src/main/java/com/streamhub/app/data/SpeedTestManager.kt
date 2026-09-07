@@ -92,8 +92,8 @@ object SpeedTestManager {
                 val roundedMbps = Math.round(measuredMbps * 10.0) / 10.0
 
                 val quality = when {
-                    roundedMbps >= 35.0 -> "4K Ultra HD (Blazing Fast)"
-                    roundedMbps >= 15.0 -> "1080p Full HD (Smooth)"
+                    roundedMbps >= 25.0 -> "1080p Full HD (Blazing Fast)"
+                    roundedMbps >= 12.0 -> "1080p Full HD (Smooth)"
                     roundedMbps >= 5.0 -> "720p HD (Good)"
                     else -> "480p SD (Basic)"
                 }

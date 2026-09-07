@@ -91,7 +91,7 @@ fun WhatsNewDialog(
         ),
         FeatureItem(
             title = "Multi-Tag Instant Search & Recent History",
-            description = "Tokenized multi-field search with instant interactive filter chips (4K, 1080p, Anime, Movies) and persistent search query history with 1-tap delete.",
+            description = "Tokenized multi-field search with instant interactive filter chips (1080p, 720p, Anime, Movies) and persistent search query history with 1-tap delete.",
             icon = Icons.Default.Bookmark,
             badge = "SEARCH",
             badgeColor = Color(0xFF38BDF8)

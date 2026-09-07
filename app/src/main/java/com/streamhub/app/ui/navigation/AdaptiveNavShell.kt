@@ -1,8 +1,13 @@
 package com.streamhub.app.ui.navigation
 
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -49,7 +54,10 @@ fun AdaptiveNavShell(
 
     if (useRail) {
         Row(modifier = modifier.fillMaxSize()) {
-            NavigationRail(containerColor = MaterialTheme.colorScheme.surface) {
+            NavigationRail(
+                containerColor = MaterialTheme.colorScheme.surface,
+                header = { Spacer(Modifier.statusBarsPadding()) }
+            ) {
                 bottomBarScreens.forEach { screen ->
                     val selected = currentRoute == screen.route
                     NavigationRailItem(
@@ -85,7 +93,12 @@ fun AdaptiveNavShell(
                     )
                 }
             }
-            content(Modifier.fillMaxSize().padding(start = 0.dp))
+            content(
+                Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+            )
         }
     } else {
         Scaffold(
@@ -128,9 +141,17 @@ fun AdaptiveNavShell(
                 }
             },
             containerColor = com.streamhub.app.ui.theme.BackgroundDark,
+            contentWindowInsets = WindowInsets.statusBars,
             modifier = modifier.fillMaxSize()
         ) { innerPadding ->
-            content(Modifier.fillMaxSize().padding(bottom = innerPadding.calculateBottomPadding()))
+            content(
+                Modifier
+                    .fillMaxSize()
+                    .padding(
+                        top = innerPadding.calculateTopPadding(),
+                        bottom = innerPadding.calculateBottomPadding()
+                    )
+            )
         }
     }
 }

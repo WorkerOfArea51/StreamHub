@@ -159,7 +159,7 @@ fun AccessGateOverlay(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
-                        text = "Private VIP Access Gate 🔒",
+                        text = "Community Access Gate 🔐",
                         color = Color.White,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
@@ -168,7 +168,7 @@ fun AccessGateOverlay(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Bandwidth & RAM Explanation Note
+                    // Bandwidth & Server Note
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = Color(0xFF1E1E30),
@@ -180,20 +180,20 @@ fun AccessGateOverlay(
                                 Icon(
                                     imageVector = Icons.Default.Shield,
                                     contentDescription = null,
-                                    tint = Color(0xFFFFD700),
+                                    tint = primaryColor,
                                     modifier = Modifier.size(15.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "Dedicated Server Capacity",
-                                    color = Color(0xFFFFD700),
+                                    text = "Private Streaming Network",
+                                    color = primaryColor,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
                             Spacer(modifier = Modifier.height(3.dp))
                             Text(
-                                text = "To maintain ultra-smooth, bufferless 4K & 1080p streaming, please enter your community VIP access code.",
+                                text = "To maintain high-speed, bufferless 1080p streaming, please enter your community access code.",
                                 color = TextSecondary,
                                 fontSize = 10.5.sp,
                                 lineHeight = 14.sp
@@ -211,7 +211,7 @@ fun AccessGateOverlay(
                             errorMessage = null
                         },
                         label = { Text("Enter Access Code", color = TextSecondary, fontSize = 12.sp) },
-                        placeholder = { Text("e.g. Invite PIN or Password", color = TextSecondary, fontSize = 12.sp) },
+                        placeholder = { Text("e.g. Community PIN or Passcode", color = TextSecondary, fontSize = 12.sp) },
                         singleLine = true,
                         leadingIcon = {
                             Icon(Icons.Default.Key, contentDescription = null, tint = primaryColor, modifier = Modifier.size(18.dp))
@@ -253,21 +253,21 @@ fun AccessGateOverlay(
                                 when (result) {
                                     is VoucherVerificationResult.Success -> {
                                         if (result.isPermanent) {
-                                            ToastManager.showToast("Welcome to StreamHub Lifetime VIP! 🚀")
+                                            ToastManager.showToast("Welcome to StreamHub! 🚀")
                                         } else if (result.isReactivation) {
                                             ToastManager.showToast("Welcome back! ${result.daysRemaining} days remaining 🎬")
                                         } else {
-                                            ToastManager.showToast("30-Day VIP Pass Activated! (${result.daysRemaining} days) 🚀")
+                                            ToastManager.showToast("Access Pass Activated! (${result.daysRemaining} days) 🚀")
                                         }
                                     }
                                     VoucherVerificationResult.BoundToAnotherDevice -> {
-                                        errorMessage = "❌ This VIP code is already bound to another phone. Code sharing is not allowed."
+                                        errorMessage = "❌ This access code is already bound to another phone. Code sharing is not allowed."
                                     }
                                     VoucherVerificationResult.Expired -> {
-                                        errorMessage = "❌ This 30-day VIP pass has expired. Contact on Telegram for renewal."
+                                        errorMessage = "❌ This 30-day access pass has expired. Contact on Telegram for renewal."
                                     }
                                     VoucherVerificationResult.InvalidCode -> {
-                                        errorMessage = "❌ Invalid access code. Use 12h Free Pass or contact on Telegram."
+                                        errorMessage = "❌ Invalid access code. Please check your code or contact on Telegram."
                                     }
                                     is VoucherVerificationResult.Error -> {
                                         errorMessage = "⚠️ ${result.message}"
@@ -289,7 +289,7 @@ fun AccessGateOverlay(
                             )
                         } else {
                             Text(
-                                text = "Unlock VIP Access 🚀",
+                                text = "Enter StreamHub 🚀",
                                 color = Color.White,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold

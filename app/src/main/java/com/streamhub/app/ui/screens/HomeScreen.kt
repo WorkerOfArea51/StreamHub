@@ -89,6 +89,8 @@ import com.streamhub.app.ui.theme.CardBorderDark
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
+import com.streamhub.app.ui.theme.bouncyClickable
+import com.streamhub.app.ui.theme.bouncyTouch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -345,6 +347,7 @@ fun HomeScreen(
                         // Surprise Roulette Button (Prominent gradient pill)
                         Box(
                             modifier = Modifier
+                                .bouncyClickable { showSurpriseMeDialog = true }
                                 .clip(RoundedCornerShape(20.dp))
                                 .background(
                                     androidx.compose.ui.graphics.Brush.horizontalGradient(
@@ -361,7 +364,6 @@ fun HomeScreen(
                                     ),
                                     shape = RoundedCornerShape(20.dp)
                                 )
-                                .clickable { showSurpriseMeDialog = true }
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -384,10 +386,10 @@ fun HomeScreen(
                         Box {
                             Box(
                                 modifier = Modifier
+                                    .bouncyClickable { showSortMenu = true }
                                     .clip(RoundedCornerShape(20.dp))
                                     .background(Color(0xFF1E1E2C))
                                     .border(1.dp, Color(0xFF38384E), RoundedCornerShape(20.dp))
-                                    .clickable { showSortMenu = true }
                                     .padding(horizontal = 10.dp, vertical = 8.dp),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -1022,13 +1024,12 @@ fun CategoryFilterChip(
     val accentColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
     Box(
         modifier = Modifier
+            .bouncyClickable(role = Role.Button) { onClick() }
             .clip(RoundedCornerShape(20.dp))
             .background(if (isSelected) accentColor else SurfaceDark)
             .semantics {
                 contentDescription = "$text filter, ${if (isSelected) "selected" else "not selected"}"
-                role = Role.Button
             }
-            .clickable { onClick() }
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
         Text(
