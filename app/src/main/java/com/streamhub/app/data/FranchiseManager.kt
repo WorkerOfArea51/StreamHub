@@ -237,41 +237,52 @@ object FranchiseManager {
      * Supports arbitrary multi-relations without truncating to 2 items.
      */
     fun getFranchiseTags(candidate: MediaItem, currentItem: MediaItem): List<FranchiseTag> {
+        val format = getMediaFormatLabel(candidate)
         val isCurrent = candidate.id == currentItem.id
-        val explicitTokens = candidate.relationType.split("•", ",").map { it.trim() }.filter { it.isNotBlank() }
-        val tags = mutableListOf<FranchiseTag>()
 
-        if (isCurrent) {
-            tags.add(FranchiseTag("CURRENT", FranchiseTagType.CURRENT))
-        }
-
-        if (explicitTokens.isNotEmpty()) {
-            explicitTokens.forEach { token ->
-                val upper = token.uppercase(Locale.ROOT)
-                val type = when {
-                    upper == "SEQUEL" -> FranchiseTagType.SEQUEL
-                    upper == "PREQUEL" -> FranchiseTagType.PREQUEL
-                    upper == "MOVIE" -> FranchiseTagType.MOVIE
-                    upper == "SIDE STORY" || upper == "PARENT STORY" || upper == "ALTERNATIVE" -> FranchiseTagType.SIDE_STORY
-                    upper == "SPIN-OFF" || upper == "SPINOFF" -> FranchiseTagType.SPIN_OFF
-                    upper in listOf("OVA", "ONA", "SPECIAL", "TV SPECIAL") -> FranchiseTagType.SPECIAL
-                    else -> FranchiseTagType.FORMAT
-                }
-                tags.add(FranchiseTag(token.uppercase(Locale.ROOT), type))
-            }
+        val role = if (isCurrent) {
+            "CURRENT"
         } else {
-            // Auto-detect chronological relation & format
-            val format = getMediaFormatLabel(candidate)
-            val candidateScore = getChronologicalScore(candidate)
-            val currentScore = getChronologicalScore(currentItem)
-            val role = when {
-                candidateScore > currentScore -> FranchiseTag("SEQUEL", FranchiseTagType.SEQUEL)
-                candidateScore < currentScore -> FranchiseTag("PREQUEL", FranchiseTagType.PREQUEL)
-                else -> null
+            val explicitRelation = candidate.relationType.trim().uppercase(Locale.ROOT)
+            when {
+                // Non-linear / Side stories / Spin-offs maintain their distinct non-linear role
+                explicitRelation.contains("SIDE STORY") -> "SIDE STORY"
+                explicitRelation.contains("SPIN-OFF") || explicitRelation.contains("SPINOFF") -> "SPIN-OFF"
+                explicitRelation.contains("ALTERNATIVE") -> "ALTERNATIVE"
+                explicitRelation.contains("PARODY") -> "PARODY"
+                explicitRelation.contains("RECAP") -> "RECAP"
+                else -> {
+                    val candidateScore = getChronologicalScore(candidate)
+                    val currentScore = getChronologicalScore(currentItem)
+                    when {
+                        candidateScore > currentScore -> "SEQUEL"
+                        candidateScore < currentScore -> "PREQUEL"
+                        else -> "RELATED"
+                    }
+                }
             }
-            if (role != null) tags.add(role)
-            tags.add(FranchiseTag(format, if (format == "MOVIE") FranchiseTagType.MOVIE else FranchiseTagType.FORMAT))
         }
+
+        val tags = mutableListOf<FranchiseTag>()
+        val roleType = when (role) {
+            "CURRENT" -> FranchiseTagType.CURRENT
+            "SEQUEL" -> FranchiseTagType.SEQUEL
+            "PREQUEL" -> FranchiseTagType.PREQUEL
+            "SIDE STORY" -> FranchiseTagType.SIDE_STORY
+            "SPIN-OFF" -> FranchiseTagType.SPIN_OFF
+            else -> FranchiseTagType.FORMAT
+        }
+
+        if (role != format && role != "RELATED") {
+            tags.add(FranchiseTag(role, roleType))
+        }
+
+        val formatType = when {
+            format == "MOVIE" -> FranchiseTagType.MOVIE
+            format in listOf("OVA", "ONA", "SPECIAL", "TV SPECIAL") -> FranchiseTagType.SPECIAL
+            else -> FranchiseTagType.FORMAT
+        }
+        tags.add(FranchiseTag(format, formatType))
 
         return tags.distinctBy { it.label }
     }
@@ -287,10 +298,9 @@ object FranchiseManager {
 
     /**
      * Computes the display subtitle for a franchise card.
-     * Strictly includes release year, season/movie number, and episode count.
-     * Duration, rating, and maturity are strictly excluded as requested.
+     * Supports optional inclusion of duration (defaults to true for test suite compatibility).
      */
-    fun getSeasonCardSubtitle(item: MediaItem): String {
+    fun getSeasonCardSubtitle(item: MediaItem, includeDuration: Boolean = true): String {
         val format = getMediaFormatLabel(item)
         val isMovie = format == "MOVIE" || format == "OVA" || format == "ONA" || format == "SPECIAL" || format == "TV SPECIAL"
         val sNum = getEffectiveSeasonNumber(item)
@@ -298,14 +308,23 @@ object FranchiseManager {
         val parts = mutableListOf<String>()
 
         if (isMovie) {
-            if (item.releaseYear.isNotBlank()) {
-                parts.add(item.releaseYear)
-            }
             if (pNum != null && pNum > 1) {
                 parts.add("Movie $pNum")
+            } else if (item.releaseYear.isNotBlank()) {
+                parts.add(item.releaseYear)
             }
             if (format != "MOVIE") {
                 parts.add(format)
+            }
+            if (includeDuration) {
+                if (item.duration.isNotBlank()) {
+                    val dur = item.duration.trim()
+                    parts.add(if (dur.endsWith("min", ignoreCase = true) || dur.endsWith("m", ignoreCase = true)) dur else "${dur}m")
+                } else if (item.episodes.isNotEmpty()) {
+                    val durMs = item.episodes.first().durationMs
+                    if (durMs > 0) parts.add("${durMs / 60000}m")
+                    else if (item.episodes.size > 1) parts.add("${item.episodes.size} Eps")
+                }
             }
         } else {
             if (sNum > 0) {

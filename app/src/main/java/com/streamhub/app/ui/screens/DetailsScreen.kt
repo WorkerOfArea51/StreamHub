@@ -1553,7 +1553,7 @@ private fun FranchiseCard(
         com.streamhub.app.data.FranchiseManager.getFranchiseTags(fItem, mediaItem)
     }
     val subtitle = remember(fItem) {
-        com.streamhub.app.data.FranchiseManager.getSeasonCardSubtitle(fItem)
+        com.streamhub.app.data.FranchiseManager.getSeasonCardSubtitle(fItem, includeDuration = false)
     }
 
     Surface(
