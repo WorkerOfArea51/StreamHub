@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.streamhub.app.data.MyListManager
 import com.streamhub.app.data.WatchHistoryManager
+import com.streamhub.app.data.FranchiseTagType
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -1557,20 +1558,17 @@ private fun FranchiseCard(
     }
 
     val isCurrent = fItem.id == mediaItem.id
-    val tag = com.streamhub.app.data.FranchiseManager.getFranchiseTag(fItem, mediaItem)
+    val tags = com.streamhub.app.data.FranchiseManager.getFranchiseTags(fItem, mediaItem)
     val subtitle = com.streamhub.app.data.FranchiseManager.getSeasonCardSubtitle(fItem)
 
-    val tagColor = when {
+    val primaryTagColor = when {
         isCurrent -> AccentGold
-        tag.startsWith("SEQUEL") -> Color(0xFF00E676)
-        tag.startsWith("PREQUEL") -> Color(0xFF7C4DFF)
-        tag.startsWith("SIDE STORY") || tag.startsWith("SPIN-OFF") || tag.contains("OVA") || tag.contains("ONA") || tag.contains("SPECIAL") -> Color(0xFF38BDF8)
-        tag.startsWith("SEASON") -> Color(0xFFFF9800)
-        tag.contains("MOVIE") -> AccentOrange
+        tags.any { it.type == FranchiseTagType.SEQUEL } -> Color(0xFF00E676)
+        tags.any { it.type == FranchiseTagType.PREQUEL } -> Color(0xFF7C4DFF)
+        tags.any { it.type == FranchiseTagType.SIDE_STORY || it.type == FranchiseTagType.SPIN_OFF } -> Color(0xFF38BDF8)
+        tags.any { it.type == FranchiseTagType.MOVIE } -> AccentOrange
         else -> PrimaryRed
     }
-
-    val tagTextColor = if (isCurrent) Color.Black else Color.White
 
     val titleModifier = if (canMarquee) {
         Modifier
@@ -1603,17 +1601,18 @@ private fun FranchiseCard(
         color = if (isCurrent) Color(0xFF1F1826) else SurfaceDark,
         border = BorderStroke(
             width = if (isCurrent) 1.5.dp else 1.dp,
-            color = if (isCurrent) AccentGold else tagColor.copy(alpha = 0.5f)
+            color = if (isCurrent) AccentGold else primaryTagColor.copy(alpha = 0.5f)
         ),
         modifier = Modifier
-            .width(135.dp)
+            .width(138.dp)
+            .bouncyTouch(0.95f)
             .clickable { onClick() }
     ) {
         Column(modifier = Modifier.padding(8.dp)) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(160.dp)
+                    .height(165.dp)
                     .clip(RoundedCornerShape(8.dp))
             ) {
                 AsyncImage(
@@ -1622,19 +1621,61 @@ private fun FranchiseCard(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
-                // Compound Tag Badge (e.g. CURRENT • TV, SEQUEL • MOVIE, PREQUEL • TV)
-                Surface(
-                    shape = RoundedCornerShape(topStart = 0.dp, topEnd = 8.dp, bottomStart = 8.dp, bottomEnd = 0.dp),
-                    color = tagColor,
-                    modifier = Modifier.align(Alignment.TopEnd)
+
+                // Chronological Watch Order Badge (Top Left)
+                if (fItem.franchiseOrder > 0.0) {
+                    val orderStr = if (fItem.franchiseOrder % 1.0 == 0.0) "#${fItem.franchiseOrder.toInt()}" else "#${fItem.franchiseOrder}"
+                    Surface(
+                        shape = RoundedCornerShape(topStart = 6.dp, bottomEnd = 6.dp),
+                        color = Color(0xD9000000),
+                        border = BorderStroke(0.6.dp, AccentGold),
+                        modifier = Modifier.align(Alignment.TopStart)
+                    ) {
+                        Text(
+                            text = orderStr,
+                            color = AccentGold,
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Black,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                // Multi-Badge Tags (Top Right Stack - All relations visible)
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                    horizontalAlignment = Alignment.End
                 ) {
-                    Text(
-                        text = tag,
-                        color = tagTextColor,
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.Black,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
-                    )
+                    tags.forEach { tag ->
+                        val chipBg = when (tag.type) {
+                            FranchiseTagType.CURRENT -> AccentGold
+                            FranchiseTagType.SEQUEL -> Color(0xFF00E676)
+                            FranchiseTagType.PREQUEL -> Color(0xFF7C4DFF)
+                            FranchiseTagType.MOVIE -> AccentOrange
+                            FranchiseTagType.SIDE_STORY, FranchiseTagType.SPIN_OFF -> Color(0xFF0284C7)
+                            FranchiseTagType.SPECIAL -> Color(0xFFF59E0B)
+                            FranchiseTagType.FORMAT -> Color(0xFF334155)
+                            else -> Color(0xFF334155)
+                        }
+                        val chipText = if (tag.type == FranchiseTagType.CURRENT) Color.Black else Color.White
+
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = chipBg,
+                            modifier = Modifier
+                        ) {
+                            Text(
+                                text = tag.label,
+                                color = chipText,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Black,
+                                modifier = Modifier.padding(horizontal = 4.5.dp, vertical = 1.5.dp)
+                            )
+                        }
+                    }
                 }
             }
 

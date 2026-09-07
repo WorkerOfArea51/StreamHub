@@ -128,33 +128,27 @@ fun MediaCard(
             )
 
             // Season / Relation / Movie Sequence Badge Top Left
-            if (!isMovie && (effectiveSeason > 1 || (effectivePart != null && effectivePart > 0))) {
+            val topLeftBadge = when {
+                !isMovie && (effectiveSeason > 1 || (effectivePart != null && effectivePart > 0)) -> Pair(seasonBadgeText, Color(0xCC7C4DFF))
+                isMovie && movieSeq != null && movieSeq > 1 -> Pair("M$movieSeq", Color(0xCCFF5722))
+                isMovie -> Pair("MOVIE", Color(0xCCFF5722))
+                item.relationType.contains("OVA", ignoreCase = true) -> Pair("OVA", Color(0xCCF59E0B))
+                item.relationType.contains("Special", ignoreCase = true) -> Pair("SPECIAL", Color(0xCCF59E0B))
+                item.relationType.contains("Side Story", ignoreCase = true) -> Pair("SIDE", Color(0xCC0284C7))
+                else -> null
+            }
+
+            if (topLeftBadge != null) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(6.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xCC7C4DFF))
+                        .background(topLeftBadge.second)
                         .padding(horizontal = 5.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = seasonBadgeText,
-                        color = Color.White,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Black
-                    )
-                }
-            } else if (isMovie && movieSeq != null && movieSeq > 1) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(6.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xCCFF5722))
-                        .padding(horizontal = 5.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = "M$movieSeq",
+                        text = topLeftBadge.first,
                         color = Color.White,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Black
@@ -268,16 +262,60 @@ fun MediaCard(
                 remainingText
             }
         } else {
-            buildString {
-                append(item.category)
-                if (!isMovie && (effectiveSeason > 1 || (effectivePart != null && effectivePart > 0))) {
-                    append(" • $seasonSubtitleText")
-                } else if (isMovie && movieSeq != null && movieSeq > 1) {
-                    append(" • Movie $movieSeq")
+            val parts = mutableListOf<String>()
+
+            // 1. Primary Format / Role
+            if (isMovie) {
+                if (movieSeq != null && movieSeq > 1) {
+                    parts.add("Movie $movieSeq")
+                } else {
+                    parts.add("Movie")
                 }
-                if (item.releaseYear.isNotBlank()) {
-                    append(" • ${item.releaseYear}")
+            } else {
+                if (effectiveSeason > 1 || (effectivePart != null && effectivePart > 0)) {
+                    parts.add(seasonSubtitleText)
+                } else if (item.relationType.contains("OVA", ignoreCase = true)) {
+                    parts.add("OVA")
+                } else if (item.relationType.contains("Special", ignoreCase = true)) {
+                    parts.add("Special")
+                } else if (item.relationType.contains("Side Story", ignoreCase = true)) {
+                    parts.add("Side Story")
+                } else if (item.category.isNotBlank() && !item.category.equals("ANIME", ignoreCase = true)) {
+                    parts.add(item.category)
                 }
+            }
+
+            // 2. Release Year
+            if (item.releaseYear.isNotBlank()) {
+                parts.add(item.releaseYear)
+            }
+
+            // 3. Duration / Episodes (if available)
+            if (isMovie && item.duration.isNotBlank()) {
+                val dur = item.duration.trim()
+                parts.add(if (dur.endsWith("min", ignoreCase = true) || dur.endsWith("m", ignoreCase = true)) dur else "${dur}m")
+            } else if (!isMovie && item.totalEpisodes.isNotBlank()) {
+                val ep = item.totalEpisodes.trim()
+                parts.add(if (ep.endsWith("Eps", ignoreCase = true) || ep.endsWith("Episodes", ignoreCase = true)) ep else "$ep Eps")
+            } else if (!isMovie && item.episodes.isNotEmpty()) {
+                parts.add("${item.episodes.size} Eps")
+            }
+
+            // 4. Subtitle / Audio Language indicators (e.g. SUB, DUB, DUAL)
+            val hasSubs = item.mediaInfo.subtitleTracks.isNotEmpty()
+            val hasAudio = item.mediaInfo.audioTracks.size > 1
+            if (hasAudio && hasSubs) {
+                parts.add("DUAL • SUB")
+            } else if (hasAudio) {
+                parts.add("DUAL")
+            } else if (hasSubs) {
+                parts.add("SUB")
+            }
+
+            if (parts.isEmpty()) {
+                item.category.ifBlank { "Media" }
+            } else {
+                parts.joinToString(" • ")
             }
         }
 

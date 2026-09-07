@@ -128,7 +128,6 @@ fun ProfileScreen(
     var showAddContentDialog by remember { mutableStateOf(false) }
     var showLiveTelemetryDialog by remember { mutableStateOf(false) }
     var showAboutScreen by remember { mutableStateOf(false) }
-    var showWhatsNewDialog by remember { mutableStateOf(false) }
     var showEditProfileDialog by remember { mutableStateOf(false) }
 
     LazyColumn(

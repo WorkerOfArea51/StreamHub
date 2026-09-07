@@ -64,8 +64,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import com.streamhub.app.BuildConfig
-import com.streamhub.app.ui.components.WhatsNewDialog
 import com.streamhub.app.ui.theme.AccentGold
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
@@ -87,7 +88,6 @@ fun AboutScreen(
 ) {
     val context = LocalContext.current
     val primaryColor = MaterialTheme.colorScheme.primary
-    var showWhatsNewDialog by remember { mutableStateOf(false) }
 
     val openUrl: (String) -> Unit = { url ->
         try {
@@ -104,6 +104,8 @@ fun AboutScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(BackgroundDark)
+            .statusBarsPadding()
+            .navigationBarsPadding()
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -208,20 +210,6 @@ fun AboutScreen(
                             lineHeight = 19.sp,
                             textAlign = TextAlign.Center
                         )
-
-                        Spacer(modifier = Modifier.height(18.dp))
-
-                        Button(
-                            onClick = { showWhatsNewDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E1E32)),
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, Color(0xFF33334D)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = AccentGold, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("See What's New in v${BuildConfig.VERSION_NAME}", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
                     }
                 }
             }
@@ -264,6 +252,47 @@ fun AboutScreen(
                             title = "Zero-Tracker Privacy Architecture",
                             description = "Encrypted local SQLite storage with zero tracking SDKs and instant memory cleanup."
                         )
+                    }
+                }
+            }
+
+            // Build & Runtime Diagnostics Card
+            item(key = "about_diagnostics") {
+                Text(
+                    text = "BUILD & RUNTIME DIAGNOSTICS",
+                    color = AccentOrange,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    border = BorderStroke(1.dp, CardBorderDark),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Architecture", color = TextSecondary, fontSize = 12.sp)
+                            Text("ARM64-v8a (64-bit Native)", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        HorizontalDivider(color = Color(0xFF222233), thickness = 0.5.dp)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Build Version", color = TextSecondary, fontSize = 12.sp)
+                            Text("v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", color = Color(0xFF00E676), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        HorizontalDivider(color = Color(0xFF222233), thickness = 0.5.dp)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Playback Pipeline", color = TextSecondary, fontSize = 12.sp)
+                            Text("Media3 ExoPlayer • 1080p FHD", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        HorizontalDivider(color = Color(0xFF222233), thickness = 0.5.dp)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("MTProto Core", color = TextSecondary, fontSize = 12.sp)
+                            Text("TDLib 1.8.x Ring Buffer", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -343,12 +372,6 @@ fun AboutScreen(
                 }
             }
         }
-    }
-
-    if (showWhatsNewDialog) {
-        WhatsNewDialog(
-            onDismiss = { showWhatsNewDialog = false }
-        )
     }
 }
 

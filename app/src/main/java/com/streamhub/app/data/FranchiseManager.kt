@@ -21,6 +21,22 @@ data class SeasonArcOption(
     val isCurrent: Boolean = false
 )
 
+data class FranchiseTag(
+    val label: String,
+    val type: FranchiseTagType
+)
+
+enum class FranchiseTagType {
+    CURRENT,
+    SEQUEL,
+    PREQUEL,
+    MOVIE,
+    SIDE_STORY,
+    SPIN_OFF,
+    SPECIAL,
+    FORMAT
+}
+
 /**
  * Utility for intelligent Franchise & Sequel discovery, chronological grouping,
  * and multi-arc/saga organization.
@@ -217,47 +233,56 @@ object FranchiseManager {
     }
 
     /**
-     * Formats a relation tag for displaying on season cards.
-     * Combines relation role (CURRENT, SEQUEL, PREQUEL, SIDE STORY, SPIN-OFF)
-     * with format type (TV, TV SPECIAL, MOVIE, OVA, ONA, SPECIAL).
-     *
-     * Relative to [currentItem]:
-     * - Past releases (lower season / earlier release year) -> PREQUEL
-     * - Future releases (higher season / later release year) -> SEQUEL
-     * - Currently open item -> CURRENT
+     * Extracts all individual relation tags for displaying on franchise cards.
+     * Supports arbitrary multi-relations without truncating to 2 items.
      */
-    fun getFranchiseTag(candidate: MediaItem, currentItem: MediaItem): String {
-        val format = getMediaFormatLabel(candidate)
+    fun getFranchiseTags(candidate: MediaItem, currentItem: MediaItem): List<FranchiseTag> {
         val isCurrent = candidate.id == currentItem.id
+        val explicitTokens = candidate.relationType.split("•", ",").map { it.trim() }.filter { it.isNotBlank() }
+        val tags = mutableListOf<FranchiseTag>()
 
         if (isCurrent) {
-            return "CURRENT • $format"
+            tags.add(FranchiseTag("CURRENT", FranchiseTagType.CURRENT))
         }
 
-        val explicitRelation = candidate.relationType.trim().uppercase(Locale.ROOT)
-        val role = when {
-            // Non-linear / Side stories / Spin-offs maintain their distinct non-linear role
-            explicitRelation.contains("SIDE STORY") -> "SIDE STORY"
-            explicitRelation.contains("SPIN-OFF") || explicitRelation.contains("SPINOFF") -> "SPIN-OFF"
-            explicitRelation.contains("ALTERNATIVE") -> "ALTERNATIVE"
-            explicitRelation.contains("PARODY") -> "PARODY"
-            explicitRelation.contains("RECAP") -> "RECAP"
-            else -> {
-                val candidateScore = getChronologicalScore(candidate)
-                val currentScore = getChronologicalScore(currentItem)
-                when {
-                    candidateScore > currentScore -> "SEQUEL"
-                    candidateScore < currentScore -> "PREQUEL"
-                    else -> "RELATED"
+        if (explicitTokens.isNotEmpty()) {
+            explicitTokens.forEach { token ->
+                val upper = token.uppercase(Locale.ROOT)
+                val type = when {
+                    upper == "SEQUEL" -> FranchiseTagType.SEQUEL
+                    upper == "PREQUEL" -> FranchiseTagType.PREQUEL
+                    upper == "MOVIE" -> FranchiseTagType.MOVIE
+                    upper == "SIDE STORY" -> FranchiseTagType.SIDE_STORY
+                    upper == "SPIN-OFF" || upper == "SPINOFF" -> FranchiseTagType.SPIN_OFF
+                    upper in listOf("OVA", "ONA", "SPECIAL", "TV SPECIAL") -> FranchiseTagType.SPECIAL
+                    else -> FranchiseTagType.FORMAT
                 }
+                tags.add(FranchiseTag(token.uppercase(Locale.ROOT), type))
             }
+        } else {
+            // Auto-detect chronological relation & format
+            val format = getMediaFormatLabel(candidate)
+            val candidateScore = getChronologicalScore(candidate)
+            val currentScore = getChronologicalScore(currentItem)
+            val role = when {
+                candidateScore > currentScore -> FranchiseTag("SEQUEL", FranchiseTagType.SEQUEL)
+                candidateScore < currentScore -> FranchiseTag("PREQUEL", FranchiseTagType.PREQUEL)
+                else -> null
+            }
+            if (role != null) tags.add(role)
+            tags.add(FranchiseTag(format, if (format == "MOVIE") FranchiseTagType.MOVIE else FranchiseTagType.FORMAT))
         }
 
-        return when {
-            role == format -> role
-            role == "RELATED" -> format
-            else -> "$role • $format"
-        }
+        return tags.distinctBy { it.label }
+    }
+
+    /**
+     * Formats a relation tag for displaying on season cards.
+     * Combines all explicit relation roles with format type.
+     */
+    fun getFranchiseTag(candidate: MediaItem, currentItem: MediaItem): String {
+        val tags = getFranchiseTags(candidate, currentItem)
+        return tags.joinToString(" • ") { it.label }
     }
 
     /**

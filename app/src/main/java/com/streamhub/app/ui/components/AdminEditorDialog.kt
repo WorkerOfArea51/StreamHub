@@ -1425,15 +1425,6 @@ fun AdminEditorDialog(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        OutlinedTextField(
-                            value = seasonTitle,
-                            onValueChange = { seasonTitle = it },
-                            label = { Text("Season/Arc Title (e.g. Arise from the Shadow)", color = TextSecondary) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-
                         Text("Relation Type & Story Role (Multi-Selectable)", color = TextSecondary, fontSize = 11.sp)
                         Spacer(modifier = Modifier.height(4.dp))
                         Row(
@@ -1442,12 +1433,11 @@ fun AdminEditorDialog(
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState())
                         ) {
-                            val relationPills = listOf("Sequel", "Prequel", "TV", "TV Special", "Movie", "Side Story", "Spin-Off", "OVA", "Special", "ONA")
+                            val relationPills = listOf("Sequel", "Prequel", "Movie", "Side Story", "Spin-Off", "TV", "TV Special", "OVA", "Special", "ONA")
                             val currentTokens = relationType.split("•", ",").map { it.trim() }.filter { it.isNotBlank() }
 
                             relationPills.forEach { rel ->
-                                val isSelected = currentTokens.any { it.equals(rel, ignoreCase = true) } ||
-                                        (rel == "TV" && currentTokens.any { it.equals("TV", ignoreCase = true) && !it.contains("SPECIAL", ignoreCase = true) })
+                                val isSelected = currentTokens.any { it.equals(rel, ignoreCase = true) }
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
                                     color = if (isSelected) PrimaryRed else Color(0xFF1E1E2C),
@@ -1457,23 +1447,11 @@ fun AdminEditorDialog(
                                         if (tokens.any { it.equals(rel, ignoreCase = true) }) {
                                             tokens.removeAll { it.equals(rel, ignoreCase = true) }
                                         } else {
-                                            when (rel) {
-                                                "Sequel" -> tokens.removeAll { it.equals("Prequel", ignoreCase = true) }
-                                                "Prequel" -> tokens.removeAll { it.equals("Sequel", ignoreCase = true) }
-                                                "TV" -> {
-                                                    tokens.removeAll { it.equals("TV Special", ignoreCase = true) || it.equals("Movie", ignoreCase = true) }
-                                                }
-                                                "TV Special" -> {
-                                                    tokens.removeAll { it.equals("TV", ignoreCase = true) || it.equals("Special", ignoreCase = true) || it.equals("Movie", ignoreCase = true) }
-                                                }
-                                                "Movie" -> {
-                                                    tokens.removeAll { it.equals("TV", ignoreCase = true) || it.equals("TV Special", ignoreCase = true) }
-                                                }
-                                                "Side Story" -> tokens.removeAll { it.equals("Spin-Off", ignoreCase = true) }
-                                                "Spin-Off" -> tokens.removeAll { it.equals("Side Story", ignoreCase = true) }
-                                                "OVA" -> tokens.removeAll { it.equals("ONA", ignoreCase = true) }
-                                                "ONA" -> tokens.removeAll { it.equals("OVA", ignoreCase = true) }
-                                                "Special" -> tokens.removeAll { it.equals("TV Special", ignoreCase = true) }
+                                            // Only exclude mutually conflicting directional roles
+                                            if (rel.equals("Sequel", ignoreCase = true)) {
+                                                tokens.removeAll { it.equals("Prequel", ignoreCase = true) }
+                                            } else if (rel.equals("Prequel", ignoreCase = true)) {
+                                                tokens.removeAll { it.equals("Sequel", ignoreCase = true) }
                                             }
                                             tokens.add(rel)
                                         }
@@ -1481,7 +1459,7 @@ fun AdminEditorDialog(
                                         // Role tokens first, Format tokens second
                                         val roleWeights = mapOf(
                                             "Sequel" to 1, "Prequel" to 2, "Side Story" to 3, "Spin-Off" to 4,
-                                            "TV" to 5, "TV Special" to 6, "Movie" to 7, "OVA" to 8, "ONA" to 9, "Special" to 10
+                                            "Movie" to 5, "TV" to 6, "TV Special" to 7, "OVA" to 8, "ONA" to 9, "Special" to 10
                                         )
                                         tokens.sortBy { roleWeights[it] ?: 99 }
                                         relationType = tokens.joinToString(" • ")
@@ -1494,6 +1472,42 @@ fun AdminEditorDialog(
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                     )
+                                }
+                            }
+                        }
+
+                        // Live Card Tag Preview
+                        val activeTokens = relationType.split("•", ",").map { it.trim() }.filter { it.isNotBlank() }
+                        if (activeTokens.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Card Preview:", color = TextSecondary, fontSize = 10.sp)
+                                activeTokens.forEach { t ->
+                                    val chipColor = when {
+                                        t.equals("Sequel", ignoreCase = true) -> Color(0xFF00E676)
+                                        t.equals("Prequel", ignoreCase = true) -> Color(0xFF7C4DFF)
+                                        t.equals("Movie", ignoreCase = true) -> Color(0xFFFF5722)
+                                        t.equals("Side Story", ignoreCase = true) || t.equals("Spin-Off", ignoreCase = true) -> Color(0xFF38BDF8)
+                                        t.equals("OVA", ignoreCase = true) || t.equals("Special", ignoreCase = true) -> Color(0xFFFFB300)
+                                        else -> PrimaryRed
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = chipColor.copy(alpha = 0.2f),
+                                        border = BorderStroke(0.8.dp, chipColor)
+                                    ) {
+                                        Text(
+                                            text = t.uppercase(),
+                                            color = chipColor,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Black,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
