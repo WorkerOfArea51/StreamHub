@@ -317,7 +317,7 @@ fun HomeScreen(
             LazyColumn(
                 state = homeVerticalListState,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 80.dp)
+                contentPadding = PaddingValues(bottom = 24.dp)
             ) {
             // Category Filter Pills & Surprise Me Roulette Button
             item {
@@ -661,7 +661,7 @@ fun HomeScreen(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 80.dp)
+                .padding(bottom = 16.dp)
         )
     }
 

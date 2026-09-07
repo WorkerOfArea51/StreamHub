@@ -407,13 +407,15 @@ fun MetadataInspectorDialog(
                                 } else {
                                     Button(
                                         onClick = {
+                                            if (isBatchRepairing || needsRepairItems.isEmpty()) return@Button
+                                            val snapshotItems = needsRepairItems.toList()
                                             isBatchRepairing = true
                                             batchProgress = 0f
                                             batchJob = scope.launch {
                                                 var repaired = 0
                                                 var failed = 0
-                                                val total = needsRepairItems.size
-                                                for ((index, item) in needsRepairItems.withIndex()) {
+                                                val total = snapshotItems.size
+                                                for ((index, item) in snapshotItems.withIndex()) {
                                                     val issues = getMediaItemIssues(item)
                                                     val issueSummary = issues.take(2).joinToString { it.shortBadge }
                                                     batchStatusText = "Repairing (${index + 1}/$total): ${item.title} [$issueSummary]"
@@ -432,7 +434,7 @@ fun MetadataInspectorDialog(
                                                             failed++
                                                         }
                                                     )
-                                                    delay(350)
+                                                    delay(750)
                                                 }
                                                 val summaryMsg = if (failed > 0) "Repaired $repaired shows ($failed failed)!" else "Repaired $repaired shows successfully!"
                                                 ToastManager.showToast(summaryMsg, if (failed > 0) Icons.Default.Warning else Icons.Default.CheckCircle)
@@ -441,6 +443,7 @@ fun MetadataInspectorDialog(
                                                 batchStatusText = summaryMsg
                                             }
                                         },
+                                        enabled = !isBatchRepairing && needsRepairItems.isNotEmpty(),
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
                                         shape = RoundedCornerShape(8.dp),
                                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)

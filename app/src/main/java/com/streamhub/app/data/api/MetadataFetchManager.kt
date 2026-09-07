@@ -1416,7 +1416,7 @@ object MetadataFetchManager {
             .build()
 
         try {
-            httpClient.newCall(request).execute().use { response ->
+            malHttpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@withContext emptyList()
                 val body = response.body?.string() ?: return@withContext emptyList()
                 val json = JSONObject(body)
