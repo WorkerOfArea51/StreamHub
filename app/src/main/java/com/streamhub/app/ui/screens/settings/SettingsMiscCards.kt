@@ -495,7 +495,7 @@ fun AboutCard(
             }
             Spacer(modifier = Modifier.height(10.dp))
             Text(
-                text = "StreamHub is a high-performance native Android media streaming application built with Jetpack Compose, Material 3, AndroidX Media3 ExoPlayer, and native TDLib MTProto streaming.",
+                text = "StreamHub is a high-performance native Android media streaming application built with Jetpack Compose, Material 3, AndroidX Media3 ExoPlayer, and direct multi-range HTTP/HLS streaming.",
                 color = TextSecondary,
                 fontSize = 12.sp,
                 lineHeight = 16.sp

@@ -130,8 +130,10 @@ import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.CardBorderDark
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
+import com.streamhub.app.ui.theme.SurfaceVariantDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 
 @OptIn(ExperimentalFoundationApi::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -504,13 +506,12 @@ fun DetailsScreen(
                             }
                         }
 
-                        // Top-Left Back Button (safely inset below the status bar / notification hood)
+                        // Top-Left Back Button inside trailer header
                         IconButton(
                             onClick = onBackClick,
                             modifier = Modifier
                                 .align(Alignment.TopStart)
-                                .statusBarsPadding()
-                                .padding(12.dp)
+                                .padding(10.dp)
                                 .bouncyTouch()
                                 .clip(CircleShape)
                                 .background(Color(0x99181824))
@@ -1539,81 +1540,45 @@ fun InfoDetailRow(label: String, value: String) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FranchiseCard(
     fItem: MediaItem,
     mediaItem: MediaItem,
-    isScrolling: Boolean,
+    isScrolling: Boolean = false,
     onClick: () -> Unit
 ) {
-    var canMarquee by remember { mutableStateOf(false) }
-
-    LaunchedEffect(isScrolling) {
-        if (isScrolling) {
-            canMarquee = false
-        } else {
-            delay(900L)
-            canMarquee = true
-        }
-    }
-
     val isCurrent = fItem.id == mediaItem.id
-    val tags = com.streamhub.app.data.FranchiseManager.getFranchiseTags(fItem, mediaItem)
-    val subtitle = com.streamhub.app.data.FranchiseManager.getSeasonCardSubtitle(fItem)
-
-    val primaryTagColor = when {
-        isCurrent -> AccentGold
-        tags.any { it.type == FranchiseTagType.SEQUEL } -> Color(0xFF00E676)
-        tags.any { it.type == FranchiseTagType.PREQUEL } -> Color(0xFF7C4DFF)
-        tags.any { it.type == FranchiseTagType.SIDE_STORY || it.type == FranchiseTagType.SPIN_OFF } -> Color(0xFF38BDF8)
-        tags.any { it.type == FranchiseTagType.MOVIE } -> AccentOrange
-        else -> PrimaryRed
+    val tags = remember(fItem, mediaItem) {
+        com.streamhub.app.data.FranchiseManager.getFranchiseTags(fItem, mediaItem)
     }
-
-    val titleModifier = if (canMarquee) {
-        Modifier
-            .fillMaxWidth()
-            .basicMarquee(
-                iterations = Int.MAX_VALUE,
-                initialDelayMillis = 1000,
-                repeatDelayMillis = 2500,
-                velocity = 30.dp
-            )
-    } else {
-        Modifier.fillMaxWidth()
-    }
-
-    val subtitleModifier = if (canMarquee) {
-        Modifier
-            .fillMaxWidth()
-            .basicMarquee(
-                iterations = Int.MAX_VALUE,
-                initialDelayMillis = 1800,
-                repeatDelayMillis = 2500,
-                velocity = 26.dp
-            )
-    } else {
-        Modifier.fillMaxWidth()
+    val subtitle = remember(fItem) {
+        com.streamhub.app.data.FranchiseManager.getSeasonCardSubtitle(fItem)
     }
 
     Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = if (isCurrent) Color(0xFF1F1826) else SurfaceDark,
+        shape = RoundedCornerShape(16.dp),
+        color = if (isCurrent) Color(0xFF16151E) else Color(0xFF13121A),
         border = BorderStroke(
             width = if (isCurrent) 1.5.dp else 1.dp,
-            color = if (isCurrent) AccentGold else primaryTagColor.copy(alpha = 0.5f)
+            color = if (isCurrent) AccentGold else Color(0xFF262436)
         ),
         modifier = Modifier
-            .width(138.dp)
-            .bouncyTouch(0.95f)
+            .width(280.dp)
+            .bouncyTouch(0.96f)
             .clickable { onClick() }
     ) {
-        Column(modifier = Modifier.padding(8.dp)) {
+        Row(
+            modifier = Modifier.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Full Vertically Long Poster Box (2:3 Portrait Aspect Ratio, Complete Uncropped Picture)
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(165.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .width(96.dp)
+                    .height(142.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(SurfaceVariantDark)
             ) {
                 AsyncImage(
                     model = fItem.posterUrl.ifBlank { fItem.bannerUrl },
@@ -1622,18 +1587,18 @@ private fun FranchiseCard(
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // Chronological Watch Order Badge (Top Left)
+                // Watch Order Badge (#1, #2...) on Top-Left of Poster
                 if (fItem.franchiseOrder > 0.0) {
                     val orderStr = if (fItem.franchiseOrder % 1.0 == 0.0) "#${fItem.franchiseOrder.toInt()}" else "#${fItem.franchiseOrder}"
                     Surface(
-                        shape = RoundedCornerShape(topStart = 6.dp, bottomEnd = 6.dp),
-                        color = Color(0xD9000000),
-                        border = BorderStroke(0.6.dp, AccentGold),
+                        shape = RoundedCornerShape(topStart = 8.dp, bottomEnd = 8.dp),
+                        color = if (isCurrent) AccentGold else Color(0xD9000000),
+                        border = if (!isCurrent) BorderStroke(0.6.dp, Color(0x66FFFFFF)) else null,
                         modifier = Modifier.align(Alignment.TopStart)
                     ) {
                         Text(
                             text = orderStr,
-                            color = AccentGold,
+                            color = if (isCurrent) Color.Black else Color.White,
                             fontSize = 8.5.sp,
                             fontWeight = FontWeight.Black,
                             modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
@@ -1641,66 +1606,110 @@ private fun FranchiseCard(
                     }
                 }
 
-                // Multi-Badge Tags (Top Right Stack - All relations visible)
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
-                    horizontalAlignment = Alignment.End
-                ) {
-                    tags.forEach { tag ->
-                        val chipBg = when (tag.type) {
-                            FranchiseTagType.CURRENT -> AccentGold
-                            FranchiseTagType.SEQUEL -> Color(0xFF00E676)
-                            FranchiseTagType.PREQUEL -> Color(0xFF7C4DFF)
-                            FranchiseTagType.MOVIE -> AccentOrange
-                            FranchiseTagType.SIDE_STORY, FranchiseTagType.SPIN_OFF -> Color(0xFF0284C7)
-                            FranchiseTagType.SPECIAL -> Color(0xFFF59E0B)
-                            FranchiseTagType.FORMAT -> Color(0xFF334155)
-                            else -> Color(0xFF334155)
-                        }
-                        val chipText = if (tag.type == FranchiseTagType.CURRENT) Color.Black else Color.White
-
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = chipBg,
-                            modifier = Modifier
-                        ) {
-                            Text(
-                                text = tag.label,
-                                color = chipText,
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Black,
-                                modifier = Modifier.padding(horizontal = 4.5.dp, vertical = 1.5.dp)
-                            )
-                        }
+                // Active Playback indicator (Centered if current)
+                if (isCurrent) {
+                    Surface(
+                        shape = CircleShape,
+                        color = AccentGold,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = Color.Black,
+                            modifier = Modifier.padding(5.dp)
+                        )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            // Details Column beside the poster (Option 1: Cinema Slate)
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 12.dp, end = 4.dp),
+                verticalArrangement = Arrangement.Center
+            ) {
+                // Micro-Capsule Relation Pills (Option 1 Concept A Glow Pills)
+                if (tags.isNotEmpty()) {
+                    androidx.compose.foundation.layout.FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        tags.forEach { tag ->
+                            val tagColor = when (tag.type) {
+                                FranchiseTagType.CURRENT -> AccentGold
+                                FranchiseTagType.SEQUEL -> Color(0xFF00E676)
+                                FranchiseTagType.PREQUEL -> Color(0xFFA855F7)
+                                FranchiseTagType.SIDE_STORY, FranchiseTagType.SPIN_OFF -> Color(0xFF38BDF8)
+                                FranchiseTagType.MOVIE -> Color(0xFFFF7043)
+                                FranchiseTagType.SPECIAL -> Color(0xFFF59E0B)
+                                else -> Color(0xFF94A3B8)
+                            }
 
-            Text(
-                text = if (fItem.seasonTitle.isNotBlank()) fItem.seasonTitle else fItem.title,
-                color = if (isCurrent) AccentGold else TextPrimary,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = titleModifier
-            )
+                            if (tag.type == FranchiseTagType.CURRENT) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = AccentGold.copy(alpha = 0.16f),
+                                    border = BorderStroke(1.dp, AccentGold)
+                                ) {
+                                    Text(
+                                        text = "CURRENT",
+                                        color = AccentGold,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Black,
+                                        letterSpacing = 0.5.sp,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+                                    )
+                                }
+                            } else {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = tagColor.copy(alpha = 0.14f),
+                                    border = BorderStroke(1.dp, tagColor.copy(alpha = 0.65f))
+                                ) {
+                                    Text(
+                                        text = tag.label,
+                                        color = tagColor,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.4.sp,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
 
-            Spacer(modifier = Modifier.height(2.dp))
+                // Title (Option 1: Bold, crisp white, untruncated up to 2 lines)
+                Text(
+                    text = if (fItem.seasonTitle.isNotBlank()) fItem.seasonTitle else fItem.title,
+                    color = Color.White,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 17.5.sp
+                )
 
-            Text(
-                text = subtitle,
-                color = TextSecondary,
-                fontSize = 9.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = subtitleModifier
-            )
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Subtitle metadata line (Release Year • Ep count) - NO DURATION, NO RATING, NO MATURITY
+                Text(
+                    text = subtitle.ifBlank { fItem.releaseYear },
+                    color = Color(0xFFA0A0B2),
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Normal,
+                    maxLines = 2,
+                    lineHeight = 14.5.sp,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }

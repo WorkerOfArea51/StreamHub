@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -553,7 +554,7 @@ fun HomeScreen(
                         onPlayClick = { media -> onPlayEpisode(media, 0) },
                         onMediaClick = { media -> onMediaClick(media) }
                     )
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                 }
             }
 
@@ -768,7 +769,7 @@ fun ContinueWatchingSection(
     modifier: Modifier = Modifier
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
-    Column(modifier = modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+    Column(modifier = modifier.fillMaxWidth().padding(top = 0.dp, bottom = 6.dp)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -971,16 +972,24 @@ fun ContinueWatchingRowItem(
                     }
                 }
 
-                // Progress Bar at bottom of card
-                LinearProgressIndicator(
-                    progress = { progressFraction },
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = Color(0x55000000),
+                // Seamless horizontal progress bar at bottom of card (no vertical stop indicators)
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(3.5.dp)
                         .align(Alignment.BottomCenter)
-                )
+                        .background(Color(0x55000000))
+                ) {
+                    if (progressFraction > 0f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(progressFraction.coerceIn(0.04f, 1f))
+                                .clip(RoundedCornerShape(topEnd = 2.dp, bottomEnd = 2.dp))
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                    }
+                }
             }
 
             Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {

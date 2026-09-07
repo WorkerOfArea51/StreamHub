@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -447,16 +448,24 @@ fun HistoryItemCard(
                     )
                 }
 
-                // Progress Bar at bottom of thumbnail
-                LinearProgressIndicator(
-                    progress = { progressFraction },
-                    color = if (progress.isCompleted) Color(0xFF4CAF50) else PrimaryRed,
-                    trackColor = Color(0x66000000),
+                // Seamless horizontal progress bar at bottom of thumbnail
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(3.dp)
                         .align(Alignment.BottomCenter)
-                )
+                        .background(Color(0x66000000))
+                ) {
+                    if (progressFraction > 0f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(progressFraction.coerceIn(0.04f, 1f))
+                                .clip(RoundedCornerShape(topEnd = 2.dp, bottomEnd = 2.dp))
+                                .background(if (progress.isCompleted) Color(0xFF4CAF50) else PrimaryRed)
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.width(12.dp))

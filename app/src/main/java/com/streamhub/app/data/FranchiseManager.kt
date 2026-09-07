@@ -252,7 +252,7 @@ object FranchiseManager {
                     upper == "SEQUEL" -> FranchiseTagType.SEQUEL
                     upper == "PREQUEL" -> FranchiseTagType.PREQUEL
                     upper == "MOVIE" -> FranchiseTagType.MOVIE
-                    upper == "SIDE STORY" -> FranchiseTagType.SIDE_STORY
+                    upper == "SIDE STORY" || upper == "PARENT STORY" || upper == "ALTERNATIVE" -> FranchiseTagType.SIDE_STORY
                     upper == "SPIN-OFF" || upper == "SPINOFF" -> FranchiseTagType.SPIN_OFF
                     upper in listOf("OVA", "ONA", "SPECIAL", "TV SPECIAL") -> FranchiseTagType.SPECIAL
                     else -> FranchiseTagType.FORMAT
@@ -286,8 +286,9 @@ object FranchiseManager {
     }
 
     /**
-     * Computes the display title for a franchise card.
-     * e.g. "2017 • 122m" for movies, "Season 1 • 2024 • 12 Eps" for series.
+     * Computes the display subtitle for a franchise card.
+     * Strictly includes release year, season/movie number, and episode count.
+     * Duration, rating, and maturity are strictly excluded as requested.
      */
     fun getSeasonCardSubtitle(item: MediaItem): String {
         val format = getMediaFormatLabel(item)
@@ -297,21 +298,14 @@ object FranchiseManager {
         val parts = mutableListOf<String>()
 
         if (isMovie) {
+            if (item.releaseYear.isNotBlank()) {
+                parts.add(item.releaseYear)
+            }
             if (pNum != null && pNum > 1) {
                 parts.add("Movie $pNum")
-            } else if (item.releaseYear.isNotBlank()) {
-                parts.add(item.releaseYear)
             }
             if (format != "MOVIE") {
                 parts.add(format)
-            }
-            if (item.duration.isNotBlank()) {
-                val dur = item.duration.trim()
-                parts.add(if (dur.endsWith("min", ignoreCase = true) || dur.endsWith("m", ignoreCase = true)) dur else "${dur}m")
-            } else if (item.episodes.isNotEmpty()) {
-                val durMs = item.episodes.first().durationMs
-                if (durMs > 0) parts.add("${durMs / 60000}m")
-                else if (item.episodes.size > 1) parts.add("${item.episodes.size} Eps")
             }
         } else {
             if (sNum > 0) {
@@ -326,9 +320,9 @@ object FranchiseManager {
             }
             if (item.totalEpisodes.isNotBlank()) {
                 val epText = item.totalEpisodes.trim()
-                parts.add(if (epText.endsWith("Eps", ignoreCase = true) || epText.endsWith("Episodes", ignoreCase = true)) epText else "$epText Eps")
+                parts.add(if (epText.endsWith("Eps", ignoreCase = true) || epText.endsWith("Episodes", ignoreCase = true)) epText else "$epText Episodes")
             } else if (item.episodes.isNotEmpty()) {
-                parts.add("${item.episodes.size} Eps")
+                parts.add("${item.episodes.size} Episodes")
             }
         }
 

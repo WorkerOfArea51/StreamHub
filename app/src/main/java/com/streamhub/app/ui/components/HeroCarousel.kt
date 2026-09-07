@@ -101,7 +101,7 @@ fun HeroCarousel(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(420.dp)
+            .height(385.dp)
     ) {
         HorizontalPager(
             state = pagerState,
@@ -141,7 +141,7 @@ fun HeroCarousel(
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(16.dp)
+                        .padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
                 ) {
                     // Category Badge & Rating Badge
                     Row(verticalAlignment = Alignment.CenterVertically) {

@@ -290,28 +290,6 @@ fun MediaCard(
                 parts.add(item.releaseYear)
             }
 
-            // 3. Duration / Episodes (if available)
-            if (isMovie && item.duration.isNotBlank()) {
-                val dur = item.duration.trim()
-                parts.add(if (dur.endsWith("min", ignoreCase = true) || dur.endsWith("m", ignoreCase = true)) dur else "${dur}m")
-            } else if (!isMovie && item.totalEpisodes.isNotBlank()) {
-                val ep = item.totalEpisodes.trim()
-                parts.add(if (ep.endsWith("Eps", ignoreCase = true) || ep.endsWith("Episodes", ignoreCase = true)) ep else "$ep Eps")
-            } else if (!isMovie && item.episodes.isNotEmpty()) {
-                parts.add("${item.episodes.size} Eps")
-            }
-
-            // 4. Subtitle / Audio Language indicators (e.g. SUB, DUB, DUAL)
-            val hasSubs = item.mediaInfo.subtitleTracks.isNotEmpty()
-            val hasAudio = item.mediaInfo.audioTracks.size > 1
-            if (hasAudio && hasSubs) {
-                parts.add("DUAL • SUB")
-            } else if (hasAudio) {
-                parts.add("DUAL")
-            } else if (hasSubs) {
-                parts.add("SUB")
-            }
-
             if (parts.isEmpty()) {
                 item.category.ifBlank { "Media" }
             } else {

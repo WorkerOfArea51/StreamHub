@@ -204,7 +204,7 @@ fun AboutScreen(
 
                         // App Overview Description
                         Text(
-                            text = "StreamHub is a cutting-edge Android media streaming platform engineered with Jetpack Compose, Media3 ExoPlayer, and native TDLib MTProto integration for instantaneous, zero-buffering playback across huge libraries.",
+                            text = "StreamHub is a cutting-edge Android media streaming platform engineered with Jetpack Compose, Media3 ExoPlayer, and direct multi-range HTTP/HLS streaming for instantaneous, zero-buffering playback across huge libraries.",
                             color = TextSecondary,
                             fontSize = 13.sp,
                             lineHeight = 19.sp,
@@ -235,8 +235,8 @@ fun AboutScreen(
                         FeatureHighlightRow(
                             icon = Icons.Default.Speed,
                             iconTint = Color(0xFF00E676),
-                            title = "Native Media3 & TDLib MTProto Engine",
-                            description = "Multi-gigabyte memory/disk ring buffer with direct Telegram cloud stream extraction."
+                            title = "High-Performance Media3 ExoPlayer Engine",
+                            description = "Multi-range OkHttp HTTP/HLS direct streaming pipeline with smart chunk caching and zero-stutter seek recovery."
                         )
                         HorizontalDivider(color = Color(0xFF222233), thickness = 0.5.dp)
                         FeatureHighlightRow(
@@ -290,8 +290,8 @@ fun AboutScreen(
                         }
                         HorizontalDivider(color = Color(0xFF222233), thickness = 0.5.dp)
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("MTProto Core", color = TextSecondary, fontSize = 12.sp)
-                            Text("TDLib 1.8.x Ring Buffer", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Stream Protocol", color = TextSecondary, fontSize = 12.sp)
+                            Text("Direct Multi-Range HTTP/HLS", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

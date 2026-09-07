@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -771,15 +772,23 @@ fun MyListGridCard(
                 // In-Progress Bar Overlay (Bottom)
                 if (progress != null && progress.durationMs > 0L) {
                     val progressRatio = (progress.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0f, 1f)
-                    LinearProgressIndicator(
-                        progress = { progressRatio },
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(3.dp)
-                            .align(Alignment.BottomCenter),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = Color(0x44FFFFFF)
-                    )
+                            .align(Alignment.BottomCenter)
+                            .background(Color(0x44FFFFFF))
+                    ) {
+                        if (progressRatio > 0f) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(progressRatio.coerceIn(0.04f, 1f))
+                                    .clip(RoundedCornerShape(topEnd = 2.dp, bottomEnd = 2.dp))
+                                    .background(MaterialTheme.colorScheme.primary)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -858,15 +867,23 @@ fun MyListRowItem(
 
                 if (progress != null && progress.durationMs > 0L) {
                     val progressRatio = (progress.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0f, 1f)
-                    LinearProgressIndicator(
-                        progress = { progressRatio },
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(3.dp)
-                            .align(Alignment.BottomCenter),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = Color(0x44FFFFFF)
-                    )
+                            .align(Alignment.BottomCenter)
+                            .background(Color(0x44FFFFFF))
+                    ) {
+                        if (progressRatio > 0f) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(progressRatio.coerceIn(0.04f, 1f))
+                                    .clip(RoundedCornerShape(topEnd = 2.dp, bottomEnd = 2.dp))
+                                    .background(MaterialTheme.colorScheme.primary)
+                            )
+                        }
+                    }
                 }
             }
 
