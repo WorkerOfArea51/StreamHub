@@ -96,8 +96,8 @@ jobs:
           streamhub.tmdb_api_key=${{ secrets.STREAMHUB_TMDB_API_KEY || secrets.TMDB_API_KEY }}
           streamhub.mal_client_id=${{ secrets.STREAMHUB_MAL_CLIENT_ID || secrets.MAL_CLIENT_ID }}
           streamhub.mal_client_secret=${{ secrets.STREAMHUB_MAL_CLIENT_SECRET || secrets.MAL_CLIENT_SECRET }}
-          streamhub.admin_master_password=${{ secrets.STREAMHUB_ADMIN_MASTER_PASSWORD || secrets.ADMIN_MASTER_PASSWORD || '7860' }}
-          streamhub.app_access_code=${{ secrets.STREAMHUB_APP_ACCESS_CODE || secrets.APP_ACCESS_CODE }}
+          streamhub.admin_master_password=${{ secrets.STREAMHUB_ADMIN_MASTER_PASSWORD || secrets.ADMIN_MASTER_PASSWORD || '' }}
+          streamhub.app_access_code=${{ secrets.STREAMHUB_APP_ACCESS_CODE || secrets.APP_ACCESS_CODE || '' }}
           EOF
 
       - name: Grant execute permission for gradlew
