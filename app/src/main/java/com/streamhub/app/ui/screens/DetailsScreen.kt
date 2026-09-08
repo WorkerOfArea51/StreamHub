@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import com.streamhub.app.ui.theme.bouncyClickable
 import com.streamhub.app.ui.theme.bouncyTouch
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -1571,8 +1572,7 @@ private fun FranchiseCard(
         ),
         modifier = Modifier
             .width(280.dp)
-            .bouncyTouch(0.96f)
-            .clickable { onClick() }
+            .bouncyClickable(pressedScale = 0.96f) { onClick() }
     ) {
         Row(
             modifier = Modifier.padding(10.dp),

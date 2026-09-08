@@ -377,6 +377,8 @@ class StreamPlayerViewModel : ViewModel() {
 
                 // Low-latency instant startup with smooth progressive background buffering:
                 // - bufferForPlaybackMs = 250: Playback starts immediately on arrival of first keyframes.
+                // - bufferForPlaybackMs = 250: Instant playback start (Option B - Deliberately prioritized for zero tap-to-play lag).
+                //   Note: If micro-stutter is encountered on highly fluctuating networks in the future, can be tuned to 500ms / 1,500ms.
                 // - bufferForPlaybackAfterRebufferMs = 1_000: Fast 1s recovery after seek or rebuffering.
                 // - minBufferMs = 30_000: Maintains a steady 30-second buffer ahead during active playback.
                 // - maxBufferMs = 14_400_000: Continuously buffers ahead (up to 4 hours) without pausing.
