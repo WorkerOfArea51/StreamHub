@@ -48,6 +48,14 @@ object AdminManager {
         }
     }
 
+    const val MASTER_PASSWORD_SHA256 = "d82b1109152585a1321be5847ade689e9d2acda34ef0ddd48bf4a0f9ebb0eefd"
+
+    fun sha256(input: String): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        val digest = md.digest(input.toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it) }
+    }
+
     internal fun markOwnerVerified() {
         ownerVerified = true
         _isAdminMode.value = true
@@ -55,6 +63,13 @@ object AdminManager {
 
     fun verifyPassword(inputPin: String): Boolean {
         val pin = inputPin.trim()
+        if (pin.isBlank()) return false
+        val inputHash = sha256(pin)
+        // 1. Check cryptographic SHA-256 hash (never exposes raw password in compiled binary)
+        if (inputHash.equals(MASTER_PASSWORD_SHA256, ignoreCase = true)) {
+            return true
+        }
+        // 2. Transition fallback to configured secret if present
         val configured = Secrets.ADMIN_MASTER_PASSWORD.trim()
         return configured.isNotBlank() && pin == configured
     }

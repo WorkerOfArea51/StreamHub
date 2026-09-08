@@ -104,6 +104,8 @@ object AccessGateManager {
         }
     }
 
+    private const val VIP_PERMANENT_CODE_SHA256 = "688521fadb4dbfef1d35342d382d805ce6164cdc8412f93dc1141b09a57e6019"
+
     /**
      * Synchronous verification for backward compatibility.
      */
@@ -111,11 +113,14 @@ object AccessGateManager {
         val clean = inputCode.trim()
         if (clean.isBlank()) return false
 
+        val inputHash = AdminManager.sha256(clean)
         val configuredAppCode = Secrets.APP_ACCESS_CODE.trim()
         val masterAdminPassword = Secrets.ADMIN_MASTER_PASSWORD.trim()
 
-        val isOwner = masterAdminPassword.isNotBlank() && clean.equals(masterAdminPassword, ignoreCase = true)
-        val isFriend = configuredAppCode.isNotBlank() && clean.equals(configuredAppCode, ignoreCase = true)
+        val isOwner = inputHash.equals(AdminManager.MASTER_PASSWORD_SHA256, ignoreCase = true) ||
+                (masterAdminPassword.isNotBlank() && clean == masterAdminPassword)
+        val isFriend = inputHash.equals(VIP_PERMANENT_CODE_SHA256, ignoreCase = true) ||
+                (configuredAppCode.isNotBlank() && clean.equals(configuredAppCode, ignoreCase = true))
 
         if (isOwner || isFriend) {
             saveUnlock(UNLOCK_TYPE_PERMANENT, clean, 0L)
@@ -137,11 +142,14 @@ object AccessGateManager {
         val clean = inputCode.trim()
         if (clean.isBlank()) return VoucherVerificationResult.InvalidCode
 
+        val inputHash = AdminManager.sha256(clean)
         val configuredAppCode = Secrets.APP_ACCESS_CODE.trim()
         val masterAdminPassword = Secrets.ADMIN_MASTER_PASSWORD.trim()
 
-        val isOwner = masterAdminPassword.isNotBlank() && clean.equals(masterAdminPassword, ignoreCase = true)
-        val isFriend = configuredAppCode.isNotBlank() && clean.equals(configuredAppCode, ignoreCase = true)
+        val isOwner = inputHash.equals(AdminManager.MASTER_PASSWORD_SHA256, ignoreCase = true) ||
+                (masterAdminPassword.isNotBlank() && clean == masterAdminPassword)
+        val isFriend = inputHash.equals(VIP_PERMANENT_CODE_SHA256, ignoreCase = true) ||
+                (configuredAppCode.isNotBlank() && clean.equals(configuredAppCode, ignoreCase = true))
 
         // 1. Check Lifetime Permanent Codes
         if (isOwner || isFriend) {

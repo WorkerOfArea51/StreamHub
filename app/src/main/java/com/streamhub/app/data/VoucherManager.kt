@@ -39,6 +39,10 @@ object VoucherManager {
     private const val COLLECTION_VOUCHERS = "vip_vouchers"
     private const val DEVICE_SALT = "StreamHub_Hardware_Salt_2026_Secure"
 
+    private fun maskCode(code: String): String {
+        return if (code.length > 4) "${code.take(4)}****" else "****"
+    }
+
     // Base32 Crockford-style alphabet excluding easily confused glyphs (0, O, 1, I)
     private val CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ".toCharArray()
 
@@ -105,7 +109,7 @@ object VoucherManager {
 
             val docMap = voucherToMap(voucher)
             Tasks.await(db.collection(COLLECTION_VOUCHERS).document(code).set(docMap))
-            Log.i(TAG, "Created new VIP voucher: $code (label='$label')")
+            Log.i(TAG, "Created new VIP voucher: ${maskCode(code)} (label='$label')")
             Result.success(voucher)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create voucher", e)
@@ -137,7 +141,7 @@ object VoucherManager {
             Tasks.await(db.runTransaction { transaction ->
                 val snapshot = transaction.get(docRef)
                 if (!snapshot.exists()) {
-                    Log.w(TAG, "Voucher $cleanCode does not exist")
+                    Log.w(TAG, "Voucher ${maskCode(cleanCode)} does not exist")
                     return@runTransaction VoucherVerificationResult.InvalidCode
                 }
 
@@ -156,7 +160,7 @@ object VoucherManager {
                         )
 
                         transaction.set(docRef, voucherToMap(updatedVoucher))
-                        Log.i(TAG, "Voucher $cleanCode successfully activated and bound to device $deviceId")
+                        Log.i(TAG, "Voucher ${maskCode(cleanCode)} successfully activated and bound to device $deviceId")
                         VoucherVerificationResult.Success(
                             daysRemaining = voucher.durationDays,
                             isReactivation = false
@@ -166,13 +170,13 @@ object VoucherManager {
                     VipVoucher.STATUS_ACTIVE -> {
                         // Check if 30 days have elapsed
                         if (now >= voucher.expiresAt) {
-                            Log.i(TAG, "Voucher $cleanCode has expired. Purging from Firestore.")
+                            Log.i(TAG, "Voucher ${maskCode(cleanCode)} has expired. Purging from Firestore.")
                             transaction.delete(docRef)
                             VoucherVerificationResult.Expired
                         } else if (voucher.boundDeviceId == deviceId) {
                             // Same physical device returning after clear data or reinstall
                             val daysRemaining = (((voucher.expiresAt - now) / (1000L * 60 * 60 * 24L)).toInt()).coerceAtLeast(1)
-                            Log.i(TAG, "Voucher $cleanCode reactivated on same device. Days remaining: $daysRemaining")
+                            Log.i(TAG, "Voucher ${maskCode(cleanCode)} reactivated on same device. Days remaining: $daysRemaining")
                             VoucherVerificationResult.Success(
                                 daysRemaining = daysRemaining,
                                 isReactivation = true
@@ -259,7 +263,7 @@ object VoucherManager {
         try {
             val cleanCode = code.trim().uppercase()
             Tasks.await(db.collection(COLLECTION_VOUCHERS).document(cleanCode).delete())
-            Log.i(TAG, "Voucher $cleanCode permanently deleted")
+            Log.i(TAG, "Voucher ${maskCode(cleanCode)} permanently deleted")
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete voucher", e)

@@ -540,6 +540,8 @@ object UserTelemetryManager {
     // 📲 REMOTE COMMANDS & NOTIFICATIONS LISTENER (ON CLIENT)
     // ─────────────────────────────────────────────────────────────
 
+    private var lastProcessedCommandSignature: String? = null
+
     private fun startListeningToRemoteCommands() {
         if (clientId.isBlank() || deviceCommandListener != null) return
         try {
@@ -547,9 +549,15 @@ object UserTelemetryManager {
             deviceCommandListener = docRef.addSnapshotListener { snapshot, error ->
                 if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
                 val command = snapshot.getString("remoteCommand") ?: return@addSnapshotListener
+                val commandTs = snapshot.getLong("commandTimestamp") ?: 0L
                 val title = snapshot.getString("commandTitle") ?: "Message from Admin"
                 val message = snapshot.getString("commandMessage") ?: ""
                 val ctx = appContext ?: return@addSnapshotListener
+
+                // Deduplicate to prevent re-execution if clear update has latency or transient failure
+                val signature = "$command:$commandTs:$title:$message"
+                if (signature == lastProcessedCommandSignature) return@addSnapshotListener
+                lastProcessedCommandSignature = signature
 
                 when (command) {
                     "NOTIFICATION" -> {
@@ -563,8 +571,13 @@ object UserTelemetryManager {
                         publishHeartbeat()
                     }
                     "KICK" -> {
-                        ToastManager.showToast("Session terminated by Admin 🚫")
-                        stopHeartbeat()
+                        // Protect Owner / Creator Studio devices from remote kick
+                        if (AdminManager.isAdminMode.value) {
+                            Log.w(TAG, "Ignoring KICK command on Owner device")
+                        } else {
+                            ToastManager.showToast("Session terminated by Admin 🚫")
+                            stopHeartbeat()
+                        }
                     }
                 }
 

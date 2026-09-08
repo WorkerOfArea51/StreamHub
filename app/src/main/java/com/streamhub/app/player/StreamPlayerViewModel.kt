@@ -907,13 +907,18 @@ class StreamPlayerViewModel : ViewModel() {
             selector.parameters = selector.buildUponParameters()
                 .setOverrideForType(override)
                 .build()
-        }
 
-        _uiState.update {
-            it.copy(
-                selectedAudioTrack = trackName,
-                showAudioDialog = false
-            )
+            _uiState.update {
+                it.copy(
+                    selectedAudioTrack = trackName,
+                    showAudioDialog = false
+                )
+            }
+        } else {
+            // Tracks not ready or track match not found — dismiss dialog without desyncing UI state
+            _uiState.update {
+                it.copy(showAudioDialog = false)
+            }
         }
     }
 
@@ -927,6 +932,13 @@ class StreamPlayerViewModel : ViewModel() {
                 .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true)
                 .clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_TEXT)
             selector.parameters = parameters.build()
+
+            _uiState.update {
+                it.copy(
+                    selectedSubtitleTrack = "Off",
+                    showSubtitleDialog = false
+                )
+            }
         } else {
             val tracks = player.currentTracks
             var subCount = 0
@@ -959,14 +971,19 @@ class StreamPlayerViewModel : ViewModel() {
                         )
                     )
                 selector.parameters = parameters.build()
-            }
-        }
 
-        _uiState.update {
-            it.copy(
-                selectedSubtitleTrack = trackName,
-                showSubtitleDialog = false
-            )
+                _uiState.update {
+                    it.copy(
+                        selectedSubtitleTrack = trackName,
+                        showSubtitleDialog = false
+                    )
+                }
+            } else {
+                // Tracks not ready or match not found — dismiss dialog without desyncing UI state
+                _uiState.update {
+                    it.copy(showSubtitleDialog = false)
+                }
+            }
         }
     }
 

@@ -92,9 +92,17 @@ class StreamMediaService : MediaSessionService() {
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 updateForegroundNotification()
+                if (isPlaying) {
+                    acquireWakeLock()
+                } else {
+                    releaseWakeLock()
+                }
             }
             override fun onPlaybackStateChanged(playbackState: Int) {
                 updateForegroundNotification()
+                if (playbackState == androidx.media3.common.Player.STATE_ENDED || playbackState == androidx.media3.common.Player.STATE_IDLE) {
+                    releaseWakeLock()
+                }
             }
         }
         playerListener = listener
@@ -102,7 +110,9 @@ class StreamMediaService : MediaSessionService() {
 
         // FIX: Start foreground AFTER session is built, so notification title reflects actual media.
         startForegroundNotification()
-        acquireWakeLock()
+        if (player.isPlaying) {
+            acquireWakeLock()
+        }
     }
 
     private fun createFallbackPlayer(): ExoPlayer {

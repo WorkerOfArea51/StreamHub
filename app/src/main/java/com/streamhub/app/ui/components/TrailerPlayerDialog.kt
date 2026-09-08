@@ -374,6 +374,9 @@ private fun createEmbeddedTrailerWebView(
     videoId: String,
     onCustomViewChange: (View?, WebChromeClient.CustomViewCallback?) -> Unit
 ): WebView {
+    val sanitizedVideoId = videoId.trim()
+    val isValidYoutubeId = Regex("^[A-Za-z0-9_-]{11}$").matches(sanitizedVideoId)
+
     return WebView(context).apply {
         layoutParams = ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -387,8 +390,7 @@ private fun createEmbeddedTrailerWebView(
             loadWithOverviewMode = false
             useWideViewPort = false
             cacheMode = WebSettings.LOAD_DEFAULT
-            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            userAgentString = "Mozilla/5.0 (Linux; Android 15; Poco X6 Neo) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
+            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         }
         webChromeClient = object : WebChromeClient() {
             override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
@@ -401,8 +403,24 @@ private fun createEmbeddedTrailerWebView(
         }
         webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
-                return false
+                val host = request?.url?.host?.lowercase() ?: ""
+                // Only allow YouTube player frame and media endpoints
+                if (host.endsWith("youtube.com") || host.endsWith("youtube-nocookie.com") || host.endsWith("googlevideo.com")) {
+                    return false
+                }
+                return true // Strictly block unexpected external redirects
             }
+        }
+
+        if (!isValidYoutubeId) {
+            val errorHtml = """
+                <!DOCTYPE html>
+                <html><body style="background-color:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;">
+                    <p>Invalid trailer video ID</p>
+                </body></html>
+            """.trimIndent()
+            loadDataWithBaseURL("https://localhost", errorHtml, "text/html", "UTF-8", null)
+            return@apply
         }
 
         val htmlContent = """
@@ -440,7 +458,7 @@ private fun createEmbeddedTrailerWebView(
                     var player;
                     function onYouTubeIframeAPIReady() {
                         player = new YT.Player('player', {
-                            videoId: '$videoId',
+                            videoId: '$sanitizedVideoId',
                             playerVars: {
                                 'autoplay': 1,
                                 'playsinline': 1,
