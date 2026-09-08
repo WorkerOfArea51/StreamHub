@@ -78,9 +78,11 @@ object StreamPreloadManager {
 
                 val appContext = context.applicationContext
                 val simpleCache = StreamCacheManager.getCache(appContext)
+                val parsedUri = Uri.parse(sanitizedUrl)
+                val cacheKey = StreamDataSourceFactory.sanitizeCacheKey(parsedUri)
 
-                // Check if already cached in disk
-                val alreadyCached = simpleCache.isCached(sanitizedUrl, 0, DETAILS_PREWARM_BYTES)
+                // Check if already cached in disk using unified cache key
+                val alreadyCached = simpleCache.isCached(cacheKey, 0, DETAILS_PREWARM_BYTES)
                 if (alreadyCached) {
                     Log.i(TAG, "Details prewarm skipped: URL already cached locally in disk")
                     return@launch
@@ -98,11 +100,13 @@ object StreamPreloadManager {
                     .setCache(simpleCache)
                     .setUpstreamDataSourceFactory(upstreamFactory)
                     .setCacheWriteDataSinkFactory(sinkFactory)
+                    .setCacheKeyFactory { ds -> ds.key ?: StreamDataSourceFactory.sanitizeCacheKey(ds.uri) }
                     .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
                     .createDataSource()
 
                 val dataSpec = DataSpec.Builder()
-                    .setUri(Uri.parse(sanitizedUrl))
+                    .setUri(parsedUri)
+                    .setKey(cacheKey)
                     .setPosition(0)
                     .setLength(DETAILS_PREWARM_BYTES)
                     .build()
@@ -174,9 +178,11 @@ object StreamPreloadManager {
 
                 val appContext = context.applicationContext
                 val simpleCache = StreamCacheManager.getCache(appContext)
+                val parsedUri = Uri.parse(sanitizedUrl)
+                val cacheKey = StreamDataSourceFactory.sanitizeCacheKey(parsedUri)
 
-                // Check if already cached in disk
-                val alreadyCached = simpleCache.isCached(sanitizedUrl, 0, targetBytes)
+                // Check if already cached in disk using unified cache key
+                val alreadyCached = simpleCache.isCached(cacheKey, 0, targetBytes)
                 if (alreadyCached) {
                     Log.i(TAG, "Binge precache skipped: Next episode already cached in disk")
                     return@launch
@@ -194,11 +200,13 @@ object StreamPreloadManager {
                     .setCache(simpleCache)
                     .setUpstreamDataSourceFactory(upstreamFactory)
                     .setCacheWriteDataSinkFactory(sinkFactory)
+                    .setCacheKeyFactory { ds -> ds.key ?: StreamDataSourceFactory.sanitizeCacheKey(ds.uri) }
                     .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
                     .createDataSource()
 
                 val dataSpec = DataSpec.Builder()
-                    .setUri(Uri.parse(sanitizedUrl))
+                    .setUri(parsedUri)
+                    .setKey(cacheKey)
                     .setPosition(0)
                     .setLength(targetBytes)
                     .build()
