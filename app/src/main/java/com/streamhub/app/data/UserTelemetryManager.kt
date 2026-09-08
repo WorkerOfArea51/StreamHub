@@ -91,7 +91,7 @@ object UserTelemetryManager {
     private const val KEY_CLIENT_ID = "telemetry_client_id"
     private const val KEY_LAST_BROADCAST_TS = "last_seen_broadcast_ts"
     private const val HEARTBEAT_INTERVAL_MS = 15_000L // 15 seconds
-    private const val SESSION_TIMEOUT_MS = 35_000L    // 35 seconds inactivity timeout (fast ghost removal)
+    private const val SESSION_TIMEOUT_MS = 60_000L    // 60 seconds inactivity timeout (resilient presence, eliminates flickering)
 
     private var clientId: String = ""
     private var prefs: SharedPreferences? = null
@@ -339,6 +339,7 @@ object UserTelemetryManager {
 
                 val now = System.currentTimeMillis()
                 val activeThreshold = now - SESSION_TIMEOUT_MS
+                val ghostPurgeThreshold = now - (60 * 60 * 1000L) // 1 hour inactivity threshold
 
                 var standardUsersCount = 0
                 var vip = 0
@@ -347,8 +348,17 @@ object UserTelemetryManager {
                 val activeList = mutableListOf<UserSessionInfo>()
                 val titleCountMap = mutableMapOf<String, Int>()
 
+                val isCurrentAdmin = AdminManager.isAdminMode.value
+
                 for (doc in snapshot.documents) {
                     val lastActive = doc.getLong("lastActiveTimestamp") ?: 0L
+
+                    // Auto-purge abandoned ghost sessions (> 1h old) from Firestore when Admin is viewing
+                    if (isCurrentAdmin && (lastActive == 0L || lastActive < ghostPurgeThreshold)) {
+                        doc.reference.delete()
+                        continue
+                    }
+
                     if (lastActive >= activeThreshold) {
                         val tier = doc.getString("tier") ?: "USER"
                         val model = doc.getString("deviceModel") ?: "Android Device"
@@ -433,7 +443,8 @@ object UserTelemetryManager {
         }
     }
 
-    fun stopObservingLiveMetrics() {
+    fun stopObservingLiveMetrics(force: Boolean = false) {
+        if (!force && AdminManager.isAdminMode.value) return
         telemetryListener?.remove()
         telemetryListener = null
     }

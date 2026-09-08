@@ -376,23 +376,24 @@ class StreamPlayerViewModel : ViewModel() {
                     .build()
 
                 // Low-latency instant startup with smooth progressive background buffering:
-                // - bufferForPlaybackMs = 250: Playback starts immediately on arrival of first keyframes.
-                // - bufferForPlaybackMs = 250: Instant playback start (Option B - Deliberately prioritized for zero tap-to-play lag).
-                //   Note: If micro-stutter is encountered on highly fluctuating networks in the future, can be tuned to 500ms / 1,500ms.
+                // - bufferForPlaybackMs = 500: Playback starts immediately as soon as ~500ms (~150KB) is buffered.
                 // - bufferForPlaybackAfterRebufferMs = 1_000: Fast 1s recovery after seek or rebuffering.
                 // - minBufferMs = 30_000: Maintains a steady 30-second buffer ahead during active playback.
                 // - maxBufferMs = 14_400_000: Continuously buffers ahead (up to 4 hours) without pausing.
-                // - setPrioritizeTimeOverSizeThresholds(false): Allows immediate playback without waiting for time duration targets.
+                // - setPrioritizeTimeOverSizeThresholds(true): CRITICAL: Prioritizes time duration (500ms)
+                //   over huge byte-allocation targets (~20-24MB). When false, ExoPlayer blocks playback until
+                //   allocator hits 20+ Megabytes, causing 10-15s startup delays even at 2.4 MB/s and
+                //   forcing cached videos to re-download before starting.
                 // - backBuffer = 30_000 (retainBackBufferFromKeyframe = true): Retains keyframes for smooth rewind.
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
                         30_000,         // minBufferMs (steady 30s buffer ahead)
                         14_400_000,     // maxBufferMs (up to 4 hours ahead continuous buffering)
-                        250,            // bufferForPlaybackMs (instant start in ~250ms)
+                        500,            // bufferForPlaybackMs (instant start in ~500ms)
                         1_000           // bufferForPlaybackAfterRebufferMs (1.0s fast recovery)
                     )
                     .setBackBuffer(30_000, true)
-                    .setPrioritizeTimeOverSizeThresholds(false)
+                    .setPrioritizeTimeOverSizeThresholds(true)
                     .setTargetBufferBytes(androidx.media3.common.C.LENGTH_UNSET)
                     .build()
                 val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
