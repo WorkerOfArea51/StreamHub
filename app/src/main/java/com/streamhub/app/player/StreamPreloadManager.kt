@@ -63,6 +63,9 @@ object StreamPreloadManager {
 
         val job = scope.launch(Dispatchers.IO) {
             try {
+                // Dwell debounce: only prewarm if user dwells on details screen for at least 1.5s
+                delay(1500L)
+
                 if (!PlayerSettingsManager.settingsFlow.value.smartPrewarmEnabled) {
                     Log.d(TAG, "Details prewarm skipped: smartPrewarmEnabled is OFF")
                     return@launch

@@ -2031,9 +2031,15 @@ fun PlayerScreen(
                         Spacer(modifier = Modifier.height(4.dp))
 
                         // Row B: High-Precision mpvEx Seekbar with Timers and Thumbnails
+                        val effectiveDurationMs = when {
+                            playbackProgress.durationMs > 0L -> playbackProgress.durationMs
+                            uiState.durationMs > 0L -> uiState.durationMs
+                            (mediaItem.episodes.getOrNull(uiState.currentEpisodeIndex)?.durationMs ?: 0L) > 0L -> mediaItem.episodes[uiState.currentEpisodeIndex].durationMs
+                            else -> com.streamhub.app.ui.screens.player.parseMediaDurationMs(mediaItem.duration)
+                        }
                         MpvSeekbar(
                             currentPositionMs = playbackProgress.currentPositionMs,
-                            durationMs = playbackProgress.durationMs,
+                            durationMs = effectiveDurationMs,
                             bufferedPositionMs = playbackProgress.bufferedPositionMs,
                             onSeek = { viewModel.seekTo(it) },
                             thumbnailBitmap = scrubberThumbnailBitmap,

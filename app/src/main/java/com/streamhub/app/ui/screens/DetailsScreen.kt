@@ -678,7 +678,10 @@ fun DetailsScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Button(
-                            onClick = { onPlayEpisode(mediaItem, targetPlayIndex) },
+                            onClick = {
+                                com.streamhub.app.player.StreamPreloadManager.cancelDetailsPrewarm()
+                                onPlayEpisode(mediaItem, targetPlayIndex)
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
@@ -1052,7 +1055,10 @@ fun DetailsScreen(
                             index = index,
                             mediaItem = mediaItem,
                             isDownloaded = isDownloaded,
-                            onPlay = { onPlayEpisode(mediaItem, originalIndex) },
+                            onPlay = {
+                                com.streamhub.app.player.StreamPreloadManager.cancelDetailsPrewarm()
+                                onPlayEpisode(mediaItem, originalIndex)
+                            },
                             onDownload = { 
                                 ToastManager.showToast("Starting download...", Icons.Default.Download)
                                 DownloadManager.startDownload(context, mediaItem, originalIndex) 

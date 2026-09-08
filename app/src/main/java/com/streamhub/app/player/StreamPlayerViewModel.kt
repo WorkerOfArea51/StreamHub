@@ -195,6 +195,14 @@ class StreamPlayerViewModel : ViewModel() {
 
     private fun createPlayerListener(): Player.Listener {
         return object : Player.Listener {
+            override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
+                val dur = exoPlayer?.duration?.coerceAtLeast(0L) ?: 0L
+                if (dur > 0L) {
+                    _uiState.update { it.copy(durationMs = dur) }
+                    _playbackProgress.update { it.copy(durationMs = dur) }
+                }
+            }
+
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _uiState.update { it.copy(isPlaying = isPlaying) }
                 syncTelemetry(if (isPlaying) "PLAYING" else "PAUSED")
@@ -210,6 +218,9 @@ class StreamPlayerViewModel : ViewModel() {
                         durationMs = if (duration > 0) duration else it.durationMs,
                         bufferedPositionMs = buffered
                     )
+                }
+                if (duration > 0L) {
+                    _playbackProgress.update { it.copy(durationMs = duration) }
                 }
 
                 if (playbackState == Player.STATE_READY) {
@@ -308,6 +319,7 @@ class StreamPlayerViewModel : ViewModel() {
     }
 
     fun initializePlayer(context: Context, mediaItem: MediaItem, initialEpisodeIndex: Int = 0) {
+        StreamPreloadManager.cancelDetailsPrewarm()
         val safeContext = context.applicationContext
         appContext = safeContext
         currentMediaItem = mediaItem
@@ -384,6 +396,7 @@ class StreamPlayerViewModel : ViewModel() {
                 val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
                     .setConstantBitrateSeekingEnabled(true)
                     .setMatroskaExtractorFlags(
+                        androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES or
                         androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_EMIT_RAW_SUBTITLE_DATA
                     )
                 ExoPlayer.Builder(safeContext, renderersFactory)
@@ -432,6 +445,17 @@ class StreamPlayerViewModel : ViewModel() {
         val savedProgress = WatchHistoryManager.getProgress(mediaItem.id)
         val isSameEpisode = savedProgress != null && savedProgress.episodeNumber == targetEpisodeIndex
         val savedPositionMs = if (isSameEpisode) savedProgress?.positionMs ?: 0L else 0L
+
+        val initialDurationMs = when {
+            episodesList.getOrNull(targetEpisodeIndex)?.durationMs ?: 0L > 0L -> episodesList[targetEpisodeIndex].durationMs
+            savedProgress?.durationMs ?: 0L > 0L -> savedProgress!!.durationMs
+            !mediaItem.duration.isNullOrBlank() -> com.streamhub.app.ui.screens.player.parseMediaDurationMs(mediaItem.duration)
+            else -> 0L
+        }
+        if (initialDurationMs > 0L) {
+            _uiState.update { it.copy(durationMs = initialDurationMs) }
+            _playbackProgress.update { it.copy(durationMs = initialDurationMs) }
+        }
 
         if (savedPositionMs > 5_000L &&
             (savedProgress?.durationMs ?: 0L) - savedPositionMs > 5_000L) {
@@ -654,14 +678,11 @@ class StreamPlayerViewModel : ViewModel() {
         if (episodesList.isEmpty() || index !in episodesList.indices) return
         val episode = episodesList[index]
         val rawUrl = episode.streamUrl.ifEmpty { episode.mirrorStreamUrl }
+        val savedDuration = WatchHistoryManager.getProgress(currentMediaItem?.id ?: "")?.durationMs ?: 0L
         val fallbackDurationMs = when {
             episode.durationMs > 0L -> episode.durationMs
-            !currentMediaItem?.duration.isNullOrBlank() -> {
-                val durStr = currentMediaItem!!.duration
-                val mins = Regex("""(\d+)\s*m""").find(durStr)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
-                val hours = Regex("""(\d+)\s*h""").find(durStr)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
-                (hours * 3600 + mins * 60) * 1000L
-            }
+            savedDuration > 0L -> savedDuration
+            !currentMediaItem?.duration.isNullOrBlank() -> com.streamhub.app.ui.screens.player.parseMediaDurationMs(currentMediaItem?.duration)
             else -> 0L
         }
         _uiState.update {
@@ -669,6 +690,12 @@ class StreamPlayerViewModel : ViewModel() {
                 currentEpisodeIndex = index,
                 playerError = null,
                 playerErrorInfo = null,
+                durationMs = if (fallbackDurationMs > 0) fallbackDurationMs else it.durationMs
+            )
+        }
+        _playbackProgress.update {
+            it.copy(
+                currentPositionMs = startPositionMs,
                 durationMs = if (fallbackDurationMs > 0) fallbackDurationMs else it.durationMs
             )
         }
@@ -686,7 +713,8 @@ class StreamPlayerViewModel : ViewModel() {
             )
         }
 
-        // FIX: Cancel previous preload job when starting a new episode — preloader will be eligible again.
+        // FIX: Cancel active preload jobs when starting a new episode — preloader will be eligible again.
+        StreamPreloadManager.cancelDetailsPrewarm()
         StreamPreloadManager.cancelBingePrecache()
         nextEpisodePreloadJob?.cancel()
         nextEpisodePreloadJob = null
@@ -785,12 +813,28 @@ class StreamPlayerViewModel : ViewModel() {
 
     private fun playEpisodeWithExplicitUrl(index: Int, rawUrl: String, startPositionMs: Long = 0L) {
         if (episodesList.isEmpty() || index !in episodesList.indices) return
+        StreamPreloadManager.cancelDetailsPrewarm()
+        val episode = episodesList.getOrNull(index)
+        val savedDuration = WatchHistoryManager.getProgress(currentMediaItem?.id ?: "")?.durationMs ?: 0L
+        val fallbackDurationMs = when {
+            (episode?.durationMs ?: 0L) > 0L -> episode!!.durationMs
+            savedDuration > 0L -> savedDuration
+            !currentMediaItem?.duration.isNullOrBlank() -> com.streamhub.app.ui.screens.player.parseMediaDurationMs(currentMediaItem?.duration)
+            else -> 0L
+        }
         _uiState.update {
             it.copy(
                 currentEpisodeIndex = index,
                 playerError = null,
                 playerErrorInfo = null,
-                resolvedStreamUrl = rawUrl
+                resolvedStreamUrl = rawUrl,
+                durationMs = if (fallbackDurationMs > 0) fallbackDurationMs else it.durationMs
+            )
+        }
+        _playbackProgress.update {
+            it.copy(
+                currentPositionMs = startPositionMs,
+                durationMs = if (fallbackDurationMs > 0) fallbackDurationMs else it.durationMs
             )
         }
         val uri = if (rawUrl.startsWith("/")) android.net.Uri.fromFile(java.io.File(rawUrl)) else android.net.Uri.parse(rawUrl)
@@ -1107,9 +1151,16 @@ class StreamPlayerViewModel : ViewModel() {
                     // Estimate real network throughput from TransferListener byte window
                     val speedKbps = bandwidthTracker?.sampleSpeedKBps() ?: 0L
 
+                    val effectiveDur = when {
+                        totalDuration > 0L -> totalDuration
+                        _uiState.value.durationMs > 0L -> _uiState.value.durationMs
+                        _playbackProgress.value.durationMs > 0L -> _playbackProgress.value.durationMs
+                        else -> 0L
+                    }
+
                     _playbackProgress.value = PlaybackProgress(
                         currentPositionMs = currentPos,
-                        durationMs = if (totalDuration > 0) totalDuration else _playbackProgress.value.durationMs,
+                        durationMs = effectiveDur,
                         bufferedPositionMs = effectiveBuffered,
                         bufferHealthSeconds = bufferHealthSec,
                         networkSpeedKbps = speedKbps
@@ -1323,6 +1374,7 @@ class StreamPlayerViewModel : ViewModel() {
         positionTrackerJob = null
         resolutionJob?.cancel()
         resolutionJob = null
+        StreamPreloadManager.cancelDetailsPrewarm()
         StreamPreloadManager.cancelBingePrecache()
         nextEpisodePreloadJob?.cancel()
         nextEpisodePreloadJob = null

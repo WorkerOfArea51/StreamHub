@@ -446,6 +446,7 @@ fun StreamHubApp(
     val showBottomBar = bottomBarScreens.any { it.route == currentRoute }
 
     val safePlayEpisode: (com.streamhub.app.data.models.MediaItem, Int) -> Unit = { media, episodeIndex ->
+        com.streamhub.app.player.StreamPreloadManager.cancelDetailsPrewarm()
         navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
     }
 
@@ -487,6 +488,7 @@ fun StreamHubApp(
                         navController.navigate(Screen.Details.createRoute(media.id)) { launchSingleTop = true }
                     },
                     onPlayEpisode = { media, episodeIndex ->
+                        com.streamhub.app.player.StreamPreloadManager.cancelDetailsPrewarm()
                         navController.navigate(Screen.Details.createRoute(media.id))
                         navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
                     },
@@ -545,6 +547,7 @@ fun StreamHubApp(
                         navController.navigate(Screen.Details.createRoute(media.id)) { launchSingleTop = true }
                     },
                     onPlayEpisode = { media, episodeIndex ->
+                        com.streamhub.app.player.StreamPreloadManager.cancelDetailsPrewarm()
                         navController.navigate(Screen.Details.createRoute(media.id))
                         navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
                     }
