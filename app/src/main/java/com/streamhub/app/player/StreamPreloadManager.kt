@@ -19,9 +19,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.Request
 
 /**
  * Intelligent Media Stream Pre-Warming & Binge Pre-Caching Engine.
@@ -46,10 +49,20 @@ object StreamPreloadManager {
 
     private var activeDetailsJob: Job? = null
     private var activeDetailsWriter: CacheWriter? = null
+    private var activeDetailsDataSource: androidx.media3.datasource.DataSource? = null
     @Volatile private var activePrewarmUrl: String = ""
 
     private var activeBingeJob: Job? = null
     private var activeBingeWriter: CacheWriter? = null
+    private var activeBingeDataSource: androidx.media3.datasource.DataSource? = null
+
+    /** Tail chunk cached into SimpleCache so MatroskaExtractor reads Cues from disk. */
+    const val CUES_TAIL_BYTES = 512L * 1024 // 512 KB covers all Matroska Cues indexes
+    const val CUES_TAIL_FRAGMENT_BYTES = 128L * 1024 // Incremental 128KB span commits
+
+    private var activeCuesJob: Job? = null
+    private var activeCuesCall: okhttp3.Call? = null
+    private var activeCuesUpstream: androidx.media3.datasource.DataSource? = null
 
     val isBingePrecacheActive: Boolean
         get() = synchronized(this) { activeBingeJob?.isActive == true }
@@ -132,6 +145,7 @@ object StreamPreloadManager {
                 val writer = CacheWriter(cacheDataSource, dataSpec, null, null)
                 synchronized(this@StreamPreloadManager) {
                     activeDetailsWriter = writer
+                    activeDetailsDataSource = cacheDataSource
                 }
 
                 writer.cache()
@@ -161,10 +175,13 @@ object StreamPreloadManager {
         synchronized(this) {
             try {
                 activeDetailsWriter?.cancel()
+                activeDetailsDataSource?.close()
             } catch (_: Exception) {}
             activeDetailsWriter = null
+            activeDetailsDataSource = null
             activeDetailsJob?.cancel()
             activeDetailsJob = null
+            activePrewarmUrl = ""
         }
     }
 
@@ -237,6 +254,7 @@ object StreamPreloadManager {
 
                 synchronized(this@StreamPreloadManager) {
                     activeBingeWriter = writer
+                    activeBingeDataSource = cacheDataSource
                 }
 
                 writer.cache()
@@ -248,6 +266,7 @@ object StreamPreloadManager {
             } finally {
                 synchronized(this@StreamPreloadManager) {
                     activeBingeWriter = null
+                    activeBingeDataSource = null
                     if (activeBingeJob === coroutineContext[Job]) {
                         activeBingeJob = null
                     }
@@ -260,16 +279,137 @@ object StreamPreloadManager {
     }
 
     /**
-     * Cancels any active binge pre-caching job immediately (e.g. if player seeks or rebuffers).
+     * Cancels any ongoing binge pre-cache job.
      */
     fun cancelBingePrecache() {
         synchronized(this) {
             try {
                 activeBingeWriter?.cancel()
+                activeBingeDataSource?.close()
             } catch (_: Exception) {}
             activeBingeWriter = null
+            activeBingeDataSource = null
             activeBingeJob?.cancel()
             activeBingeJob = null
+        }
+    }
+
+    /**
+     * Prefetches the last ~512KB (where Matroska Cues live) into the shared cache
+     * under the SAME cache key the player uses, so the extractor's tail seek is a
+     * disk hit instead of a second network round trip.
+     */
+    fun prefetchMkvCuesTail(context: Context, rawUrl: String, scope: CoroutineScope): Job? {
+        cancelCuesTailPrefetch()
+        val appContext = context.applicationContext
+        val sanitized = TelegramLinkResolver.sanitizePlayableUrl(rawUrl)
+        if (sanitized.isBlank() || !sanitized.startsWith("http", ignoreCase = true)) return null
+
+        val pathLower = try {
+            Uri.parse(sanitized).path?.lowercase(java.util.Locale.ROOT) ?: ""
+        } catch (_: Exception) { "" }
+        if (pathLower.endsWith(".mp4") || pathLower.endsWith(".m4v") || pathLower.endsWith(".m3u8")) {
+            return null
+        }
+
+        val job = scope.launch(Dispatchers.IO) {
+            try {
+                // 1. Cheap total-length probe: GET bytes=0-0 -> 206 Content-Range carries total file size.
+                val probeReq = Request.Builder()
+                    .url(sanitized)
+                    .header("User-Agent", USER_AGENT)
+                    .header("Range", "bytes=0-0")
+                    .build()
+
+                val call = SharedHttpClient.streamingClient.newCall(probeReq)
+                synchronized(this@StreamPreloadManager) {
+                    activeCuesCall = call
+                }
+
+                val totalLength = call.execute().use { resp ->
+                    when (resp.code) {
+                        206 -> resp.header("Content-Range")
+                            ?.substringAfterLast("/")?.trim()?.toLongOrNull()
+                        200 -> resp.header("Content-Length")?.trim()?.toLongOrNull()
+                        else -> null
+                    }
+                } ?: return@launch
+
+                if (totalLength <= CUES_TAIL_BYTES) return@launch // Small file: standard prewarm / byte 0 covers it
+
+                // 2. Bounded tail fetch into cache under the player's cache key.
+                val tailStart = totalLength - CUES_TAIL_BYTES
+                val simpleCache = StreamCacheManager.getCache(appContext)
+                val cacheKey = StreamDataSourceFactory.sanitizeCacheKey(Uri.parse(sanitized))
+                if (simpleCache.isCached(cacheKey, tailStart, CUES_TAIL_BYTES)) {
+                    Log.d(TAG, "MKV Cues tail already cached locally ($cacheKey)")
+                    return@launch
+                }
+
+                Log.i(TAG, "Prefetching MKV Cues tail ($tailStart to $totalLength) for: $sanitized")
+
+                val upstream = OkHttpDataSource.Factory(SharedHttpClient.streamingClient)
+                    .setUserAgent(USER_AGENT)
+                    .createDataSource()
+                synchronized(this@StreamPreloadManager) {
+                    activeCuesUpstream = upstream
+                }
+
+                val sink = CacheDataSink.Factory()
+                    .setCache(simpleCache)
+                    .setFragmentSize(CUES_TAIL_FRAGMENT_BYTES)
+                    .createDataSink()
+
+                val dataSpec = DataSpec.Builder()
+                    .setUri(Uri.parse(sanitized))
+                    .setPosition(tailStart)
+                    .setLength(CUES_TAIL_BYTES) // bounded -> clean 206 EOF, no aborted connections
+                    .setKey(cacheKey)
+                    .build()
+
+                // 3. Stream tail bytes through the cache sink, committing spans as we go.
+                upstream.open(dataSpec)
+                sink.open(dataSpec)
+                try {
+                    val buf = ByteArray(64 * 1024)
+                    while (currentCoroutineContext().isActive) {
+                        val read = upstream.read(buf, 0, buf.size)
+                        if (read == -1) break
+                        sink.write(buf, 0, read)
+                    }
+                    Log.i(TAG, "MKV Cues tail successfully cached into disk for $sanitized")
+                } finally {
+                    runCatching { sink.close() }
+                    runCatching { upstream.close() }
+                }
+            } catch (_: CancellationException) {
+                Log.d(TAG, "MKV Cues tail prefetch cancelled")
+            } catch (e: Exception) {
+                Log.d(TAG, "MKV Cues tail prefetch non-fatal: ${e.message}")
+            } finally {
+                synchronized(this@StreamPreloadManager) {
+                    activeCuesCall = null
+                    activeCuesUpstream = null
+                    if (activeCuesJob === coroutineContext[Job]) {
+                        activeCuesJob = null
+                    }
+                }
+            }
+        }
+        activeCuesJob = job
+        return job
+    }
+
+    fun cancelCuesTailPrefetch() {
+        synchronized(this) {
+            try {
+                activeCuesCall?.cancel()
+                activeCuesUpstream?.close()
+            } catch (_: Exception) {}
+            activeCuesCall = null
+            activeCuesUpstream = null
+            activeCuesJob?.cancel()
+            activeCuesJob = null
         }
     }
 

@@ -28,7 +28,7 @@ object SharedHttpClient {
     val streamingClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(45, TimeUnit.SECONDS)
-            .readTimeout(0, TimeUnit.SECONDS) // No read timeout for continuous media streaming
+            .readTimeout(25, TimeUnit.SECONDS) // Resilient 25s inter-byte read timeout to prevent indefinite socket hangs if backend stalls
             .writeTimeout(0, TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)

@@ -525,7 +525,6 @@ fun StreamHubApp(
                     },
                     onPlayEpisode = { media, episodeIndex ->
                         com.streamhub.app.player.StreamPreloadManager.cancelDetailsPrewarm()
-                        navController.navigate(Screen.Details.createRoute(media.id))
                         navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
                     },
                     onNavigateToHistory = {
@@ -584,7 +583,6 @@ fun StreamHubApp(
                     },
                     onPlayEpisode = { media, episodeIndex ->
                         com.streamhub.app.player.StreamPreloadManager.cancelDetailsPrewarm()
-                        navController.navigate(Screen.Details.createRoute(media.id))
                         navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
                     }
                 )
