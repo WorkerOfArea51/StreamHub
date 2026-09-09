@@ -157,6 +157,49 @@ fun VideoSettingsScreen(
                 }
             }
 
+            // Double-Tap Seek Duration
+            item {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, currentAccent.color.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.FastForward, contentDescription = "Double-Tap Seek", tint = currentAccent.color)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Double-Tap Seek Duration", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "Seconds to skip forward or backward on double-tap:",
+                            color = TextSecondary,
+                            fontSize = 11.sp
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        val seekOptions = listOf(5, 10, 15, 30)
+                        val seekLabels = listOf("5s", "10s", "15s", "30s")
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            seekOptions.forEachIndexed { index, sec ->
+                                val isSelected = playerSettings.doubleTapSeekSeconds == sec
+                                ThresholdChip(
+                                    label = seekLabels[index],
+                                    isSelected = isSelected,
+                                    onClick = { PlayerSettingsManager.updateDoubleTapSeek(sec) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Cinema Ambient Lighting & Moods
             item {
                 Card(

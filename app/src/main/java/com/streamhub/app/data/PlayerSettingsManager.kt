@@ -19,7 +19,8 @@ data class PlayerSettings(
     val ambientMoodId: String = "COZY_CINEMA",
     val ambientIntensity: Float = 0.15f, // 0.05f to 0.50f (Default: 0.15f cozy)
     val smartPrewarmEnabled: Boolean = true,
-    val bingePrecacheEnabled: Boolean = true
+    val bingePrecacheEnabled: Boolean = true,
+    val doubleTapSeekSeconds: Int = 10 // 5s, 10s, 15s, 30s
 )
 
 /**
@@ -44,6 +45,7 @@ object PlayerSettingsManager {
     private const val KEY_AMBIENT_INTENSITY = "ambient_intensity"
     private const val KEY_SMART_PREWARM = "smart_prewarm_enabled"
     private const val KEY_BINGE_PRECACHE = "binge_precache_enabled"
+    private const val KEY_DOUBLE_TAP_SEEK = "double_tap_seek_sec"
 
     private lateinit var appContext: Context
 
@@ -70,7 +72,8 @@ object PlayerSettingsManager {
                 ambientMoodId = prefs.getString(KEY_AMBIENT_MOOD_ID, "COZY_CINEMA") ?: "COZY_CINEMA",
                 ambientIntensity = prefs.getFloat(KEY_AMBIENT_INTENSITY, 0.15f),
                 smartPrewarmEnabled = prefs.getBoolean(KEY_SMART_PREWARM, true),
-                bingePrecacheEnabled = prefs.getBoolean(KEY_BINGE_PRECACHE, true)
+                bingePrecacheEnabled = prefs.getBoolean(KEY_BINGE_PRECACHE, true),
+                doubleTapSeekSeconds = prefs.getInt(KEY_DOUBLE_TAP_SEEK, 10)
             )
         } catch (e: Exception) {
             prefs.edit().clear().apply()
@@ -189,6 +192,17 @@ object PlayerSettingsManager {
         }
         _settingsFlow.update { it.copy(bingePrecacheEnabled = enabled) }
         getPrefs().edit().putBoolean(KEY_BINGE_PRECACHE, enabled).apply()
+    }
+
+    @Synchronized
+    fun updateDoubleTapSeek(seconds: Int) {
+        if (!::appContext.isInitialized) {
+            Log.w(TAG, "updateDoubleTapSeek called before init — no-op")
+            return
+        }
+        val clamped = seconds.coerceIn(5, 60)
+        _settingsFlow.update { it.copy(doubleTapSeekSeconds = clamped) }
+        getPrefs().edit().putInt(KEY_DOUBLE_TAP_SEEK, clamped).apply()
     }
 
     private fun getPrefs(): SharedPreferences {

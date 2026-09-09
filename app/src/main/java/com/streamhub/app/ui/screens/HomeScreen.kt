@@ -29,14 +29,25 @@ import androidx.compose.runtime.CompositionLocalProvider
 import com.streamhub.app.ui.components.LocalIsScrollInProgress
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import com.streamhub.app.ui.components.EmptyStateCard
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -86,6 +97,7 @@ import com.streamhub.app.ui.components.SkeletonCardRow
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.CardBorderDark
+import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
@@ -122,6 +134,7 @@ fun HomeScreen(
     var showAdminAddDialog by remember { mutableStateOf(false) }
     var showSurpriseMeDialog by remember { mutableStateOf(false) }
     var showClearHistoryDialog by remember { mutableStateOf(false) }
+    var selectedQuickActionItem by remember { mutableStateOf<Pair<MediaItem, PlaybackProgress>?>(null) }
 
     val myListIds by com.streamhub.app.data.MyListManager.myListFlow.collectAsState()
 
@@ -555,7 +568,8 @@ fun HomeScreen(
                                     WatchHistoryManager.restoreMediaProgress(progress)
                                 }
                             }
-                        }
+                        },
+                        onLongClick = { item -> selectedQuickActionItem = item }
                     )
                 }
             }
@@ -593,7 +607,8 @@ fun HomeScreen(
                                     WatchHistoryManager.restoreMediaProgress(progress)
                                 }
                             }
-                        }
+                        },
+                        onLongClick = { item -> selectedQuickActionItem = item }
                     )
                 }
             }
@@ -728,6 +743,42 @@ fun HomeScreen(
             containerColor = Color(0xFF1E1E2E)
         )
     }
+
+    selectedQuickActionItem?.let { (media, progress) ->
+        ContinueWatchingQuickActionsSheet(
+            media = media,
+            progress = progress,
+            onResume = {
+                selectedQuickActionItem = null
+                onPlayEpisode(media, progress.episodeNumber)
+            },
+            onRestart = {
+                selectedQuickActionItem = null
+                WatchHistoryManager.saveProgress(media.id, progress.episodeNumber, 0L, progress.durationMs)
+                onPlayEpisode(media, progress.episodeNumber)
+            },
+            onViewDetails = {
+                selectedQuickActionItem = null
+                onMediaClick(media)
+            },
+            onRemove = {
+                selectedQuickActionItem = null
+                WatchHistoryManager.removeMediaProgress(media.id)
+                coroutineScope.launch {
+                    snackbarHostState.currentSnackbarData?.dismiss()
+                    val result = snackbarHostState.showSnackbar(
+                        message = "Removed \"${media.title}\"",
+                        actionLabel = "Undo",
+                        duration = SnackbarDuration.Short
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        WatchHistoryManager.restoreMediaProgress(progress)
+                    }
+                }
+            },
+            onDismiss = { selectedQuickActionItem = null }
+        )
+    }
 }
 
 @Composable
@@ -780,6 +831,7 @@ fun ContinueWatchingSection(
     onNavigateToHistory: () -> Unit,
     onClearClick: () -> Unit,
     onRemove: (MediaItem, PlaybackProgress) -> Unit,
+    onLongClick: (Pair<MediaItem, PlaybackProgress>) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
@@ -861,7 +913,8 @@ fun ContinueWatchingSection(
                         media = media,
                         progress = progress,
                         onPlay = { onPlayEpisode(media, progress.episodeNumber) },
-                        onRemove = { onRemove(media, progress) }
+                        onRemove = { onRemove(media, progress) },
+                        onLongClick = { onLongClick(media to progress) }
                     )
                 }
             }
@@ -870,13 +923,16 @@ fun ContinueWatchingSection(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ContinueWatchingRowItem(
     media: MediaItem,
     progress: PlaybackProgress,
     onPlay: () -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onLongClick: () -> Unit = {}
 ) {
+    val haptic = LocalHapticFeedback.current
     val progressFraction = if (progress.durationMs > 0) {
         (progress.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0f, 1f)
     } else 0f
@@ -897,7 +953,13 @@ fun ContinueWatchingRowItem(
         modifier = Modifier
             .width(200.dp)
             .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
-            .clickable { onPlay() }
+            .combinedClickable(
+                onClick = { onPlay() },
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onLongClick()
+                }
+            )
     ) {
         Column {
             Box(
@@ -1070,3 +1132,213 @@ private data class CategoryShelf(
     val items: List<MediaItem>,
     val newestIndex: Int
 )
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ContinueWatchingQuickActionsSheet(
+    media: MediaItem,
+    progress: PlaybackProgress,
+    onResume: () -> Unit,
+    onRestart: () -> Unit,
+    onViewDetails: () -> Unit,
+    onRemove: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val isMovie = media.category.equals("Movie", ignoreCase = true) ||
+            media.category.equals("Movies", ignoreCase = true) ||
+            progress.mediaType.equals("Movie", ignoreCase = true) ||
+            progress.mediaType.equals("Movies", ignoreCase = true)
+
+    val currentEp = media.episodes.getOrNull(progress.episodeNumber)
+    val remainingMs = (progress.durationMs - progress.positionMs).coerceAtLeast(0L)
+    val remainingMinutes = remainingMs / 60_000L
+    val progressFraction = if (progress.durationMs > 0) {
+        (progress.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color(0xFF14131C),
+        contentColor = TextPrimary,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 12.dp)
+                    .width(48.dp)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color(0x44FFFFFF))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 36.dp)
+        ) {
+            // Media Header Card Preview
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(SurfaceDark)
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 80.dp, height = 50.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                ) {
+                    coil.compose.AsyncImage(
+                        model = currentEp?.thumbnailUrl?.ifEmpty { media.bannerUrl.ifEmpty { media.posterUrl } } ?: media.posterUrl,
+                        contentDescription = media.title,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    // Progress indicator line
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .align(Alignment.BottomCenter)
+                            .background(Color(0x66000000))
+                    ) {
+                        if (progressFraction > 0f) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(progressFraction)
+                                    .background(MaterialTheme.colorScheme.primary)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = media.title,
+                        color = TextPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        text = if (isMovie) {
+                            if (remainingMinutes > 0) "Movie • ${remainingMinutes}m remaining" else "Movie"
+                        } else {
+                            val seasonNum = if (progress.seasonNumber > 0) progress.seasonNumber else (currentEp?.seasonNumber ?: 1)
+                            val epText = "S$seasonNum:E${progress.episodeNumber + 1}"
+                            if (remainingMinutes > 0) "$epText • ${remainingMinutes}m remaining" else epText
+                        },
+                        color = AccentOrange,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Action Items
+            QuickActionRow(
+                icon = Icons.Default.PlayArrow,
+                iconTint = MaterialTheme.colorScheme.primary,
+                title = "Resume Playback",
+                subtitle = if (remainingMinutes > 0) "Continue from ${remainingMinutes}m remaining" else "Resume playback where you left off",
+                onClick = onResume
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            QuickActionRow(
+                icon = Icons.Default.Replay,
+                iconTint = Color(0xFF64B5F6),
+                title = "Play from Beginning",
+                subtitle = "Restart this ${if (isMovie) "movie" else "episode"} from 0:00",
+                onClick = onRestart
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            QuickActionRow(
+                icon = Icons.Default.Info,
+                iconTint = Color(0xFFB388FF),
+                title = "View Details & Episodes",
+                subtitle = "Open synopsis, season arcs, and full episode list",
+                onClick = onViewDetails
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            QuickActionRow(
+                icon = Icons.Default.DeleteOutline,
+                iconTint = PrimaryRed,
+                title = "Remove from Continue Watching",
+                subtitle = "Remove this title from your active watch rail",
+                onClick = onRemove
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickActionRow(
+    icon: ImageVector,
+    iconTint: Color,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0x14FFFFFF))
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(iconTint.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(14.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = TextPrimary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                color = TextSecondary,
+                fontSize = 11.sp
+            )
+        }
+    }
+}

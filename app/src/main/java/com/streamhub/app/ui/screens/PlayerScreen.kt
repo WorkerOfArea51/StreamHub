@@ -592,21 +592,23 @@ fun PlayerScreen(
     var lastCenterTapTime by remember { mutableLongStateOf(0L) }
 
     fun triggerDoubleTapSeek(isForward: Boolean) {
+        val stepSec = playerSettings.doubleTapSeekSeconds.coerceIn(5, 60)
+        val stepMs = stepSec * 1000L
         val direction = if (isForward) "forward" else "backward"
         if (lastSeekDirection == direction) {
-            cumulativeSeekSeconds += 10
+            cumulativeSeekSeconds += stepSec
         } else {
-            cumulativeSeekSeconds = 10
+            cumulativeSeekSeconds = stepSec
             lastSeekDirection = direction
         }
         isDoubleTapForward = isForward
 
         if (isForward) {
-            viewModel.seekForward(10000L)
+            viewModel.seekForward(stepMs)
             doubleTapRippleText = "+${cumulativeSeekSeconds}s"
             doubleTapAlignment = Alignment.CenterEnd
         } else {
-            viewModel.seekBackward(10000L)
+            viewModel.seekBackward(stepMs)
             doubleTapRippleText = "-${cumulativeSeekSeconds}s"
             doubleTapAlignment = Alignment.CenterStart
         }
@@ -2665,6 +2667,12 @@ private fun transformCue(
         val isPositionedSignOrSong = cue.line != androidx.media3.common.text.Cue.DIMEN_UNSET ||
                 cue.position != androidx.media3.common.text.Cue.DIMEN_UNSET
 
+        // When forceCleanTypography is enabled: strip embedded foreground colors so user's color is enforced
+        if (config.forceCleanTypography) {
+            val oldColorSpans = builder.getSpans(0, builder.length, android.text.style.ForegroundColorSpan::class.java)
+            oldColorSpans.forEach { builder.removeSpan(it) }
+        }
+
         // Only apply user foreground color if the cue doesn't already have its own embedded color spans
         val existingColorSpans = builder.getSpans(0, builder.length, android.text.style.ForegroundColorSpan::class.java)
         if (existingColorSpans.isEmpty()) {
@@ -2679,8 +2687,8 @@ private fun transformCue(
             }
         }
 
-        // Do not force solid background boxes on individual karaoke syllables or positioned signs
-        if (!isPositionedSignOrSong) {
+        // Do not force solid background boxes on individual karaoke syllables or positioned signs (unless forcing clean typography)
+        if (!isPositionedSignOrSong || config.forceCleanTypography) {
             val bgColor = config.backgroundColorArgb.toInt()
             if (android.graphics.Color.alpha(bgColor) > 10) {
                 builder.setSpan(
@@ -2703,8 +2711,9 @@ private fun transformCue(
         }
 
         val cueBuilder = cue.buildUpon().setText(builder)
-        // Only override font size for regular dialogue subtitles to avoid blowing up positioned signs/karaoke
-        if (!isPositionedSignOrSong) {
+        // Only override font size for regular dialogue subtitles to avoid blowing up positioned signs/karaoke,
+        // unless forceCleanTypography is active, in which case consistent uniform sizing is applied.
+        if (!isPositionedSignOrSong || config.forceCleanTypography) {
             cueBuilder.setTextSize(config.fontSizeSp, androidx.media3.common.text.Cue.TEXT_SIZE_TYPE_ABSOLUTE)
         }
         return cueBuilder.build()
@@ -2721,7 +2730,8 @@ private fun applySubtitleStyling(
 
     // Allow embedded styles from ASS / SSA files (karaoke, fonts, sign placement) to display natively,
     // while user-configured font sizes and caption styles take effect for plain dialogue/SRT.
-    sv.setApplyEmbeddedStyles(true)
+    // When forceCleanTypography is active, embedded styles are suppressed for clean uniform reading.
+    sv.setApplyEmbeddedStyles(!config.forceCleanTypography)
     sv.setApplyEmbeddedFontSizes(false)
 
     val typefaceStyle = when {

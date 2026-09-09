@@ -438,6 +438,44 @@ fun MpvSubtitleSettingsDrawer(
                 )
             }
 
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Force Clean Typography Switch
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0x18FFFFFF))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Force clean typography",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Override embedded fonts, colors, and positioning with clean user style",
+                        color = TextSecondary,
+                        fontSize = 10.sp
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Switch(
+                    checked = config.forceCleanTypography,
+                    onCheckedChange = { onUpdateConfig(config.copy(forceCleanTypography = it)) },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = Color(0xFF6750A4),
+                        uncheckedThumbColor = Color.LightGray,
+                        uncheckedTrackColor = Color(0x33FFFFFF)
+                    )
+                )
+            }
+
             Spacer(modifier = Modifier.height(14.dp))
 
             // Vertical Screen Position / Height Slider

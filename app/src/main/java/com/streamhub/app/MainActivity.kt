@@ -24,6 +24,14 @@ import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSiz
 import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import com.streamhub.app.ui.navigation.AdaptiveNavShell
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -468,9 +476,37 @@ fun StreamHubApp(
             NavHost(
                 navController = navController,
                 startDestination = Screen.Splash.route,
-                modifier = navContentModifier
+                modifier = navContentModifier,
+                enterTransition = {
+                    slideInHorizontally(
+                        initialOffsetX = { (it * 0.10f).toInt() },
+                        animationSpec = tween(280, easing = FastOutSlowInEasing)
+                    ) + fadeIn(animationSpec = tween(280))
+                },
+                exitTransition = {
+                    slideOutHorizontally(
+                        targetOffsetX = { -(it * 0.10f).toInt() },
+                        animationSpec = tween(280, easing = FastOutSlowInEasing)
+                    ) + fadeOut(animationSpec = tween(280))
+                },
+                popEnterTransition = {
+                    slideInHorizontally(
+                        initialOffsetX = { -(it * 0.10f).toInt() },
+                        animationSpec = tween(280, easing = FastOutSlowInEasing)
+                    ) + fadeIn(animationSpec = tween(280))
+                },
+                popExitTransition = {
+                    slideOutHorizontally(
+                        targetOffsetX = { (it * 0.10f).toInt() },
+                        animationSpec = tween(280, easing = FastOutSlowInEasing)
+                    ) + fadeOut(animationSpec = tween(280))
+                }
             ) {
-            composable(Screen.Splash.route) {
+            composable(
+                route = Screen.Splash.route,
+                enterTransition = { fadeIn(animationSpec = tween(300)) },
+                exitTransition = { fadeOut(animationSpec = tween(300)) }
+            ) {
                 SplashScreen(
                     repository = repository,
                     onSplashFinished = {
@@ -613,7 +649,19 @@ fun StreamHubApp(
                 arguments = listOf(
                     navArgument("mediaId") { type = NavType.StringType },
                     navArgument("episodeIndex") { type = NavType.IntType }
-                )
+                ),
+                enterTransition = {
+                    scaleIn(initialScale = 0.94f, animationSpec = tween(320, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(320))
+                },
+                exitTransition = {
+                    scaleOut(targetScale = 0.94f, animationSpec = tween(260, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(260))
+                },
+                popEnterTransition = {
+                    scaleIn(initialScale = 0.94f, animationSpec = tween(320, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(320))
+                },
+                popExitTransition = {
+                    scaleOut(targetScale = 0.94f, animationSpec = tween(260, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(260))
+                }
             ) { backStackEntry ->
                 val activity = androidx.compose.ui.platform.LocalContext.current as? MainActivity
                 val playerViewModel: StreamPlayerViewModel = viewModel()

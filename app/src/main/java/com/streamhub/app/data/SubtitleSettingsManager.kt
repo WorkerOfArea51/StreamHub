@@ -21,7 +21,8 @@ data class SubtitleConfig(
     val outlineWidth: Float = 2f,
     val shadowOffset: Float = 2f,
     val scaleByWindow: Boolean = true,
-    val bottomPaddingFraction: Float = 0.08f // Vertical screen offset (0.02f = bottom, 0.85f = top)
+    val bottomPaddingFraction: Float = 0.08f, // Vertical screen offset (0.02f = bottom, 0.85f = top)
+    val forceCleanTypography: Boolean = false // Force clean typography over embedded styling
 )
 
 /**
@@ -47,6 +48,7 @@ object SubtitleSettingsManager {
     private const val KEY_SHADOW_OFFSET = "shadow_offset"
     private const val KEY_SCALE_BY_WINDOW = "scale_by_window"
     private const val KEY_BOTTOM_PADDING = "bottom_padding_fraction"
+    private const val KEY_FORCE_CLEAN_TYPOGRAPHY = "force_clean_typography"
 
     private var prefs: SharedPreferences? = null
 
@@ -73,7 +75,8 @@ object SubtitleSettingsManager {
                 outlineWidth = p.getFloat(KEY_OUTLINE_WIDTH, 2f),
                 shadowOffset = p.getFloat(KEY_SHADOW_OFFSET, 2f),
                 scaleByWindow = p.getBoolean(KEY_SCALE_BY_WINDOW, true),
-                bottomPaddingFraction = p.getFloat(KEY_BOTTOM_PADDING, 0.08f)
+                bottomPaddingFraction = p.getFloat(KEY_BOTTOM_PADDING, 0.08f),
+                forceCleanTypography = p.getBoolean(KEY_FORCE_CLEAN_TYPOGRAPHY, false)
             )
         } catch (e: Exception) {
             p.edit().clear().apply()
@@ -95,6 +98,7 @@ object SubtitleSettingsManager {
             putFloat(KEY_SHADOW_OFFSET, newConfig.shadowOffset)
             putBoolean(KEY_SCALE_BY_WINDOW, newConfig.scaleByWindow)
             putFloat(KEY_BOTTOM_PADDING, newConfig.bottomPaddingFraction)
+            putBoolean(KEY_FORCE_CLEAN_TYPOGRAPHY, newConfig.forceCleanTypography)
             apply()
         }
     }
