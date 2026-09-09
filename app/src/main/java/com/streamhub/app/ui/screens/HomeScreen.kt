@@ -194,6 +194,21 @@ fun HomeScreen(
             .sortedByDescending { it.second.lastUpdated }
     }
 
+    val topContinueUrl = remember(continueWatchingList) {
+        val top = continueWatchingList.firstOrNull()
+        if (top != null) {
+            val (media, progress) = top
+            val ep = media.episodes.getOrNull(progress.episodeNumber) ?: media.episodes.firstOrNull()
+            ep?.streamUrl?.ifEmpty { ep.mirrorStreamUrl } ?: ""
+        } else ""
+    }
+
+    LaunchedEffect(topContinueUrl) {
+        if (topContinueUrl.isNotBlank()) {
+            com.streamhub.app.player.StreamPreloadManager.prewarmDetailsStream(context, topContinueUrl, coroutineScope)
+        }
+    }
+
     val recentlyAddedItems = remember(filteredCatalog) {
         val now = System.currentTimeMillis()
         val threeDaysAgo = now - (3L * 24L * 60L * 60L * 1000L) // 72-hour inactivity threshold

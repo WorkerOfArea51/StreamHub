@@ -321,12 +321,6 @@ fun DetailsScreen(
         }
     }
 
-    DisposableEffect(currentMediaId) {
-        onDispose {
-            StreamPreloadManager.cancelDetailsPrewarm()
-        }
-    }
-
     val episodeIndexMap = remember(mediaItem.episodes) {
         mediaItem.episodes.withIndex().associate { (i, ep) -> ep to i }
     }

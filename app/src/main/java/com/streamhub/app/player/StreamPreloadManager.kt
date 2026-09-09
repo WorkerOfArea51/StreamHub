@@ -46,25 +46,36 @@ object StreamPreloadManager {
 
     private var activeDetailsJob: Job? = null
     private var activeDetailsWriter: CacheWriter? = null
+    @Volatile private var activePrewarmUrl: String = ""
 
     private var activeBingeJob: Job? = null
     private var activeBingeWriter: CacheWriter? = null
 
     /**
-     * Pre-warms the first 2MB of a stream URL into disk cache after a 1,800ms dwell delay.
-     * If the user leaves the screen before 1,800ms, the returned [Job] is cancelled with 0 network calls.
+     * Pre-warms the first 2MB of a stream URL into disk cache after a 300ms dwell delay.
+     * If already caching this URL, reuses the in-flight job rather than aborting.
      */
     fun prewarmDetailsStream(
         context: Context,
         rawUrl: String,
         scope: CoroutineScope
     ): Job {
+        val sanitizedUrl = TelegramLinkResolver.sanitizePlayableUrl(rawUrl)
+        if (sanitizedUrl.isBlank()) return Job().apply { complete() }
+
+        synchronized(this) {
+            if (activePrewarmUrl == sanitizedUrl && activeDetailsJob?.isActive == true) {
+                return activeDetailsJob!!
+            }
+        }
+
         cancelDetailsPrewarm()
+        activePrewarmUrl = sanitizedUrl
 
         val job = scope.launch(Dispatchers.IO) {
             try {
-                // Dwell debounce: only prewarm if user dwells on details screen for at least 1.5s
-                delay(1500L)
+                // Short dwell debounce: 300ms ensures instant readiness even on quick taps
+                delay(300L)
 
                 if (!PlayerSettingsManager.settingsFlow.value.smartPrewarmEnabled) {
                     Log.d(TAG, "Details prewarm skipped: smartPrewarmEnabled is OFF")

@@ -394,14 +394,10 @@ class StreamPlayerViewModel : ViewModel() {
                     )
                     .setBackBuffer(30_000, true)
                     .setPrioritizeTimeOverSizeThresholds(true)
-                    .setTargetBufferBytes(androidx.media3.common.C.LENGTH_UNSET)
+                    .setTargetBufferBytes(500 * 1024 * 1024) // 500 MB continuous buffer target: buffers entire video into disk cache without stalling at 315s
                     .build()
                 val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
                     .setConstantBitrateSeekingEnabled(true)
-                    .setMatroskaExtractorFlags(
-                        androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES or
-                        androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_EMIT_RAW_SUBTITLE_DATA
-                    )
                 ExoPlayer.Builder(safeContext, renderersFactory)
                     .setTrackSelector(trackSelector!!)
                     .setAudioAttributes(audioAttributes, true)
@@ -753,20 +749,19 @@ class StreamPlayerViewModel : ViewModel() {
                 )
             }
             val uri = if (resolvedUrl.startsWith("/")) android.net.Uri.fromFile(java.io.File(resolvedUrl)) else android.net.Uri.parse(resolvedUrl)
+            val cacheKey = StreamDataSourceFactory.sanitizeCacheKey(uri)
             val mediaItem = ExoMediaItem.fromUri(uri)
                 .buildUpon()
                 .setTag(currentMediaItem?.id)
+                .setCustomCacheKey(cacheKey)
                 .build()
 
             PlayerHolder.currentMediaId = currentMediaItem?.id
             PlayerHolder.currentEpisodeIndex = index
 
             exoPlayer?.apply {
-                setMediaItem(mediaItem)
+                setMediaItem(mediaItem, startPositionMs)
                 prepare()
-                if (startPositionMs > 0L) {
-                    seekTo(startPositionMs)
-                }
                 playWhenReady = true
             }
         }
@@ -841,20 +836,19 @@ class StreamPlayerViewModel : ViewModel() {
             )
         }
         val uri = if (rawUrl.startsWith("/")) android.net.Uri.fromFile(java.io.File(rawUrl)) else android.net.Uri.parse(rawUrl)
+        val cacheKey = StreamDataSourceFactory.sanitizeCacheKey(uri)
         val mediaItem = ExoMediaItem.fromUri(uri)
             .buildUpon()
             .setTag(currentMediaItem?.id)
+            .setCustomCacheKey(cacheKey)
             .build()
 
         PlayerHolder.currentMediaId = currentMediaItem?.id
         PlayerHolder.currentEpisodeIndex = index
 
         exoPlayer?.apply {
-            setMediaItem(mediaItem)
+            setMediaItem(mediaItem, startPositionMs)
             prepare()
-            if (startPositionMs > 0L) {
-                seekTo(startPositionMs)
-            }
             playWhenReady = true
         }
     }
