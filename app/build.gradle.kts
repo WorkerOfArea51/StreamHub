@@ -45,8 +45,8 @@ android {
         minSdk = 24
         targetSdk = 35
         val envVersionName = System.getenv("VERSION_NAME")?.removePrefix("v")?.removePrefix("V")
-        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 282
-        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.282"
+        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 283
+        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.283"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
