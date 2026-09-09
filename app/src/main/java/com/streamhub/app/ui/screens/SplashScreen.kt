@@ -1,6 +1,7 @@
 package com.streamhub.app.ui.screens
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -17,16 +18,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,10 +37,11 @@ import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+
+private val ExpressiveScaleEasing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
 
 @Composable
 fun SplashScreen(
@@ -52,7 +51,7 @@ fun SplashScreen(
 ) {
     val scale = remember { Animatable(0.3f) }
     val alpha = remember { Animatable(0f) }
-    val catalogState by repository.catalogState.collectAsState()
+    val exitAlpha = remember { Animatable(1f) }
 
     LaunchedEffect(Unit) {
         coroutineScope {
@@ -66,19 +65,24 @@ fun SplashScreen(
                 launch {
                     alpha.animateTo(
                         targetValue = 1f,
-                        animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing)
+                        animationSpec = tween(durationMillis = 550, easing = FastOutSlowInEasing)
                     )
                 }
                 launch {
                     scale.animateTo(
                         targetValue = 1.0f,
-                        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing)
+                        animationSpec = tween(durationMillis = 800, easing = ExpressiveScaleEasing)
                     )
                 }
             }
 
             animJob.join()
             catalogReady.await()
+            // Silky smooth cross-dissolve exit into home screen
+            exitAlpha.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+            )
             onSplashFinished()
         }
     }
@@ -86,18 +90,24 @@ fun SplashScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(BackgroundDark),
+            .background(BackgroundDark)
+            .graphicsLayer {
+                this.alpha = exitAlpha.value
+            },
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Glowing Animated Logo Circle Container
+            // Glowing Animated Logo Circle Container (hardware-accelerated graphicsLayer)
             Box(
                 modifier = Modifier
                     .size(140.dp)
-                    .scale(scale.value)
-                    .alpha(alpha.value)
+                    .graphicsLayer {
+                        scaleX = scale.value
+                        scaleY = scale.value
+                        this.alpha = alpha.value
+                    }
                     .clip(CircleShape)
                     .background(
                         Brush.linearGradient(
@@ -116,14 +126,16 @@ fun SplashScreen(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // Branding Text
+            // Branding Text (hardware-accelerated graphicsLayer)
             Text(
                 text = "StreamHub",
                 color = TextPrimary,
                 fontSize = 32.sp,
                 fontWeight = FontWeight.ExtraBold,
                 letterSpacing = 1.5.sp,
-                modifier = Modifier.alpha(alpha.value)
+                modifier = Modifier.graphicsLayer {
+                    this.alpha = alpha.value
+                }
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -134,7 +146,9 @@ fun SplashScreen(
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 letterSpacing = 1.0.sp,
-                modifier = Modifier.alpha(alpha.value * 0.7f)
+                modifier = Modifier.graphicsLayer {
+                    this.alpha = alpha.value * 0.7f
+                }
             )
         }
     }

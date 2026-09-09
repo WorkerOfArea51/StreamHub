@@ -10,6 +10,7 @@ import com.streamhub.app.player.StreamCacheManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -60,8 +61,13 @@ object StorageCacheManager {
         appContext = context.applicationContext
 
         loadConfig()
-        calculateStorageUsage()
-        enforceCachePolicies()
+        // FIX: Defer heavy disk directory walks (media_stream_cache, coil, etc.) by 2.5s
+        // so storage I/O and flash bus remain 100% free for the 120fps splash animation.
+        scope.launch {
+            delay(2_500L)
+            calculateStorageUsage()
+            enforceCachePolicies()
+        }
     }
 
     private fun getPrefs(): SharedPreferences {

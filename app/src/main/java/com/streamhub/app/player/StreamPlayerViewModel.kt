@@ -396,15 +396,13 @@ class StreamPlayerViewModel : ViewModel() {
                     .setPrioritizeTimeOverSizeThresholds(true)
                     .setTargetBufferBytes(500 * 1024 * 1024) // 500 MB continuous buffer target: buffers entire video into disk cache without stalling at 315s
                     .build()
-                // DO NOT REMOVE FLAG_DISABLE_SEEK_FOR_CUES:
-                // Without this flag, ExoPlayer jumps to the end (tail) of remote MKV files over HTTP to download
-                // the Cues seek-table before playing. On Telegram / proxy streams, this causes a 25-30 second
-                // startup freeze before byte 0 is read. With this flag + setConstantBitrateSeekingEnabled(true),
-                // playback starts instantly (~250ms) and seeks seamlessly via cluster/bitrate interpolation.
+                // CRITICAL: DO NOT ADD FLAG_DISABLE_SEEK_FOR_CUES.
+                // Disabling seek for cues completely breaks seeking in MKV videos because Matroska video
+                // frames are variable bitrate and require the Cues index to locate keyframes. Without Cues,
+                // ExoPlayer cannot map timestamps to byte offsets and rewinds to 0s on any seek or scrub.
                 val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
                     .setConstantBitrateSeekingEnabled(true)
                     .setMatroskaExtractorFlags(
-                        androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES or
                         androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_EMIT_RAW_SUBTITLE_DATA
                     )
                 ExoPlayer.Builder(safeContext, renderersFactory)

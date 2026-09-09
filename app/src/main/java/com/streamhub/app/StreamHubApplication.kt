@@ -126,60 +126,68 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
     }
 
     private fun initializeManagers() {
-        runCatching { PlayerSettingsManager.init(applicationContext) }
-            .onFailure { Log.e(TAG, "PlayerSettingsManager.init failed", it) }
+        // Critical for initial UI shell, theme, and gate check (synchronous)
+        runCatching { ThemeManager.init(applicationContext) }
+            .onFailure { Log.e(TAG, "ThemeManager.init failed", it) }
         runCatching { AccessGateManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "AccessGateManager.init failed", it) }
         runCatching { AdminManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "AdminManager.init failed", it) }
-        runCatching { ThemeManager.init(applicationContext) }
-            .onFailure { Log.e(TAG, "ThemeManager.init failed", it) }
-        runCatching { MyListManager.init(applicationContext) }
-            .onFailure { Log.e(TAG, "MyListManager.init failed", it) }
-        runCatching { WatchHistoryManager.init(applicationContext) }
-            .onFailure { Log.e(TAG, "WatchHistoryManager.init failed", it) }
-        runCatching { com.streamhub.app.data.SearchHistoryManager.init(applicationContext) }
-            .onFailure { Log.e(TAG, "SearchHistoryManager.init failed", it) }
-        runCatching { SubtitleSettingsManager.init(applicationContext) }
-            .onFailure { Log.e(TAG, "SubtitleSettingsManager.init failed", it) }
-        runCatching { HomeScreenLayoutManager.init(applicationContext) }
-            .onFailure { Log.e(TAG, "HomeScreenLayoutManager.init failed", it) }
-        runCatching { DownloadManager.init(applicationContext) }
-            .onFailure { Log.e(TAG, "DownloadManager.init failed", it) }
-        runCatching { com.streamhub.app.data.DownloadSettingsManager.init(applicationContext) }
-            .onFailure { Log.e(TAG, "DownloadSettingsManager.init failed", it) }
-        runCatching { UserStatsManager.init(applicationContext) }
-            .onFailure { Log.e(TAG, "UserStatsManager.init failed", it) }
-        runCatching { YoutubeStreamExtractor.init(applicationContext) }
-            .onFailure { Log.e(TAG, "YoutubeStreamExtractor.init failed", it) }
-        runCatching { StorageCacheManager.init(applicationContext) }
-            .onFailure { Log.e(TAG, "StorageCacheManager.init failed", it) }
-        runCatching { com.streamhub.app.data.NotificationAlertManager.init(applicationContext) }
-            .onFailure { Log.e(TAG, "NotificationAlertManager.init failed", it) }
-        runCatching { com.streamhub.app.data.UserTelemetryManager.init(applicationContext) }
-            .onFailure { Log.e(TAG, "UserTelemetryManager.init failed", it) }
-        runCatching { com.streamhub.app.data.UserProfileManager.init(applicationContext) }
-            .onFailure { Log.e(TAG, "UserProfileManager.init failed", it) }
+        runCatching { PlayerSettingsManager.init(applicationContext) }
+            .onFailure { Log.e(TAG, "PlayerSettingsManager.init failed", it) }
+
+        // Non-critical background managers: loaded asynchronously on Dispatchers.IO
+        // Keeps Main Thread 100% free of disk I/O and JSON parsing for 120fps Splash Screen animation
+        initScope.launch {
+            runCatching { MyListManager.init(applicationContext) }
+                .onFailure { Log.e(TAG, "MyListManager.init failed", it) }
+            runCatching { WatchHistoryManager.init(applicationContext) }
+                .onFailure { Log.e(TAG, "WatchHistoryManager.init failed", it) }
+            runCatching { com.streamhub.app.data.SearchHistoryManager.init(applicationContext) }
+                .onFailure { Log.e(TAG, "SearchHistoryManager.init failed", it) }
+            runCatching { SubtitleSettingsManager.init(applicationContext) }
+                .onFailure { Log.e(TAG, "SubtitleSettingsManager.init failed", it) }
+            runCatching { HomeScreenLayoutManager.init(applicationContext) }
+                .onFailure { Log.e(TAG, "HomeScreenLayoutManager.init failed", it) }
+            runCatching { DownloadManager.init(applicationContext) }
+                .onFailure { Log.e(TAG, "DownloadManager.init failed", it) }
+            runCatching { com.streamhub.app.data.DownloadSettingsManager.init(applicationContext) }
+                .onFailure { Log.e(TAG, "DownloadSettingsManager.init failed", it) }
+            runCatching { UserStatsManager.init(applicationContext) }
+                .onFailure { Log.e(TAG, "UserStatsManager.init failed", it) }
+            runCatching { YoutubeStreamExtractor.init(applicationContext) }
+                .onFailure { Log.e(TAG, "YoutubeStreamExtractor.init failed", it) }
+            runCatching { StorageCacheManager.init(applicationContext) }
+                .onFailure { Log.e(TAG, "StorageCacheManager.init failed", it) }
+            runCatching { com.streamhub.app.data.NotificationAlertManager.init(applicationContext) }
+                .onFailure { Log.e(TAG, "NotificationAlertManager.init failed", it) }
+            runCatching { com.streamhub.app.data.UserTelemetryManager.init(applicationContext) }
+                .onFailure { Log.e(TAG, "UserTelemetryManager.init failed", it) }
+            runCatching { com.streamhub.app.data.UserProfileManager.init(applicationContext) }
+                .onFailure { Log.e(TAG, "UserProfileManager.init failed", it) }
+        }
     }
 
     private fun startBackgroundServices() {
-        runCatching {
-            val vName = try {
-                packageManager.getPackageInfo(packageName, 0).versionName ?: BuildConfig.VERSION_NAME
-            } catch (_: Exception) { BuildConfig.VERSION_NAME }
-            val vCode = try {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                    packageManager.getPackageInfo(packageName, 0).longVersionCode
-                } else {
-                    @Suppress("DEPRECATION")
-                    packageManager.getPackageInfo(packageName, 0).versionCode.toLong()
-                }
-            } catch (_: Exception) { BuildConfig.VERSION_CODE.toLong() }
+        initScope.launch {
+            runCatching {
+                val vName = try {
+                    packageManager.getPackageInfo(packageName, 0).versionName ?: BuildConfig.VERSION_NAME
+                } catch (_: Exception) { BuildConfig.VERSION_NAME }
+                val vCode = try {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                        packageManager.getPackageInfo(packageName, 0).longVersionCode
+                    } else {
+                        @Suppress("DEPRECATION")
+                        packageManager.getPackageInfo(packageName, 0).versionCode.toLong()
+                    }
+                } catch (_: Exception) { BuildConfig.VERSION_CODE.toLong() }
 
-            AppUpdateManager.checkForUpdate(
-                currentVersionCode = vCode,
-                currentVersionName = vName
-            )
-        }.onFailure { Log.e(TAG, "AppUpdateManager.checkForUpdate failed", it) }
+                AppUpdateManager.checkForUpdate(
+                    currentVersionCode = vCode,
+                    currentVersionName = vName
+                )
+            }.onFailure { Log.e(TAG, "AppUpdateManager.checkForUpdate failed", it) }
+        }
     }
 }
