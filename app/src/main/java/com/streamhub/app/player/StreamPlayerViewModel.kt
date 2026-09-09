@@ -1228,11 +1228,14 @@ class StreamPlayerViewModel : ViewModel() {
                         }
 
                         // Intelligent Binge Pre-Caching for Episode N+1:
-                        // Triggers when current playback is healthy (bufferSec >= 25) AND
-                        // (within final 5 minutes OR healthy forward buffer >= 45s).
-                        val isCurrentBufferHealthy = bufferSec >= 25
-                        val isEligibleForNextEpPrecache = remainingMs in 1..300_000L || bufferSec >= 45
-                        if (totalDuration > 30_000L && isCurrentBufferHealthy && isEligibleForNextEpPrecache &&
+                        // Triggers ONLY when:
+                        // 1. Current episode is 100% fully cached on disk (ExoPlayer idle, network free), OR
+                        // 2. User is in the final stretch (within final 90 seconds) AND buffer is healthy (>= 45s).
+                        val isFullyBuffered = totalDuration > 10_000L && buffered >= (totalDuration - 3_000L)
+                        val isNearEndWithHealthyBuffer = remainingMs in 1..90_000L && bufferSec >= 45
+                        val isEligibleForNextEpPrecache = isFullyBuffered || isNearEndWithHealthyBuffer
+
+                        if (totalDuration > 30_000L && isEligibleForNextEpPrecache &&
                             nextEpisodePreloadJob == null &&
                             com.streamhub.app.data.PlayerSettingsManager.settingsFlow.value.bingePrecacheEnabled) {
                             val nextIdx = _uiState.value.currentEpisodeIndex + 1
