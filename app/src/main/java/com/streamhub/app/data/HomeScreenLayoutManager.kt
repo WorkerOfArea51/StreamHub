@@ -47,11 +47,15 @@ object HomeScreenLayoutManager {
     private const val KEY_SHOW_ANIME = "show_anime"
     private const val KEY_SHOW_MOVIES = "show_movies"
     private const val KEY_SORT_ORDER = "catalog_sort_order"
+    private const val KEY_SELECTED_CATEGORY = "selected_category_filter"
 
     private var prefs: SharedPreferences? = null
 
     private val _layoutConfig = MutableStateFlow(HomeLayoutConfig())
     val layoutConfig: StateFlow<HomeLayoutConfig> = _layoutConfig.asStateFlow()
+
+    private val _selectedCategoryFilter = MutableStateFlow("ALL")
+    val selectedCategoryFilter: StateFlow<String> = _selectedCategoryFilter.asStateFlow()
 
     fun init(context: Context) {
         if (prefs != null) return
@@ -78,10 +82,18 @@ object HomeScreenLayoutManager {
                 showMoviesSection = p.getBoolean(KEY_SHOW_MOVIES, true),
                 catalogSortOrder = sortOrder
             )
+            _selectedCategoryFilter.value = p.getString(KEY_SELECTED_CATEGORY, "ALL") ?: "ALL"
         } catch (e: Exception) {
             p.edit().clear().apply()
             _layoutConfig.value = HomeLayoutConfig()
+            _selectedCategoryFilter.value = "ALL"
         }
+    }
+
+    fun setSelectedCategoryFilter(category: String) {
+        val sanitized = category.uppercase().trim().ifBlank { "ALL" }
+        _selectedCategoryFilter.value = sanitized
+        prefs?.edit()?.putString(KEY_SELECTED_CATEGORY, sanitized)?.apply()
     }
 
     fun updateConfig(newConfig: HomeLayoutConfig) {

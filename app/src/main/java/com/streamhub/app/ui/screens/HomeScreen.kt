@@ -130,7 +130,7 @@ fun HomeScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
-    var selectedCategoryFilter by rememberSaveable { mutableStateOf("ALL") }
+    val selectedCategoryFilter by com.streamhub.app.data.HomeScreenLayoutManager.selectedCategoryFilter.collectAsState()
     var showAdminAddDialog by remember { mutableStateOf(false) }
     var showSurpriseMeDialog by remember { mutableStateOf(false) }
     var showClearHistoryDialog by remember { mutableStateOf(false) }
@@ -347,16 +347,24 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     item {
-                        CategoryFilterChip("All", selectedCategoryFilter == "ALL") { selectedCategoryFilter = "ALL" }
+                        CategoryFilterChip("All", selectedCategoryFilter == "ALL") {
+                            com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("ALL")
+                        }
                     }
                     item {
-                        CategoryFilterChip("Anime", selectedCategoryFilter == "ANIME") { selectedCategoryFilter = "ANIME" }
+                        CategoryFilterChip("Anime", selectedCategoryFilter == "ANIME") {
+                            com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("ANIME")
+                        }
                     }
                     item {
-                        CategoryFilterChip("Movies", selectedCategoryFilter == "MOVIES") { selectedCategoryFilter = "MOVIES" }
+                        CategoryFilterChip("Movies", selectedCategoryFilter == "MOVIES") {
+                            com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("MOVIES")
+                        }
                     }
                     item {
-                        CategoryFilterChip("Series", selectedCategoryFilter == "SERIES") { selectedCategoryFilter = "SERIES" }
+                        CategoryFilterChip("Series", selectedCategoryFilter == "SERIES") {
+                            com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("SERIES")
+                        }
                     }
                     item {
                         // Surprise Roulette Button (Prominent gradient pill)
