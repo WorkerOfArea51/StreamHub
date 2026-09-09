@@ -702,7 +702,7 @@ object MetadataFetchManager {
             franchiseId = detectedFranchiseId,
             franchiseTitle = detectedFranchiseTitle,
             seasonNumber = detectedSeason,
-            seasonTitle = if (detectedSeason > 1) "Season $detectedSeason" else "",
+            seasonTitle = "",
             relationType = detectedRelation
         )
         return Result.success(fetched)
@@ -1068,7 +1068,7 @@ object MetadataFetchManager {
             franchiseId = detectedFranchiseId,
             franchiseTitle = detectedFranchiseTitle,
             seasonNumber = detectedSeason,
-            seasonTitle = if (detectedSeason > 1) "Season $detectedSeason" else "",
+            seasonTitle = "",
             relationType = detectedRelation
         )
         return Result.success(fetched)
@@ -1223,7 +1223,7 @@ object MetadataFetchManager {
             franchiseId = detectedFranchiseId,
             franchiseTitle = detectedFranchiseTitle,
             seasonNumber = detectedSeason,
-            seasonTitle = if (detectedSeason > 1) "Season $detectedSeason" else "",
+            seasonTitle = "",
             relationType = if (detectedSeason > 1) "Sequel • TV" else "TV"
         )
         return Result.success(fetched)

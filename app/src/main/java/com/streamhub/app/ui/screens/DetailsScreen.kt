@@ -1208,7 +1208,7 @@ fun DetailsScreen(
     if (isArcSheetOpen) {
         SeasonArcSelectorSheet(
             title = "Select Story Arc",
-            universeTitle = mediaItem.seasonTitle.ifBlank { mediaItem.title },
+            universeTitle = mediaItem.title,
             options = arcOptions,
             selectedSeasonNumber = selectedSeasonNumber,
             selectedArcName = selectedArcName,
@@ -1686,13 +1686,13 @@ private fun FranchiseCard(
                     Spacer(modifier = Modifier.height(8.dp))
                 }
 
-                // Title (Option 1: Bold, crisp white, untruncated up to 2 lines)
+                // Title (Option 1: Bold, crisp white, untruncated up to 4 lines)
                 Text(
-                    text = if (fItem.seasonTitle.isNotBlank()) fItem.seasonTitle else fItem.title,
+                    text = fItem.title,
                     color = Color.White,
                     fontSize = 13.5.sp,
                     fontWeight = FontWeight.Bold,
-                    maxLines = 2,
+                    maxLines = 4,
                     overflow = TextOverflow.Ellipsis,
                     lineHeight = 17.5.sp
                 )

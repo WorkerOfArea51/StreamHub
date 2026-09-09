@@ -386,15 +386,7 @@ object FranchiseManager {
                 else -> "Season $sNum"
             }
 
-            val titleStr = when {
-                fItem.seasonTitle.isNotBlank() -> fItem.seasonTitle
-                isMovie -> fItem.title
-                pNum != null && pNum > 0 && fItem.title.contains("Part", ignoreCase = true) -> fItem.title
-                pNum != null && pNum > 0 -> "Season $sNum Part $pNum: ${fItem.title}"
-                fItem.title.contains("Season $sNum", ignoreCase = true) -> fItem.title
-                sNum > 1 -> "Season $sNum: ${fItem.title}"
-                else -> "Season 1: ${fItem.title}"
-            }
+            val titleStr = fItem.title
 
             val subtitleStr = buildString {
                 if (fItem.releaseYear.isNotBlank()) append("${fItem.releaseYear} • ")
