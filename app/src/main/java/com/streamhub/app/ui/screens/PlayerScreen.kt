@@ -2475,13 +2475,33 @@ private fun StatsForNerdsOverlay(
             StatRowItem("Video Codec", videoCodec)
             StatRowItem("Audio Codec", audioCodec)
             StatRowItem("Playback Speed", "${uiState.playbackSpeed}x")
-            StatRowItem("Buffer Health", "${bufferHealthSeconds}s ahead")
+
+            val dur = playbackProgress.durationMs.coerceAtLeast(0L)
+            val buf = playbackProgress.bufferedPositionMs.coerceAtLeast(0L)
+            val isFullyBuffered = dur > 10_000L && buf >= (dur - 3_000L)
+            val isNextEpPreloading = com.streamhub.app.player.StreamPreloadManager.isBingePrecacheActive
+
+            val bufferHealthDisplay = when {
+                isFullyBuffered && isNextEpPreloading -> "100% Cached (Buffering Next Ep)"
+                isFullyBuffered -> "100% Cached (Fully Buffered)"
+                bufferHealthSeconds > 0L -> "${bufferHealthSeconds}s ahead"
+                else -> "0s"
+            }
+            StatRowItem("Buffer Health", bufferHealthDisplay)
+
             val speedDisplay = when {
+                isNextEpPreloading && networkSpeedKbps > 0L -> {
+                    val speed = if (networkSpeedKbps >= 1024L) String.format(java.util.Locale.US, "%.1f MB/s", networkSpeedKbps / 1024.0) else "$networkSpeedKbps KB/s"
+                    "$speed (Caching Next Ep)"
+                }
                 networkSpeedKbps >= 1024L -> {
                     String.format(java.util.Locale.US, "%.1f MB/s", networkSpeedKbps / 1024.0)
                 }
                 networkSpeedKbps > 0L -> {
                     "$networkSpeedKbps KB/s"
+                }
+                isFullyBuffered -> {
+                    "Idle (Fully Cached)"
                 }
                 bufferHealthSeconds >= 15L -> {
                     "Idle (Buffered)"
@@ -2634,27 +2654,42 @@ private fun transformCue(
 
     val rawText = cue.text
     if (rawText != null) {
-        val str = rawText.toString()
-        val builder = android.text.SpannableStringBuilder(str)
-
-        val textColor = config.textColorArgb.toInt()
-        if (textColor != 0) {
-            builder.setSpan(
-                android.text.style.ForegroundColorSpan(textColor),
-                0,
-                builder.length,
-                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
+        // Preserve existing ASS / SSA styling spans if already present
+        val builder = if (rawText is android.text.Spanned) {
+            android.text.SpannableStringBuilder(rawText)
+        } else {
+            android.text.SpannableStringBuilder(rawText.toString())
         }
 
-        val bgColor = config.backgroundColorArgb.toInt()
-        if (android.graphics.Color.alpha(bgColor) > 10) {
-            builder.setSpan(
-                android.text.style.BackgroundColorSpan(bgColor),
-                0,
-                builder.length,
-                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
+        // An explicitly positioned cue (e.g. anime signs, karaoke lyrics placed at top)
+        val isPositionedSignOrSong = cue.line != androidx.media3.common.text.Cue.DIMEN_UNSET ||
+                cue.position != androidx.media3.common.text.Cue.DIMEN_UNSET
+
+        // Only apply user foreground color if the cue doesn't already have its own embedded color spans
+        val existingColorSpans = builder.getSpans(0, builder.length, android.text.style.ForegroundColorSpan::class.java)
+        if (existingColorSpans.isEmpty()) {
+            val textColor = config.textColorArgb.toInt()
+            if (textColor != 0) {
+                builder.setSpan(
+                    android.text.style.ForegroundColorSpan(textColor),
+                    0,
+                    builder.length,
+                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+        }
+
+        // Do not force solid background boxes on individual karaoke syllables or positioned signs
+        if (!isPositionedSignOrSong) {
+            val bgColor = config.backgroundColorArgb.toInt()
+            if (android.graphics.Color.alpha(bgColor) > 10) {
+                builder.setSpan(
+                    android.text.style.BackgroundColorSpan(bgColor),
+                    0,
+                    builder.length,
+                    android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
         }
 
         val styleSpan = when {
@@ -2667,10 +2702,12 @@ private fun transformCue(
             builder.setSpan(styleSpan, 0, builder.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
 
-        return cue.buildUpon()
-            .setText(builder)
-            .setTextSize(config.fontSizeSp, androidx.media3.common.text.Cue.TEXT_SIZE_TYPE_ABSOLUTE)
-            .build()
+        val cueBuilder = cue.buildUpon().setText(builder)
+        // Only override font size for regular dialogue subtitles to avoid blowing up positioned signs/karaoke
+        if (!isPositionedSignOrSong) {
+            cueBuilder.setTextSize(config.fontSizeSp, androidx.media3.common.text.Cue.TEXT_SIZE_TYPE_ABSOLUTE)
+        }
+        return cueBuilder.build()
     }
 
     return cue
@@ -2682,8 +2719,9 @@ private fun applySubtitleStyling(
 ) {
     val sv = subtitleView ?: return
 
-    // Apply custom user styling (colors, sizes, backgrounds) cleanly
-    sv.setApplyEmbeddedStyles(false)
+    // Allow embedded styles from ASS / SSA files (karaoke, fonts, sign placement) to display natively,
+    // while user-configured font sizes and caption styles take effect for plain dialogue/SRT.
+    sv.setApplyEmbeddedStyles(true)
     sv.setApplyEmbeddedFontSizes(false)
 
     val typefaceStyle = when {

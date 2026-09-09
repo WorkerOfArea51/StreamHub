@@ -51,6 +51,10 @@ object StreamPreloadManager {
     private var activeBingeJob: Job? = null
     private var activeBingeWriter: CacheWriter? = null
 
+    val isBingePrecacheActive: Boolean
+        get() = synchronized(this) { activeBingeJob?.isActive == true }
+
+
     /**
      * Pre-warms the first 2MB of a stream URL into disk cache after a 300ms dwell delay.
      * If already caching this URL, reuses the in-flight job rather than aborting.
