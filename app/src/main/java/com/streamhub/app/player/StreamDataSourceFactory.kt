@@ -95,14 +95,10 @@ class StreamDataSourceFactory(
         dataSpec.key ?: sanitizeCacheKey(dataSpec.uri)
     }
 
-    private val tailClampingUpstreamFactory = DataSource.Factory {
-        TailClampingDataSource(okHttpDataSourceFactory.createDataSource(), simpleCache)
-    }
-
     private val cachedHttpDataSourceFactory by lazy {
         CacheDataSource.Factory()
             .setCache(simpleCache)
-            .setUpstreamDataSourceFactory(tailClampingUpstreamFactory)
+            .setUpstreamDataSourceFactory(okHttpDataSourceFactory)
             .setCacheWriteDataSinkFactory(cacheDataSinkFactory)
             .setCacheKeyFactory(cacheKeyFactory)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
@@ -114,51 +110,5 @@ class StreamDataSourceFactory(
 
     override fun createDataSource(): DataSource {
         return defaultDataSourceFactory.createDataSource()
-    }
-}
-
-/**
- * DataSource wrapper that intercepts unbounded tail requests (e.g. MatroskaExtractor Cues reads)
- * and clamps them to a clean, bounded 512KB slice so the HTTP connection reaches EOF naturally
- * rather than being violently aborted by ExoPlayer when reading the ~60KB Cues index.
- */
-@OptIn(UnstableApi::class)
-class TailClampingDataSource(
-    private val upstream: DataSource,
-    private val simpleCache: androidx.media3.datasource.cache.SimpleCache
-) : DataSource {
-
-    override fun addTransferListener(transferListener: androidx.media3.datasource.TransferListener) {
-        upstream.addTransferListener(transferListener)
-    }
-
-    override fun open(dataSpec: DataSpec): Long {
-        var effectiveSpec = dataSpec
-        if (dataSpec.length == androidx.media3.common.C.LENGTH_UNSET.toLong() && dataSpec.position > 0) {
-            val key = dataSpec.key ?: StreamDataSourceFactory.sanitizeCacheKey(dataSpec.uri)
-            val meta = simpleCache.getContentMetadata(key)
-            val contentLength = androidx.media3.datasource.cache.ContentMetadata.getContentLength(meta)
-            // If total length is known and position is in the tail (last 512KB, where Matroska Cues live),
-            // clamp the request length to remaining bytes instead of C.LENGTH_UNSET!
-            if (contentLength > 1024 * 1024L && dataSpec.position >= contentLength - 512 * 1024L) {
-                val clamped = minOf(512 * 1024L, contentLength - dataSpec.position)
-                if (clamped > 0) {
-                    effectiveSpec = dataSpec.buildUpon().setLength(clamped).build()
-                }
-            }
-        }
-        return upstream.open(effectiveSpec)
-    }
-
-    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
-        return upstream.read(buffer, offset, length)
-    }
-
-    override fun getUri(): android.net.Uri? = upstream.uri
-
-    override fun getResponseHeaders(): Map<String, List<String>> = upstream.responseHeaders
-
-    override fun close() {
-        upstream.close()
     }
 }

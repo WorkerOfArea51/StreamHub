@@ -728,7 +728,6 @@ class StreamPlayerViewModel : ViewModel() {
         // FIX: Cancel active preload jobs when starting a new episode — preloader will be eligible again.
         StreamPreloadManager.cancelDetailsPrewarm()
         StreamPreloadManager.cancelBingePrecache()
-        StreamPreloadManager.cancelCuesTailPrefetch()
         nextEpisodePreloadJob?.cancel()
         nextEpisodePreloadJob = null
 
@@ -772,13 +771,6 @@ class StreamPlayerViewModel : ViewModel() {
 
             PlayerHolder.currentMediaId = currentMediaItem?.id
             PlayerHolder.currentEpisodeIndex = index
-
-            // Prefetch MKV Cues from tail in parallel so MatroskaExtractor's seek finds them cached on disk
-            appContext?.let { ctx ->
-                if (!resolvedUrl.startsWith("/") && !resolvedUrl.startsWith("file://")) {
-                    StreamPreloadManager.prefetchMkvCuesTail(ctx, resolvedUrl, viewModelScope)
-                }
-            }
 
             prepareStartTimeMs = System.currentTimeMillis()
             exoPlayer?.apply {
@@ -834,7 +826,6 @@ class StreamPlayerViewModel : ViewModel() {
     private fun playEpisodeWithExplicitUrl(index: Int, rawUrl: String, startPositionMs: Long = 0L) {
         if (episodesList.isEmpty() || index !in episodesList.indices) return
         StreamPreloadManager.cancelDetailsPrewarm()
-        StreamPreloadManager.cancelCuesTailPrefetch()
         val episode = episodesList.getOrNull(index)
         val savedDuration = WatchHistoryManager.getProgress(currentMediaItem?.id ?: "")?.durationMs ?: 0L
         val fallbackDurationMs = when {
@@ -868,12 +859,6 @@ class StreamPlayerViewModel : ViewModel() {
 
         PlayerHolder.currentMediaId = currentMediaItem?.id
         PlayerHolder.currentEpisodeIndex = index
-
-        appContext?.let { ctx ->
-            if (!rawUrl.startsWith("/") && !rawUrl.startsWith("file://")) {
-                StreamPreloadManager.prefetchMkvCuesTail(ctx, rawUrl, viewModelScope)
-            }
-        }
 
         prepareStartTimeMs = System.currentTimeMillis()
         exoPlayer?.apply {
@@ -1425,7 +1410,6 @@ class StreamPlayerViewModel : ViewModel() {
         StreamPreloadManager.cancelBingePrecache()
         nextEpisodePreloadJob?.cancel()
         nextEpisodePreloadJob = null
-        StreamPreloadManager.cancelCuesTailPrefetch()
         sleepTimerJob?.cancel()
         sleepTimerJob = null
         pendingSeekTimeoutJob?.cancel()
