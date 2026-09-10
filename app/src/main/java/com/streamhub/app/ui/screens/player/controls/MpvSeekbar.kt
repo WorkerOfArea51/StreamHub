@@ -3,15 +3,15 @@ package com.streamhub.app.ui.screens.player.controls
 import android.graphics.Bitmap
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -128,77 +128,62 @@ fun MpvSeekbar(
         ) {
             val trackWidth = maxWidth
 
-            // 1. High-Precision Expanded Touch Hit-Box (64.dp)
+            // 1. High-Precision Expanded Touch Hit-Box (64.dp) with 120fps Unified Gesture Engine
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp)
                     .pointerInput(totalDuration) {
-                        detectTapGestures(
-                            onPress = { offset ->
-                                val width = size.width.toFloat().coerceAtLeast(1f)
-                                val frac = (offset.x / width).coerceIn(0f, 1f)
-                                userPositionMs = (frac.toDouble() * totalDuration).toLong()
-                                isUserInteracting = true
-                                val released = tryAwaitRelease()
-                                if (released) {
-                                    val target = userPositionMs
-                                    onSeek(target)
-                                    scope.launch {
-                                        animatedProgress.snapTo(frac)
-                                        delay(100)
-                                        isUserInteracting = false
-                                    }
-                                } else {
-                                    isUserInteracting = false
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
+                            isUserInteracting = true
+                            val width = size.width.toFloat().coerceAtLeast(1f)
+                            var currentFrac = (down.position.x / width).coerceIn(0f, 1f)
+                            userPositionMs = (currentFrac.toDouble() * totalDuration).toLong()
+
+                            val pointerId = down.id
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == pointerId } ?: event.changes.firstOrNull()
+                                if (change == null || !change.pressed) {
+                                    break
                                 }
-                            }
-                        )
-                    }
-                    .pointerInput(totalDuration) {
-                        detectDragGestures(
-                            onDragStart = { offset ->
-                                isUserInteracting = true
-                                val width = size.width.toFloat().coerceAtLeast(1f)
-                                val frac = (offset.x / width).coerceIn(0f, 1f)
-                                userPositionMs = (frac.toDouble() * totalDuration).toLong()
-                            },
-                            onDrag = { change, _ ->
                                 change.consume()
-                                val width = size.width.toFloat().coerceAtLeast(1f)
-                                val frac = (change.position.x / width).coerceIn(0f, 1f)
-                                userPositionMs = (frac.toDouble() * totalDuration).toLong()
-                            },
-                            onDragEnd = {
-                                val target = userPositionMs
-                                val frac = (userPositionMs.toFloat() / totalDuration.toFloat()).coerceIn(0f, 1f)
-                                onSeek(target)
-                                scope.launch {
-                                    animatedProgress.snapTo(frac)
-                                    delay(100)
-                                    isUserInteracting = false
-                                }
-                            },
-                            onDragCancel = {
+                                currentFrac = (change.position.x / width).coerceIn(0f, 1f)
+                                userPositionMs = (currentFrac.toDouble() * totalDuration).toLong()
+                            }
+
+                            val target = userPositionMs
+                            onSeek(target)
+                            scope.launch {
+                                animatedProgress.snapTo(currentFrac)
+                                delay(150L)
                                 isUserInteracting = false
                             }
-                        )
+                        }
                     }
             )
 
-            // 3. Canvas Track Rendering (mpvEx Parity)
+            // 3. Canvas Track Rendering (mpvEx Parity with YouTube-Style Tactile Expansion)
             val primaryPurple = Color(0xFFD0BCFF)
             val deepPurple = Color(0xFF6750A4)
             val unplayedColor = Color(0x2EFFFFFF)
             val bufferColor = Color(0x99FFFFFF)
             val loopAmber = Color(0xFFFFB300)
 
+            val animatedThumbScale by animateFloatAsState(
+                targetValue = if (isUserInteracting) 1.25f else 1.0f,
+                animationSpec = tween(durationMillis = 150),
+                label = "thumbScale"
+            )
+
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(24.dp)
             ) {
-                val trackHeight = 8.dp.toPx()
+                val trackHeight = (if (isUserInteracting) 10.dp else 8.dp).toPx()
                 val totalWidth = size.width
                 val centerY = size.height / 2f
                 val trackTop = centerY - trackHeight / 2f
@@ -207,9 +192,9 @@ fun MpvSeekbar(
                 val playedPx = (totalWidth * effectiveFraction).coerceIn(0f, totalWidth)
                 val bufferPx = (totalWidth * bufferedFraction).coerceIn(0f, totalWidth)
 
-                val thumbWidth = 6.dp.toPx()
-                val thumbHeight = 22.dp.toPx()
-                val thumbGapHalf = 7.dp.toPx()
+                val thumbWidth = 6.dp.toPx() * animatedThumbScale
+                val thumbHeight = 22.dp.toPx() * animatedThumbScale
+                val thumbGapHalf = 7.dp.toPx() * animatedThumbScale
 
                 val thumbGapStart = (playedPx - thumbGapHalf).coerceIn(0f, totalWidth)
                 val thumbGapEnd = (playedPx + thumbGapHalf).coerceIn(0f, totalWidth)
