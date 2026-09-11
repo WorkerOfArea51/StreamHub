@@ -266,17 +266,45 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Called when the user leaves the activity (presses Home, recents, etc.).
-     * If we are currently on the Player route and the player is playing,
+     * If we are currently on the Player route and the player is actively playing,
      * enter PiP automatically. This matches YouTube/Netflix behavior.
      */
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (!shouldAutoEnterPip || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val player = StreamPlayerViewModel.currentPlayer
+        if (!shouldAutoEnterPip || player == null || !player.isPlaying || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return
+        }
         try {
-            val params = buildPipParams()
+            val params = buildPipParams(autoEnter = true)
             enterPictureInPictureMode(params)
         } catch (e: Exception) {
             Log.w(TAG, "PiP entry failed: ${e.message}")
+        }
+    }
+
+    /**
+     * Dynamically updates Android 12+ system-level PiP auto-enter behavior.
+     * When enabled = true (playing video in PlayerScreen), enables system auto-PiP.
+     * When enabled = false (paused or exiting PlayerScreen), explicitly disables auto-PiP
+     * so navigating back to Details/Home and pressing Home will NEVER enter PiP.
+     */
+    fun updatePipAutoEnter(enabled: Boolean) {
+        shouldAutoEnterPip = enabled
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                if (enabled) {
+                    val params = buildPipParams(autoEnter = true)
+                    setPictureInPictureParams(params)
+                } else {
+                    val disabledParams = PictureInPictureParams.Builder()
+                        .setAutoEnterEnabled(false)
+                        .build()
+                    setPictureInPictureParams(disabledParams)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to update PiP auto-enter params: ${e.message}")
+            }
         }
     }
 
@@ -285,7 +313,7 @@ class MainActivity : ComponentActivity() {
      * These appear as buttons in the PiP window — matching YouTube/Netflix behavior.
      */
     @androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
-    fun buildPipParams(): PictureInPictureParams {
+    fun buildPipParams(autoEnter: Boolean = true): PictureInPictureParams {
         val player = StreamPlayerViewModel.currentPlayer
         val videoSize = player?.videoSize
         val ratio = if (videoSize != null && videoSize.width > 0 && videoSize.height > 0) {
@@ -364,10 +392,10 @@ class MainActivity : ComponentActivity() {
             builder.setActions(actions)
         }
 
-        // FIX: On Android 12+, enable auto-enter so PiP transitions are seamless.
+        // FIX: On Android 12+, enable auto-enter so PiP transitions are seamless ONLY when requested.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            builder.setAutoEnterEnabled(true)
-            builder.setSeamlessResizeEnabled(true)
+            builder.setAutoEnterEnabled(autoEnter)
+            builder.setSeamlessResizeEnabled(autoEnter)
         }
 
         return builder.build()
@@ -380,6 +408,11 @@ class MainActivity : ComponentActivity() {
         if (isInPictureInPictureMode) {
             // Disable auto-PiP re-entry while already in PiP
             shouldAutoEnterPip = false
+        } else {
+            // Returned from PiP mode to fullscreen/normal mode.
+            // Check if player is still actively playing and restore/disable auto-enter accordingly.
+            val player = StreamPlayerViewModel.currentPlayer
+            updatePipAutoEnter(player?.isPlaying == true)
         }
     }
 }
@@ -667,12 +700,12 @@ fun StreamHubApp(
                 DisposableEffect(playerViewModel, activity) {
                     val collectJob = playerRouteScope.launch {
                         playerViewModel.uiState.collect { state ->
-                            activity?.shouldAutoEnterPip = state.isPlaying
+                            activity?.updatePipAutoEnter(state.isPlaying)
                         }
                     }
                     onDispose {
                         collectJob.cancel()
-                        activity?.shouldAutoEnterPip = false
+                        activity?.updatePipAutoEnter(false)
                     }
                 }
                 val rawMediaId = backStackEntry.arguments?.getString("mediaId") ?: ""
