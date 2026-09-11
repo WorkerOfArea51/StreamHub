@@ -855,6 +855,17 @@ fun PlayerScreen(
                         }
                     )
                 }
+
+                // 3. Clean Black Cinema Surface Mask during Episode Transitions & Startup Buffering
+                // Completely conceals previous episode's frozen video frame ("TO BE CONTINUED...")
+                // until the new episode decodes its first real video frame.
+                if (!uiState.isFirstFrameRendered) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black)
+                    )
+                }
             }
         }
 

@@ -56,6 +56,15 @@ object StreamPreloadManager {
     private var activeBingeWriter: CacheWriter? = null
     private var activeBingeDataSource: androidx.media3.datasource.DataSource? = null
 
+    /** Dedicated OkHttpClient for background preloader to isolate sockets from active player */
+    private val preloadClient: okhttp3.OkHttpClient by lazy {
+        SharedHttpClient.baseClient.newBuilder()
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .connectionPool(okhttp3.ConnectionPool(2, 1, java.util.concurrent.TimeUnit.MINUTES))
+            .build()
+    }
+
     val isBingePrecacheActive: Boolean
         get() = synchronized(this) { activeBingeJob?.isActive == true }
 
@@ -113,7 +122,7 @@ object StreamPreloadManager {
 
                 Log.i(TAG, "Starting details micro-prewarm (2 MB): $sanitizedUrl")
 
-                val upstreamFactory = OkHttpDataSource.Factory(SharedHttpClient.streamingClient)
+                val upstreamFactory = OkHttpDataSource.Factory(preloadClient)
                     .setUserAgent(USER_AGENT)
                 val sinkFactory = CacheDataSink.Factory()
                     .setCache(simpleCache)
@@ -168,6 +177,8 @@ object StreamPreloadManager {
             try {
                 activeDetailsWriter?.cancel()
                 activeDetailsDataSource?.close()
+                preloadClient.dispatcher.cancelAll()
+                preloadClient.connectionPool.evictAll()
             } catch (_: Exception) {}
             activeDetailsWriter = null
             activeDetailsDataSource = null
@@ -217,7 +228,7 @@ object StreamPreloadManager {
 
                 Log.i(TAG, "Starting binge pre-cache (${targetBytes / (1024 * 1024)} MB) for next episode: $sanitizedUrl")
 
-                val upstreamFactory = OkHttpDataSource.Factory(SharedHttpClient.streamingClient)
+                val upstreamFactory = OkHttpDataSource.Factory(preloadClient)
                     .setUserAgent(USER_AGENT)
                 val sinkFactory = CacheDataSink.Factory()
                     .setCache(simpleCache)
@@ -278,6 +289,8 @@ object StreamPreloadManager {
             try {
                 activeBingeWriter?.cancel()
                 activeBingeDataSource?.close()
+                preloadClient.dispatcher.cancelAll()
+                preloadClient.connectionPool.evictAll()
             } catch (_: Exception) {}
             activeBingeWriter = null
             activeBingeDataSource = null

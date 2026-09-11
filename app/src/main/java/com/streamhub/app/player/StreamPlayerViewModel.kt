@@ -80,7 +80,8 @@ data class PlayerUiState(
     val isBackgroundAudioEnabled: Boolean = false,
     val isReconnecting: Boolean = false,
     val reconnectAttempt: Int = 0,
-    val streamRestoredToast: Boolean = false
+    val streamRestoredToast: Boolean = false,
+    val isFirstFrameRendered: Boolean = false
 )
 
 data class PlaybackProgress(
@@ -247,6 +248,10 @@ class StreamPlayerViewModel : ViewModel() {
                     pendingSeekTargetMs = null
                     playNextEpisode()
                 }
+            }
+
+            override fun onRenderedFirstFrame() {
+                _uiState.update { it.copy(isFirstFrameRendered = true) }
             }
 
             override fun onPositionDiscontinuity(
@@ -687,6 +692,13 @@ class StreamPlayerViewModel : ViewModel() {
 
     fun playEpisode(index: Int, startPositionMs: Long = 0L) {
         if (episodesList.isEmpty() || index !in episodesList.indices) return
+
+        // 1. Immediately halt previous playback and unload old media decoders/streams
+        exoPlayer?.apply {
+            stop()
+            clearMediaItems()
+        }
+
         val episode = episodesList[index]
         val rawUrl = episode.streamUrl.ifEmpty { episode.mirrorStreamUrl }
         val savedDuration = WatchHistoryManager.getProgress(currentMediaItem?.id ?: "")?.durationMs ?: 0L
@@ -701,6 +713,8 @@ class StreamPlayerViewModel : ViewModel() {
                 currentEpisodeIndex = index,
                 playerError = null,
                 playerErrorInfo = null,
+                isFirstFrameRendered = false,
+                isBuffering = true,
                 durationMs = if (fallbackDurationMs > 0) fallbackDurationMs else it.durationMs
             )
         }
