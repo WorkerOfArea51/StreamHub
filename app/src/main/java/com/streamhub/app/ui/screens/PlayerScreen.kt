@@ -250,11 +250,16 @@ fun PlayerScreen(
 
     // FIX: When entering PiP mode, hide the app's own control overlay — the system
     // PiP controls (RemoteActions) take over. Showing both creates clutter.
+    // When returning from PiP, restore fullscreen landscape orientation.
     LaunchedEffect(isPipMode) {
         if (isPipMode) {
             // Force-hide the app's control overlay
             if (uiState.isControlsVisible) {
                 viewModel.toggleControlsVisibility()
+            }
+        } else {
+            if (activity?.requestedOrientation != ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             }
         }
     }
@@ -268,7 +273,9 @@ fun PlayerScreen(
         // FIX: Save original screen brightness so it can be restored on exit.
         // -1f means "use system default" — must be restored, not overwritten.
         val originalBrightness = window?.attributes?.screenBrightness ?: -1f
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        if (activity?.isInPictureInPictureMode != true) {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
         window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         window?.let { win ->
@@ -279,7 +286,9 @@ fun PlayerScreen(
         }
 
         onDispose {
-            activity?.requestedOrientation = originalOrientation
+            if (activity?.isInPictureInPictureMode != true) {
+                activity?.requestedOrientation = originalOrientation
+            }
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             // FIX: Restore screen brightness to system default (or pre-player value).
             window?.let { win ->

@@ -336,20 +336,41 @@ class StreamPlayerViewModel : ViewModel() {
         currentMediaItem = mediaItem
         episodesList = mediaItem.episodes
 
-        // CRITICAL FIX (ghost player): if a previous ViewModel handed its player to
+        // 1. If this ViewModel already has an active ExoPlayer playing this exact media & episode,
+        // PRESERVE IT directly! Do not restart, do not seek to 0s, do not re-buffer.
+        if (exoPlayer != null && exoPlayer?.playbackState != Player.STATE_IDLE) {
+            val activeMediaId = currentMediaItem?.id ?: PlayerHolder.currentMediaId
+            val activeEpisodeIndex = _uiState.value.currentEpisodeIndex
+            if (activeMediaId == mediaItem.id && activeEpisodeIndex == initialEpisodeIndex) {
+                Log.i("StreamPlayerViewModel", "initializePlayer: Active player already playing ${mediaItem.id} ep $initialEpisodeIndex (position=${exoPlayer?.currentPosition}ms). Preserving playback without rewinding.")
+                if (playerListener == null) {
+                    val listener = createPlayerListener()
+                    playerListener = listener
+                    exoPlayer?.addListener(listener)
+                }
+                exoPlayer?.audioSessionId?.let { sessionId ->
+                    volumeBoostManager.attachToAudioSession(sessionId)
+                }
+                startPositionTracker()
+                return
+            }
+        }
+
+        // 2. CRITICAL FIX (ghost player / service handoff): if a previous ViewModel handed its player to
         // StreamMediaService via PlayerHolder, ADOPT it instead of constructing a second
-        // instance (which causes double-audio and leaks memory), provided it is playing the SAME media.
+        // instance (which causes double-audio and leaks memory), provided it is playing the SAME media & episode.
         val orphanedPlayer = PlayerHolder.currentPlayer
         if (exoPlayer == null && orphanedPlayer != null && orphanedPlayer.playbackState != Player.STATE_IDLE) {
             val orphanedMediaId = PlayerHolder.currentMediaId
                 ?: (orphanedPlayer.currentMediaItem?.localConfiguration?.tag as? String)
+            val orphanedEpisodeIndex = PlayerHolder.currentEpisodeIndex
 
-            if (orphanedMediaId != null && orphanedMediaId == mediaItem.id) {
+            if (orphanedMediaId != null && orphanedMediaId == mediaItem.id && orphanedEpisodeIndex == initialEpisodeIndex) {
                 adoptOrphanedPlayer(orphanedPlayer)
                 return
             } else {
-                // Different media item! Stop and clear orphaned player to avoid Show A audio playing in Show B
-                Log.i("StreamPlayerViewModel", "Orphaned player playing different media ($orphanedMediaId != ${mediaItem.id}) — stopping orphaned player")
+                // Different media item or episode! Stop and clear orphaned player
+                Log.i("StreamPlayerViewModel", "Orphaned player playing different media/episode ($orphanedMediaId ep $orphanedEpisodeIndex != ${mediaItem.id} ep $initialEpisodeIndex) — stopping orphaned player")
                 orphanedPlayer.stop()
                 orphanedPlayer.clearMediaItems()
                 PlayerHolder.clear()

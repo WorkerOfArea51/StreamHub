@@ -3,6 +3,7 @@ package com.streamhub.app.ui.navigation
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -47,59 +48,55 @@ fun AdaptiveNavShell(
     val showNav = bottomBarScreens.any { it.route == currentRoute }
     val useRail = windowSizeClass.widthSizeClass >= WindowWidthSizeClass.Medium
 
-    if (useRail) {
-        Row(modifier = modifier.fillMaxSize()) {
-            if (showNav) {
-                NavigationRail(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    header = { Spacer(Modifier.statusBarsPadding()) }
-                ) {
-                    bottomBarScreens.forEach { screen ->
-                        val selected = currentRoute == screen.route
-                        NavigationRailItem(
-                            selected = selected,
-                            onClick = {
-                                navController.navigate(screen.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = {
-                                screen.icon?.let {
-                                    Icon(
-                                        imageVector = it,
-                                        contentDescription = screen.title,
-                                        tint = if (selected) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            },
-                            label = {
-                                Text(
-                                    text = screen.title,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (selected) MaterialTheme.colorScheme.primary
+    val showRail = useRail && showNav
+    val showBottomBar = !useRail && showNav
+
+    Row(modifier = modifier.fillMaxSize()) {
+        if (showRail) {
+            NavigationRail(
+                containerColor = MaterialTheme.colorScheme.surface,
+                header = { Spacer(Modifier.statusBarsPadding()) }
+            ) {
+                bottomBarScreens.forEach { screen ->
+                    val selected = currentRoute == screen.route
+                    NavigationRailItem(
+                        selected = selected,
+                        onClick = {
+                            navController.navigate(screen.route) {
+                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        icon = {
+                            screen.icon?.let {
+                                Icon(
+                                    imageVector = it,
+                                    contentDescription = screen.title,
+                                    tint = if (selected) MaterialTheme.colorScheme.primary
                                     else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                            },
-                            colors = NavigationRailItemDefaults.colors(
-                                indicatorColor = Color.Transparent
+                            }
+                        },
+                        label = {
+                            Text(
+                                text = screen.title,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (selected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                        },
+                        colors = NavigationRailItemDefaults.colors(
+                            indicatorColor = Color.Transparent
                         )
-                    }
+                    )
                 }
             }
-            content(
-                Modifier
-                    .fillMaxSize()
-                    .then(if (showNav) Modifier.statusBarsPadding().navigationBarsPadding() else Modifier)
-            )
         }
-    } else {
+
         Scaffold(
             bottomBar = {
-                if (showNav) {
+                if (showBottomBar) {
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                         bottomBarScreens.forEach { screen ->
                             val selected = currentRoute == screen.route
@@ -140,16 +137,26 @@ fun AdaptiveNavShell(
             },
             containerColor = com.streamhub.app.ui.theme.BackgroundDark,
             contentWindowInsets = if (showNav) WindowInsets.statusBars else WindowInsets(0.dp),
-            modifier = modifier.fillMaxSize()
+            modifier = Modifier.weight(1f).fillMaxHeight()
         ) { innerPadding ->
-            content(
-                Modifier
-                    .fillMaxSize()
-                    .padding(
-                        top = if (showNav) innerPadding.calculateTopPadding() else 0.dp,
-                        bottom = if (showNav) innerPadding.calculateBottomPadding() else 0.dp
-                    )
-            )
+            val contentModifier = if (showNav) {
+                if (showRail) {
+                    Modifier
+                        .fillMaxSize()
+                        .statusBarsPadding()
+                        .navigationBarsPadding()
+                } else {
+                    Modifier
+                        .fillMaxSize()
+                        .padding(
+                            top = innerPadding.calculateTopPadding(),
+                            bottom = innerPadding.calculateBottomPadding()
+                        )
+                }
+            } else {
+                Modifier.fillMaxSize()
+            }
+            content(contentModifier)
         }
     }
 }
