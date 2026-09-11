@@ -64,7 +64,6 @@ data class PlayerUiState(
     val showSubtitleDialog: Boolean = false,
     val availableAudioTracks: List<String> = emptyList(),
     val availableSubtitleTracks: List<String> = listOf("Off"),
-    val isRepeatMode: Boolean = false,
     val sleepTimerMinutesRemaining: Int? = null,
     val volumeBoostPercent: Int = 0,
     val playerError: String? = null,
@@ -1147,12 +1146,6 @@ class StreamPlayerViewModel : ViewModel() {
 
     fun toggleLock() {
         _uiState.update { it.copy(isLocked = !it.isLocked) }
-    }
-
-    fun toggleRepeatMode() {
-        val newMode = !_uiState.value.isRepeatMode
-        exoPlayer?.repeatMode = if (newMode) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
-        _uiState.update { it.copy(isRepeatMode = newMode) }
     }
 
     fun setSleepTimer(minutes: Int) {

@@ -101,8 +101,6 @@ import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Repeat
-import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.ScreenRotation
 import androidx.compose.material.icons.filled.SearchOff
@@ -1860,18 +1858,6 @@ fun PlayerScreen(
                                     }
                                 }
 
-                                // Repeat / Loop Mode
-                                ControlsButton(
-                                    icon = if (uiState.isRepeatMode) Icons.Default.RepeatOne else Icons.Default.Repeat,
-                                    onClick = {
-                                        viewModel.toggleRepeatMode()
-                                        triggerHudPill(if (!uiState.isRepeatMode) "Repeat Single On" else "Repeat Off", if (!uiState.isRepeatMode) Icons.Default.RepeatOne else Icons.Default.Repeat)
-                                    },
-                                    size = 40.dp,
-                                    iconSize = 18.dp,
-                                    color = if (uiState.isRepeatMode) Color(0xFFD0BCFF) else Color.White,
-                                    title = "Repeat"
-                                )
 
                                 // Aspect Ratio (Single button: Click cycles, Long-press opens sheet)
                                 val aspectIcon = when (selectedRatioOption.id) {
