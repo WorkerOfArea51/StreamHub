@@ -36,6 +36,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -142,6 +143,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -150,6 +152,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
+import android.content.res.Configuration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -231,7 +235,17 @@ fun PlayerScreen(
     val subConfig by SubtitleSettingsManager.subtitleConfig.collectAsStateWithLifecycle()
     val activePlayer by PlayerHolder.currentPlayerFlow.collectAsStateWithLifecycle()
 
+    val configuration = LocalConfiguration.current
+    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+
+    // Persistent orientation tracking across configuration changes (matching mpvEx)
+    var currentOrientationMode by rememberSaveable {
+        mutableIntStateOf(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE)
+    }
+
     var isPipMode by remember { mutableStateOf(activity?.isInPictureInPictureMode == true) }
+    var previousPipMode by remember { mutableStateOf(isPipMode) }
+
     DisposableEffect(activity) {
         val act = activity as? androidx.activity.ComponentActivity
         if (act != null) {
@@ -249,18 +263,18 @@ fun PlayerScreen(
 
     // FIX: When entering PiP mode, hide the app's own control overlay — the system
     // PiP controls (RemoteActions) take over. Showing both creates clutter.
-    // When returning from PiP, restore fullscreen landscape orientation.
+    // When returning from PiP, restore user's active orientation mode (never overwrite manual rotation).
     LaunchedEffect(isPipMode) {
         if (isPipMode) {
             // Force-hide the app's control overlay
             if (uiState.isControlsVisible) {
                 viewModel.toggleControlsVisibility()
             }
-        } else {
-            if (activity?.requestedOrientation != ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE) {
-                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            }
+        } else if (previousPipMode) {
+            // Only restore orientation when ACTUALLY transitioning OUT of PiP mode back to player
+            activity?.requestedOrientation = currentOrientationMode
         }
+        previousPipMode = isPipMode
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -273,7 +287,7 @@ fun PlayerScreen(
         // -1f means "use system default" — must be restored, not overwritten.
         val originalBrightness = window?.attributes?.screenBrightness ?: -1f
         if (activity?.isInPictureInPictureMode != true) {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            activity?.requestedOrientation = currentOrientationMode
         }
         window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -778,9 +792,15 @@ fun PlayerScreen(
         // ──────────────────────────────────────────────────────────────
         val targetRatio = selectedRatioOption.ratio
         val videoContainerModifier = if (targetRatio != null) {
-            Modifier
-                .aspectRatio(targetRatio, matchHeightConstraintsFirst = false)
-                .fillMaxHeight()
+            if (isPortrait) {
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(targetRatio, matchHeightConstraintsFirst = false)
+            } else {
+                Modifier
+                    .fillMaxHeight()
+                    .aspectRatio(targetRatio, matchHeightConstraintsFirst = true)
+            }
         } else {
             Modifier.fillMaxSize()
         }
@@ -1405,8 +1425,16 @@ fun PlayerScreen(
         // mpvEx Parity: Apply display cutout padding so notch never overlaps sliders
         if (!isPipMode) {
             val cutoutPadding = WindowInsets.displayCutout.asPaddingValues()
-            val sliderStartPadding = maxOf(48.dp, cutoutPadding.calculateLeftPadding(androidx.compose.ui.unit.LayoutDirection.Ltr) + 16.dp)
-            val sliderEndPadding = maxOf(48.dp, cutoutPadding.calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr) + 16.dp)
+            val sliderStartPadding = if (isPortrait) {
+                16.dp
+            } else {
+                maxOf(48.dp, cutoutPadding.calculateLeftPadding(androidx.compose.ui.unit.LayoutDirection.Ltr) + 16.dp)
+            }
+            val sliderEndPadding = if (isPortrait) {
+                16.dp
+            } else {
+                maxOf(48.dp, cutoutPadding.calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr) + 16.dp)
+            }
 
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -1616,7 +1644,7 @@ fun PlayerScreen(
                         // Top Left: Back button + Title / Playlist badge pill
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f, fill = false)
+                            modifier = Modifier.weight(1f, fill = isPortrait)
                         ) {
                             ControlsButton(
                                 icon = Icons.AutoMirrored.Filled.ArrowBack,
@@ -1666,7 +1694,7 @@ fun PlayerScreen(
 
                         Spacer(modifier = Modifier.width(12.dp))
 
-                        // Top Right: Cast, Audio Track, Subtitle Track, Playlist/Episodes, More Options
+                        // Top Right: Cast, More Options in Portrait; full button set in Landscape
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -1681,51 +1709,51 @@ fun PlayerScreen(
                                 size = 45.dp
                             )
 
-                            // Audio Tracks
-                            ControlsButton(
-                                icon = Icons.Default.Audiotrack,
-                                onClick = { showAudioSheet = true },
-                                onLongClick = { showAudioDelaySheet = true },
-                                title = "Audio Tracks",
-                                size = 45.dp,
-                                color = if (uiState.selectedAudioTrack.isNotBlank()) Color(0xFFD0BCFF) else Color.White
-                            )
+                            if (!isPortrait) {
+                                // Audio Tracks
+                                ControlsButton(
+                                    icon = Icons.Default.Audiotrack,
+                                    onClick = { showAudioSheet = true },
+                                    onLongClick = { showAudioDelaySheet = true },
+                                    title = "Audio Tracks",
+                                    size = 45.dp,
+                                    color = if (uiState.selectedAudioTrack.isNotBlank()) Color(0xFFD0BCFF) else Color.White
+                                )
 
-                            // Subtitle Tracks
-                            val hasSubsOn = uiState.selectedSubtitleTrack.isNotBlank() &&
-                                            !uiState.selectedSubtitleTrack.equals("Off", ignoreCase = true)
-                            ControlsButton(
-                                icon = Icons.Default.Subtitles,
-                                onClick = { showSubtitleSheet = true },
-                                onLongClick = { showSubtitleSettingsDrawer = true },
-                                title = "Subtitles",
-                                size = 45.dp,
-                                color = if (hasSubsOn) Color(0xFFD0BCFF) else Color.White
-                            )
+                                // Subtitle Tracks
+                                val hasSubsOn = uiState.selectedSubtitleTrack.isNotBlank() &&
+                                                !uiState.selectedSubtitleTrack.equals("Off", ignoreCase = true)
+                                ControlsButton(
+                                    icon = Icons.Default.Subtitles,
+                                    onClick = { showSubtitleSheet = true },
+                                    onLongClick = { showSubtitleSettingsDrawer = true },
+                                    title = "Subtitles",
+                                    size = 45.dp,
+                                    color = if (hasSubsOn) Color(0xFFD0BCFF) else Color.White
+                                )
 
-
-
-                            // Ambient Mode (Click to Toggle & Long-Click for Mood Sheet)
-                            val isAmbOn = playerSettings.isAmbientEnabled
-                            val currentMoodName = AmbientMoodPresets.find { it.id == playerSettings.ambientMoodId }?.title ?: "Cozy Cinema"
-                            ControlsButton(
-                                customIcon = {
-                                    AmbientDiscoIcon(tint = if (isAmbOn) Color(0xFFD0BCFF) else Color.White)
-                                },
-                                onClick = {
-                                    val newState = !playerSettings.isAmbientEnabled
-                                    PlayerSettingsManager.updateAmbientEnabled(newState)
-                                    triggerHudPill(if (newState) "Ambience: $currentMoodName" else "Ambience: OFF", Icons.Default.AutoAwesome)
-                                },
-                                onLongClick = {
-                                    showAmbientSheet = true
-                                },
-                                title = "Ambience Mode",
-                                size = 45.dp,
-                                color = if (isAmbOn) Color(0xFFD0BCFF) else Color.White,
-                                backgroundColor = if (isAmbOn) Color(0x33D0BCFF) else Color(0x661A1A24),
-                                borderColor = if (isAmbOn) Color(0xFFD0BCFF) else Color(0x33FFFFFF)
-                            )
+                                // Ambient Mode (Click to Toggle & Long-Click for Mood Sheet)
+                                val isAmbOn = playerSettings.isAmbientEnabled
+                                val currentMoodName = AmbientMoodPresets.find { it.id == playerSettings.ambientMoodId }?.title ?: "Cozy Cinema"
+                                ControlsButton(
+                                    customIcon = {
+                                        AmbientDiscoIcon(tint = if (isAmbOn) Color(0xFFD0BCFF) else Color.White)
+                                    },
+                                    onClick = {
+                                        val newState = !playerSettings.isAmbientEnabled
+                                        PlayerSettingsManager.updateAmbientEnabled(newState)
+                                        triggerHudPill(if (newState) "Ambience: $currentMoodName" else "Ambience: OFF", Icons.Default.AutoAwesome)
+                                    },
+                                    onLongClick = {
+                                        showAmbientSheet = true
+                                    },
+                                    title = "Ambience Mode",
+                                    size = 45.dp,
+                                    color = if (isAmbOn) Color(0xFFD0BCFF) else Color.White,
+                                    backgroundColor = if (isAmbOn) Color(0x33D0BCFF) else Color(0x661A1A24),
+                                    borderColor = if (isAmbOn) Color(0xFFD0BCFF) else Color(0x33FFFFFF)
+                                )
+                            }
 
                             // More Options
                             ControlsButton(
@@ -1742,7 +1770,7 @@ fun PlayerScreen(
                 if (errorInfo == null) {
                     Row(
                         modifier = Modifier.align(Alignment.Center),
-                        horizontalArrangement = Arrangement.spacedBy(36.dp),
+                        horizontalArrangement = Arrangement.spacedBy(if (isPortrait) 24.dp else 36.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Previous Episode / Skip
@@ -1755,8 +1783,8 @@ fun PlayerScreen(
                                     triggerDoubleTapSeek(isForward = false)
                                 }
                             },
-                            size = 56.dp,
-                            iconSize = 28.dp,
+                            size = if (isPortrait) 48.dp else 56.dp,
+                            iconSize = if (isPortrait) 24.dp else 28.dp,
                             title = "Previous"
                         )
 
@@ -1764,8 +1792,8 @@ fun PlayerScreen(
                         ControlsButton(
                             icon = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             onClick = { viewModel.togglePlayPause() },
-                            size = 72.dp,
-                            iconSize = 38.dp,
+                            size = if (isPortrait) 64.dp else 72.dp,
+                            iconSize = if (isPortrait) 32.dp else 38.dp,
                             title = "Play/Pause",
                             backgroundColor = Color(0x991E1E2C),
                             borderColor = Color(0xFFD0BCFF)
@@ -1781,8 +1809,8 @@ fun PlayerScreen(
                                     triggerDoubleTapSeek(isForward = true)
                                 }
                             },
-                            size = 56.dp,
-                            iconSize = 28.dp,
+                            size = if (isPortrait) 48.dp else 56.dp,
+                            iconSize = if (isPortrait) 24.dp else 28.dp,
                             title = "Next"
                         )
                     }
@@ -1790,6 +1818,70 @@ fun PlayerScreen(
 
                 // ── 3. Bottom Controls (Actions Row + MpvSeekbar) ──
                 if (errorInfo == null) {
+                    val triggerTakeSnapshot: () -> Unit = {
+                        val pv = rememberPlayerViewRef
+                        val act = activity
+                        if (pv != null && act != null) {
+                            isSnapshotLoading = true
+                            try {
+                                val screenshotDir = com.streamhub.app.data.DownloadManager.getEffectiveScreenshotDir(context)
+                                val screenshotFile = java.io.File(screenshotDir, "StreamHub_${System.currentTimeMillis()}.png")
+
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                    val viewWidth = pv.width.coerceAtLeast(1)
+                                    val viewHeight = pv.height.coerceAtLeast(1)
+                                    val bitmap = android.graphics.Bitmap.createBitmap(
+                                        viewWidth, viewHeight, android.graphics.Bitmap.Config.ARGB_8888
+                                    )
+                                    val location = IntArray(2)
+                                    pv.getLocationInWindow(location)
+                                    val srcRect = android.graphics.Rect(
+                                        location[0], location[1],
+                                        location[0] + viewWidth, location[1] + viewHeight
+                                    )
+                                    android.view.PixelCopy.request(
+                                        act.window,
+                                        srcRect,
+                                        bitmap,
+                                        { copyResult ->
+                                            isSnapshotLoading = false
+                                            if (copyResult == android.view.PixelCopy.SUCCESS) {
+                                                try {
+                                                    java.io.FileOutputStream(screenshotFile).use { out ->
+                                                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                                                    }
+                                                    act.runOnUiThread {
+                                                        ToastManager.showToast("📸 Snapshot saved to ${screenshotDir.name}")
+                                                    }
+                                                } catch (e: Exception) {
+                                                    Log.w("PlayerScreen", "Saving screenshot failed", e)
+                                                } finally {
+                                                    bitmap.recycle()
+                                                }
+                                            } else {
+                                                bitmap.recycle()
+                                            }
+                                        },
+                                        android.os.Handler(android.os.Looper.getMainLooper())
+                                    )
+                                }
+                            } catch (e: Exception) {
+                                isSnapshotLoading = false
+                                Log.w("PlayerScreen", "Screenshot failed: ${e.message}")
+                            }
+                        }
+                    }
+
+                    val toggleOrientation: () -> Unit = {
+                        val nextOrientation = if (isPortrait) {
+                            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                        } else {
+                            ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                        }
+                        currentOrientationMode = nextOrientation
+                        activity?.requestedOrientation = nextOrientation
+                    }
+
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1800,284 +1892,495 @@ fun PlayerScreen(
                                 )
                             )
                             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
-                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                            .padding(horizontal = if (isPortrait) 12.dp else 16.dp, vertical = 6.dp)
                     ) {
                         // Row A: Bottom Action Row (Above Scrubber)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 4.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Left Actions Group: Lock, Skip Intro, Orientation, Speed, Aspect
-                            ControlsGroup(spacing = 6.dp) {
-                                // Lock Controls Button (Matching mpvEx)
-                                ControlsButton(
-                                    icon = Icons.Default.LockOpen,
-                                    onClick = {
-                                        viewModel.toggleLock()
-                                        triggerHudPill("Controls locked", Icons.Default.Lock)
-                                    },
-                                    size = 40.dp,
-                                    iconSize = 18.dp,
-                                    title = "Lock Controls"
-                                )
+                        if (isPortrait) {
+                            // mpvEx Parity Portrait: Single horizontally scrollable action row
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                ControlsGroup(spacing = 6.dp) {
+                                    // 1. Lock Controls Button
+                                    ControlsButton(
+                                        icon = Icons.Default.LockOpen,
+                                        onClick = {
+                                            viewModel.toggleLock()
+                                            triggerHudPill("Controls locked", Icons.Default.Lock)
+                                        },
+                                        size = 40.dp,
+                                        iconSize = 18.dp,
+                                        title = "Lock Controls"
+                                    )
 
-                                // Dedicated Skip Intro Button
-                                val skipIntroSec = playerSettings.skipIntroSeconds
-                                ControlsButton(
-                                    icon = Icons.Default.FastForward,
-                                    onClick = {
-                                        viewModel.skipIntro(skipIntroSec)
-                                        triggerHudPill("Intro Skipped +${skipIntroSec}s", Icons.Default.FastForward)
-                                    },
-                                    size = 40.dp,
-                                    iconSize = 18.dp,
-                                    title = "Skip Intro (+${skipIntroSec}s)"
-                                )
+                                    // 2. Rotation / Orientation Toggle
+                                    ControlsButton(
+                                        icon = Icons.Default.ScreenRotation,
+                                        onClick = toggleOrientation,
+                                        size = 40.dp,
+                                        iconSize = 18.dp,
+                                        title = "Rotate Screen"
+                                    )
 
-                                // Rotation / Orientation Toggle
-                                ControlsButton(
-                                    icon = Icons.Default.ScreenRotation,
-                                    onClick = {
-                                        val isLandscape = activity?.requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE ||
-                                                          activity?.requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                                        activity?.requestedOrientation = if (isLandscape) {
-                                            ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                                    // 3. Playback Speed
+                                    AnimatedContent(
+                                        targetState = (uiState.playbackSpeed != 1.0f),
+                                        transitionSpec = { fadeIn() + expandHorizontally() togetherWith fadeOut() + shrinkHorizontally() },
+                                        label = "speed_pill_portrait"
+                                    ) { isNonOne ->
+                                        if (isNonOne) {
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = Color(0x661A1A24),
+                                                border = BorderStroke(1.dp, Color(0xFFD0BCFF)),
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(50))
+                                                    .clickable { showSpeedSheet = true }
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Speed, contentDescription = null, tint = Color(0xFFD0BCFF), modifier = Modifier.size(16.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text(
+                                                        text = "${uiState.playbackSpeed}x",
+                                                        color = Color.White,
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                                    )
+                                                }
+                                            }
                                         } else {
-                                            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                            ControlsButton(
+                                                icon = Icons.Default.Speed,
+                                                onClick = { showSpeedSheet = true },
+                                                onLongClick = {
+                                                    viewModel.setPlaybackSpeed(1.0f)
+                                                    triggerHudPill("Speed reset: 1.0x", Icons.Default.Speed)
+                                                },
+                                                size = 40.dp,
+                                                iconSize = 18.dp,
+                                                title = "Playback Speed"
+                                            )
                                         }
-                                    },
-                                    size = 40.dp,
-                                    iconSize = 18.dp,
-                                    title = "Rotate Screen"
-                                )
+                                    }
 
-                                // Playback Speed (Expands to Pill when != 1.0x)
-                                AnimatedContent(
-                                    targetState = (uiState.playbackSpeed != 1.0f),
-                                    transitionSpec = { fadeIn() + expandHorizontally() togetherWith fadeOut() + shrinkHorizontally() },
-                                    label = "speed_pill"
-                                ) { isNonOne ->
-                                    if (isNonOne) {
-                                        Surface(
-                                            shape = RoundedCornerShape(50),
-                                            color = Color(0x661A1A24),
-                                            border = BorderStroke(1.dp, Color(0xFFD0BCFF)),
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(50))
-                                                .clickable { showSpeedSheet = true }
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
-                                            ) {
-                                                Icon(Icons.Default.Speed, contentDescription = null, tint = Color(0xFFD0BCFF), modifier = Modifier.size(16.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text(
-                                                    text = "${uiState.playbackSpeed}x",
-                                                    color = Color.White,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                                                )
+                                    // 4. Aspect Ratio
+                                    val aspectIcon = when (selectedRatioOption.id) {
+                                        "FIT" -> Icons.Default.AspectRatio
+                                        "FILL", "STRETCH" -> Icons.Default.ZoomOutMap
+                                        else -> Icons.Default.FitScreen
+                                    }
+                                    ControlsButton(
+                                        icon = aspectIcon,
+                                        onClick = {
+                                            val currentIndex = DefaultAspectPresets.indexOfFirst { it.id == selectedRatioOption.id }
+                                            val nextIndex = (currentIndex + 1) % DefaultAspectPresets.size
+                                            val nextPreset = DefaultAspectPresets[nextIndex]
+                                            selectedRatioOption = nextPreset
+                                            if (playerSettings.rememberAspectRatio) {
+                                                PlayerSettingsManager.updateDefaultAspectRatio(nextPreset.id)
                                             }
-                                        }
-                                    } else {
+                                            triggerHudPill("Aspect: ${nextPreset.label}", aspectIcon)
+                                        },
+                                        onLongClick = { showAspectRatioSheet = true },
+                                        size = 40.dp,
+                                        iconSize = 18.dp,
+                                        title = "Aspect Ratio"
+                                    )
+
+                                    // 5. Skip Intro Button
+                                    val skipIntroSec = playerSettings.skipIntroSeconds
+                                    ControlsButton(
+                                        icon = Icons.Default.FastForward,
+                                        onClick = {
+                                            viewModel.skipIntro(skipIntroSec)
+                                            triggerHudPill("Intro Skipped +${skipIntroSec}s", Icons.Default.FastForward)
+                                        },
+                                        size = 40.dp,
+                                        iconSize = 18.dp,
+                                        title = "Skip Intro (+${skipIntroSec}s)"
+                                    )
+
+                                    // 6. Audio Tracks
+                                    ControlsButton(
+                                        icon = Icons.Default.Audiotrack,
+                                        onClick = { showAudioSheet = true },
+                                        onLongClick = { showAudioDelaySheet = true },
+                                        title = "Audio Tracks",
+                                        size = 40.dp,
+                                        iconSize = 18.dp,
+                                        color = if (uiState.selectedAudioTrack.isNotBlank()) Color(0xFFD0BCFF) else Color.White
+                                    )
+
+                                    // 7. Subtitles
+                                    val hasSubsOn = uiState.selectedSubtitleTrack.isNotBlank() &&
+                                                    !uiState.selectedSubtitleTrack.equals("Off", ignoreCase = true)
+                                    ControlsButton(
+                                        icon = Icons.Default.Subtitles,
+                                        onClick = { showSubtitleSheet = true },
+                                        onLongClick = { showSubtitleSettingsDrawer = true },
+                                        title = "Subtitles",
+                                        size = 40.dp,
+                                        iconSize = 18.dp,
+                                        color = if (hasSubsOn) Color(0xFFD0BCFF) else Color.White
+                                    )
+
+                                    // 8. Ambient Mode
+                                    val isAmbOn = playerSettings.isAmbientEnabled
+                                    val currentMoodName = AmbientMoodPresets.find { it.id == playerSettings.ambientMoodId }?.title ?: "Cozy Cinema"
+                                    ControlsButton(
+                                        customIcon = {
+                                            AmbientDiscoIcon(tint = if (isAmbOn) Color(0xFFD0BCFF) else Color.White)
+                                        },
+                                        onClick = {
+                                            val newState = !playerSettings.isAmbientEnabled
+                                            PlayerSettingsManager.updateAmbientEnabled(newState)
+                                            triggerHudPill(if (newState) "Ambience: $currentMoodName" else "Ambience: OFF", Icons.Default.AutoAwesome)
+                                        },
+                                        onLongClick = {
+                                            showAmbientSheet = true
+                                        },
+                                        title = "Ambience Mode",
+                                        size = 40.dp,
+                                        iconSize = 18.dp,
+                                        color = if (isAmbOn) Color(0xFFD0BCFF) else Color.White,
+                                        backgroundColor = if (isAmbOn) Color(0x33D0BCFF) else Color(0x661A1A24),
+                                        borderColor = if (isAmbOn) Color(0xFFD0BCFF) else Color(0x33FFFFFF)
+                                    )
+
+                                    // 9. Playlist / Episodes
+                                    if (!isMovie && mediaItem.episodes.isNotEmpty()) {
                                         ControlsButton(
-                                            icon = Icons.Default.Speed,
-                                            onClick = { showSpeedSheet = true },
-                                            onLongClick = {
-                                                viewModel.setPlaybackSpeed(1.0f)
-                                                triggerHudPill("Speed reset: 1.0x", Icons.Default.Speed)
-                                            },
+                                            icon = Icons.AutoMirrored.Filled.ViewList,
+                                            onClick = { showPlaylistSheet = true },
                                             size = 40.dp,
                                             iconSize = 18.dp,
-                                            title = "Playback Speed"
+                                            title = "Episodes Playlist"
                                         )
                                     }
-                                }
 
-
-                                // Aspect Ratio (Single button: Click cycles, Long-press opens sheet)
-                                val aspectIcon = when (selectedRatioOption.id) {
-                                    "FIT" -> Icons.Default.AspectRatio
-                                    "FILL", "STRETCH" -> Icons.Default.ZoomOutMap
-                                    else -> Icons.Default.FitScreen
-                                }
-                                ControlsButton(
-                                    icon = aspectIcon,
-                                    onClick = {
-                                        val currentIndex = DefaultAspectPresets.indexOfFirst { it.id == selectedRatioOption.id }
-                                        val nextIndex = (currentIndex + 1) % DefaultAspectPresets.size
-                                        val nextPreset = DefaultAspectPresets[nextIndex]
-                                        selectedRatioOption = nextPreset
-                                        if (playerSettings.rememberAspectRatio) {
-                                            PlayerSettingsManager.updateDefaultAspectRatio(nextPreset.id)
+                                    // 10. Zoom & Pan
+                                    AnimatedContent(
+                                        targetState = (videoZoomScale > 1.05f),
+                                        transitionSpec = { fadeIn() + expandHorizontally() togetherWith fadeOut() + shrinkHorizontally() },
+                                        label = "zoom_pill_portrait"
+                                    ) { isZoomed ->
+                                        if (isZoomed) {
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = Color(0x661A1A24),
+                                                border = BorderStroke(1.dp, Color(0xFFD0BCFF)),
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(50))
+                                                    .clickable { showZoomSheet = true }
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                                ) {
+                                                    Icon(Icons.Default.ZoomIn, contentDescription = null, tint = Color(0xFFD0BCFF), modifier = Modifier.size(16.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text(
+                                                        text = "${(videoZoomScale * 100).toInt()}%",
+                                                        color = Color.White,
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                                    )
+                                                }
+                                            }
+                                        } else {
+                                            ControlsButton(
+                                                icon = Icons.Default.ZoomIn,
+                                                onClick = { showZoomSheet = true },
+                                                onLongClick = {
+                                                    videoZoomScale = 1.0f
+                                                    videoZoomOffsetX = 0f
+                                                    videoZoomOffsetY = 0f
+                                                    ToastManager.showToast("Zoom reset: 100%")
+                                                },
+                                                size = 40.dp,
+                                                iconSize = 18.dp,
+                                                title = "Zoom & Pan"
+                                            )
                                         }
-                                        triggerHudPill("Aspect: ${nextPreset.label}", aspectIcon)
-                                    },
-                                    onLongClick = { showAspectRatioSheet = true },
-                                    size = 40.dp,
-                                    iconSize = 18.dp,
-                                    title = "Aspect Ratio"
-                                )
+                                    }
+
+                                    // 11. Picture-in-Picture
+                                    ControlsButton(
+                                        icon = Icons.Default.PictureInPicture,
+                                        onClick = {
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                try {
+                                                    val act = activity
+                                                    if (act is com.streamhub.app.MainActivity) {
+                                                        val params = act.buildPipParams()
+                                                        act.enterPictureInPictureMode(params)
+                                                    } else {
+                                                        val pipParams = PictureInPictureParams.Builder()
+                                                            .setAspectRatio(Rational(16, 9))
+                                                            .build()
+                                                        activity?.enterPictureInPictureMode(pipParams)
+                                                    }
+                                                } catch (e: Exception) {
+                                                    Log.w("PlayerScreen", "PiP failed: ${e.message}")
+                                                }
+                                            }
+                                        },
+                                        size = 40.dp,
+                                        iconSize = 18.dp,
+                                        title = "Picture-in-Picture"
+                                    )
+
+                                    // 12. Frame Navigation Capsule
+                                    FrameNavigationCapsule(
+                                        isExpanded = isFrameNavExpanded,
+                                        isSnapshotLoading = isSnapshotLoading,
+                                        onToggleExpand = { isFrameNavExpanded = !isFrameNavExpanded },
+                                        onStepBackward = { viewModel.seekBackward(100L) },
+                                        onStepForward = { viewModel.seekForward(100L) },
+                                        onTakeSnapshot = triggerTakeSnapshot,
+                                        onOpenSheet = { showFrameNavSheet = true },
+                                        buttonSize = 40.dp
+                                    )
+
+                                    // 13. Night Shield
+                                    ControlsButton(
+                                        icon = if (isNightShield) Icons.Filled.Shield else Icons.Outlined.Shield,
+                                        onClick = {
+                                            isNightShield = !isNightShield
+                                            ToastManager.showToast(if (isNightShield) "🌙 Night Shield ON (Amber Filter)" else "Night Shield OFF")
+                                        },
+                                        size = 40.dp,
+                                        iconSize = 18.dp,
+                                        color = if (isNightShield) Color(0xFFFFB74D) else Color.White,
+                                        title = "Night Shield"
+                                    )
+                                }
                             }
+                        } else {
+                            // Landscape: Row A with Left Actions Group and Right Actions Group (SpaceBetween)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Left Actions Group: Lock, Skip Intro, Orientation, Speed, Aspect
+                                ControlsGroup(spacing = 6.dp) {
+                                    // Lock Controls Button (Matching mpvEx)
+                                    ControlsButton(
+                                        icon = Icons.Default.LockOpen,
+                                        onClick = {
+                                            viewModel.toggleLock()
+                                            triggerHudPill("Controls locked", Icons.Default.Lock)
+                                        },
+                                        size = 40.dp,
+                                        iconSize = 18.dp,
+                                        title = "Lock Controls"
+                                    )
 
-                            // Right Actions Group: Zoom Pill, PiP, Frame Nav Capsule (Camera), Night Shield
-                            ControlsGroup(spacing = 6.dp) {
-                                // Video Zoom / Pan (Expands to Pill when >100%)
-                                AnimatedContent(
-                                    targetState = (videoZoomScale > 1.05f),
-                                    transitionSpec = { fadeIn() + expandHorizontally() togetherWith fadeOut() + shrinkHorizontally() },
-                                    label = "zoom_pill"
-                                ) { isZoomed ->
-                                    if (isZoomed) {
-                                        Surface(
-                                            shape = RoundedCornerShape(50),
-                                            color = Color(0x661A1A24),
-                                            border = BorderStroke(1.dp, Color(0xFFD0BCFF)),
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(50))
-                                                .clickable { showZoomSheet = true }
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                    // Dedicated Skip Intro Button
+                                    val skipIntroSec = playerSettings.skipIntroSeconds
+                                    ControlsButton(
+                                        icon = Icons.Default.FastForward,
+                                        onClick = {
+                                            viewModel.skipIntro(skipIntroSec)
+                                            triggerHudPill("Intro Skipped +${skipIntroSec}s", Icons.Default.FastForward)
+                                        },
+                                        size = 40.dp,
+                                        iconSize = 18.dp,
+                                        title = "Skip Intro (+${skipIntroSec}s)"
+                                    )
+
+                                    // Rotation / Orientation Toggle
+                                    ControlsButton(
+                                        icon = Icons.Default.ScreenRotation,
+                                        onClick = toggleOrientation,
+                                        size = 40.dp,
+                                        iconSize = 18.dp,
+                                        title = "Rotate Screen"
+                                    )
+
+                                    // Playback Speed (Expands to Pill when != 1.0x)
+                                    AnimatedContent(
+                                        targetState = (uiState.playbackSpeed != 1.0f),
+                                        transitionSpec = { fadeIn() + expandHorizontally() togetherWith fadeOut() + shrinkHorizontally() },
+                                        label = "speed_pill"
+                                    ) { isNonOne ->
+                                        if (isNonOne) {
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = Color(0x661A1A24),
+                                                border = BorderStroke(1.dp, Color(0xFFD0BCFF)),
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(50))
+                                                    .clickable { showSpeedSheet = true }
                                             ) {
-                                                Icon(Icons.Default.ZoomIn, contentDescription = null, tint = Color(0xFFD0BCFF), modifier = Modifier.size(16.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text(
-                                                    text = "${(videoZoomScale * 100).toInt()}%",
-                                                    color = Color.White,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                                                )
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Speed, contentDescription = null, tint = Color(0xFFD0BCFF), modifier = Modifier.size(16.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text(
+                                                        text = "${uiState.playbackSpeed}x",
+                                                        color = Color.White,
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                                    )
+                                                }
                                             }
+                                        } else {
+                                            ControlsButton(
+                                                icon = Icons.Default.Speed,
+                                                onClick = { showSpeedSheet = true },
+                                                onLongClick = {
+                                                    viewModel.setPlaybackSpeed(1.0f)
+                                                    triggerHudPill("Speed reset: 1.0x", Icons.Default.Speed)
+                                                },
+                                                size = 40.dp,
+                                                iconSize = 18.dp,
+                                                title = "Playback Speed"
+                                            )
                                         }
-                                    } else {
-                                        ControlsButton(
-                                            icon = Icons.Default.ZoomIn,
-                                            onClick = { showZoomSheet = true },
-                                            onLongClick = {
-                                                videoZoomScale = 1.0f
-                                                videoZoomOffsetX = 0f
-                                                videoZoomOffsetY = 0f
-                                                ToastManager.showToast("Zoom reset: 100%")
-                                            },
-                                            size = 40.dp,
-                                            iconSize = 18.dp,
-                                            title = "Zoom & Pan"
-                                        )
                                     }
+
+                                    // Aspect Ratio (Single button: Click cycles, Long-press opens sheet)
+                                    val aspectIcon = when (selectedRatioOption.id) {
+                                        "FIT" -> Icons.Default.AspectRatio
+                                        "FILL", "STRETCH" -> Icons.Default.ZoomOutMap
+                                        else -> Icons.Default.FitScreen
+                                    }
+                                    ControlsButton(
+                                        icon = aspectIcon,
+                                        onClick = {
+                                            val currentIndex = DefaultAspectPresets.indexOfFirst { it.id == selectedRatioOption.id }
+                                            val nextIndex = (currentIndex + 1) % DefaultAspectPresets.size
+                                            val nextPreset = DefaultAspectPresets[nextIndex]
+                                            selectedRatioOption = nextPreset
+                                            if (playerSettings.rememberAspectRatio) {
+                                                PlayerSettingsManager.updateDefaultAspectRatio(nextPreset.id)
+                                            }
+                                            triggerHudPill("Aspect: ${nextPreset.label}", aspectIcon)
+                                        },
+                                        onLongClick = { showAspectRatioSheet = true },
+                                        size = 40.dp,
+                                        iconSize = 18.dp,
+                                        title = "Aspect Ratio"
+                                    )
                                 }
 
-                                // Picture-in-Picture
-                                ControlsButton(
-                                    icon = Icons.Default.PictureInPicture,
-                                    onClick = {
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                            // FIX: Use the same buildPipParams() as auto-PiP — includes
-                                            // custom play/pause/next/prev RemoteActions.
-                                            try {
-                                                val act = activity
-                                                if (act is com.streamhub.app.MainActivity) {
-                                                    val params = act.buildPipParams()
-                                                    act.enterPictureInPictureMode(params)
-                                                } else {
-                                                    val pipParams = PictureInPictureParams.Builder()
-                                                        .setAspectRatio(Rational(16, 9))
-                                                        .build()
-                                                    activity?.enterPictureInPictureMode(pipParams)
-                                                }
-                                            } catch (e: Exception) {
-                                                Log.w("PlayerScreen", "PiP failed: ${e.message}")
-                                            }
-                                        }
-                                    },
-                                    size = 40.dp,
-                                    iconSize = 18.dp,
-                                    title = "Picture-in-Picture"
-                                )
-
-                                // Frame Navigation Capsule (Expandable Step & Snapshot)
-                                FrameNavigationCapsule(
-                                    isExpanded = isFrameNavExpanded,
-                                    isSnapshotLoading = isSnapshotLoading,
-                                    onToggleExpand = { isFrameNavExpanded = !isFrameNavExpanded },
-                                    onStepBackward = { viewModel.seekBackward(100L) },
-                                    onStepForward = { viewModel.seekForward(100L) },
-                                    onTakeSnapshot = {
-                                        val pv = rememberPlayerViewRef
-                                        val act = activity
-                                        if (pv != null && act != null) {
-                                            isSnapshotLoading = true
-                                            try {
-                                                val screenshotDir = com.streamhub.app.data.DownloadManager.getEffectiveScreenshotDir(context)
-                                                val screenshotFile = java.io.File(screenshotDir, "StreamHub_${System.currentTimeMillis()}.png")
-
-                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                                    val viewWidth = pv.width.coerceAtLeast(1)
-                                                    val viewHeight = pv.height.coerceAtLeast(1)
-                                                    val bitmap = android.graphics.Bitmap.createBitmap(
-                                                        viewWidth, viewHeight, android.graphics.Bitmap.Config.ARGB_8888
-                                                    )
-                                                    val location = IntArray(2)
-                                                    pv.getLocationInWindow(location)
-                                                    val srcRect = android.graphics.Rect(
-                                                        location[0], location[1],
-                                                        location[0] + viewWidth, location[1] + viewHeight
-                                                    )
-                                                    android.view.PixelCopy.request(
-                                                        act.window,
-                                                        srcRect,
-                                                        bitmap,
-                                                        { copyResult ->
-                                                            isSnapshotLoading = false
-                                                            if (copyResult == android.view.PixelCopy.SUCCESS) {
-                                                                try {
-                                                                    java.io.FileOutputStream(screenshotFile).use { out ->
-                                                                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
-                                                                    }
-                                                                    act.runOnUiThread {
-                                                                        ToastManager.showToast("📸 Snapshot saved to ${screenshotDir.name}")
-                                                                    }
-                                                                } catch (e: Exception) {
-                                                                    Log.w("PlayerScreen", "Saving screenshot failed", e)
-                                                                } finally {
-                                                                    bitmap.recycle()
-                                                                }
-                                                            } else {
-                                                                bitmap.recycle()
-                                                            }
-                                                        },
-                                                        android.os.Handler(android.os.Looper.getMainLooper())
+                                // Right Actions Group: Zoom Pill, PiP, Frame Nav Capsule (Camera), Night Shield
+                                ControlsGroup(spacing = 6.dp) {
+                                    // Video Zoom / Pan (Expands to Pill when >100%)
+                                    AnimatedContent(
+                                        targetState = (videoZoomScale > 1.05f),
+                                        transitionSpec = { fadeIn() + expandHorizontally() togetherWith fadeOut() + shrinkHorizontally() },
+                                        label = "zoom_pill"
+                                    ) { isZoomed ->
+                                        if (isZoomed) {
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = Color(0x661A1A24),
+                                                border = BorderStroke(1.dp, Color(0xFFD0BCFF)),
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(50))
+                                                    .clickable { showZoomSheet = true }
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                                ) {
+                                                    Icon(Icons.Default.ZoomIn, contentDescription = null, tint = Color(0xFFD0BCFF), modifier = Modifier.size(16.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text(
+                                                        text = "${(videoZoomScale * 100).toInt()}%",
+                                                        color = Color.White,
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
                                                     )
                                                 }
-                                            } catch (e: Exception) {
-                                                isSnapshotLoading = false
-                                                Log.w("PlayerScreen", "Screenshot failed: ${e.message}")
                                             }
+                                        } else {
+                                            ControlsButton(
+                                                icon = Icons.Default.ZoomIn,
+                                                onClick = { showZoomSheet = true },
+                                                onLongClick = {
+                                                    videoZoomScale = 1.0f
+                                                    videoZoomOffsetX = 0f
+                                                    videoZoomOffsetY = 0f
+                                                    ToastManager.showToast("Zoom reset: 100%")
+                                                },
+                                                size = 40.dp,
+                                                iconSize = 18.dp,
+                                                title = "Zoom & Pan"
+                                            )
                                         }
-                                    },
-                                    onOpenSheet = { showFrameNavSheet = true },
-                                    buttonSize = 40.dp
-                                )
+                                    }
 
-                                // Night Shield Filter Toggle
-                                ControlsButton(
-                                    icon = if (isNightShield) Icons.Filled.Shield else Icons.Outlined.Shield,
-                                    onClick = {
-                                        isNightShield = !isNightShield
-                                        ToastManager.showToast(if (isNightShield) "🌙 Night Shield ON (Amber Filter)" else "Night Shield OFF")
-                                    },
-                                    size = 40.dp,
-                                    iconSize = 18.dp,
-                                    color = if (isNightShield) Color(0xFFFFB74D) else Color.White,
-                                    title = "Night Shield"
-                                )
+                                    // Picture-in-Picture
+                                    ControlsButton(
+                                        icon = Icons.Default.PictureInPicture,
+                                        onClick = {
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                try {
+                                                    val act = activity
+                                                    if (act is com.streamhub.app.MainActivity) {
+                                                        val params = act.buildPipParams()
+                                                        act.enterPictureInPictureMode(params)
+                                                    } else {
+                                                        val pipParams = PictureInPictureParams.Builder()
+                                                            .setAspectRatio(Rational(16, 9))
+                                                            .build()
+                                                        activity?.enterPictureInPictureMode(pipParams)
+                                                    }
+                                                } catch (e: Exception) {
+                                                    Log.w("PlayerScreen", "PiP failed: ${e.message}")
+                                                }
+                                            }
+                                        },
+                                        size = 40.dp,
+                                        iconSize = 18.dp,
+                                        title = "Picture-in-Picture"
+                                    )
+
+                                    // Frame Navigation Capsule (Expandable Step & Snapshot)
+                                    FrameNavigationCapsule(
+                                        isExpanded = isFrameNavExpanded,
+                                        isSnapshotLoading = isSnapshotLoading,
+                                        onToggleExpand = { isFrameNavExpanded = !isFrameNavExpanded },
+                                        onStepBackward = { viewModel.seekBackward(100L) },
+                                        onStepForward = { viewModel.seekForward(100L) },
+                                        onTakeSnapshot = triggerTakeSnapshot,
+                                        onOpenSheet = { showFrameNavSheet = true },
+                                        buttonSize = 40.dp
+                                    )
+
+                                    // Night Shield Filter Toggle
+                                    ControlsButton(
+                                        icon = if (isNightShield) Icons.Filled.Shield else Icons.Outlined.Shield,
+                                        onClick = {
+                                            isNightShield = !isNightShield
+                                            ToastManager.showToast(if (isNightShield) "🌙 Night Shield ON (Amber Filter)" else "Night Shield OFF")
+                                        },
+                                        size = 40.dp,
+                                        iconSize = 18.dp,
+                                        color = if (isNightShield) Color(0xFFFFB74D) else Color.White,
+                                        title = "Night Shield"
+                                    )
+                                }
                             }
                         }
 
