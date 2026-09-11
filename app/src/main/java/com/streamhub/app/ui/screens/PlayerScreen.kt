@@ -61,6 +61,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -87,7 +89,6 @@ import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
-import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
@@ -276,6 +277,13 @@ fun PlayerScreen(
         }
         window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        // mpvEx Cutout Mode: Allow true edge-to-edge corner-to-corner rendering into display cutouts
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window?.attributes = window?.attributes?.apply {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+
         window?.let { win ->
             val insetsController = WindowCompat.getInsetsController(win, win.decorView)
             insetsController.systemBarsBehavior =
@@ -288,6 +296,11 @@ fun PlayerScreen(
                 activity?.requestedOrientation = originalOrientation
             }
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                window?.attributes = window?.attributes?.apply {
+                    layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+                }
+            }
             // FIX: Restore screen brightness to system default (or pre-player value).
             window?.let { win ->
                 val attrs = win.attributes
@@ -537,12 +550,18 @@ fun PlayerScreen(
 
     // Register a ContentObserver to sync currentVolumePercent when the system
     // volume changes (physical rocker, notification shade, Bluetooth headset).
-    DisposableEffect(audioManager) {
+    // mpvEx Parity: Preserves active volume boost so releasing drag doesn't drop 103% -> 100%.
+    DisposableEffect(audioManager, maxVolume, uiState.volumeBoostPercent) {
         val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
                 if (isDraggingVolume) return
                 val currentVol = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
-                val newPercent = (currentVol / maxVolume) * 100f
+                val boost = uiState.volumeBoostPercent
+                val newPercent = if (boost > 0 && currentVol >= maxVolume.toInt()) {
+                    100f + boost
+                } else {
+                    (currentVol / maxVolume) * 100f
+                }
                 if (kotlin.math.abs(newPercent - currentVolumePercent) > 1f) {
                     currentVolumePercent = newPercent
                     displayVolumeSlider()
@@ -556,6 +575,44 @@ fun PlayerScreen(
         )
         onDispose {
             context.applicationContext.contentResolver.unregisterContentObserver(observer)
+        }
+    }
+
+    // mpvEx Hardware Key Interceptor: Suppresses Android system volume dialog
+    // and displays StreamHub's in-app volume slider cleanly without overlapping UI.
+    DisposableEffect(activity, audioManager, maxVolume, uiState.volumeBoostPercent) {
+        val act = activity as? com.streamhub.app.MainActivity
+        act?.onVolumeKeyEvent = { delta ->
+            val curVol = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
+            val boost = uiState.volumeBoostPercent
+            val maxVolInt = maxVolume.toInt()
+
+            if (delta > 0) {
+                if (curVol < maxVolInt) {
+                    val nextVol = (curVol + 1).coerceAtMost(maxVolInt)
+                    audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, nextVol, 0)
+                    currentVolumePercent = (nextVol.toFloat() / maxVolume) * 100f
+                } else {
+                    val nextBoost = (boost + 5).coerceAtMost(100)
+                    viewModel.setVolumeBoost(nextBoost)
+                    currentVolumePercent = 100f + nextBoost
+                }
+            } else {
+                if (boost > 0) {
+                    val nextBoost = (boost - 5).coerceAtLeast(0)
+                    viewModel.setVolumeBoost(nextBoost)
+                    currentVolumePercent = 100f + nextBoost
+                } else {
+                    val nextVol = (curVol - 1).coerceAtLeast(0)
+                    audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, nextVol, 0)
+                    currentVolumePercent = (nextVol.toFloat() / maxVolume) * 100f
+                }
+            }
+            displayVolumeSlider()
+            true
+        }
+        onDispose {
+            act?.onVolumeKeyEvent = null
         }
     }
 
@@ -1345,7 +1402,12 @@ fun PlayerScreen(
         }
 
         // Gesture HUD Overlays (only when not in Picture-in-Picture)
+        // mpvEx Parity: Apply display cutout padding so notch never overlaps sliders
         if (!isPipMode) {
+            val cutoutPadding = WindowInsets.displayCutout.asPaddingValues()
+            val sliderStartPadding = maxOf(48.dp, cutoutPadding.calculateLeftPadding(androidx.compose.ui.unit.LayoutDirection.Ltr) + 16.dp)
+            val sliderEndPadding = maxOf(48.dp, cutoutPadding.calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr) + 16.dp)
+
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = if (playerSettings.volumeOnRight) Alignment.CenterEnd else Alignment.CenterStart
@@ -1353,7 +1415,10 @@ fun PlayerScreen(
                 VolumeSliderCard(
                     volumePercent = currentVolumePercent.toInt(),
                     isVisible = showVolumeIndicator,
-                    modifier = Modifier.padding(horizontal = 24.dp)
+                    modifier = Modifier.padding(
+                        start = if (playerSettings.volumeOnRight) 0.dp else sliderStartPadding,
+                        end = if (playerSettings.volumeOnRight) sliderEndPadding else 0.dp
+                    )
                 )
             }
             Box(
@@ -1363,7 +1428,10 @@ fun PlayerScreen(
                 BrightnessSliderCard(
                     brightness = currentBrightnessPercent / 100f,
                     isVisible = showBrightnessIndicator,
-                    modifier = Modifier.padding(horizontal = 24.dp)
+                    modifier = Modifier.padding(
+                        start = if (playerSettings.volumeOnRight) sliderStartPadding else 0.dp,
+                        end = if (playerSettings.volumeOnRight) 0.dp else sliderEndPadding
+                    )
                 )
             }
             // mpvEx Concave Oval Double-Tap Seeking Overlay
@@ -1720,31 +1788,6 @@ fun PlayerScreen(
                     }
                 }
 
-                // ── Floating Screen Lock Button (Left Middle Edge) ──
-                if (errorInfo == null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .align(Alignment.CenterStart)
-                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start))
-                            .padding(start = 16.dp),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        ControlsButton(
-                            icon = Icons.Default.LockOpen,
-                            onClick = {
-                                viewModel.toggleLock()
-                                triggerHudPill("Controls locked", Icons.Default.Lock)
-                            },
-                            size = 48.dp,
-                            iconSize = 22.dp,
-                            title = "Lock Controls",
-                            backgroundColor = Color(0x991E1E2C),
-                            borderColor = Color(0xFFD0BCFF)
-                        )
-                    }
-                }
-
                 // ── 3. Bottom Controls (Actions Row + MpvSeekbar) ──
                 if (errorInfo == null) {
                     Column(
@@ -1767,20 +1810,18 @@ fun PlayerScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Left Actions Group: BG Audio, Skip Intro, Orientation, Speed, Repeat, Aspect, A-B Repeat
+                            // Left Actions Group: Lock, Skip Intro, Orientation, Speed, Aspect
                             ControlsGroup(spacing = 6.dp) {
-                                // Background Audio (Headphones)
+                                // Lock Controls Button (Matching mpvEx)
                                 ControlsButton(
-                                    icon = Icons.Default.Headphones,
+                                    icon = Icons.Default.LockOpen,
                                     onClick = {
-                                        val next = !uiState.isBackgroundAudioEnabled
-                                        viewModel.setBackgroundAudio(next, context)
-                                        triggerHudPill(if (next) "Background audio enabled" else "Background audio disabled", Icons.Default.Headphones)
+                                        viewModel.toggleLock()
+                                        triggerHudPill("Controls locked", Icons.Default.Lock)
                                     },
                                     size = 40.dp,
                                     iconSize = 18.dp,
-                                    color = if (uiState.isBackgroundAudioEnabled) Color(0xFFD0BCFF) else Color.White,
-                                    title = "Background Audio"
+                                    title = "Lock Controls"
                                 )
 
                                 // Dedicated Skip Intro Button

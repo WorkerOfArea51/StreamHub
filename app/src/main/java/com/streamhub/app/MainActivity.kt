@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.util.Rational
+import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -262,6 +263,26 @@ class MainActivity : ComponentActivity() {
         if (deepLinkMediaId.value != mediaId) {
             deepLinkMediaId.value = mediaId
         }
+    }
+
+    /**
+     * Optional callback set by PlayerScreen to intercept hardware volume keys (+/-)
+     * and handle them internally without popping up the Android system volume UI.
+     */
+    var onVolumeKeyEvent: ((delta: Int) -> Boolean)? = null
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (shouldAutoEnterPip) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_VOLUME_UP -> {
+                    if (onVolumeKeyEvent?.invoke(1) == true) return true
+                }
+                KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                    if (onVolumeKeyEvent?.invoke(-1) == true) return true
+                }
+            }
+        }
+        return super.onKeyDown(keyCode, event)
     }
 
     /**

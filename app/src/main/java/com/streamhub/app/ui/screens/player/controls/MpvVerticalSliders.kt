@@ -51,31 +51,31 @@ fun BrightnessSliderCard(
         val clamped = brightness.coerceIn(0f, 1f)
 
         Surface(
-            shape = RoundedCornerShape(22.dp),
-            color = Color(0xF012111E),
-            border = BorderStroke(1.2.dp, Color(0x55FFB74D)),
-            shadowElevation = 12.dp
+            shape = RoundedCornerShape(20.dp),
+            color = Color(0x991E1E2C),
+            border = BorderStroke(1.dp, Color(0x40FFFFFF)),
+            shadowElevation = 0.dp
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 18.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "${(clamped * 100).toInt()}%",
+                    text = "${(clamped * 100).toInt()}",
                     color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
                 )
 
                 // Vertical track
                 Box(
                     modifier = Modifier
-                        .height(130.dp)
-                        .aspectRatio(0.22f)
+                        .height(120.dp)
+                        .aspectRatio(0.20f)
                         .clip(RoundedCornerShape(16.dp))
                         .background(Color(0xFF0F0F16))
-                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(16.dp)),
+                        .border(1.dp, Color(0x2EFFFFFF), RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.BottomCenter
                 ) {
                     Box(
@@ -85,7 +85,7 @@ fun BrightnessSliderCard(
                             .clip(RoundedCornerShape(16.dp))
                             .background(
                                 Brush.verticalGradient(
-                                    listOf(Color(0xFFFFD54F), Color(0xFFFF9800))
+                                    listOf(Color(0xFFFFD54F), Color(0xFFFFB300))
                                 )
                             )
                     )
@@ -98,8 +98,8 @@ fun BrightnessSliderCard(
                         else -> Icons.Default.BrightnessHigh
                     },
                     contentDescription = "Brightness",
-                    tint = Color(0xFFFFB74D),
-                    modifier = Modifier.size(22.dp)
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
@@ -123,34 +123,34 @@ fun VolumeSliderCard(
         val boostFraction = if (clamped > 100) ((clamped - 100) / 100f) else 0f
 
         Surface(
-            shape = RoundedCornerShape(22.dp),
-            color = Color(0xF012111E),
-            border = BorderStroke(1.2.dp, if (clamped > 100) Color(0xFFFF5252) else Color(0x55D0BCFF)),
-            shadowElevation = 12.dp
+            shape = RoundedCornerShape(20.dp),
+            color = Color(0x991E1E2C),
+            border = BorderStroke(1.dp, if (clamped > 100) Color(0x80FF5252) else Color(0x40FFFFFF)),
+            shadowElevation = 0.dp
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 18.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = if (clamped > 100) "${clamped}% 🔥" else "${clamped}%",
-                    color = if (clamped > 100) Color(0xFFFF5252) else Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
+                    text = "$clamped",
+                    color = if (clamped > 100) Color(0xFFFF6B6B) else Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
                 )
 
                 // Vertical track
                 Box(
                     modifier = Modifier
-                        .height(130.dp)
-                        .aspectRatio(0.22f)
+                        .height(120.dp)
+                        .aspectRatio(0.20f)
                         .clip(RoundedCornerShape(16.dp))
                         .background(Color(0xFF0F0F16))
-                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(16.dp)),
+                        .border(1.dp, Color(0x2EFFFFFF), RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.BottomCenter
                 ) {
-                    // Normal volume fill
+                    // Normal volume fill (matching mpvEx pink/purple tone)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -158,7 +158,7 @@ fun VolumeSliderCard(
                             .clip(RoundedCornerShape(16.dp))
                             .background(
                                 Brush.verticalGradient(
-                                    listOf(Color(0xFFE8DEF8), Color(0xFFD0BCFF))
+                                    listOf(Color(0xFFF2C2C6), Color(0xFFE8A5A9))
                                 )
                             )
                     )
@@ -170,11 +170,11 @@ fun VolumeSliderCard(
                                 .fillMaxWidth()
                                 .fillMaxHeight(boostFraction)
                                 .clip(RoundedCornerShape(16.dp))
-                            .background(
-                                Brush.verticalGradient(
-                                    listOf(Color(0xFFFF8A80), Color(0xFFFF5252))
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color(0xFFFF8A80), Color(0xFFFF5252))
+                                    )
                                 )
-                            )
                         )
                     }
                 }
@@ -186,8 +186,8 @@ fun VolumeSliderCard(
                         else -> Icons.AutoMirrored.Filled.VolumeUp
                     },
                     contentDescription = "Volume",
-                    tint = if (clamped > 100) Color(0xFFFF5252) else Color(0xFFD0BCFF),
-                    modifier = Modifier.size(22.dp)
+                    tint = if (clamped > 100) Color(0xFFFF6B6B) else Color.White,
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
