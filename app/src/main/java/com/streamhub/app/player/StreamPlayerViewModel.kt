@@ -415,7 +415,7 @@ class StreamPlayerViewModel : ViewModel() {
                     .setAudioAttributes(audioAttributes, true)
                     .setHandleAudioBecomingNoisy(true)
                     .setLoadControl(loadControl)
-                    .setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
+                    .setSeekParameters(androidx.media3.exoplayer.SeekParameters.DEFAULT)
                     .setMediaSourceFactory(
                         androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory)
                     )
@@ -1350,22 +1350,21 @@ class StreamPlayerViewModel : ViewModel() {
         _uiState.update { it.copy(streamRestoredToast = false) }
     }
 
-    fun acceptResume() {
-        val pos = _uiState.value.pendingResumePositionMs
-        if (pos > 0L) {
-            exoPlayer?.seekTo(pos)
-            _uiState.update {
-                it.copy(showResumePrompt = false, pendingResumePositionMs = 0L)
-            }
-        }
-    }
-
-    fun dismissResume() {
+    fun restartFromBeginning() {
         _uiState.update {
             it.copy(showResumePrompt = false, pendingResumePositionMs = 0L)
         }
-        // Start from beginning — already at position 0
         exoPlayer?.seekTo(0L)
+        _playbackProgress.update { it.copy(currentPositionMs = 0L) }
+        _uiState.update { it.copy(currentPositionMs = 0L) }
+    }
+
+    fun dismissResume() {
+        // Non-intrusive dismiss: do NOT seek to 0s.
+        // Playback seamlessly continues from the current auto-resumed position.
+        _uiState.update {
+            it.copy(showResumePrompt = false, pendingResumePositionMs = 0L)
+        }
     }
 
     fun releasePlayer() {
@@ -1446,6 +1445,11 @@ class StreamPlayerViewModel : ViewModel() {
             volumeBoostManager.release()
             VideoThumbnailHelper.release()
             player.release()
+            try {
+                com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+            } catch (e: Exception) {
+                Log.w("StreamPlayerViewModel", "Failed to evict streaming connection pool", e)
+            }
         }
         playerListener = null
         exoPlayer = null

@@ -530,7 +530,7 @@ fun BufferingHud(
 fun SmartResumePill(
     visible: Boolean,
     resumePositionMs: Long,
-    onAccept: () -> Unit,
+    onStartOver: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -567,7 +567,7 @@ fun SmartResumePill(
                     String.format("%02d:%02d", minutes, seconds)
                 }
                 Text(
-                    text = "Resume from $posStr?",
+                    text = "Resumed from $posStr",
                     color = Color.White,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium
@@ -578,10 +578,10 @@ fun SmartResumePill(
                     color = Color(0xFF7C4DFF),
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .clickable { onAccept() }
+                        .clickable { onStartOver() }
                 ) {
                     Text(
-                        text = "Resume",
+                        text = "Start Over",
                         color = Color.White,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,

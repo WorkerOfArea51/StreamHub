@@ -801,12 +801,16 @@ fun PlayerScreen(
                         PlayerView(ctx).apply {
                             useController = false
                             player = exoPlayerInstance
+                            setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
                             subtitleView?.visibility = android.view.View.GONE
                             rememberPlayerViewRef = this
                         }
                     },
                     update = { playerView ->
-                        playerView.player = exoPlayerInstance
+                        if (playerView.player !== exoPlayerInstance) {
+                            playerView.player = exoPlayerInstance
+                        }
+                        playerView.setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
                         playerView.subtitleView?.visibility = android.view.View.GONE
                         rememberPlayerViewRef = playerView
                         // Standard/Cinema ratios: scale to fill the custom-ratio container Box.
@@ -2311,7 +2315,7 @@ fun PlayerScreen(
                 SmartResumePill(
                     visible = true,
                     resumePositionMs = uiState.pendingResumePositionMs,
-                    onAccept = { viewModel.acceptResume() },
+                    onStartOver = { viewModel.restartFromBeginning() },
                     onDismiss = { viewModel.dismissResume() }
                 )
             }
