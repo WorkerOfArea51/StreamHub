@@ -65,14 +65,8 @@ import kotlin.math.roundToInt
 fun MpvMoreSheet(
     showStatsForNerds: Boolean,
     onToggleStatsForNerds: (Boolean) -> Unit,
-    audioDelayMs: Long,
-    onAudioDelayChange: (Long) -> Unit,
-    subtitleDelayMs: Long,
-    onSubtitleDelayChange: (Long) -> Unit,
     sleepTimerMinutes: Int,
     onSetSleepTimer: (Int) -> Unit,
-    onOpenAudioDelaySheet: () -> Unit = {},
-    onOpenSubtitleDelaySheet: () -> Unit = {},
     onOpenVideoFiltersSheet: () -> Unit = {},
     onOpenAmbientSheet: () -> Unit = {},
     onDismiss: () -> Unit
@@ -212,89 +206,97 @@ fun MpvMoreSheet(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-                // Audio Delay Sync Adjuster
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                // Video Color Filters Quick Action Card
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0x18FFFFFF),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            onOpenVideoFiltersSheet()
+                            onDismiss()
+                        }
                 ) {
-                    Text("Audio Delay Sync", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = "Video Color Filters",
+                                tint = Color(0xFFD0BCFF),
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Video Color Filters", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Hardware brightness, contrast, saturation & presets", color = TextSecondary, fontSize = 10.sp)
+                            }
+                        }
                         Text(
-                            text = "${audioDelayMs}ms",
+                            text = "Open ▸",
                             color = Color(0xFFD0BCFF),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Advanced Steppers ▸",
-                            color = Color(0xFFD0BCFF),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0x22FFFFFF))
-                                .clickable { onOpenAudioDelaySheet() }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
-                Slider(
-                    value = audioDelayMs.toFloat(),
-                    onValueChange = { onAudioDelayChange(it.toLong()) },
-                    valueRange = -3000f..3000f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color.White,
-                        activeTrackColor = Color(0xFFD0BCFF),
-                        inactiveTrackColor = Color(0x33FFFFFF)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                // Subtitle Delay Sync Adjuster
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                // Ambient Cinema Lighting Quick Action Card
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0x18FFFFFF),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            onOpenAmbientSheet()
+                            onDismiss()
+                        }
                 ) {
-                    Text("Subtitle Delay Sync", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Sync,
+                                contentDescription = "Ambient Lighting",
+                                tint = Color(0xFFD0BCFF),
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Ambient Cinema Lighting", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Real-time video reactive mood back-glow presets", color = TextSecondary, fontSize = 10.sp)
+                            }
+                        }
                         Text(
-                            text = "${subtitleDelayMs}ms",
+                            text = "Open ▸",
                             color = Color(0xFFD0BCFF),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Advanced Steppers ▸",
-                            color = Color(0xFFD0BCFF),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0x22FFFFFF))
-                                .clickable { onOpenSubtitleDelaySheet() }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
-                Slider(
-                    value = subtitleDelayMs.toFloat(),
-                    onValueChange = { onSubtitleDelayChange(it.toLong()) },
-                    valueRange = -3000f..3000f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color.White,
-                        activeTrackColor = Color(0xFFD0BCFF),
-                        inactiveTrackColor = Color(0x33FFFFFF)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
 
                 Spacer(modifier = Modifier.height(16.dp))
             }

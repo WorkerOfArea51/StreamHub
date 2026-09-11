@@ -69,6 +69,8 @@ fun MpvSubtitleTracksSheet(
     selectedTrackId: String?,
     onSelectTrack: (String) -> Unit,
     onAddExternalSubtitle: (Uri) -> Unit = {},
+    subtitleDelayMs: Long = 0L,
+    onSubtitleDelayChange: (Long) -> Unit = {},
     onOpenSubtitleSettings: () -> Unit,
     onOpenSubtitleDelay: () -> Unit = {},
     onOpenSearch: () -> Unit,
@@ -224,7 +226,65 @@ fun MpvSubtitleTracksSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(6.dp))
+
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                color = Color(0x1FFFFFFF)
+            )
+
+            // Subtitle Delay Sync Adjuster
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 4.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Subtitle Delay Sync",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "${if (subtitleDelayMs > 0) "+" else ""}${subtitleDelayMs}ms",
+                            color = Color(0xFFD0BCFF),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Advanced Steppers ▸",
+                            color = Color(0xFFD0BCFF),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0x22FFFFFF))
+                                .clickable { onOpenSubtitleDelay() }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+                Slider(
+                    value = subtitleDelayMs.toFloat(),
+                    onValueChange = { onSubtitleDelayChange(it.toLong()) },
+                    valueRange = -3000f..3000f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color.White,
+                        activeTrackColor = Color(0xFFD0BCFF),
+                        inactiveTrackColor = Color(0x33FFFFFF)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
         }
     }
 }

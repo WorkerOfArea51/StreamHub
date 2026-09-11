@@ -33,10 +33,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MoreTime
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -59,6 +63,9 @@ fun MpvAudioTracksSheet(
     selectedTrackId: String?,
     onSelectTrack: (String) -> Unit,
     onAddExternalAudio: (Uri) -> Unit = {},
+    audioDelayMs: Long = 0L,
+    onAudioDelayChange: (Long) -> Unit = {},
+    onOpenAudioDelaySheet: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val audioPicker = rememberLauncherForActivityResult(
@@ -121,33 +128,50 @@ fun MpvAudioTracksSheet(
                         )
                     }
 
-                    // Add external audio button
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0x22FFFFFF),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                audioPicker.launch(arrayOf("audio/*", "application/ogg", "*/*"))
-                            }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        IconButton(
+                            onClick = onOpenAudioDelaySheet,
+                            modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "Add Audio",
+                                imageVector = Icons.Default.MoreTime,
+                                contentDescription = "Sync Delay (+/- ms)",
                                 tint = Color.White,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(20.dp)
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "External",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
-                            )
+                        }
+
+                        // Add external audio button
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0x22FFFFFF),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    audioPicker.launch(arrayOf("audio/*", "application/ogg", "*/*"))
+                                }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "Add Audio",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "External",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
                     }
                 }
@@ -236,6 +260,58 @@ fun MpvAudioTracksSheet(
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 12.dp),
+                    color = Color(0x1FFFFFFF)
+                )
+
+                // Audio Delay Sync Section
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Audio Delay Sync",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "${if (audioDelayMs > 0) "+" else ""}${audioDelayMs}ms",
+                            color = Color(0xFFD0BCFF),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Advanced Steppers ▸",
+                            color = Color(0xFFD0BCFF),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0x22FFFFFF))
+                                .clickable { onOpenAudioDelaySheet() }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+                Slider(
+                    value = audioDelayMs.toFloat(),
+                    onValueChange = { onAudioDelayChange(it.toLong()) },
+                    valueRange = -3000f..3000f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color.White,
+                        activeTrackColor = Color(0xFFD0BCFF),
+                        inactiveTrackColor = Color(0x33FFFFFF)
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 Spacer(modifier = Modifier.height(10.dp))
             }

@@ -2140,6 +2140,12 @@ fun PlayerScreen(
                 tracks = uiState.availableAudioTracks,
                 selectedTrackId = uiState.selectedAudioTrack,
                 onSelectTrack = { viewModel.selectAudioTrack(it) },
+                audioDelayMs = audioDelayMs,
+                onAudioDelayChange = { audioDelayMs = it },
+                onOpenAudioDelaySheet = {
+                    showAudioSheet = false
+                    showAudioDelaySheet = true
+                },
                 onDismiss = { showAudioSheet = false }
             )
         }
@@ -2150,9 +2156,15 @@ fun PlayerScreen(
                 tracks = uiState.availableSubtitleTracks,
                 selectedTrackId = uiState.selectedSubtitleTrack,
                 onSelectTrack = { opt -> viewModel.selectSubtitleTrack(opt) },
+                subtitleDelayMs = uiState.subtitleOffsetMs,
+                onSubtitleDelayChange = { viewModel.setSubtitleOffset(it) },
                 onOpenSubtitleSettings = {
                     showSubtitleSheet = false
                     showSubtitleSettingsDrawer = true
+                },
+                onOpenSubtitleDelay = {
+                    showSubtitleSheet = false
+                    showSubtitleDelaySheet = true
                 },
                 onOpenSearch = {
                     showSubtitleSheet = false
@@ -2176,20 +2188,8 @@ fun PlayerScreen(
             MpvMoreSheet(
                 showStatsForNerds = showStatsForNerds,
                 onToggleStatsForNerds = { showStatsForNerds = it },
-                audioDelayMs = audioDelayMs,
-                onAudioDelayChange = { audioDelayMs = it },
-                subtitleDelayMs = uiState.subtitleOffsetMs,
-                onSubtitleDelayChange = { viewModel.setSubtitleOffset(it) },
                 sleepTimerMinutes = uiState.sleepTimerMinutesRemaining ?: 0,
                 onSetSleepTimer = { viewModel.setSleepTimer(it) },
-                onOpenAudioDelaySheet = {
-                    showMoreSheet = false
-                    showAudioDelaySheet = true
-                },
-                onOpenSubtitleDelaySheet = {
-                    showMoreSheet = false
-                    showSubtitleDelaySheet = true
-                },
                 onOpenVideoFiltersSheet = {
                     showMoreSheet = false
                     showVideoFiltersSheet = true
