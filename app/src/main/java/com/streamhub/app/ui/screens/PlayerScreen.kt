@@ -535,8 +535,17 @@ fun PlayerScreen(
     val audioManager = remember { context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
     val maxVolume = remember { audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC)?.toFloat()?.coerceAtLeast(1f) ?: 1f }
 
-    var currentVolumePercent by remember {
-        mutableFloatStateOf(((audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0) / maxVolume) * 100f)
+    val initialVolPercent = remember {
+        val curVol = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
+        val boost = viewModel.uiState.value.volumeBoostPercent
+        if (boost > 0 && curVol >= maxVolume.toInt()) {
+            100f + boost
+        } else {
+            (curVol / maxVolume) * 100f
+        }
+    }
+    var currentVolumePercent by rememberSaveable {
+        mutableFloatStateOf(initialVolPercent)
     }
 
     var isDraggingVolume by remember { mutableStateOf(false) }
@@ -562,33 +571,24 @@ fun PlayerScreen(
         }
     }
 
-    // Register a ContentObserver to sync currentVolumePercent when the system
-    // volume changes (physical rocker, notification shade, Bluetooth headset).
-    // mpvEx Parity: Preserves active volume boost so releasing drag doesn't drop 103% -> 100%.
-    DisposableEffect(audioManager, maxVolume, uiState.volumeBoostPercent) {
-        val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
-            override fun onChange(selfChange: Boolean) {
-                if (isDraggingVolume) return
-                val currentVol = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
-                val boost = uiState.volumeBoostPercent
-                val newPercent = if (boost > 0 && currentVol >= maxVolume.toInt()) {
-                    100f + boost
+    // mpvEx Parity: Synchronize with system volume only when resuming from background
+    // Eliminates ContentObserver snapping down volume upon releasing finger drag.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, audioManager, maxVolume) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                val curVol = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
+                val boost = viewModel.uiState.value.volumeBoostPercent
+                if (boost == 0 || curVol < maxVolume.toInt()) {
+                    currentVolumePercent = (curVol / maxVolume) * 100f
                 } else {
-                    (currentVol / maxVolume) * 100f
-                }
-                if (kotlin.math.abs(newPercent - currentVolumePercent) > 1f) {
-                    currentVolumePercent = newPercent
-                    displayVolumeSlider()
+                    currentVolumePercent = 100f + boost
                 }
             }
         }
-        context.applicationContext.contentResolver.registerContentObserver(
-            android.provider.Settings.System.CONTENT_URI,
-            true,
-            observer
-        )
+        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
-            context.applicationContext.contentResolver.unregisterContentObserver(observer)
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 

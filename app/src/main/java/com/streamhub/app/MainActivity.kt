@@ -271,18 +271,24 @@ class MainActivity : ComponentActivity() {
      */
     var onVolumeKeyEvent: ((delta: Int) -> Boolean)? = null
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (shouldAutoEnterPip) {
-            when (keyCode) {
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (onVolumeKeyEvent != null) {
+            when (event.keyCode) {
                 KeyEvent.KEYCODE_VOLUME_UP -> {
-                    if (onVolumeKeyEvent?.invoke(1) == true) return true
+                    if (event.action == KeyEvent.ACTION_DOWN) {
+                        onVolumeKeyEvent?.invoke(1)
+                    }
+                    return true
                 }
                 KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                    if (onVolumeKeyEvent?.invoke(-1) == true) return true
+                    if (event.action == KeyEvent.ACTION_DOWN) {
+                        onVolumeKeyEvent?.invoke(-1)
+                    }
+                    return true
                 }
             }
         }
-        return super.onKeyDown(keyCode, event)
+        return super.dispatchKeyEvent(event)
     }
 
     /**
