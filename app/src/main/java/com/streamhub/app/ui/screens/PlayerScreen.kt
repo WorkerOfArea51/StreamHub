@@ -287,7 +287,11 @@ fun PlayerScreen(
         if (activity?.isInPictureInPictureMode != true) {
             activity?.requestedOrientation = currentOrientationMode
         }
-        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window?.addFlags(
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS
+        )
 
         // mpvEx Cutout Mode: Allow true edge-to-edge corner-to-corner rendering into display cutouts
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -307,7 +311,10 @@ fun PlayerScreen(
             if (activity?.isInPictureInPictureMode != true) {
                 activity?.requestedOrientation = originalOrientation
             }
-            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            window?.clearFlags(
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            )
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 window?.attributes = window?.attributes?.apply {
                     layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
@@ -1417,19 +1424,10 @@ fun PlayerScreen(
         }
 
         // Gesture HUD Overlays (only when not in Picture-in-Picture)
-        // mpvEx Parity: Apply display cutout padding so notch never overlaps sliders
+        // mpvEx Parity: Symmetrical 16.dp in portrait, 24.dp in landscape (spacing.extraLarge)
         if (!isPipMode) {
-            val cutoutPadding = WindowInsets.displayCutout.asPaddingValues()
-            val sliderStartPadding = if (isPortrait) {
-                16.dp
-            } else {
-                maxOf(48.dp, cutoutPadding.calculateLeftPadding(androidx.compose.ui.unit.LayoutDirection.Ltr) + 16.dp)
-            }
-            val sliderEndPadding = if (isPortrait) {
-                16.dp
-            } else {
-                maxOf(48.dp, cutoutPadding.calculateRightPadding(androidx.compose.ui.unit.LayoutDirection.Ltr) + 16.dp)
-            }
+            val sliderStartPadding = if (isPortrait) 16.dp else 24.dp
+            val sliderEndPadding = if (isPortrait) 16.dp else 24.dp
 
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -1628,7 +1626,7 @@ fun PlayerScreen(
                                 listOf(Color(0xCC000000), Color(0x66000000), Color.Transparent)
                             )
                         )
-                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
                         .padding(horizontal = 16.dp, vertical = 10.dp)
                 ) {
                     Row(
@@ -1886,7 +1884,7 @@ fun PlayerScreen(
                                     listOf(Color.Transparent, Color(0x88000000), Color(0xCC000000))
                                 )
                             )
-                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
                             .padding(horizontal = if (isPortrait) 12.dp else 16.dp, vertical = 6.dp)
                     ) {
                         // Row A: Bottom Action Row (Above Scrubber)
@@ -2409,7 +2407,7 @@ fun PlayerScreen(
             onUnlock = { viewModel.toggleLock() },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
                 .padding(bottom = 28.dp)
         )
 
@@ -2638,7 +2636,7 @@ fun PlayerScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Start + WindowInsetsSides.Bottom))
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
                     .padding(start = 20.dp, bottom = 84.dp),
                 contentAlignment = Alignment.BottomStart
             ) {
@@ -2656,7 +2654,7 @@ fun PlayerScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.End))
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
                     .padding(top = 56.dp, end = 16.dp),
                 contentAlignment = Alignment.TopEnd
             ) {
