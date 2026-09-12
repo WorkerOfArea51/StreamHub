@@ -206,9 +206,7 @@ import com.streamhub.app.ui.screens.player.sheets.MpvPlaylistSheet
 import com.streamhub.app.ui.screens.player.sheets.MpvSubtitleDelaySheet
 import com.streamhub.app.ui.screens.player.sheets.MpvSubtitleSettingsDrawer
 import com.streamhub.app.ui.screens.player.sheets.MpvSubtitleTracksSheet
-import com.streamhub.app.ui.screens.player.sheets.MpvVideoFiltersSheet
 import com.streamhub.app.ui.screens.player.sheets.MpvVideoZoomSheet
-import com.streamhub.app.ui.screens.player.sheets.VideoFilterConfig
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.TextSecondary
@@ -381,9 +379,7 @@ fun PlayerScreen(
     var showFrameNavSheet by remember { mutableStateOf(false) }
     var showAudioDelaySheet by remember { mutableStateOf(false) }
     var showSubtitleDelaySheet by remember { mutableStateOf(false) }
-    var showVideoFiltersSheet by remember { mutableStateOf(false) }
     var showOnlineSubSearchSheet by remember { mutableStateOf(false) }
-    var videoFilterConfig by remember { mutableStateOf(VideoFilterConfig()) }
     var isFrameNavExpanded by remember { mutableStateOf(false) }
     var isSnapshotLoading by remember { mutableStateOf(false) }
     var audioDelayMs by remember { mutableLongStateOf(0L) }
@@ -395,7 +391,7 @@ fun PlayerScreen(
                   showPlaylistSheet || showAudioSheet || showSubtitleSheet ||
                   showSubtitleSettingsDrawer || showMoreSheet || showStatsForNerds ||
                   showFrameNavSheet || showAudioDelaySheet || showSubtitleDelaySheet ||
-                  showVideoFiltersSheet || showOnlineSubSearchSheet || showAmbientSheet
+                  showOnlineSubSearchSheet || showAmbientSheet
     ) {
         showAspectRatioSheet = false
         showSpeedSheet = false
@@ -409,7 +405,6 @@ fun PlayerScreen(
         showFrameNavSheet = false
         showAudioDelaySheet = false
         showSubtitleDelaySheet = false
-        showVideoFiltersSheet = false
         showOnlineSubSearchSheet = false
         showAmbientSheet = false
     }
@@ -2529,14 +2524,6 @@ fun PlayerScreen(
                 onToggleStatsForNerds = { showStatsForNerds = it },
                 sleepTimerMinutes = uiState.sleepTimerMinutesRemaining ?: 0,
                 onSetSleepTimer = { viewModel.setSleepTimer(it) },
-                onOpenVideoFiltersSheet = {
-                    showMoreSheet = false
-                    showVideoFiltersSheet = true
-                },
-                onOpenAmbientSheet = {
-                    showMoreSheet = false
-                    showAmbientSheet = true
-                },
                 onDismiss = { showMoreSheet = false }
             )
         }
@@ -2625,14 +2612,7 @@ fun PlayerScreen(
             )
         }
 
-        // 12. Video Color Filters & Presets Modal Sheet
-        if (showVideoFiltersSheet) {
-            MpvVideoFiltersSheet(
-                filterConfig = videoFilterConfig,
-                onUpdateConfig = { videoFilterConfig = it },
-                onDismiss = { showVideoFiltersSheet = false }
-            )
-        }
+
 
         // 13. Online Subtitle Search Modal Sheet
         if (showOnlineSubSearchSheet) {

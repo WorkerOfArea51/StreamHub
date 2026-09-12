@@ -67,8 +67,6 @@ fun MpvMoreSheet(
     onToggleStatsForNerds: (Boolean) -> Unit,
     sleepTimerMinutes: Int,
     onSetSleepTimer: (Int) -> Unit,
-    onOpenVideoFiltersSheet: () -> Unit = {},
-    onOpenAmbientSheet: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val scrollState = rememberScrollState()
@@ -171,7 +169,7 @@ fun MpvMoreSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Sleep Timer Row
             Text("Sleep Timer", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -180,125 +178,33 @@ fun MpvMoreSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                    items(sleepPresets) { mins ->
-                        val isSelected = sleepTimerMinutes == mins
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isSelected) Color(0xFF6750A4) else Color(0x1EFFFFFF),
-                            border = BorderStroke(1.dp, if (isSelected) Color(0xFFD0BCFF) else Color(0x1AFFFFFF)),
-                            modifier = Modifier
-                                .height(38.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { onSetSleepTimer(mins) }
-                        ) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier.padding(horizontal = 14.dp)
-                            ) {
-                                Text(
-                                    text = if (mins == 0) "Off" else "${mins}m",
-                                    color = Color.White,
-                                    fontSize = 13.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Video Color Filters Quick Action Card
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0x18FFFFFF),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable {
-                            onOpenVideoFiltersSheet()
-                            onDismiss()
-                        }
-                ) {
-                    Row(
+                items(sleepPresets) { mins ->
+                    val isSelected = sleepTimerMinutes == mins
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSelected) Color(0xFF6750A4) else Color(0x1EFFFFFF),
+                        border = BorderStroke(1.dp, if (isSelected) Color(0xFFD0BCFF) else Color(0x1AFFFFFF)),
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .height(38.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onSetSleepTimer(mins) }
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.padding(horizontal = 14.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = "Video Color Filters",
-                                tint = Color(0xFFD0BCFF),
-                                modifier = Modifier.size(22.dp)
+                            Text(
+                                text = if (mins == 0) "Off" else "${mins}m",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                             )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("Video Color Filters", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Text("Hardware brightness, contrast, saturation & presets", color = TextSecondary, fontSize = 10.sp)
-                            }
                         }
-                        Text(
-                            text = "Open ▸",
-                            color = Color(0xFFD0BCFF),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Ambient Cinema Lighting Quick Action Card
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0x18FFFFFF),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable {
-                            onOpenAmbientSheet()
-                            onDismiss()
-                        }
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Sync,
-                                contentDescription = "Ambient Lighting",
-                                tint = Color(0xFFD0BCFF),
-                                modifier = Modifier.size(22.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("Ambient Cinema Lighting", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Text("Real-time video reactive mood back-glow presets", color = TextSecondary, fontSize = 10.sp)
-                            }
-                        }
-                        Text(
-                            text = "Open ▸",
-                            color = Color(0xFFD0BCFF),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+        }
     }
 }
