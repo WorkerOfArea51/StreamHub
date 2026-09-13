@@ -472,7 +472,7 @@ The following redundant or obsolete files were discovered during the project aud
 
 ## 10. Active Build & Version State
 
-- **Active Version**: `v4.8.309` (Build 309)
+- **Active Version**: `v4.8.309` (Build 309) — Commit `c97ca28`
 - **Status**: Production Release Candidate
 - **Recent Completed Sprint**:
   - Intelligent Binge Pre-Caching & Smart Auto Outro Detection (`v4.8.309` Build 309):
