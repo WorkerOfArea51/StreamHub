@@ -195,6 +195,11 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
       - **Web Series / Long Form ($> 32$ min)**: Automatically adapts to **10% of total duration (clamped between 3 to 7 minutes)**, perfectly aligning with long Western credits (e.g. 6m 40s on a 66-minute episode, triggering right as credits roll).
     - **Countdown Card Polish**: Formats remaining countdown cleanly into minutes and seconds (`Next Episode in 6m 40s` instead of raw seconds) with instant 1-tap **[Play Now]** and **[✕]** dismiss.
     - **Settings Presets in VideoSettingsScreen**: Offers `Smart Auto` (default), `90s (Anime)`, `3m`, `5m`, `7m`, and `Off` in a horizontally scrollable chip row.
+32. **Persistent Audio & Subtitle Track Memory (`TrackPreferenceManager.kt`, `StreamPlayerViewModel.kt`, `StreamHubApplication.kt`)**:
+    - **Per-Media & Global Disk Persistence**: User's chosen audio track (e.g. "Japanese", "English") and subtitle track (e.g. "English [ASS]" or "Off") are automatically saved to `SharedPreferences` via `TrackPreferenceManager` whenever selected in the player sheets.
+    - **Survives App Restarts, Recent Apps & Continue Watching**: Permanently eliminates the bug where returning from Recent Apps or reopening an anime/series from Continue Watching wiped user choices and forced audio back to container track 0 and subtitles to "Off".
+    - **Smart Label & Language Code Matching**: On episode load (`updateAvailableTracks`), matches saved preferences via exact label, ISO language codes (`"ja"`, `"en"`), or cleaned track names. Ensures seamless continuity even if subsequent episodes use different audio codecs (e.g. AAC vs Opus) or formatting.
+    - **Explicit "Off" Respect**: Remembers if the user turned subtitles Off so they remain Off across sessions without unwanted reactivation.
 
 ### B. UI, Catalogue & Navigation (`ui/screens/`, `ui/components/`)
 1. **SplashScreen**:
@@ -472,9 +477,15 @@ The following redundant or obsolete files were discovered during the project aud
 
 ## 10. Active Build & Version State
 
-- **Active Version**: `v4.8.309` (Build 309) — Commit `c97ca28`
+- **Active Version**: `v4.8.310` (Build 310)
 - **Status**: Production Release Candidate
 - **Recent Completed Sprint**:
+  - Persistent Audio & Subtitle Track Memory (`v4.8.310` Build 310):
+    - Resolved annoying bug where closing the player, returning from Recent Apps, or launching from Continue Watching wiped user's chosen audio and subtitle tracks, reverting audio to container track 0 and subtitles to "Off".
+    - Created `TrackPreferenceManager` backed by `SharedPreferences` persisting user-selected audio track label + language and subtitle track label + language per `mediaId`, plus global last-used language fallbacks.
+    - Updated `selectAudioTrack` and `selectSubtitleTrack` in `StreamPlayerViewModel.kt` to persist selections automatically.
+    - Updated `updateAvailableTracks` to restore user's preferred audio and subtitle tracks across app sessions, cold starts, and episode switches using exact label matching, ISO language code matching (`"ja"`, `"en"`), and clean track names.
+    - Respects explicit "Off" subtitle selection so subtitles remain disabled when chosen by the user.
   - Intelligent Binge Pre-Caching & Smart Auto Outro Detection (`v4.8.309` Build 309):
     - Upgraded next-episode binge pre-caching from the narrow 90-second window to trigger when playback enters the closing phase (`progressFraction >= 0.75f` or `remainingMs <= 480_000L` [8 minutes] with `progress >= 65%`) as long as the forward buffer is healthy ($\ge 25\text{s}$). Automatically pre-caches the first 25MB of Episode N+1 well before credits arrive for both anime (at 18:00) and web series (at 49:30), guaranteeing zero-latency 0ms cold-start transitions.
     - Implemented unified Smart Auto Outro Threshold (`computeEffectiveNextEpThresholdSec(durationMs, configuredSec)`) in `PlayerSettingsManager`:

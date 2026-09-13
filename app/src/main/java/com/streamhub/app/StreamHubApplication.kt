@@ -135,6 +135,8 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
             .onFailure { Log.e(TAG, "AdminManager.init failed", it) }
         runCatching { PlayerSettingsManager.init(applicationContext) }
             .onFailure { Log.e(TAG, "PlayerSettingsManager.init failed", it) }
+        runCatching { com.streamhub.app.data.TrackPreferenceManager.init(applicationContext) }
+            .onFailure { Log.e(TAG, "TrackPreferenceManager.init failed", it) }
 
         // Non-critical background managers: loaded asynchronously on Dispatchers.IO
         // Keeps Main Thread 100% free of disk I/O and JSON parsing for 120fps Splash Screen animation
