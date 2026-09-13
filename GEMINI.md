@@ -188,6 +188,13 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
     - **Background/Foreground Lifecycle Synchronization**: Wired Compose `LifecycleEventObserver` in `PlayerScreen.kt` to trigger `viewModel.onAppBackgrounded()` on `ON_STOP` and `viewModel.onAppForegrounded()` on `ON_RESUME`.
     - **Dead Socket Purge on App Return**: When returning from background (e.g. switching to Telegram and coming back via Recent Apps) after $\ge 3$ seconds, proactively executes `SharedHttpClient.streamingClient.connectionPool.evictAll()`, cancels hung/stale preloader jobs, resets `stallAccumulatorMs = 0L`, and refreshes the loader in-place via `exoPlayer.seekTo(currentPosition)`. Pre-establishes a fresh, active HTTP range connection over the network before the user even taps Play.
     - **Prolonged Pause Protection in `togglePlayPause()`**: Tracks `lastPauseTimestampMs` across all playback pauses (in-app or background). Resuming after $\ge 10$ seconds of pause proactively purges dead keep-alive sockets and reconnects in-place, permanently eliminating the 15-second socket timeout freeze and socket reset exceptions.
+31. **Intelligent Binge Pre-Caching & Smart Auto Outro Detection (`StreamPlayerViewModel.kt`, `PlayerSettingsManager.kt`, `PlayerScreen.kt`, `PlayerIndicators.kt`, `VideoSettingsScreen.kt`)**:
+    - **Closing Phase Pre-Caching Trigger**: Upgraded next-episode binge pre-caching from the narrow 90-second window to trigger when playback reaches the closing phase (`progressFraction >= 0.75f` or `remainingMs <= 480_000L` [8 minutes] with `progress >= 65%`) as long as the forward buffer is healthy ($\ge 25\text{s}$). Automatically pre-caches the first 25MB of Episode N+1 well before credits arrive for both anime (at 18:00) and web series (at 49:30), guaranteeing zero-latency 0ms cold-start transitions.
+    - **Unified Smart Auto Outro Threshold**: Added `computeEffectiveNextEpThresholdSec(durationMs, configuredSec)` in `PlayerSettingsManager`:
+      - **Anime / Short Form ($\le 32$ min)**: Automatically adapts to **90s** (standard anime ED).
+      - **Web Series / Long Form ($> 32$ min)**: Automatically adapts to **10% of total duration (clamped between 3 to 7 minutes)**, perfectly aligning with long Western credits (e.g. 6m 40s on a 66-minute episode, triggering right as credits roll).
+    - **Countdown Card Polish**: Formats remaining countdown cleanly into minutes and seconds (`Next Episode in 6m 40s` instead of raw seconds) with instant 1-tap **[Play Now]** and **[✕]** dismiss.
+    - **Settings Presets in VideoSettingsScreen**: Offers `Smart Auto` (default), `90s (Anime)`, `3m`, `5m`, `7m`, and `Off` in a horizontally scrollable chip row.
 
 ### B. UI, Catalogue & Navigation (`ui/screens/`, `ui/components/`)
 1. **SplashScreen**:
@@ -465,9 +472,16 @@ The following redundant or obsolete files were discovered during the project aud
 
 ## 10. Active Build & Version State
 
-- **Active Version**: `v4.8.308` (Build 308) — Commit `bdcf24b`
+- **Active Version**: `v4.8.309` (Build 309)
 - **Status**: Production Release Candidate
 - **Recent Completed Sprint**:
+  - Intelligent Binge Pre-Caching & Smart Auto Outro Detection (`v4.8.309` Build 309):
+    - Upgraded next-episode binge pre-caching from the narrow 90-second window to trigger when playback enters the closing phase (`progressFraction >= 0.75f` or `remainingMs <= 480_000L` [8 minutes] with `progress >= 65%`) as long as the forward buffer is healthy ($\ge 25\text{s}$). Automatically pre-caches the first 25MB of Episode N+1 well before credits arrive for both anime (at 18:00) and web series (at 49:30), guaranteeing zero-latency 0ms cold-start transitions.
+    - Implemented unified Smart Auto Outro Threshold (`computeEffectiveNextEpThresholdSec(durationMs, configuredSec)`) in `PlayerSettingsManager`:
+      - Anime / Short Form ($\le 32$ min): automatically adapts to 90s (standard anime ED).
+      - Web Series / Long Form ($> 32$ min): automatically adapts to 10% of total duration (clamped between 3 to 7 minutes), perfectly aligning with long Western credits (e.g. 6m 40s on a 66-minute episode, triggering right as credits roll).
+    - Polished `NextEpisodeCountdownCard` to format remaining countdown cleanly into minutes and seconds (`Next Episode in 6m 40s` instead of raw seconds) with instant 1-tap **[Play Now]** and **[✕]** dismiss.
+    - Expanded Settings in `VideoSettingsScreen` with presets: `Smart Auto` (default), `90s (Anime)`, `3m`, `5m`, `7m`, and `Off` in a horizontally scrollable chip row.
   - App Backgrounding, Recent Apps & Prolonged Pause Resilience (`v4.8.308` Build 308):
     - Resolved video streaming hangs and buffering freezes caused when pausing a video, switching to other apps (Telegram/Home), and resuming from Recent Apps.
     - Added background/foreground lifecycle synchronization in `PlayerScreen.kt` connecting `ON_STOP` to `viewModel.onAppBackgrounded()` and `ON_RESUME` to `viewModel.onAppForegrounded()`.

@@ -1326,12 +1326,14 @@ class StreamPlayerViewModel : ViewModel() {
                         }
 
                         // Intelligent Binge Pre-Caching for Episode N+1:
-                        // Triggers ONLY when:
+                        // Triggers when:
                         // 1. Current episode is 100% fully cached on disk (ExoPlayer idle, network free), OR
-                        // 2. User is in the final stretch (within final 90 seconds) AND buffer is healthy (>= 45s).
+                        // 2. Playback enters closing stretch (progress >= 75% OR remaining <= 8m with progress >= 65%)
+                        //    AND active forward buffer is healthy (>= 25s) so current playback is never starved.
+                        val progressFraction = if (totalDuration > 0L) currentPos.toFloat() / totalDuration.toFloat() else 0f
                         val isFullyBuffered = totalDuration > 10_000L && buffered >= (totalDuration - 3_000L)
-                        val isNearEndWithHealthyBuffer = remainingMs in 1..90_000L && bufferSec >= 45
-                        val isEligibleForNextEpPrecache = isFullyBuffered || isNearEndWithHealthyBuffer
+                        val isInClosingPhase = (progressFraction >= 0.75f || (remainingMs in 1..480_000L && progressFraction >= 0.65f))
+                        val isEligibleForNextEpPrecache = isFullyBuffered || (isInClosingPhase && bufferSec >= 25)
 
                         if (totalDuration > 30_000L && isEligibleForNextEpPrecache &&
                             nextEpisodePreloadJob == null &&

@@ -3,6 +3,8 @@ package com.streamhub.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -307,11 +309,13 @@ fun VideoSettingsScreen(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        val thresholdOptions = listOf(65, 45, 40, 30, 0)
-                        val thresholdLabels = listOf("65s", "45s", "40s", "30s", "Off")
+                        val thresholdOptions = listOf(-1, 90, 180, 300, 420, 0)
+                        val thresholdLabels = listOf("Smart Auto", "90s", "3m", "5m", "7m", "Off")
 
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             thresholdOptions.forEachIndexed { index, sec ->

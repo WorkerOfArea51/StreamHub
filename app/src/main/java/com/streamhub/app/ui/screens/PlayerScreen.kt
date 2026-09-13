@@ -1597,7 +1597,10 @@ fun PlayerScreen(
         val episodes = mediaItem.episodes
         val nextEpIndex = uiState.currentEpisodeIndex + 1
         val nextEp = if (nextEpIndex in episodes.indices) episodes[nextEpIndex] else null
-        val nextEpThresholdSec = playerSettings.nextEpisodeThresholdSeconds
+        val nextEpThresholdSec = com.streamhub.app.data.PlayerSettingsManager.computeEffectiveNextEpThresholdSec(
+            playbackProgress.durationMs,
+            playerSettings.nextEpisodeThresholdSeconds
+        )
         val remainingSeconds = if (playbackProgress.durationMs > 0L) {
             ((playbackProgress.durationMs - playbackProgress.currentPositionMs) / 1000L).toInt().coerceAtLeast(0)
         } else 0

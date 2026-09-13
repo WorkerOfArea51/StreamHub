@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.update
 
 data class PlayerSettings(
     val skipIntroSeconds: Int = 90,
-    val nextEpisodeThresholdSeconds: Int = 45, // 65s, 45s, 40s, 30s, 0 (Disabled)
+    val nextEpisodeThresholdSeconds: Int = -1, // -1 (Smart Auto), 90s, 180s (3m), 300s (5m), 420s (7m), 0 (Disabled)
     val autoPlayNextEpisode: Boolean = true,
     val volumeOnRight: Boolean = true, // Volume on right (Anim on left) vs Volume on left (Anim on right)
     val defaultAspectRatioId: String = "FIT",
@@ -28,12 +28,13 @@ data class PlayerSettings(
  * in SharedPreferences.
  *
  * Initialized once by StreamHubApplication.onCreate(). Callers do NOT pass
- * context to any method.
+ * Context into mutation functions; they safely use the internal reference.
  */
 object PlayerSettingsManager {
 
     private const val TAG = "PlayerSettingsManager"
     private const val PREFS_NAME = "streamhub_player_settings"
+
     private const val KEY_SKIP_INTRO = "skip_intro_sec"
     const val KEY_NEXT_EPISODE_THRESHOLD = "next_ep_threshold_sec"
     private const val KEY_AUTO_PLAY = "auto_play_next"
@@ -53,7 +54,6 @@ object PlayerSettingsManager {
     val settingsFlow: StateFlow<PlayerSettings> = _settingsFlow.asStateFlow()
 
     fun init(context: Context) {
-        if (::appContext.isInitialized) return
         appContext = context.applicationContext
         loadFromDisk()
     }
@@ -63,7 +63,7 @@ object PlayerSettingsManager {
         try {
             _settingsFlow.value = PlayerSettings(
                 skipIntroSeconds = prefs.getInt(KEY_SKIP_INTRO, 90),
-                nextEpisodeThresholdSeconds = prefs.getInt(KEY_NEXT_EPISODE_THRESHOLD, 45),
+                nextEpisodeThresholdSeconds = prefs.getInt(KEY_NEXT_EPISODE_THRESHOLD, -1),
                 autoPlayNextEpisode = prefs.getBoolean(KEY_AUTO_PLAY, true),
                 volumeOnRight = prefs.getBoolean(KEY_VOLUME_ON_RIGHT, true),
                 defaultAspectRatioId = prefs.getString(KEY_DEFAULT_ASPECT_RATIO, "FIT") ?: "FIT",
@@ -98,9 +98,29 @@ object PlayerSettingsManager {
             Log.w(TAG, "updateNextEpisodeThreshold called before init — no-op")
             return
         }
-        val clamped = seconds.coerceIn(0, 90)
+        val clamped = if (seconds == -1) -1 else seconds.coerceIn(0, 480)
         _settingsFlow.update { it.copy(nextEpisodeThresholdSeconds = clamped) }
         getPrefs().edit().putInt(KEY_NEXT_EPISODE_THRESHOLD, clamped).apply()
+    }
+
+    /**
+     * Computes the effective countdown threshold in seconds for the next episode prompt.
+     * If configured as -1 (Smart Auto):
+     *  - Short form / Anime (<= 32 min): 90 seconds (standard anime ED).
+     *  - Long form / Web series (> 32 min): 10% of total duration clamped between 180s (3m) and 420s (7m).
+     * Otherwise returns the explicitly configured seconds (or 0 if disabled).
+     */
+    fun computeEffectiveNextEpThresholdSec(durationMs: Long, configuredSec: Int): Int {
+        if (configuredSec == 0) return 0
+        if (configuredSec > 0) return configuredSec
+        // -1 = Smart Auto
+        if (durationMs <= 0L) return 90
+        val durationSec = durationMs / 1000L
+        return if (durationSec <= 32 * 60) {
+            90
+        } else {
+            (durationSec * 0.10).toInt().coerceIn(180, 420)
+        }
     }
 
     @Synchronized

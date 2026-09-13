@@ -742,8 +742,15 @@ fun NextEpisodeCountdownCard(
                             tint = Color(0xFF00E5FF),
                             modifier = Modifier.size(18.dp)
                         )
+                        val countdownText = if (remainingSeconds < 60) {
+                            "Next Episode in ${remainingSeconds}s"
+                        } else {
+                            val m = remainingSeconds / 60
+                            val s = remainingSeconds % 60
+                            if (s > 0) "Next Episode in ${m}m ${s}s" else "Next Episode in ${m}m"
+                        }
                         Text(
-                            text = "Next Episode in ${remainingSeconds}s",
+                            text = countdownText,
                             color = Color(0xFF00E5FF),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
