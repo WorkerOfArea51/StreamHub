@@ -465,7 +465,7 @@ The following redundant or obsolete files were discovered during the project aud
 
 ## 10. Active Build & Version State
 
-- **Active Version**: `v4.8.308` (Build 308) — Commit `665d40c`
+- **Active Version**: `v4.8.308` (Build 308) — Commit `bdcf24b`
 - **Status**: Production Release Candidate
 - **Recent Completed Sprint**:
   - App Backgrounding, Recent Apps & Prolonged Pause Resilience (`v4.8.308` Build 308):
