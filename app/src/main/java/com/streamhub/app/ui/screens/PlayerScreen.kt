@@ -338,6 +338,16 @@ fun PlayerScreen(
         viewModel.initializePlayer(context, mediaItem, initialEpisodeIndex)
     }
 
+    // Keep screen on when playing or when keepScreenOnWhenPaused is enabled (matching mpvEx)
+    LaunchedEffect(uiState.isPlaying, playerSettings.keepScreenOnWhenPaused) {
+        val window = activity?.window
+        if (uiState.isPlaying || playerSettings.keepScreenOnWhenPaused) {
+            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
     // FIX: When the player is locked, intercept the system back button to prevent
     // accidental exit. User must unlock first (via the floating unlock pill) to leave.
     androidx.activity.compose.BackHandler(enabled = uiState.isLocked) {
@@ -641,25 +651,38 @@ fun PlayerScreen(
     }
 
     val initialBrightness = remember {
-        val windowBrightness = activity?.window?.attributes?.screenBrightness ?: -1f
-        if (windowBrightness in 0.01f..1.0f) {
-            windowBrightness * 100f
+        if (playerSettings.rememberBrightness && playerSettings.savedBrightness in 0.01f..1.0f) {
+            playerSettings.savedBrightness * 100f
         } else {
-            try {
-                val sysBrightness = android.provider.Settings.System.getInt(
-                    context.contentResolver,
-                    android.provider.Settings.System.SCREEN_BRIGHTNESS,
-                    128
-                )
-                (sysBrightness / 255f * 100f).coerceIn(5f, 100f)
-            } catch (e: Exception) {
-                50f
+            val windowBrightness = activity?.window?.attributes?.screenBrightness ?: -1f
+            if (windowBrightness in 0.01f..1.0f) {
+                windowBrightness * 100f
+            } else {
+                try {
+                    val sysBrightness = android.provider.Settings.System.getInt(
+                        context.contentResolver,
+                        android.provider.Settings.System.SCREEN_BRIGHTNESS,
+                        128
+                    )
+                    (sysBrightness / 255f * 100f).coerceIn(5f, 100f)
+                } catch (e: Exception) {
+                    50f
+                }
             }
         }
     }
 
     var currentBrightnessPercent by remember {
         mutableFloatStateOf(initialBrightness)
+    }
+
+    // Restore remembered screen brightness on start if rememberBrightness is enabled
+    LaunchedEffect(Unit) {
+        if (playerSettings.rememberBrightness && playerSettings.savedBrightness in 0.01f..1.0f) {
+            activity?.window?.attributes = activity?.window?.attributes?.apply {
+                screenBrightness = playerSettings.savedBrightness
+            }
+        }
     }
 
     // Reset window brightness override to system default when player screen is closed/disposed
@@ -1107,6 +1130,9 @@ fun PlayerScreen(
                                                     } else if (isDragging) {
                                                         if (playerSettings.volumeOnRight) {
                                                             isDraggingBrightness = false
+                                                            if (playerSettings.rememberBrightness) {
+                                                                PlayerSettingsManager.updateSavedBrightness((currentBrightnessPercent / 100f).coerceIn(0.01f, 1.0f))
+                                                            }
                                                             displayBrightnessSlider()
                                                         } else {
                                                             isDraggingVolume = false
@@ -1341,6 +1367,9 @@ fun PlayerScreen(
                                                             displayVolumeSlider()
                                                         } else {
                                                             isDraggingBrightness = false
+                                                            if (playerSettings.rememberBrightness) {
+                                                                PlayerSettingsManager.updateSavedBrightness((currentBrightnessPercent / 100f).coerceIn(0.01f, 1.0f))
+                                                            }
                                                             displayBrightnessSlider()
                                                         }
                                                     } else {
@@ -2427,6 +2456,7 @@ fun PlayerScreen(
                             durationMs = effectiveDurationMs,
                             bufferedPositionMs = playbackProgress.bufferedPositionMs,
                             onSeek = { viewModel.seekTo(it) },
+                            isPaused = !uiState.isPlaying,
                             thumbnailBitmap = scrubberThumbnailBitmap,
                             sourceUrl = uiState.resolvedStreamUrl,
                             fallbackPosterUrl = mediaItem.posterUrl

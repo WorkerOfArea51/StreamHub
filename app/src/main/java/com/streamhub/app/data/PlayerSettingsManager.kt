@@ -20,7 +20,13 @@ data class PlayerSettings(
     val ambientIntensity: Float = 0.15f, // 0.05f to 0.50f (Default: 0.15f cozy)
     val smartPrewarmEnabled: Boolean = true,
     val bingePrecacheEnabled: Boolean = true,
-    val doubleTapSeekSeconds: Int = 10 // 5s, 10s, 15s, 30s
+    val doubleTapSeekSeconds: Int = 10, // 5s, 10s, 15s, 30s
+    val seekbarStyle: SeekbarStyle = SeekbarStyle.Wavy,
+    val rememberBrightness: Boolean = false,
+    val savedBrightness: Float = -1f,
+    val autoPiPOnNavigation: Boolean = true,
+    val keepScreenOnWhenPaused: Boolean = false,
+    val volumeNormalization: Boolean = false
 )
 
 /**
@@ -47,6 +53,12 @@ object PlayerSettingsManager {
     private const val KEY_SMART_PREWARM = "smart_prewarm_enabled"
     private const val KEY_BINGE_PRECACHE = "binge_precache_enabled"
     private const val KEY_DOUBLE_TAP_SEEK = "double_tap_seek_sec"
+    private const val KEY_SEEKBAR_STYLE = "seekbar_style"
+    private const val KEY_REMEMBER_BRIGHTNESS = "remember_brightness"
+    private const val KEY_SAVED_BRIGHTNESS = "saved_brightness"
+    private const val KEY_AUTO_PIP = "auto_pip_on_navigation"
+    private const val KEY_KEEP_SCREEN_ON_PAUSED = "keep_screen_on_when_paused"
+    private const val KEY_VOLUME_NORMALIZATION = "volume_normalization"
 
     private lateinit var appContext: Context
 
@@ -73,7 +85,17 @@ object PlayerSettingsManager {
                 ambientIntensity = prefs.getFloat(KEY_AMBIENT_INTENSITY, 0.15f),
                 smartPrewarmEnabled = prefs.getBoolean(KEY_SMART_PREWARM, true),
                 bingePrecacheEnabled = prefs.getBoolean(KEY_BINGE_PRECACHE, true),
-                doubleTapSeekSeconds = prefs.getInt(KEY_DOUBLE_TAP_SEEK, 10)
+                doubleTapSeekSeconds = prefs.getInt(KEY_DOUBLE_TAP_SEEK, 10),
+                seekbarStyle = when (prefs.getString(KEY_SEEKBAR_STYLE, "WAVY")?.uppercase()) {
+                    "STANDARD" -> SeekbarStyle.Standard
+                    "THICK" -> SeekbarStyle.Thick
+                    else -> SeekbarStyle.Wavy
+                },
+                rememberBrightness = prefs.getBoolean(KEY_REMEMBER_BRIGHTNESS, false),
+                savedBrightness = prefs.getFloat(KEY_SAVED_BRIGHTNESS, -1f),
+                autoPiPOnNavigation = prefs.getBoolean(KEY_AUTO_PIP, true),
+                keepScreenOnWhenPaused = prefs.getBoolean(KEY_KEEP_SCREEN_ON_PAUSED, false),
+                volumeNormalization = prefs.getBoolean(KEY_VOLUME_NORMALIZATION, false)
             )
         } catch (e: Exception) {
             prefs.edit().clear().apply()
@@ -223,6 +245,65 @@ object PlayerSettingsManager {
         val clamped = seconds.coerceIn(5, 60)
         _settingsFlow.update { it.copy(doubleTapSeekSeconds = clamped) }
         getPrefs().edit().putInt(KEY_DOUBLE_TAP_SEEK, clamped).apply()
+    }
+
+    @Synchronized
+    fun updateSeekbarStyle(style: SeekbarStyle) {
+        if (!::appContext.isInitialized) return
+        _settingsFlow.update { it.copy(seekbarStyle = style) }
+        getPrefs().edit().putString(KEY_SEEKBAR_STYLE, style.name.uppercase()).apply()
+    }
+
+    @Synchronized
+    fun updateRememberBrightness(remember: Boolean) {
+        if (!::appContext.isInitialized) return
+        _settingsFlow.update { it.copy(rememberBrightness = remember) }
+        getPrefs().edit().putBoolean(KEY_REMEMBER_BRIGHTNESS, remember).apply()
+    }
+
+    @Synchronized
+    fun updateSavedBrightness(brightness: Float) {
+        if (!::appContext.isInitialized) return
+        _settingsFlow.update { it.copy(savedBrightness = brightness) }
+        getPrefs().edit().putFloat(KEY_SAVED_BRIGHTNESS, brightness).apply()
+    }
+
+    @Synchronized
+    fun updateAutoPiP(enabled: Boolean) {
+        if (!::appContext.isInitialized) return
+        _settingsFlow.update { it.copy(autoPiPOnNavigation = enabled) }
+        getPrefs().edit().putBoolean(KEY_AUTO_PIP, enabled).apply()
+    }
+
+    @Synchronized
+    fun updateAutoPiPOnNavigation(enabled: Boolean) = updateAutoPiP(enabled)
+
+    @Synchronized
+    fun updateAutoPlayNextEpisode(autoPlay: Boolean) {
+        if (!::appContext.isInitialized) return
+        _settingsFlow.update { it.copy(autoPlayNextEpisode = autoPlay) }
+        getPrefs().edit().putBoolean("auto_play_next", autoPlay).apply()
+    }
+
+    @Synchronized
+    fun updateKeepScreenOnWhenPaused(keep: Boolean) {
+        if (!::appContext.isInitialized) return
+        _settingsFlow.update { it.copy(keepScreenOnWhenPaused = keep) }
+        getPrefs().edit().putBoolean(KEY_KEEP_SCREEN_ON_PAUSED, keep).apply()
+    }
+
+    @Synchronized
+    fun updateVolumeNormalization(normalized: Boolean) {
+        if (!::appContext.isInitialized) return
+        _settingsFlow.update { it.copy(volumeNormalization = normalized) }
+        getPrefs().edit().putBoolean(KEY_VOLUME_NORMALIZATION, normalized).apply()
+    }
+
+    @Synchronized
+    fun updateVolumeOnRight(onRight: Boolean) {
+        if (!::appContext.isInitialized) return
+        _settingsFlow.update { it.copy(volumeOnRight = onRight) }
+        getPrefs().edit().putBoolean(KEY_VOLUME_ON_RIGHT, onRight).apply()
     }
 
     private fun getPrefs(): SharedPreferences {

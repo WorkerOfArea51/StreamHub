@@ -22,6 +22,7 @@ class VolumeBoostManager {
 
     private var loudnessEnhancer: LoudnessEnhancer? = null
     private var currentBoostPercent: Int = 0
+    private var isNormalizationEnabled: Boolean = false
 
     /**
      * Attach the LoudnessEnhancer to the player's active audio session ID.
@@ -51,12 +52,26 @@ class VolumeBoostManager {
 
     fun getBoostPercent(): Int = currentBoostPercent
 
+    /**
+     * Toggles audio dynamic range volume normalization.
+     */
+    fun setVolumeNormalization(enabled: Boolean) {
+        isNormalizationEnabled = enabled
+        applyGain(currentBoostPercent)
+    }
+
+    fun isVolumeNormalizationEnabled(): Boolean = isNormalizationEnabled
+
     private fun applyGain(percent: Int) {
         try {
             loudnessEnhancer?.let { enhancer ->
                 if (percent > 0) {
                     val gainMb = (percent.toFloat() / 100f * MAX_GAIN_MB).toInt()
                     enhancer.setTargetGain(gainMb)
+                    enhancer.enabled = true
+                } else if (isNormalizationEnabled) {
+                    // Normalization compression baseline (+3 dB) to lift quiet dialogue
+                    enhancer.setTargetGain(300)
                     enhancer.enabled = true
                 } else {
                     enhancer.enabled = false

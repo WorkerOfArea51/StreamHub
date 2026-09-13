@@ -667,17 +667,50 @@ fun StreamHubApp(
             composable(Screen.Settings.route) {
                 SettingsScreen(
                     onBackClick = { navController.popBackStack() },
+                    onNavigateToAppearance = {
+                        navController.navigate(Screen.AppearanceSettings.route)
+                    },
                     onNavigateToVideoSettings = {
                         navController.navigate(Screen.VideoSettings.route)
                     },
-                    onNavigateToStorage = {
-                        navController.navigate(Screen.StorageManagement.route)
+                    onNavigateToGestures = {
+                        navController.navigate(Screen.GestureSettings.route)
+                    },
+                    onNavigateToAudio = {
+                        navController.navigate(Screen.AudioSettings.route)
+                    },
+                    onNavigateToAdvanced = {
+                        navController.navigate(Screen.AdvancedSettings.route)
                     }
+                )
+            }
+
+            composable(Screen.AppearanceSettings.route) {
+                com.streamhub.app.ui.screens.settings.AppearancePreferencesScreen(
+                    onBackClick = { navController.popBackStack() }
                 )
             }
 
             composable(Screen.VideoSettings.route) {
                 com.streamhub.app.ui.screens.VideoSettingsScreen(
+                    onBackClick = { navController.popBackStack() }
+                )
+            }
+
+            composable(Screen.GestureSettings.route) {
+                com.streamhub.app.ui.screens.settings.GesturePreferencesScreen(
+                    onBackClick = { navController.popBackStack() }
+                )
+            }
+
+            composable(Screen.AudioSettings.route) {
+                com.streamhub.app.ui.screens.settings.AudioPreferencesScreen(
+                    onBackClick = { navController.popBackStack() }
+                )
+            }
+
+            composable(Screen.AdvancedSettings.route) {
+                com.streamhub.app.ui.screens.settings.AdvancedPreferencesScreen(
                     onBackClick = { navController.popBackStack() }
                 )
             }
@@ -727,7 +760,8 @@ fun StreamHubApp(
                 DisposableEffect(playerViewModel, activity) {
                     val collectJob = playerRouteScope.launch {
                         playerViewModel.uiState.collect { state ->
-                            activity?.updatePipAutoEnter(state.isPlaying)
+                            val autoPip = com.streamhub.app.data.PlayerSettingsManager.settingsFlow.value.autoPiPOnNavigation
+                            activity?.updatePipAutoEnter(state.isPlaying && autoPip)
                         }
                     }
                     onDispose {

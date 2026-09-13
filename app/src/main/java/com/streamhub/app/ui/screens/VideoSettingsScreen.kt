@@ -4,8 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -17,34 +17,28 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import com.streamhub.app.ui.theme.bouncyTouch
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.Gesture
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.Wifi
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.Brightness6
+import androidx.compose.material.icons.outlined.FastForward
+import androidx.compose.material.icons.outlined.PictureInPictureAlt
+import androidx.compose.material.icons.outlined.PlayCircle
+import androidx.compose.material.icons.outlined.SkipNext
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import com.streamhub.app.ui.screens.player.sheets.AmbientMoodPresets
-import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,25 +46,29 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.streamhub.app.data.DownloadSettingsManager
 import com.streamhub.app.data.PlayerSettingsManager
+import com.streamhub.app.ui.screens.player.sheets.AmbientMoodPresets
+import com.streamhub.app.ui.screens.settings.components.PreferenceCard
+import com.streamhub.app.ui.screens.settings.components.PreferenceDivider
+import com.streamhub.app.ui.screens.settings.components.PreferenceItem
+import com.streamhub.app.ui.screens.settings.components.PreferenceSectionHeader
+import com.streamhub.app.ui.screens.settings.components.PreferenceSwitchItem
 import com.streamhub.app.ui.theme.BackgroundDark
-import com.streamhub.app.ui.theme.PrimaryRed
-import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 import com.streamhub.app.ui.theme.ThemeManager
+import com.streamhub.app.ui.theme.bouncyTouch
+import kotlin.math.roundToInt
 
 /**
- * Video Settings sub-screen — contains player-specific settings that were
- * previously on the main Settings screen.
- *
- * Moved here in M3.5 to declutter the main Settings screen and group
- * player-related config together (industry-standard pattern).
- *
- * Contains:
- *   - Vertical Drag Gesture Controls (Volume / Brightness side mapping)
- *   - Next Episode Auto-Prompt Threshold
- *   - Skip Intro Duration
+ * mpvEx-parity Video Player & Engine Preferences Screen.
+ * Configures:
+ * 1. General Playback (Remember brightness, Auto-PiP, Keep screen on paused, Auto-play next).
+ * 2. Seek & Timings (Skip intro duration, Next episode outro threshold).
+ * 3. Cinema Ambient Lighting & Mood presets.
+ * 4. Stream Pre-warming & Binge Caching.
+ * 5. Offline Downloads Wi-Fi policies.
  */
 @Composable
 fun VideoSettingsScreen(
@@ -78,7 +76,7 @@ fun VideoSettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val playerSettings by PlayerSettingsManager.settingsFlow.collectAsState()
-    val downloadSettings by com.streamhub.app.data.DownloadSettingsManager.settingsFlow.collectAsState()
+    val downloadSettings by DownloadSettingsManager.settingsFlow.collectAsState()
     val currentAccent by ThemeManager.currentAccent.collectAsState()
 
     Column(
@@ -87,11 +85,11 @@ fun VideoSettingsScreen(
             .background(BackgroundDark)
             .statusBarsPadding()
     ) {
-        // Top bar
+        // Top App Bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
@@ -99,158 +97,218 @@ fun VideoSettingsScreen(
                 modifier = Modifier.bouncyTouch()
             ) {
                 Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
                     tint = TextPrimary
                 )
             }
-            Text(
-                text = "Video Player Settings",
-                color = TextPrimary,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(start = 8.dp)
-            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Column {
+                Text(
+                    text = "Player & Video Engine",
+                    color = TextPrimary,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Playback behaviors, PiP, precache & stream buffering",
+                    color = TextSecondary,
+                    fontSize = 11.sp
+                )
+            }
         }
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            contentPadding = PaddingValues(vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Vertical Drag Gesture Controls
+            // Section 1: General Playback Behaviors
             item {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, currentAccent.color.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Gesture, contentDescription = "Gestures", tint = currentAccent.color)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text("Vertical Drag Gesture Controls", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "Choose which side controls Volume & Brightness:",
-                            color = TextSecondary,
-                            fontSize = 11.sp
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
+                PreferenceSectionHeader(title = "GENERAL PLAYBACK", accentColor = currentAccent.color)
+                PreferenceCard {
+                    // Remember Brightness
+                    PreferenceSwitchItem(
+                        title = "Remember Display Brightness",
+                        subtitle = "Restore last used brightness level upon launching video player",
+                        checked = playerSettings.rememberBrightness,
+                        onCheckedChange = { PlayerSettingsManager.updateRememberBrightness(it) },
+                        icon = Icons.Outlined.Brightness6,
+                        iconTint = currentAccent.color,
+                        accentColor = currentAccent.color
+                    )
 
-                        // Default option
-                        GestureOptionCard(
-                            title = "Default",
-                            subtitle = "Right: Volume  •  Left: Brightness",
-                            isSelected = playerSettings.volumeOnRight,
-                            onClick = { PlayerSettingsManager.updateVolumeSide(true) }
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        GestureOptionCard(
-                            title = "Swapped",
-                            subtitle = "Left: Volume  •  Right: Brightness",
-                            isSelected = !playerSettings.volumeOnRight,
-                            onClick = { PlayerSettingsManager.updateVolumeSide(false) }
-                        )
-                    }
+                    PreferenceDivider()
+
+                    // Auto Picture-in-Picture
+                    PreferenceSwitchItem(
+                        title = "Auto Picture-in-Picture (PiP)",
+                        subtitle = "Seamlessly switch into floating PiP mini-player when pressing Home gesture",
+                        checked = playerSettings.autoPiPOnNavigation,
+                        onCheckedChange = { PlayerSettingsManager.updateAutoPiPOnNavigation(it) },
+                        icon = Icons.Outlined.PictureInPictureAlt,
+                        iconTint = currentAccent.color,
+                        accentColor = currentAccent.color
+                    )
+
+                    PreferenceDivider()
+
+                    // Keep Screen On When Paused
+                    PreferenceSwitchItem(
+                        title = "Keep Screen On When Paused",
+                        subtitle = "Prevent display sleep timeout even when video playback is paused",
+                        checked = playerSettings.keepScreenOnWhenPaused,
+                        onCheckedChange = { PlayerSettingsManager.updateKeepScreenOnWhenPaused(it) },
+                        icon = Icons.Outlined.Visibility,
+                        iconTint = currentAccent.color,
+                        accentColor = currentAccent.color
+                    )
+
+                    PreferenceDivider()
+
+                    // Auto-Play Next Episode
+                    PreferenceSwitchItem(
+                        title = "Auto-Play Next Episode",
+                        subtitle = "Smoothly start the next episode upon reaching the end of the current video",
+                        checked = playerSettings.autoPlayNextEpisode,
+                        onCheckedChange = { PlayerSettingsManager.updateAutoPlayNextEpisode(it) },
+                        icon = Icons.Outlined.PlayCircle,
+                        iconTint = currentAccent.color,
+                        accentColor = currentAccent.color
+                    )
                 }
             }
 
-            // Double-Tap Seek Duration
+            // Section 2: Skipping & Episode Transitions
             item {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, currentAccent.color.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
-                ) {
+                PreferenceSectionHeader(title = "SEEKING & TIMINGS", accentColor = currentAccent.color)
+                PreferenceCard {
+                    // Skip Intro Duration
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.FastForward, contentDescription = "Double-Tap Seek", tint = currentAccent.color)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text("Double-Tap Seek Duration", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(currentAccent.color.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Outlined.FastForward, contentDescription = null, tint = currentAccent.color, modifier = Modifier.size(20.dp))
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Skip Intro Duration", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                Text("Seconds to skip forward when tapping 'Skip Intro'", color = TextSecondary, fontSize = 11.sp)
+                            }
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "Seconds to skip forward or backward on double-tap:",
-                            color = TextSecondary,
-                            fontSize = 11.sp
-                        )
+
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        val seekOptions = listOf(5, 10, 15, 30)
-                        val seekLabels = listOf("5s", "10s", "15s", "30s")
-
+                        val skipOptions = listOf(60, 85, 90)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            seekOptions.forEachIndexed { index, sec ->
-                                val isSelected = playerSettings.doubleTapSeekSeconds == sec
-                                ThresholdChip(
-                                    label = seekLabels[index],
-                                    isSelected = isSelected,
-                                    onClick = { PlayerSettingsManager.updateDoubleTapSeek(sec) }
-                                )
+                            skipOptions.forEach { sec ->
+                                val isSelected = playerSettings.skipIntroSeconds == sec
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSelected) currentAccent.color else Color(0xFF14141E))
+                                        .border(if (isSelected) 0.dp else 1.dp, Color(0xFF2A2A3A), RoundedCornerShape(10.dp))
+                                        .clickable { PlayerSettingsManager.updateSkipIntro(sec) }
+                                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = "${sec}s",
+                                        color = if (isSelected) Color.White else TextSecondary,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    PreferenceDivider()
+
+                    // Next Episode Outro Threshold
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(currentAccent.color.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Outlined.SkipNext, contentDescription = null, tint = currentAccent.color, modifier = Modifier.size(20.dp))
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Next Episode Auto-Prompt", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                Text("When to prompt the Next Episode card during ending outro/credits", color = TextSecondary, fontSize = 11.sp)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        val thresholdOptions = listOf(-1, 90, 180, 300, 420, 0)
+                        val thresholdLabels = listOf("Smart Auto", "90s", "3m", "5m", "7m", "Off")
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            thresholdOptions.forEachIndexed { index, sec ->
+                                val isSelected = playerSettings.nextEpisodeThresholdSeconds == sec
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSelected) currentAccent.color else Color(0xFF14141E))
+                                        .border(if (isSelected) 0.dp else 1.dp, Color(0xFF2A2A3A), RoundedCornerShape(10.dp))
+                                        .clickable { PlayerSettingsManager.updateNextEpisodeThreshold(sec) }
+                                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = thresholdLabels[index],
+                                        color = if (isSelected) Color.White else TextSecondary,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Cinema Ambient Lighting & Moods
+            // Section 3: Cinema Ambient Lighting
             item {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, currentAccent.color.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.AutoAwesome, contentDescription = "Ambient", tint = currentAccent.color)
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text("Cinema Ambient Lighting", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            }
-                            Switch(
-                                checked = playerSettings.isAmbientEnabled,
-                                onCheckedChange = { PlayerSettingsManager.updateAmbientEnabled(it) },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = currentAccent.color,
-                                    uncheckedThumbColor = TextSecondary,
-                                    uncheckedTrackColor = Color(0xFF2A2A3A)
-                                )
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            "Atmospheric diffused cinema backlight glow tailored for eye comfort at night.",
-                            color = TextSecondary,
-                            fontSize = 11.sp
-                        )
+                PreferenceSectionHeader(title = "CINEMA AMBIENT LIGHTING", accentColor = currentAccent.color)
+                PreferenceCard {
+                    PreferenceSwitchItem(
+                        title = "Atmospheric Backlight Glow",
+                        subtitle = "Diffused cinema backlight glow tailored for eye comfort in dark rooms",
+                        checked = playerSettings.isAmbientEnabled,
+                        onCheckedChange = { PlayerSettingsManager.updateAmbientEnabled(it) },
+                        icon = Icons.Outlined.AutoAwesome,
+                        iconTint = currentAccent.color,
+                        accentColor = currentAccent.color
+                    )
 
-                        if (playerSettings.isAmbientEnabled) {
-                            Spacer(modifier = Modifier.height(14.dp))
-
-                            // Intensity Slider
+                    if (playerSettings.isAmbientEnabled) {
+                        PreferenceDivider()
+                        Column(modifier = Modifier.padding(16.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Glow Intensity", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                Text("${(playerSettings.ambientIntensity * 100).roundToInt()}%", color = currentAccent.color, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Glow Intensity", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Text("${(playerSettings.ambientIntensity * 100).roundToInt()}%", color = currentAccent.color, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
                             Slider(
                                 value = playerSettings.ambientIntensity,
@@ -265,391 +323,91 @@ fun VideoSettingsScreen(
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            // Mood Presets
-                            Text("MOOD PRESET", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(6.dp))
+                            Text("MOOD PRESET", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                            Spacer(modifier = Modifier.height(8.dp))
+
                             AmbientMoodPresets.forEach { preset ->
                                 val isSelected = playerSettings.ambientMoodId == preset.id
-                                GestureOptionCard(
-                                    title = preset.title,
-                                    subtitle = preset.subtitle,
-                                    isSelected = isSelected,
-                                    onClick = {
-                                        PlayerSettingsManager.updateAmbientMood(preset.id)
-                                        PlayerSettingsManager.updateAmbientIntensity(preset.defaultIntensity)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 3.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSelected) currentAccent.color.copy(alpha = 0.18f) else Color(0xFF14141E))
+                                        .border(if (isSelected) 1.dp else 0.dp, currentAccent.color, RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            PlayerSettingsManager.updateAmbientMood(preset.id)
+                                            PlayerSettingsManager.updateAmbientIntensity(preset.defaultIntensity)
+                                        }
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(preset.title, color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                        Text(preset.subtitle, color = TextSecondary, fontSize = 11.sp)
                                     }
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Next Episode Auto-Prompt Threshold
+            // Section 4: Stream Pre-Loading & Binge Pre-Caching
             item {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, currentAccent.color.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.SkipNext, contentDescription = "Next Ep", tint = currentAccent.color)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text("Next Episode Auto-Prompt", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "When to prompt the Next Episode card during ending outro/credits:",
-                            color = TextSecondary,
-                            fontSize = 11.sp
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
+                PreferenceSectionHeader(title = "STREAM PRE-LOADING & BINGE CACHING", accentColor = currentAccent.color)
+                PreferenceCard {
+                    PreferenceSwitchItem(
+                        title = "Smart Details Pre-Warming (2 MB)",
+                        subtitle = "Speculatively warms video container headers while browsing details for instant playback startup",
+                        checked = playerSettings.smartPrewarmEnabled,
+                        onCheckedChange = { PlayerSettingsManager.updateSmartPrewarmEnabled(it) },
+                        icon = Icons.Outlined.Bolt,
+                        iconTint = currentAccent.color,
+                        accentColor = currentAccent.color
+                    )
 
-                        val thresholdOptions = listOf(-1, 90, 180, 300, 420, 0)
-                        val thresholdLabels = listOf("Smart Auto", "90s", "3m", "5m", "7m", "Off")
+                    PreferenceDivider()
 
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            thresholdOptions.forEachIndexed { index, sec ->
-                                val isSelected = playerSettings.nextEpisodeThresholdSeconds == sec
-                                ThresholdChip(
-                                    label = thresholdLabels[index],
-                                    isSelected = isSelected,
-                                    onClick = { PlayerSettingsManager.updateNextEpisodeThreshold(sec) }
-                                )
-                            }
-                        }
-                    }
+                    PreferenceSwitchItem(
+                        title = "Binge Pre-Caching (Episode N+1)",
+                        subtitle = "Pre-buffers 25 MB of the next episode into disk cache when buffer is healthy for 0-second episode transitions",
+                        checked = playerSettings.bingePrecacheEnabled,
+                        onCheckedChange = { PlayerSettingsManager.updateBingePrecacheEnabled(it) },
+                        icon = Icons.Outlined.Bolt,
+                        iconTint = currentAccent.color,
+                        accentColor = currentAccent.color
+                    )
                 }
             }
 
-            // Skip Intro Duration
+            // Section 5: Offline Downloads & Wi-Fi Policies
             item {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, currentAccent.color.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.FastForward, contentDescription = "Skip Intro", tint = currentAccent.color)
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text("Skip Intro Duration", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "Seconds to fast-forward when tapping 'Skip Intro':",
-                            color = TextSecondary,
-                            fontSize = 11.sp
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
+                PreferenceSectionHeader(title = "OFFLINE DOWNLOADS & NETWORK", accentColor = currentAccent.color)
+                PreferenceCard {
+                    PreferenceSwitchItem(
+                        title = "Auto-Resume on Wi-Fi",
+                        subtitle = "Automatically resume pending and paused downloads whenever connected to Wi-Fi",
+                        checked = downloadSettings.autoResumeOnWifi,
+                        onCheckedChange = { DownloadSettingsManager.updateAutoResumeOnWifi(it) },
+                        icon = Icons.Outlined.Wifi,
+                        iconTint = currentAccent.color,
+                        accentColor = currentAccent.color
+                    )
 
-                        val skipIntroOptions = listOf(90, 85, 60)
-                        val skipIntroLabels = listOf("90s", "85s", "60s")
+                    PreferenceDivider()
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            skipIntroOptions.forEachIndexed { index, sec ->
-                                val isSelected = playerSettings.skipIntroSeconds == sec
-                                ThresholdChip(
-                                    label = skipIntroLabels[index],
-                                    isSelected = isSelected,
-                                    onClick = { PlayerSettingsManager.updateSkipIntro(sec) }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── Section 3.5: Stream Pre-Loading & Binge Caching ──
-            item {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, currentAccent.color.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Bolt,
-                                contentDescription = "Preload & Binge Caching",
-                                tint = currentAccent.color
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "Stream Pre-Loading & Binge Caching",
-                                color = TextPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Eliminates initial server delay and enables instant transitions.",
-                            color = TextSecondary,
-                            fontSize = 11.sp
-                        )
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Toggle 1: Smart Details Pre-Warming
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF1C1C26))
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Smart Details Pre-Warming (2 MB)",
-                                    color = TextPrimary,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "Speculatively warms video container headers while browsing details for instant play.",
-                                    color = TextSecondary,
-                                    fontSize = 11.sp
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Switch(
-                                checked = playerSettings.smartPrewarmEnabled,
-                                onCheckedChange = { PlayerSettingsManager.updateSmartPrewarmEnabled(it) },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = currentAccent.color,
-                                    uncheckedThumbColor = TextSecondary,
-                                    uncheckedTrackColor = Color(0xFF2A2A38)
-                                )
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Toggle 2: Binge Pre-Caching
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF1C1C26))
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Binge Pre-Caching (Episode N+1)",
-                                    color = TextPrimary,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "Pre-buffers 25 MB of next episode into disk cache for zero-second episode transitions.",
-                                    color = TextSecondary,
-                                    fontSize = 11.sp
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Switch(
-                                checked = playerSettings.bingePrecacheEnabled,
-                                onCheckedChange = { PlayerSettingsManager.updateBingePrecacheEnabled(it) },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = currentAccent.color,
-                                    uncheckedThumbColor = TextSecondary,
-                                    uncheckedTrackColor = Color(0xFF2A2A38)
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-
-            // ── Section 4: Offline Downloads & Network Auto-Recovery ──
-            item {
-                Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Wifi,
-                                contentDescription = null,
-                                tint = currentAccent.color,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Offline Downloads & Network",
-                                color = TextPrimary,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Toggle 1: Auto-Resume on Wi-Fi Recovery
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF1C1C26))
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Auto-Resume on Wi-Fi",
-                                    color = TextPrimary,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "Automatically resume pending and paused downloads whenever connected to Wi-Fi",
-                                    color = TextSecondary,
-                                    fontSize = 11.sp
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Switch(
-                                checked = downloadSettings.autoResumeOnWifi,
-                                onCheckedChange = { com.streamhub.app.data.DownloadSettingsManager.updateAutoResumeOnWifi(it) },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = currentAccent.color,
-                                    uncheckedThumbColor = TextSecondary,
-                                    uncheckedTrackColor = Color(0xFF2A2A3A)
-                                )
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Toggle 2: Download Over Wi-Fi Only
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF1C1C26))
-                                .padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Download Over Wi-Fi Only",
-                                    color = TextPrimary,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "Pause active downloads when switching to cellular data to protect your mobile data quota",
-                                    color = TextSecondary,
-                                    fontSize = 11.sp
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Switch(
-                                checked = downloadSettings.downloadOverWifiOnly,
-                                onCheckedChange = { com.streamhub.app.data.DownloadSettingsManager.updateDownloadOverWifiOnly(it) },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = currentAccent.color,
-                                    uncheckedThumbColor = TextSecondary,
-                                    uncheckedTrackColor = Color(0xFF2A2A3A)
-                                )
-                            )
-                        }
-                    }
+                    PreferenceSwitchItem(
+                        title = "Download Over Wi-Fi Only",
+                        subtitle = "Pause active downloads when switching to cellular data to protect mobile data quotas",
+                        checked = downloadSettings.downloadOverWifiOnly,
+                        onCheckedChange = { DownloadSettingsManager.updateDownloadOverWifiOnly(it) },
+                        icon = Icons.Outlined.Wifi,
+                        iconTint = currentAccent.color,
+                        accentColor = currentAccent.color
+                    )
                 }
             }
         }
     }
-}
-
-@Composable
-private fun GestureOptionCard(
-    title: String,
-    subtitle: String,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    val accentColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (isSelected) accentColor.copy(alpha = 0.2f) else Color(0xFF1C1C26))
-            .border(
-                width = if (isSelected) 1.dp else 0.dp,
-                color = if (isSelected) accentColor else Color.Transparent,
-                shape = RoundedCornerShape(8.dp)
-            )
-            .clickable { onClick() }
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RadioButton(
-            selected = isSelected,
-            onClick = onClick,
-            colors = RadioButtonDefaults.colors(
-                selectedColor = accentColor,
-                unselectedColor = TextSecondary
-            )
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Column {
-            Text(title, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            Text(subtitle, color = TextSecondary, fontSize = 11.sp)
-        }
-    }
-}
-
-@Composable
-private fun ThresholdChip(
-    label: String,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    val accentColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
-    val backgroundColor = if (isSelected) accentColor else Color(0xFF1C1C26)
-    val textColor = if (isSelected) Color.White else TextSecondary
-
-    Text(
-        text = label,
-        color = textColor,
-        fontSize = 12.sp,
-        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(backgroundColor)
-            .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 8.dp)
-    )
 }

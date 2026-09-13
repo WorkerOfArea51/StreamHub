@@ -117,4 +117,17 @@ object HomeScreenLayoutManager {
     fun setSortOrder(order: CatalogSortOrder) {
         updateConfig(_layoutConfig.value.copy(catalogSortOrder = order))
     }
+
+    fun updateHeroCarousel(enabled: Boolean) = updateConfig(_layoutConfig.value.copy(showHeroCarousel = enabled))
+    fun updateContinueWatching(enabled: Boolean) = updateConfig(_layoutConfig.value.copy(showContinueWatching = enabled))
+    fun updateContinueWatchingFirst(enabled: Boolean) = updateConfig(_layoutConfig.value.copy(continueWatchingFirst = enabled))
+    fun updateTrendingSection(enabled: Boolean) = updateConfig(_layoutConfig.value.copy(showTrendingSection = enabled))
+    fun updateTrending(enabled: Boolean) = updateTrendingSection(enabled)
+    fun updateCategoryShelves(enabled: Boolean) = updateConfig(_layoutConfig.value.copy(showCategoryShelves = enabled))
+    fun updateMicroGenres(enabled: Boolean) = updateConfig(_layoutConfig.value.copy(showMicroGenreShelves = enabled))
+    fun updateAnime(enabled: Boolean) = updateConfig(_layoutConfig.value.copy(showAnimeSection = enabled))
+    fun updateMovies(enabled: Boolean) = updateConfig(_layoutConfig.value.copy(showMoviesSection = enabled))
+    fun updateRecentlyAdded(enabled: Boolean) = updateConfig(_layoutConfig.value.copy(showRecentlyAdded = enabled))
+    fun updateBecauseYouWatched(enabled: Boolean) = updateConfig(_layoutConfig.value.copy(showBecauseYouWatched = enabled))
+    fun updateSortOrder(order: CatalogSortOrder) = setSortOrder(order)
 }

@@ -267,8 +267,10 @@ app/src/main/java/com/streamhub/app/
 │   ├── MyListManager.kt                 # Bookmarked titles / favorites persistence
 │   ├── NewPipeDownloader.kt             # OkHttp client bridge for NewPipe extractor
 │   ├── NotificationAlertManager.kt      # Push alerts for new episodes & admin notices
-│   ├── PlayerSettingsManager.kt         # Skip intro, next-ep threshold, ambient, volume side
+│   ├── PlayerSettingsManager.kt         # Skip intro, next-ep threshold, ambient, volume side, seekbar style
 │   ├── SearchHistoryManager.kt          # Recent search queries persistence
+│   ├── SeekbarStyle.kt                  # Standard, Wavy (sinusoidal), Thick seekbar styles enum
+│   ├── SettingsBackupManager.kt         # SAF 1-tap JSON settings backup & restore manager
 │   ├── SpeedTestManager.kt              # Network latency and download speed tester
 │   ├── StorageCacheManager.kt           # Disk cache calculation and LRU purge
 │   ├── StreamBackendConfig.kt           # Serv00 backend streaming host configuration
@@ -388,10 +390,16 @@ app/src/main/java/com/streamhub/app/
     │   │       └── MpvVideoZoomSheet.kt # Custom video zoom & aspect ratio picker
     │   │
     │   └── settings/
-    │       ├── LayoutSettingsCards.kt   # Home layout & subtitle appearance cards
-    │       ├── PathSettingsCards.kt     # Serv00 backend URL cards
-    │       ├── SettingsMiscCards.kt     # Network speed test & developer tools
-    │       └── ThemeSettingsCards.kt    # Theme selection & notification alert toggles
+    │       ├── AdvancedPreferencesScreen.kt   # SAF backup/restore, speed test & updates
+    │       ├── AppearancePreferencesScreen.kt # Theme picker, seekbar style preview & home layout
+    │       ├── AudioPreferencesScreen.kt      # Volume normalization & loudness boost
+    │       ├── GesturePreferencesScreen.kt    # Volume/brightness sides swap & seek steps
+    │       ├── LayoutSettingsCards.kt         # Home layout & subtitle appearance cards
+    │       ├── PathSettingsCards.kt           # Serv00 backend URL cards
+    │       ├── SettingsMiscCards.kt           # Network speed test & developer tools
+    │       ├── ThemeSettingsCards.kt          # Theme selection & notification alert toggles
+    │       └── components/
+    │           └── CardPreferences.kt         # mpvEx grouped card preference components
     │
     └── theme/
         ├── Color.kt                     # StreamHub cinema dark color palette
@@ -479,9 +487,20 @@ The following redundant or obsolete files were discovered during the project aud
 
 ## 10. Active Build & Version State
 
-- **Active Version**: `v4.8.310` (Build 310) — Commit `36e0a15`
+- **Active Version**: `v4.8.311` (Build 311)
 - **Status**: Production Release Candidate
 - **Recent Completed Sprint**:
+  - mpvEx 1:1 Preferences Refactor & Feature Parity (`v4.8.311` Build 311):
+    - Completely restructured Settings & Preferences into mpvEx 1:1 grouped card architecture (`PreferenceCard`, `PreferenceItem`, `PreferenceSwitchItem`, `PreferenceRadioItem`, `PreferenceDivider`, `PreferenceSectionHeader`) with full-width search pill (`PreferenceSearchBox`) supporting real-time in-page query filtering across all settings.
+    - Added 5 structured modular sub-screens: `AppearancePreferencesScreen` (Theme accent picker, live seekbar style preview, home layout toggles), `VideoSettingsScreen` (General playback, skip intro, auto-prompt outro threshold, ambient glow, precache), `GesturePreferencesScreen` (Volume/brightness side swap, double-tap seek step duration, touch gestures guide), `AudioPreferencesScreen` (Volume normalization, loudness boost, audio delay sync), `AdvancedPreferencesScreen` (1-tap SAF JSON backup & restore, speed test, notifications, app updates).
+    - Enforced strict Single Source of Truth & Zero Duplication: Storage & Cache Management and System About remain exclusively on `ProfileScreen` (`StorageManagementScreen` and `AboutScreen`), completely omitted from Settings.
+    - Integrated mpvEx's exact `SquigglySeekbar` sinusoidal wave engine (`MpvSeekbar.kt`, `SeekbarStyle.kt`) with `waveLength = 80f`, `amplitude = 6f`, `phaseSpeed = 10f`, smooth dynamic flattening when paused/scrubbing, `Standard` track, and `Thick` modern pill track with tap-to-invert countdown timer (`-MM:SS` / `MM:SS`) and dynamic cinema theme coloring.
+    - Added `rememberBrightness` toggle in `PlayerSettingsManager` and `PlayerScreen.kt`: automatically restores `savedBrightness` upon opening video player and saves brightness percentage on drag release.
+    - Added `keepScreenOnWhenPaused` toggle in `PlayerSettingsManager` and `PlayerScreen.kt`: dynamically keeps `FLAG_KEEP_SCREEN_ON` active when paused if enabled by the user.
+    - Added `autoPiPOnNavigation` toggle in `PlayerSettingsManager` and `MainActivity.kt`: guards `updatePipAutoEnter()` on Home gesture.
+    - Added `volumeOnRight` / Swap Sliders preference in `PlayerSettingsManager` and `GesturePreferencesScreen.kt`: seamlessly flips left/right side mapping for vertical drag sliders and touch detection zones.
+    - Added `volumeNormalization` toggle in `PlayerSettingsManager` and `VolumeBoostManager.kt`: applies dynamic range compression (+3dB baseline boost) to level dialogue and soften loud sound effects.
+    - Added `SettingsBackupManager.kt`: 1-tap JSON export and import of all user preferences (theme, player timings, seek steps, skip durations, layout toggles) via Android Storage Access Framework (SAF).
   - Persistent Audio & Subtitle Track Memory (`v4.8.310` Build 310):
     - Resolved annoying bug where closing the player, returning from Recent Apps, or launching from Continue Watching wiped user's chosen audio and subtitle tracks, reverting audio to container track 0 and subtitles to "Off".
     - Created `TrackPreferenceManager` backed by `SharedPreferences` persisting user-selected audio track label + language and subtitle track label + language per `mediaId`, plus global last-used language fallbacks.
