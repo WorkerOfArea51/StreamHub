@@ -201,6 +201,23 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
     - **Smart Label & Language Code Matching**: On episode load (`updateAvailableTracks`), matches saved preferences via exact label, ISO language codes (`"ja"`, `"en"`), or cleaned track names. Ensures seamless continuity even if subsequent episodes use different audio codecs (e.g. AAC vs Opus) or formatting.
     - **Explicit "Off" Respect**: Remembers if the user turned subtitles Off so they remain Off across sessions without unwanted reactivation.
     - **Zero-Footprint Storage with LRU Auto-Prune**: Hard-caps stored track preferences to 500 recent media entries with timestamp-based auto-pruning. Enforces a strict maximum disk footprint of $< 25\text{ KB}$ (0.025 MB), guaranteeing zero device storage impact over years of use.
+33. **mpvEx 1:1 Preferences & Feature Parity (`SettingsScreen.kt`, `PlayerSettingsManager.kt`, `SettingsBackupManager.kt`, `ui/screens/settings/`)**:
+    - **Grouped Category Cards with Search**: Clean mpvEx-parity settings menu with prominent search bar filtering through categories and individual settings in real-time.
+    - **Modular Preference Sub-Screens**:
+      - `AppearancePreferencesScreen`: Dynamic accent themes, AMOLED pure black mode, seekbar styles.
+      - `VideoPreferencesScreen`: Skip intro duration, smart auto outro threshold, keep screen on when paused, auto-play next episode.
+      - `GesturesPreferencesScreen`: Hold-to-2x fast-forward toggle, pinch-to-zoom toggle, swap volume & brightness sliders, double-tap seek step.
+      - `AudioPreferencesScreen`: Volume normalization toggle (+3dB dynamic range compression), hardware volume boost up to 200%, remember audio volume across sessions.
+      - `AdvancedPreferencesScreen`: 1-click Storage analyzer/cleaner navigation, Network Speed Test, and 1-tap JSON Backup & Restore.
+    - **3 Seekbar Styles**: Standard, Wavy (sinusoidal animated wave), and Thick pill with live in-settings preview.
+    - **Tap-to-Invert Seekbar Countdown**: 1-tap on remaining time toggles between negative remaining time (`-MM:SS`) and positive total time (`MM:SS`).
+    - **Remember Display Brightness**: Persists screen brightness level across player sessions with seamless drag-release save and automatic restoration.
+    - **Auto Picture-in-Picture (PiP) Toggle**: User control over whether Home gesture automatically transitions active playback into floating PiP.
+    - **Keep Screen On When Paused**: Optional toggle preventing device screen from dimming/sleeping while playback is paused.
+    - **Swap Volume and Brightness Sliders**: Allows inverting the 3-zone gesture layout (Right zone = Brightness, Left zone = Volume).
+    - **Volume Normalization**: Dynamic range compression balancing loud action peaks and quiet dialogues.
+    - **1-Click SAF JSON Backup & Restore**: Full export and import of all user preferences, watch history, and custom settings via Android Storage Access Framework with timestamped filenames (`streamhub_settings_backup_YYYYMMDD_HHmmss.json`).
+    - **Strict Zero Duplication**: Storage Management and About/System Info remain strictly hosted on the Profile screen, eliminating redundant cards.
 
 ### B. UI, Catalogue & Navigation (`ui/screens/`, `ui/components/`)
 1. **SplashScreen**:
@@ -487,7 +504,7 @@ The following redundant or obsolete files were discovered during the project aud
 
 ## 10. Active Build & Version State
 
-- **Active Version**: `v4.8.311` (Build 311)
+- **Active Version**: `v4.8.311` (Build 311 - Commit `ce9c783`)
 - **Status**: Production Release Candidate
 - **Recent Completed Sprint**:
   - mpvEx 1:1 Preferences Refactor & Feature Parity (`v4.8.311` Build 311):
@@ -501,6 +518,7 @@ The following redundant or obsolete files were discovered during the project aud
     - Added `volumeOnRight` / Swap Sliders preference in `PlayerSettingsManager` and `GesturePreferencesScreen.kt`: seamlessly flips left/right side mapping for vertical drag sliders and touch detection zones.
     - Added `volumeNormalization` toggle in `PlayerSettingsManager` and `VolumeBoostManager.kt`: applies dynamic range compression (+3dB baseline boost) to level dialogue and soften loud sound effects.
     - Added `SettingsBackupManager.kt`: 1-tap JSON export and import of all user preferences (theme, player timings, seek steps, skip durations, layout toggles) via Android Storage Access Framework (SAF).
+    - Updated `README.md` feature table and added complete forking guide covering Firebase & Supabase backend options, TMDB/MAL metadata API keys, cryptographic SHA-256 password security (`AdminManager.kt` & `AccessGateManager.kt`), branding personalization, and GitHub Actions CI/CD.
   - Persistent Audio & Subtitle Track Memory (`v4.8.310` Build 310):
     - Resolved annoying bug where closing the player, returning from Recent Apps, or launching from Continue Watching wiped user's chosen audio and subtitle tracks, reverting audio to container track 0 and subtitles to "Off".
     - Created `TrackPreferenceManager` backed by `SharedPreferences` persisting user-selected audio track label + language and subtitle track label + language per `mediaId`, plus global last-used language fallbacks.

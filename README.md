@@ -34,11 +34,11 @@ Engineered from the ground up for low latency, zero-login instant playback, aggr
 | **⚡ Turbo HTTP Progressive Engine** | Sub-second playback initialization with byte-range requests and automatic multi-gigabyte disk caching (`SimpleCache`). |
 | **🍿 Slate Glassmorphism UI** | Netflix & Crunchyroll inspired Jetpack Compose interface with Hero Carousels, fluid category pills, and dynamic ambient glows. |
 | **🎬 Multi-Arc Story Hub** | Dedicated Arc-Level episode manager with automatic missing episode gap detection, 1-click F2L REST batch importer, and snippet insertion. |
-| **🎧 Dual-Audio & Subtitle Master** | Embedded MKV multi-audio track switcher, external/internal subtitle track selector, and custom audio booster. |
-| **📺 Advanced Player HUD** | Double-tap to seek, pinch-to-zoom (`Fit`, `Crop`, `Stretch`, `Fill`), speed controls (`0.5x` - `2.0x`), background audio service, and PiP (Picture-in-Picture). |
+| **🎧 Dual-Audio & Subtitle Master** | Embedded MKV multi-audio track switcher, subtitle track selector with audio/sub delay sync, and ASS/SSA anime typography styling. |
+| **📺 Advanced Player HUD** | Fluid seekbar with chapter markers, 3-zone swipe gestures (brightness, volume boost up to 200%), hold-to-2x, pinch-to-zoom, and Picture-in-Picture. |
 | **🏷️ Real-time MediaInfo Badges** | Dynamic resolution and codec badges (`4K UHD`, `1080p FHD`, `x264/AVC`, `HEVC/x265`, `Dual Audio`, `ESub`, `File Size`). |
 | **📥 Background Download Manager** | Multi-threaded offline file downloads with progress notifications and local playback support. |
-| **🎨 7 Dynamic Accent Themes** | Crimson Red, Cyberpunk Purple, Neon Green, Oceanic Cyan, Electric Blue, Sunset Orange, and Gold with persistent memory. |
+| **🎨 Dynamic Theming & Preferences** | 7 accent themes (AMOLED dark mode), structured preferences, volume normalization, and 1-click JSON Backup & Restore. |
 | **🔒 VIP Access Gate & Admin Studio** | Private community gate on launch with secret 5-tap gesture unlock for Creator Studio in-app publishing. |
 
 ---
@@ -101,6 +101,76 @@ If you enjoy StreamHub and want to support high-speed streaming nodes, server ho
   ```
 
 > 💬 Or reach out on Telegram [@Londe_Lapate](https://t.me/Londe_Lapate) for sponsorship or alternative payment methods.
+
+---
+
+## 🍴 Forking & Creating Your Own Custom App
+
+StreamHub is designed so anyone can fork the repository and launch their own customized media streaming app. Follow these steps to configure your fork:
+
+### 1. Database Setup (Firebase & Supabase)
+- **Firebase Cloud Firestore (Default & Out-of-the-Box)**:
+  1. Create a free project on the [Firebase Console](https://console.firebase.google.com/).
+  2. Add an Android app with your package name (e.g. `com.streamhub.app`).
+  3. Enable **Cloud Firestore** in test or production mode.
+  4. Download `google-services.json` and place it inside the `app/` folder:
+     ```text
+     StreamHub/app/google-services.json
+     ```
+- **Supabase (Alternative Backend)**:
+  - If you prefer to use **Supabase** instead of Firebase, you can implement a custom repository adapter in `app/.../data/repository/` to map your tables.
+  - Alternatively, feel free to open a [GitHub Issue](https://github.com/WorkerOfArea51/StreamHub/issues) to request official out-of-the-box Supabase integration!
+
+### 2. Configure API Keys (`local.properties`)
+Create or edit `local.properties` in the root directory with your free metadata API keys:
+```properties
+# Free API key from https://www.themoviedb.org/settings/api (For movies & TV series metadata & posters)
+streamhub.tmdb_api_key=YOUR_TMDB_API_KEY
+
+# Free Client ID from https://myanimelist.net/apiconfig (For anime metadata & posters)
+streamhub.mal_client_id=YOUR_MAL_CLIENT_ID
+```
+
+### 3. Set Your Admin & VIP Passwords (SHA-256 Security)
+StreamHub uses cryptographic one-way **SHA-256 hashing** in code so that plaintext passwords are never stored in GitHub Secrets or exposed in the compiled APK binary.
+
+1. **Generate the SHA-256 hash** for your desired password or PIN:
+   - **Linux / macOS**:
+     ```bash
+     echo -n "YourSecretPassword" | sha256sum
+     ```
+   - **Windows PowerShell**:
+     ```powershell
+     [BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes("YourSecretPassword"))).Replace("-","").ToLower()
+     ```
+   - Or use any online SHA-256 calculator.
+
+2. **Update the code hashes**:
+   - **Creator Studio Admin Password** (`app/src/main/java/com/streamhub/app/data/AdminManager.kt`):
+     ```kotlin
+     const val MASTER_PASSWORD_SHA256 = "your_generated_sha256_hash_here"
+     ```
+   - **Community / Friends VIP Access Code** (`app/src/main/java/com/streamhub/app/data/AccessGateManager.kt`):
+     ```kotlin
+     private const val VIP_PERMANENT_CODE_SHA256 = "your_generated_sha256_hash_here"
+     ```
+
+### 4. Personalize App Branding
+- **App Name**: Change `<string name="app_name">` in `app/src/main/res/values/strings.xml`.
+- **Package ID**: Change `applicationId` in `app/build.gradle.kts`.
+- **App Icons**: Replace launcher icons in `app/src/main/res/mipmap-*/`.
+
+### 5. Automated CI/CD Releases via GitHub Actions (Optional)
+If you want your fork to automatically build signed release APKs on push:
+1. In your fork, navigate to **Settings > Secrets and variables > Actions**.
+2. Add the following repository secrets:
+   - `FIREBASE_GOOGLE_SERVICES_JSON`: Base64 encoded string or raw content of `google-services.json`
+   - `RELEASE_KEYSTORE_BASE64`: Base64 encoded `.jks` or `.keystore` file
+   - `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`: Keystore signing credentials
+   - `STREAMHUB_TMDB_API_KEY`: Your TMDB API key
+   - `STREAMHUB_MAL_CLIENT_ID`: Your MyAnimeList Client ID
+
+*(Notice: No admin password secret is needed in GitHub Actions — authentication is handled securely via SHA-256 in code).*
 
 ---
 
