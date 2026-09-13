@@ -23,6 +23,7 @@ object TrackPreferenceManager {
     private const val TAG = "TrackPreferenceManager"
     private const val PREFS_NAME = "streamhub_track_preferences"
 
+    private const val MAX_TRACK_ENTRIES = 500
     private const val KEY_PREFIX_AUDIO = "audio_pref_"
     private const val KEY_PREFIX_SUBTITLE = "sub_pref_"
     private const val KEY_GLOBAL_AUDIO_LANG = "global_audio_lang"
@@ -54,6 +55,7 @@ object TrackPreferenceManager {
             if (!languageCode.isNullOrBlank() && languageCode != "und") {
                 editor.putString(KEY_GLOBAL_AUDIO_LANG, encodePreference(trackLabel, languageCode))
             }
+            pruneOldEntriesIfNeeded(editor, p)
             editor.apply()
             Log.d(TAG, "Saved audio preference for '$mediaId': label='$trackLabel', lang='$languageCode'")
         } catch (e: Exception) {
@@ -72,6 +74,7 @@ object TrackPreferenceManager {
             }
             // If explicitly turned Off or selected a valid language, remember it globally
             editor.putString(KEY_GLOBAL_SUBTITLE_LANG, encoded)
+            pruneOldEntriesIfNeeded(editor, p)
             editor.apply()
             Log.d(TAG, "Saved subtitle preference for '$mediaId': label='$trackLabel', lang='$languageCode'")
         } catch (e: Exception) {
@@ -105,8 +108,29 @@ object TrackPreferenceManager {
         return if (!global.isNullOrBlank()) decodePreference(global) else null
     }
 
-    private fun encodePreference(label: String, lang: String?): String {
-        return "$label$DELIMITER${lang.orEmpty()}"
+    private fun pruneOldEntriesIfNeeded(editor: SharedPreferences.Editor, p: SharedPreferences) {
+        val allKeys = p.all.keys.filter { it.startsWith(KEY_PREFIX_AUDIO) || it.startsWith(KEY_PREFIX_SUBTITLE) }
+        if (allKeys.size > MAX_TRACK_ENTRIES) {
+            // Prune oldest entries based on timestamp to keep storage strictly under 25 KB
+            val parsed = allKeys.mapNotNull { key ->
+                val raw = p.getString(key, null) ?: return@mapNotNull null
+                val parts = raw.split(DELIMITER)
+                val time = parts.getOrNull(2)?.toLongOrNull() ?: 0L
+                key to time
+            }.sortedBy { it.second }
+
+            val toRemoveCount = allKeys.size - (MAX_TRACK_ENTRIES - 50)
+            if (toRemoveCount > 0) {
+                parsed.take(toRemoveCount).forEach { (key, _) ->
+                    editor.remove(key)
+                }
+                Log.d(TAG, "Pruned $toRemoveCount old track preference entries to maintain strict storage limits")
+            }
+        }
+    }
+
+    private fun encodePreference(label: String, lang: String?, timestamp: Long = System.currentTimeMillis()): String {
+        return "$label$DELIMITER${lang.orEmpty()}$DELIMITER$timestamp"
     }
 
     private fun decodePreference(raw: String): SavedTrackPreference? {

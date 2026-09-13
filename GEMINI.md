@@ -200,6 +200,7 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
     - **Survives App Restarts, Recent Apps & Continue Watching**: Permanently eliminates the bug where returning from Recent Apps or reopening an anime/series from Continue Watching wiped user choices and forced audio back to container track 0 and subtitles to "Off".
     - **Smart Label & Language Code Matching**: On episode load (`updateAvailableTracks`), matches saved preferences via exact label, ISO language codes (`"ja"`, `"en"`), or cleaned track names. Ensures seamless continuity even if subsequent episodes use different audio codecs (e.g. AAC vs Opus) or formatting.
     - **Explicit "Off" Respect**: Remembers if the user turned subtitles Off so they remain Off across sessions without unwanted reactivation.
+    - **Zero-Footprint Storage with LRU Auto-Prune**: Hard-caps stored track preferences to 500 recent media entries with timestamp-based auto-pruning. Enforces a strict maximum disk footprint of $< 25\text{ KB}$ (0.025 MB), guaranteeing zero device storage impact over years of use.
 
 ### B. UI, Catalogue & Navigation (`ui/screens/`, `ui/components/`)
 1. **SplashScreen**:
