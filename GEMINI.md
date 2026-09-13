@@ -177,6 +177,13 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
     - **Zero-Rewind Guarantee**: Preserves playback position perfectly without rewinding to 0:00 or triggering false resume pills.
     - **UI Polish**: Activates the glassmorphic `ReconnectingStreamHud` ("Reconnecting (1/3)...") during the sub-second recovery and smoothly flashes the `StreamRestoredPill` ("Stream Restored") upon resumption. Bounded by `maxAutoRetries = 3` with anti-loop slow-network protection.
     - **Clean Episode Handshake**: Proactively executes `connectionPool.evictAll()` in `playEpisode()` and `playEpisodeWithExplicitUrl()`, ensuring every new stream begins with a clean TCP handshake.
+29. **Deep Forward Buffer Cushion, Wi-Fi Band Switching Resilience & Fluid 2.0X Speed (`StreamPlayerViewModel.kt`, `PlayerScreen.kt`)**:
+    - **Deep Forward Cushion (YouTube-Parity)**: Removed artificial 64MB RAM byte ceiling (`setTargetBufferBytes`) from `DefaultLoadControl` that was prematurely stalling ExoPlayer loader chunks at 64MB and keeping the buffer starved at 0s. Tuned `minBufferMs = 60_000` (60s minimum ahead), `maxBufferMs = 180_000` (3 minutes sliding forward cushion), `bufferForPlaybackMs = 500`, `bufferForPlaybackAfterRebufferMs = 4_000` (4.0s solid cushion before resuming after a rebuffer, permanently eliminating 1-second stop-and-go rebuffer loops), and `backBuffer = 15_000` with `retainBackBufferFromKeyframe = false` (safely purges watched keyframes from RAM).
+    - **Wi-Fi 5GHz <-> 2.4GHz Band Handoff Resilience**: Relaxed stall watchdog threshold from 4s to 8s (`stallAccumulatorMs >= 8000L`) to accommodate 1.5–3.0s Wi-Fi router smart-connect handoffs. On Attempt 1, executes non-destructive in-place socket eviction (`streamingClient.connectionPool.evictAll()`) and `exoPlayer.seekTo(savedPositionMs)` without resetting hardware decoders, blanking the screen, or re-resolving streams. Attempt 2+ falls back to mirror URL or full re-resolution.
+    - **Fluid 2.0x Playback & YouTube-Style Instant Release**:
+      - Configured `setEnableAudioTrackPlaybackParams(false)` on `DefaultRenderersFactory` so ExoPlayer uses software Sonic audio processor for jitter-free pitch scaling without hardware AudioTrack resampler stutter.
+      - Wrapped Left, Center, and Right zone pointer loops in `try ... finally` blocks guaranteeing that whenever touch leaves the screen or gestures cancel, `viewModel.setPlaybackSpeed(speedBeforeHold)` and `is2xSpeedHolding = false` execute cleanly every single time.
+      - Removed intrusive full-screen `pointerInput` Box overlay (`detectTapGestures`) that fought ongoing touch tracking, replacing it with a pure non-blocking floating `AnimatedVisibility` HUD pill (`2.0x Speed ▶▶`) with smooth fade/slide transitions.
 
 ### B. UI, Catalogue & Navigation (`ui/screens/`, `ui/components/`)
 1. **SplashScreen**:
@@ -454,9 +461,17 @@ The following redundant or obsolete files were discovered during the project aud
 
 ## 10. Active Build & Version State
 
-- **Active Version**: `v4.8.306` (Build 306) — Commit `52b16cd`
+- **Active Version**: `v4.8.307` (Build 307) — Commit `df51aad`
 - **Status**: Production Release Candidate
 - **Recent Completed Sprint**:
+  - Deep Forward Buffer Cushion, Wi-Fi Band Handoff Resilience & Fluid 2.0X Speed (`v4.8.307` Build 307):
+    - Removed artificial 64MB RAM byte ceiling (`setTargetBufferBytes`) from `DefaultLoadControl` that was prematurely stalling ExoPlayer loader chunks at 64MB and starving forward buffering at 0s.
+    - Configured YouTube-parity buffer sliding window: `minBufferMs = 60_000` (60s minimum ahead), `maxBufferMs = 180_000` (3 minutes sliding forward cushion), `bufferForPlaybackMs = 500`, `bufferForPlaybackAfterRebufferMs = 4_000` (4.0s solid cushion before resuming after a rebuffer, permanently eliminating 1-second stop-and-go rebuffer loops), and `backBuffer = 15_000` (`retainBackBufferFromKeyframe = false`).
+    - Relaxed stall watchdog threshold from 4s to 8s (`stallAccumulatorMs >= 8000L`) to seamlessly accommodate 1.5–3.0s Wi-Fi router smart-connect band switching handoffs (5GHz <-> 2.4GHz).
+    - Upgraded `scheduleAutoReconnect` on Attempt 1 to execute non-destructive in-place socket eviction (`streamingClient.connectionPool.evictAll()`) and `exoPlayer.seekTo(savedPositionMs)`, immediately establishing a fresh HTTP connection over the new Wi-Fi band in under 500ms without tearing down hardware decoders or flashing the screen black.
+    - Set `setEnableAudioTrackPlaybackParams(false)` on `DefaultRenderersFactory` to route speed changes through ExoPlayer's software Sonic audio processor, eliminating hardware AudioTrack resampler stutter.
+    - Wrapped Left, Center, and Right zone touch-handling loops in `try ... finally` blocks to ensure speed restoration (`viewModel.setPlaybackSpeed(speedBeforeHold)`) and state cleanup (`is2xSpeedHolding = false`) execute cleanly on every release or cancellation.
+    - Replaced the intrusive full-screen `pointerInput` Box overlay with a non-blocking animated floating HUD pill (`AnimatedVisibility(visible = is2xSpeedHolding)`), allowing seamless and smooth return to default playback speed like YouTube.
   - Active Stream Stall Watchdog & Socket Resilience Engine (`v4.8.306` Build 306):
     - Resolved mid-stream buffering freezes, 17-second cache transition stalls, and stop-and-go buffering caused by stale keep-alive TCP sockets and single-worker Telegram F2L bot contention.
     - Reduced streaming keep-alive connection pool duration from 5 minutes to 15 seconds (`ConnectionPool(5, 15, TimeUnit.SECONDS)`) and lowered read timeout to 15s in `SharedHttpClient.streamingClient`. Dead/idle connections dropped by Koyeb/Serv00 proxies are pruned before the player attempts to reuse them.

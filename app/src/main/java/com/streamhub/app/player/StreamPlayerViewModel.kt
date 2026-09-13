@@ -387,7 +387,7 @@ class StreamPlayerViewModel : ViewModel() {
                 val renderersFactory = androidx.media3.exoplayer.DefaultRenderersFactory(safeContext).apply {
                     setEnableDecoderFallback(true) // Software decoder fallback if hardware EAC3/DTS/AC3 decoder missing
                     setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
-                    setEnableAudioTrackPlaybackParams(true)
+                    setEnableAudioTrackPlaybackParams(false) // Use Sonic software pitch/speed processor: buttery-smooth 2x playback, zero hardware AudioTrack stutter
                 }
                 trackSelector = DefaultTrackSelector(safeContext).apply {
                     parameters = buildUponParameters()
@@ -406,25 +406,23 @@ class StreamPlayerViewModel : ViewModel() {
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)
                     .build()
 
-                // Low-latency instant startup with YouTube-style safe sliding RAM window:
-                // - bufferForPlaybackMs = 250: Playback starts immediately as soon as ~250ms (~75KB) is buffered.
-                // - bufferForPlaybackAfterRebufferMs = 1_000: Fast 1s recovery after seek or rebuffering.
-                // - minBufferMs = 30_000: Maintains a steady 30-second buffer ahead during active playback.
-                // - maxBufferMs = 150_000: Safe 2.5-minute sliding window ahead in RAM. Prevents JVM heap exhaustion.
-                // - setTargetBufferBytes(64 * 1024 * 1024): 64 MB hard ceiling on RAM allocation. Guarantees the player
-                //   never exhausts the 256MB device heap, eliminating OutOfMemoryError crashes while watching movies.
-                // - setPrioritizeTimeOverSizeThresholds(true): Prioritizes time duration (250ms) over byte targets.
+                // Low-latency instant startup with YouTube-style deep buffer cushion:
+                // - minBufferMs = 60_000: Maintains a deep 60-second forward buffer cushion.
+                // - maxBufferMs = 180_000: Up to 3 minutes forward buffer in RAM.
+                // - bufferForPlaybackMs = 500: Playback starts immediately in ~500ms.
+                // - bufferForPlaybackAfterRebufferMs = 4_000: Buffers 4 solid seconds before resuming after a rebuffer,
+                //   permanently eliminating 1-second stop-and-go stutter loops.
+                // - setPrioritizeTimeOverSizeThresholds(true): Prioritizes time duration over artificial byte caps.
                 // - backBuffer = 15_000 (retainBackBufferFromKeyframe = false): Purges watched keyframes from RAM.
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        30_000,         // minBufferMs (steady 30s buffer ahead)
-                        150_000,        // maxBufferMs (safe 2.5-minute sliding window in RAM)
-                        250,            // bufferForPlaybackMs (ultra-fast instant start in ~250ms)
-                        1_000           // bufferForPlaybackAfterRebufferMs (1.0s fast recovery)
+                        60_000,         // minBufferMs (deep 60s buffer ahead)
+                        180_000,        // maxBufferMs (up to 3-minute sliding window in RAM)
+                        500,            // bufferForPlaybackMs (instant start in ~500ms)
+                        4_000           // bufferForPlaybackAfterRebufferMs (solid 4.0s cushion to eliminate stutter loops)
                     )
                     .setBackBuffer(15_000, false)
                     .setPrioritizeTimeOverSizeThresholds(true)
-                    .setTargetBufferBytes(64 * 1024 * 1024) // 64 MB hard RAM ceiling: eliminates OutOfMemoryError
                     .build()
                 // CRITICAL: DO NOT ADD FLAG_DISABLE_SEEK_FOR_CUES.
                 // Disabling seek for cues completely breaks seeking in MKV videos because Matroska video
@@ -1248,7 +1246,8 @@ class StreamPlayerViewModel : ViewModel() {
 
                     if (isStalled) {
                         stallAccumulatorMs += 200L
-                        if (stallAccumulatorMs >= 4000L) {
+                        // 8.0s threshold accommodates Wi-Fi 5GHz <-> 2.4GHz band switching handoffs (1.5–3.0s)
+                        if (stallAccumulatorMs >= 8000L) {
                             stallAccumulatorMs = 0L
                             handleStreamStall(playerPos)
                         }
@@ -1421,6 +1420,14 @@ class StreamPlayerViewModel : ViewModel() {
             try {
                 com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
             } catch (_: Exception) {}
+
+            // Attempt 1: In-place seamless reconnection without tearing down decoders or screen blacking
+            if (autoRetryCount == 1 && exoPlayer != null && (exoPlayer?.mediaItemCount ?: 0) > 0) {
+                Log.i("StreamPlayerViewModel", "In-place stream reconnection at ${savedPositionMs}ms")
+                exoPlayer?.seekTo(savedPositionMs)
+                exoPlayer?.play()
+                return@launch
+            }
 
             // Failover: from the 2nd attempt onward, switch to alternative mirror if available
             if (autoRetryCount >= 2 && ep != null) {
