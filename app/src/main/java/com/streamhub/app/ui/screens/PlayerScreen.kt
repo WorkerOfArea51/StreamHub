@@ -169,7 +169,6 @@ import com.streamhub.app.data.SubtitleSettingsManager
 import com.streamhub.app.data.models.MediaItem
 import kotlin.math.roundToInt
 import com.streamhub.app.player.PlayerUiState
-import com.streamhub.app.player.AspectRatioMode
 import com.streamhub.app.player.StreamPlayerViewModel
 import com.streamhub.app.ui.screens.player.AspectRatioToast
 import com.streamhub.app.ui.screens.player.BufferingHud
@@ -2662,6 +2661,7 @@ fun PlayerScreen(
                     player = exoPlayerInstance,
                     uiState = uiState,
                     playbackProgress = playbackProgress,
+                    aspectRatioLabel = selectedRatioOption.label,
                     onDismiss = { showStatsForNerds = false }
                 )
             }
@@ -2694,6 +2694,7 @@ private fun StatsForNerdsOverlay(
     player: androidx.media3.common.Player?,
     uiState: PlayerUiState,
     playbackProgress: PlaybackProgress,
+    aspectRatioLabel: String,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -2843,7 +2844,7 @@ private fun StatsForNerdsOverlay(
                 else -> "0 KB/s"
             }
             StatRowItem("Network Speed", speedDisplay)
-            StatRowItem("Aspect Mode", uiState.aspectRatioMode.name)
+            StatRowItem("Aspect Mode", aspectRatioLabel)
         }
     }
 }
