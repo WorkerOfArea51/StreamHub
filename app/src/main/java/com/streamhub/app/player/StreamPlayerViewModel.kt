@@ -718,6 +718,9 @@ class StreamPlayerViewModel : ViewModel() {
             stop()
             clearMediaItems()
         }
+        try {
+            com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+        } catch (_: Exception) {}
 
         val episode = episodesList[index]
         val rawUrl = episode.streamUrl.ifEmpty { episode.mirrorStreamUrl }
@@ -858,6 +861,13 @@ class StreamPlayerViewModel : ViewModel() {
 
     private fun playEpisodeWithExplicitUrl(index: Int, rawUrl: String, startPositionMs: Long = 0L) {
         if (episodesList.isEmpty() || index !in episodesList.indices) return
+        exoPlayer?.apply {
+            stop()
+            clearMediaItems()
+        }
+        try {
+            com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+        } catch (_: Exception) {}
         StreamPreloadManager.cancelDetailsPrewarm()
         val episode = episodesList.getOrNull(index)
         val savedDuration = WatchHistoryManager.getProgress(currentMediaItem?.id ?: "")?.durationMs ?: 0L
@@ -1190,6 +1200,7 @@ class StreamPlayerViewModel : ViewModel() {
     private fun startPositionTracker() {
         var lastProgressSaveMs = 0L
         var watchTimeAccumulatorMs = 0L
+        var stallAccumulatorMs = 0L
         positionTrackerJob?.cancel()
         positionTrackerJob = viewModelScope.launch {
             while (isActive) {
@@ -1225,6 +1236,24 @@ class StreamPlayerViewModel : ViewModel() {
                     // Only update _uiState if buffering state actually changed to avoid 200ms recomposition storms
                     if (_uiState.value.isBuffering != isBuffering) {
                         _uiState.update { it.copy(isBuffering = isBuffering) }
+                    }
+
+                    // Active Stream Stall Watchdog:
+                    // Detects if the player is buffering with 0s buffer while trying to play (playWhenReady == true),
+                    // not actively seeking, not already reconnecting, and past the 4.5s initial startup grace period.
+                    val timeSincePrepare = System.currentTimeMillis() - prepareStartTimeMs
+                    val isPastStartupGrace = timeSincePrepare >= 4500L
+                    val isStalled = isBuffering && bufferHealthSec == 0L && player.playWhenReady &&
+                        pendingSeekTargetMs == null && !_uiState.value.isReconnecting && isPastStartupGrace
+
+                    if (isStalled) {
+                        stallAccumulatorMs += 200L
+                        if (stallAccumulatorMs >= 4000L) {
+                            stallAccumulatorMs = 0L
+                            handleStreamStall(playerPos)
+                        }
+                    } else if (!isBuffering || bufferHealthSec > 1L) {
+                        stallAccumulatorMs = 0L
                     }
 
                     // Keep bufferSec for bandwidth protection below, but do not constrain video track sizes
@@ -1318,6 +1347,55 @@ class StreamPlayerViewModel : ViewModel() {
     /** Hard cap for automatic reconnect attempts before the error overlay is shown. */
     private val maxAutoRetries: Int = 3
 
+    private fun handleStreamStall(stalledPositionMs: Long) {
+        if (autoRetryCount < maxAutoRetries) {
+            autoRetryCount++
+            Log.w(
+                "StreamPlayerViewModel",
+                "Stream stall watchdog triggered at ${stalledPositionMs}ms (buffer 0s for >= 4s). Auto-reconnecting attempt #$autoRetryCount/$maxAutoRetries..."
+            )
+            try {
+                com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+            } catch (e: Exception) {
+                Log.w("StreamPlayerViewModel", "Failed to evict streaming connection pool on stall", e)
+            }
+            StreamPreloadManager.cancelDetailsPrewarm()
+            StreamPreloadManager.cancelBingePrecache()
+            nextEpisodePreloadJob?.cancel()
+            nextEpisodePreloadJob = null
+
+            _uiState.update {
+                it.copy(
+                    isBuffering = true,
+                    isPlaying = false,
+                    isReconnecting = true,
+                    reconnectAttempt = autoRetryCount.coerceIn(1, maxAutoRetries),
+                    playerError = null,
+                    playerErrorInfo = null
+                )
+            }
+            scheduleAutoReconnect(stalledPositionMs, serverDown = false)
+        } else {
+            Log.e("StreamPlayerViewModel", "Stream stall watchdog exhausted $maxAutoRetries attempts at ${stalledPositionMs}ms")
+            val errorMsg = "Stream connection stalled. The server may be busy or your connection was interrupted."
+            val errorInfo = PlayerErrorInfo(
+                type = PlayerErrorType.NETWORK,
+                message = errorMsg,
+                canRetry = true
+            )
+            _uiState.update {
+                it.copy(
+                    isBuffering = false,
+                    isPlaying = false,
+                    isReconnecting = false,
+                    reconnectAttempt = 0,
+                    playerError = errorMsg,
+                    playerErrorInfo = errorInfo
+                )
+            }
+        }
+    }
+
     private fun scheduleAutoReconnect(savedPositionMs: Long, serverDown: Boolean = false) {
         autoRetryJob?.cancel()
         val backoffMs = when {
@@ -1338,6 +1416,11 @@ class StreamPlayerViewModel : ViewModel() {
             val ep = episodesList.getOrNull(snapshot.currentEpisodeIndex)
 
             _uiState.update { it.copy(isBuffering = true, playerError = null, playerErrorInfo = null) }
+
+            // Ensure stale/hung TCP sockets are evicted from OkHttp pool before re-opening stream
+            try {
+                com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+            } catch (_: Exception) {}
 
             // Failover: from the 2nd attempt onward, switch to alternative mirror if available
             if (autoRetryCount >= 2 && ep != null) {
