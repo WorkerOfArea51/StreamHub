@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -73,7 +75,7 @@ private fun resolvePathFromTreeUri(uri: Uri): String? {
 }
 
 @Composable
-fun DownloadPathCard(currentAccent: AppThemeAccent) {
+fun DownloadPathPreferenceItem(currentAccent: AppThemeAccent) {
     val customDownloadPath by DownloadManager.customDownloadPath.collectAsState()
     val context = LocalContext.current
     val defaultDir = remember(customDownloadPath, context) {
@@ -102,114 +104,101 @@ fun DownloadPathCard(currentAccent: AppThemeAccent) {
         }
     }
 
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
+            .clickable { folderPickerLauncher.launch(null) }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(currentAccent.color.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
         ) {
+            Icon(
+                imageVector = Icons.Default.Folder,
+                contentDescription = null,
+                tint = currentAccent.color,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Download Directory",
+                    color = TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.width(6.dp))
                 Box(
                     modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(currentAccent.color.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(if (customDownloadPath.isNotBlank()) currentAccent.color.copy(alpha = 0.18f) else Color(0x2210B981))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Folder,
-                        contentDescription = "Download Folder",
-                        tint = currentAccent.color,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Download Directory 📁", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(if (customDownloadPath.isNotBlank()) currentAccent.color.copy(alpha = 0.2f) else Color(0x2210B981))
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                        ) {
-                            Text(
-                                text = if (customDownloadPath.isNotBlank()) "Custom" else "Default",
-                                color = if (customDownloadPath.isNotBlank()) currentAccent.color else Color(0xFF10B981),
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
                     Text(
-                        text = if (customDownloadPath.isNotBlank())
-                            customDownloadPath
-                        else
-                            "App Storage: Movies/StreamHub",
-                        color = TextSecondary,
-                        fontSize = 11.sp,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        text = if (customDownloadPath.isNotBlank()) "Custom" else "Default",
+                        color = if (customDownloadPath.isNotBlank()) currentAccent.color else Color(0xFF10B981),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
+            Spacer(modifier = Modifier.height(3.dp))
             Text(
-                text = "Active Path: ${defaultDir.absolutePath}",
-                color = TextSecondary.copy(alpha = 0.7f),
-                fontSize = 10.sp,
+                text = if (customDownloadPath.isNotBlank()) customDownloadPath else defaultDir.absolutePath,
+                color = TextSecondary.copy(alpha = 0.75f),
+                fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+        }
 
-            Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.width(8.dp))
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Button(
-                    onClick = { folderPickerLauncher.launch(null) },
-                    colors = ButtonDefaults.buttonColors(containerColor = currentAccent.color),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.weight(1f)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (customDownloadPath.isNotBlank()) {
+                IconButton(
+                    onClick = {
+                        DownloadManager.setCustomDownloadPath("")
+                        ToastManager.showToast("Reset to default download directory", Icons.Default.Refresh)
+                    },
+                    modifier = Modifier.size(32.dp)
                 ) {
-                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.Black)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Choose Folder", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Reset to Default",
+                        tint = currentAccent.color,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
+                Spacer(modifier = Modifier.width(4.dp))
+            }
 
-                if (customDownloadPath.isNotBlank()) {
-                    Button(
-                        onClick = {
-                            DownloadManager.setCustomDownloadPath("")
-                            ToastManager.showToast("Reset to default download directory", Icons.Default.Refresh)
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E1E2D)),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp), tint = currentAccent.color)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Reset Default", color = TextPrimary, fontSize = 11.sp)
-                    }
-                }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(currentAccent.color.copy(alpha = 0.15f))
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = "Browse",
+                    color = currentAccent.color,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }
 }
 
 @Composable
-fun ScreenshotPathCard(currentAccent: AppThemeAccent) {
+fun ScreenshotPathPreferenceItem(currentAccent: AppThemeAccent) {
     val customScreenshotPath by DownloadManager.customScreenshotPath.collectAsState()
     val context = LocalContext.current
     val defaultDir = remember(customScreenshotPath, context) {
@@ -238,108 +227,109 @@ fun ScreenshotPathCard(currentAccent: AppThemeAccent) {
         }
     }
 
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
+            .clickable { folderPickerLauncher.launch(null) }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(currentAccent.color.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
         ) {
+            Icon(
+                imageVector = Icons.Default.CameraAlt,
+                contentDescription = null,
+                tint = currentAccent.color,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Screenshot Directory",
+                    color = TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.width(6.dp))
                 Box(
                     modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(currentAccent.color.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(if (customScreenshotPath.isNotBlank()) currentAccent.color.copy(alpha = 0.18f) else Color(0x2210B981))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.CameraAlt,
-                        contentDescription = "Screenshot Folder",
-                        tint = currentAccent.color,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Screenshot Directory 📸", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(if (customScreenshotPath.isNotBlank()) currentAccent.color.copy(alpha = 0.2f) else Color(0x2210B981))
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                        ) {
-                            Text(
-                                text = if (customScreenshotPath.isNotBlank()) "Custom" else "Default",
-                                color = if (customScreenshotPath.isNotBlank()) currentAccent.color else Color(0xFF10B981),
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
                     Text(
-                        text = if (customScreenshotPath.isNotBlank())
-                            customScreenshotPath
-                        else
-                            "App Storage: Pictures/StreamHub_Screenshots",
-                        color = TextSecondary,
-                        fontSize = 11.sp,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        text = if (customScreenshotPath.isNotBlank()) "Custom" else "Default",
+                        color = if (customScreenshotPath.isNotBlank()) currentAccent.color else Color(0xFF10B981),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
+            Spacer(modifier = Modifier.height(3.dp))
             Text(
-                text = "Active Path: ${defaultDir.absolutePath}",
-                color = TextSecondary.copy(alpha = 0.7f),
-                fontSize = 10.sp,
+                text = if (customScreenshotPath.isNotBlank()) customScreenshotPath else defaultDir.absolutePath,
+                color = TextSecondary.copy(alpha = 0.75f),
+                fontSize = 11.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+        }
 
-            Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.width(8.dp))
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Button(
-                    onClick = { folderPickerLauncher.launch(null) },
-                    colors = ButtonDefaults.buttonColors(containerColor = currentAccent.color),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.weight(1f)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (customScreenshotPath.isNotBlank()) {
+                IconButton(
+                    onClick = {
+                        DownloadManager.setCustomScreenshotPath("")
+                        ToastManager.showToast("Reset to default screenshot directory", Icons.Default.Refresh)
+                    },
+                    modifier = Modifier.size(32.dp)
                 ) {
-                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.Black)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Choose Folder", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Reset to Default",
+                        tint = currentAccent.color,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
+                Spacer(modifier = Modifier.width(4.dp))
+            }
 
-                if (customScreenshotPath.isNotBlank()) {
-                    Button(
-                        onClick = {
-                            DownloadManager.setCustomScreenshotPath("")
-                            ToastManager.showToast("Reset to default screenshot directory", Icons.Default.Refresh)
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E1E2D)),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp), tint = currentAccent.color)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Reset Default", color = TextPrimary, fontSize = 11.sp)
-                    }
-                }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(currentAccent.color.copy(alpha = 0.15f))
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = "Browse",
+                    color = currentAccent.color,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
+    }
+}
+
+@Composable
+fun DownloadPathCard(currentAccent: AppThemeAccent) {
+    com.streamhub.app.ui.screens.settings.components.PreferenceCard {
+        DownloadPathPreferenceItem(currentAccent = currentAccent)
+    }
+}
+
+@Composable
+fun ScreenshotPathCard(currentAccent: AppThemeAccent) {
+    com.streamhub.app.ui.screens.settings.components.PreferenceCard {
+        ScreenshotPathPreferenceItem(currentAccent = currentAccent)
     }
 }

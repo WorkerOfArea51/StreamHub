@@ -24,6 +24,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     object StorageManagement : Screen("storage-management", "Storage & Cache")
     object History : Screen("history", "Watch History")
     object Admin : Screen("admin", "Admin Panel")
+    object About : Screen("about", "About StreamHub")
     
     object Details : Screen("details/{mediaId}", "Details") {
         fun createRoute(mediaId: String) = "details/${android.net.Uri.encode(mediaId)}"

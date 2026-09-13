@@ -630,7 +630,16 @@ fun StreamHubApp(
                     },
                     onOpenAdminPanel = {
                         navController.navigate(Screen.Admin.route)
+                    },
+                    onNavigateToAbout = {
+                        navController.navigate(Screen.About.route)
                     }
+                )
+            }
+
+            composable(Screen.About.route) {
+                com.streamhub.app.ui.screens.AboutScreen(
+                    onBackClick = { navController.popBackStack() }
                 )
             }
 

@@ -218,6 +218,21 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
     - **Volume Normalization**: Dynamic range compression balancing loud action peaks and quiet dialogues.
     - **1-Click SAF JSON Backup & Restore**: Full export and import of all user preferences, watch history, and custom settings via Android Storage Access Framework with timestamped filenames (`streamhub_settings_backup_YYYYMMDD_HHmmss.json`).
     - **Strict Zero Duplication**: Storage Management and About/System Info remain strictly hosted on the Profile screen, eliminating redundant cards.
+34. **Unified Settings Aesthetics, Interactive Audio/Gesture Controls & Brand Logo Polish (`SettingsScreen.kt`, `AdvancedPreferencesScreen.kt`, `AudioPreferencesScreen.kt`, `GesturePreferencesScreen.kt`, `PlayerScreen.kt`, `AboutScreen.kt`, `SplashScreen.kt`, `NavGraph.kt`)**:
+    - **Unified mpvEx Preference Cards in Settings**:
+      - Replaced standalone mismatching cards and full-width buttons in `Downloads & Paths` with `DownloadPathPreferenceItem` and `ScreenshotPathPreferenceItem` inside a single `PreferenceCard` with `PreferenceDivider`. Shows active path, custom/default status badge, and compact `[Browse]` and `[Reset]` actions.
+      - Refactored `SpeedTestPreferenceItem`, `NotificationAlertPreferenceItem`, and `AppUpdatePreferenceItem` in `AdvancedPreferencesScreen` inside standard `PreferenceCard` containers, eliminating oversized buttons and visual discrepancies.
+    - **Interactive Hardware Volume Boost & Default Audio Delay Controls**:
+      - Connected `HardwareVolumeBoostDialog` to "Hardware Volume Boost" item in `AudioPreferencesScreen.kt` allowing users to pick maximum hardware boost limits (100%, 125%, 150%, 175%, 200% Max) persisted via `PlayerSettingsManager.updateMaxVolumeBoostPercent`.
+      - Connected `DefaultAudioDelayDialog` to "In-Player Audio Delay Sync" with interactive continuous slider (`-3000ms`..`+3000ms`), quick step buttons (`±50ms`, `±100ms`, `±500ms`), and reset to 0ms button, persisted via `PlayerSettingsManager.updateDefaultAudioDelayMs`.
+      - Initialized player audio delay from `playerSettings.defaultAudioDelayMs` upon media load and clamped volume key / drag boost to `maxVolumeBoostPercent`.
+    - **Interactive Touch Gestures Controls in Settings & PlayerScreen**:
+      - Converted inert "Hold to 2.0X Fast-Forward", "Multi-Touch Pinch to Zoom & Pan", and "Center Subtitle Vertical Drag" rows into active toggle switches using `PreferenceSwitchItem` backed by `PlayerSettingsManager`.
+      - Wired `holdTo2XEnabled`, `pinchToZoomEnabled`, and `subtitleVerticalDragEnabled` directly into `PlayerScreen.kt` gesture zones (Left, Center, Right, and full-screen pinch).
+    - **Official StreamHub Brand Logo & About Navigation Fix**:
+      - Created `StreamHubBrandLogo.kt` composable implementing the official brand identity matching launcher icons and banner art (neon gradient squircle, film-cut play triangle, and 3-color equalizer waveforms: Cyan, Crimson, Gold with optional animated bounces).
+      - Displayed official brand logo in `AboutScreen.kt` and cinematic bouncing waveform logo in `SplashScreen.kt` with glowing ambient back-glow.
+      - Registered `Screen.About` route in `NavGraph.kt` and `MainActivity.kt` with explicit `BackHandler` in `AboutScreen.kt`, ensuring back navigation returns directly to the Profile tab instead of popping to My List.
 
 ### B. UI, Catalogue & Navigation (`ui/screens/`, `ui/components/`)
 1. **SplashScreen**:
@@ -353,6 +368,7 @@ app/src/main/java/com/streamhub/app/
     │   ├── ScreenState.kt               # AppLoadingState, AppErrorState, AppEmptyState
     │   ├── SeasonArcSelectorSheet.kt    # Bottom sheet for selecting anime story arcs
     │   ├── ServerMigrationDialog.kt     # Bulk domain and URL migration tool
+    │   ├── StreamHubBrandLogo.kt        # Official brand logo (squircle, film triangle, equalizer waveforms)
     │   ├── StreamHubToastHost.kt        # Custom in-app animated toast notifications
     │   ├── TrailerPlayerDialog.kt       # In-app YouTube trailer player dialog
     │   ├── UpdateAvailableDialog.kt     # App update download & install prompt
@@ -437,6 +453,8 @@ The following redundant or obsolete files were discovered during the project aud
 4. `prefetchMkvCuesTail` & `TailClampingDataSource`: Completely purged. Parallel background socket prefetching during playback startup collided with ExoPlayer's own Cues reads on the single-worker backend, and anime MKVs place font attachments rather than Cues at the tail. ExoPlayer handles Cues natively without artificial clamps.
 5. `Repeat Mode` (`isRepeatMode`, `toggleRepeatMode`, Repeat/RepeatOne button): Completely purged from `PlayerScreen.kt` and `StreamPlayerViewModel.kt`. Repeat mode is an obsolete music-player relic that broke video episode auto-play progression (looping 24m episodes instead of advancing to next episode) and cluttered the bottom video controls bar.
 6. `Background Audio` (Headphones) button & Floating Left Lock circle: Permanently removed from `PlayerScreen.kt`. Background audio is redundant for visual media playback. Lock Controls is now cleanly located in the bottom action row next to Skip Intro matching mpvEx 1:1, and the floating lock button on the middle-left screen edge was eliminated.
+7. `In-Composable AboutScreen Overlay in ProfileScreen`: Removed unmanaged boolean state overlay (`var showAbout by remember { mutableStateOf(false) }`) that bypassed Compose back-stack and broke Android back button navigation. Replaced with proper top-level route `Screen.About` with hardware `BackHandler(onBack = onBackClick)` returning reliably to Profile.
+8. `Oversized Standalone Path & Network Speed Cards`: Replaced standalone, mismatched `Card` components and full-width colored buttons in `SettingsScreen.kt` and `AdvancedPreferencesScreen.kt` with unified `PreferenceCard` list rows and compact action pills (`[Browse]`, `[Reset]`, `[Test Speed]`, `[Check]`).
 
 **RULE**: Never re-create, re-import, or resurrect these deleted files or patterns.
 
@@ -504,9 +522,15 @@ The following redundant or obsolete files were discovered during the project aud
 
 ## 10. Active Build & Version State
 
-- **Active Version**: `v4.8.311` (Build 311 - Commit `ce9c783`)
+- **Active Version**: `v4.8.312` (Build 312 - Commit `440c7b7`)
 - **Status**: Production Release Candidate
 - **Recent Completed Sprint**:
+  - Unified Settings Aesthetics, Interactive Audio/Gesture Controls & Brand Logo Polish (`v4.8.312` Build 312):
+    - Replaced mismatched standalone cards and giant colored buttons in Downloads, Screenshots, Network Speed, and App Updates with standard mpvEx `PreferenceCard` items, compact action pills (`[Browse]`, `[Reset]`, `[Test Speed]`, `[Check]`), and `PreferenceDivider`.
+    - Made Audio Preferences interactive: connected `HardwareVolumeBoostDialog` (100% to 200% max hardware boost limiter) and `DefaultAudioDelayDialog` (continuous slider `-3000ms`..`+3000ms`, steppers `±50ms`/`±100ms`/`±500ms`, and reset to 0ms) with persistent storage in `PlayerSettingsManager`.
+    - Made Gestures Preferences interactive: converted inert rows (Hold 2X, Pinch-to-Zoom, Subtitle Vertical Drag) into functional toggle switches using `PreferenceSwitchItem`, wiring them directly into `PlayerScreen.kt` gesture zones.
+    - Official StreamHub Brand Identity: created `StreamHubBrandLogo.kt` matching launcher squircle, film-cut play triangle, and 3-color equalizer waveforms (Cyan, Crimson, Gold with animated bounces), integrated into `AboutScreen.kt` and cinematic ambient-glow `SplashScreen.kt`.
+    - Fixed About back navigation: registered `Screen.About` route in `NavGraph.kt` and `MainActivity.kt` with `BackHandler(onBack = onBackClick)` in `AboutScreen.kt`, eliminating the bug where returning from About dropped the user on My List instead of Profile.
   - mpvEx 1:1 Preferences Refactor & Feature Parity (`v4.8.311` Build 311):
     - Completely restructured Settings & Preferences into mpvEx 1:1 grouped card architecture (`PreferenceCard`, `PreferenceItem`, `PreferenceSwitchItem`, `PreferenceRadioItem`, `PreferenceDivider`, `PreferenceSectionHeader`) with full-width search pill (`PreferenceSearchBox`) supporting real-time in-page query filtering across all settings.
     - Added 5 structured modular sub-screens: `AppearancePreferencesScreen` (Theme accent picker, live seekbar style preview, home layout toggles), `VideoSettingsScreen` (General playback, skip intro, auto-prompt outro threshold, ambient glow, precache), `GesturePreferencesScreen` (Volume/brightness side swap, double-tap seek step duration, touch gestures guide), `AudioPreferencesScreen` (Volume normalization, loudness boost, audio delay sync), `AdvancedPreferencesScreen` (1-tap SAF JSON backup & restore, speed test, notifications, app updates).

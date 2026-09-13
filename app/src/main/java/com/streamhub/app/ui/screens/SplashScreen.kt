@@ -49,14 +49,15 @@ fun SplashScreen(
     onSplashFinished: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scale = remember { Animatable(0.3f) }
+    val scale = remember { Animatable(0.4f) }
     val alpha = remember { Animatable(0f) }
     val exitAlpha = remember { Animatable(1f) }
+    val exitScale = remember { Animatable(1.0f) }
 
     LaunchedEffect(Unit) {
         coroutineScope {
             val catalogReady = async {
-                withTimeoutOrNull(2_000L) {
+                withTimeoutOrNull(2_200L) {
                     repository.catalogState.first { it !is CatalogState.Loading }
                 }
             }
@@ -65,23 +66,30 @@ fun SplashScreen(
                 launch {
                     alpha.animateTo(
                         targetValue = 1f,
-                        animationSpec = tween(durationMillis = 550, easing = FastOutSlowInEasing)
+                        animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing)
                     )
                 }
                 launch {
                     scale.animateTo(
                         targetValue = 1.0f,
-                        animationSpec = tween(durationMillis = 800, easing = ExpressiveScaleEasing)
+                        animationSpec = tween(durationMillis = 850, easing = ExpressiveScaleEasing)
                     )
                 }
             }
 
             animJob.join()
             catalogReady.await()
-            // Silky smooth cross-dissolve exit into home screen
+
+            // Silky smooth cinematic expansion & cross-dissolve exit into home screen
+            launch {
+                exitScale.animateTo(
+                    targetValue = 1.06f,
+                    animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
+                )
+            }
             exitAlpha.animateTo(
                 targetValue = 0f,
-                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
             )
             onSplashFinished()
         }
@@ -93,46 +101,60 @@ fun SplashScreen(
             .background(BackgroundDark)
             .graphicsLayer {
                 this.alpha = exitAlpha.value
+                this.scaleX = exitScale.value
+                this.scaleY = exitScale.value
             },
         contentAlignment = Alignment.Center
     ) {
+        // Ambient Neon Back-Glow Blob
+        Box(
+            modifier = Modifier
+                .size(260.dp)
+                .graphicsLayer {
+                    this.alpha = alpha.value * 0.25f
+                    this.scaleX = scale.value * 1.15f
+                    this.scaleY = scale.value * 1.15f
+                }
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFFF3366),
+                            Color(0xFFFF6B00).copy(alpha = 0.5f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+
         Column(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Glowing Animated Logo Circle Container (hardware-accelerated graphicsLayer)
+            // Official StreamHub Animated Brand Logo
             Box(
                 modifier = Modifier
-                    .size(140.dp)
                     .graphicsLayer {
                         scaleX = scale.value
                         scaleY = scale.value
                         this.alpha = alpha.value
-                    }
-                    .clip(CircleShape)
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(PrimaryRed, AccentOrange)
-                        )
-                    ),
+                    },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = "StreamHub Logo",
-                    tint = Color.White,
-                    modifier = Modifier.size(72.dp)
+                com.streamhub.app.ui.components.StreamHubBrandLogo(
+                    size = 120.dp,
+                    animateWaveforms = true
                 )
             }
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // Branding Text (hardware-accelerated graphicsLayer)
+            // Branding Text with subtle tracking
             Text(
                 text = "StreamHub",
                 color = TextPrimary,
                 fontSize = 32.sp,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 1.5.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 2.sp,
                 modifier = Modifier.graphicsLayer {
                     this.alpha = alpha.value
                 }
@@ -145,9 +167,9 @@ fun SplashScreen(
                 color = TextSecondary,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
-                letterSpacing = 1.0.sp,
+                letterSpacing = 1.2.sp,
                 modifier = Modifier.graphicsLayer {
-                    this.alpha = alpha.value * 0.7f
+                    this.alpha = alpha.value * 0.8f
                 }
             )
         }

@@ -113,7 +113,7 @@ fun ThemeAccentCard(currentAccent: AppThemeAccent) {
 }
 
 @Composable
-fun NotificationAlertCard(currentAccent: AppThemeAccent) {
+fun NotificationAlertPreferenceItem(currentAccent: AppThemeAccent) {
     val alertsEnabled by NotificationAlertManager.alertsEnabled.collectAsState()
     val context = LocalContext.current
 
@@ -123,65 +123,32 @@ fun NotificationAlertCard(currentAccent: AppThemeAccent) {
         NotificationAlertManager.setAlertsEnabled(context, isGranted)
     }
 
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(currentAccent.color.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Notifications,
-                        contentDescription = "Notifications",
-                        tint = currentAccent.color,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text("New Episode Alerts 🍿", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text("Notify when My List shows get new episodes", color = TextSecondary, fontSize = 11.sp)
+    com.streamhub.app.ui.screens.settings.components.PreferenceSwitchItem(
+        title = "New Episode Alerts",
+        subtitle = "Notify when My List shows get new episodes",
+        checked = alertsEnabled,
+        onCheckedChange = { isChecked ->
+            if (isChecked && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (!hasPermission) {
+                    permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    return@PreferenceSwitchItem
                 }
             }
+            NotificationAlertManager.setAlertsEnabled(context, isChecked)
+        },
+        icon = Icons.Default.Notifications,
+        iconTint = currentAccent.color,
+        accentColor = currentAccent.color
+    )
+}
 
-            Switch(
-                checked = alertsEnabled,
-                onCheckedChange = { isChecked ->
-                    if (isChecked && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                        val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
-                            context,
-                            android.Manifest.permission.POST_NOTIFICATIONS
-                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                        if (!hasPermission) {
-                            permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                            return@Switch
-                        }
-                    }
-                    NotificationAlertManager.setAlertsEnabled(context, isChecked)
-                },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.White,
-                    checkedTrackColor = currentAccent.color
-                )
-            )
-        }
+@Composable
+fun NotificationAlertCard(currentAccent: AppThemeAccent) {
+    com.streamhub.app.ui.screens.settings.components.PreferenceCard {
+        NotificationAlertPreferenceItem(currentAccent = currentAccent)
     }
 }

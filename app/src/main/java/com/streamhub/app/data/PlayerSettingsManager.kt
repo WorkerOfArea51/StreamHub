@@ -26,7 +26,12 @@ data class PlayerSettings(
     val savedBrightness: Float = -1f,
     val autoPiPOnNavigation: Boolean = true,
     val keepScreenOnWhenPaused: Boolean = false,
-    val volumeNormalization: Boolean = false
+    val volumeNormalization: Boolean = false,
+    val holdTo2XEnabled: Boolean = true,
+    val pinchToZoomEnabled: Boolean = true,
+    val subtitleVerticalDragEnabled: Boolean = true,
+    val maxVolumeBoostPercent: Int = 200,
+    val defaultAudioDelayMs: Int = 0
 )
 
 /**
@@ -59,6 +64,11 @@ object PlayerSettingsManager {
     private const val KEY_AUTO_PIP = "auto_pip_on_navigation"
     private const val KEY_KEEP_SCREEN_ON_PAUSED = "keep_screen_on_when_paused"
     private const val KEY_VOLUME_NORMALIZATION = "volume_normalization"
+    private const val KEY_HOLD_2X = "hold_to_2x_enabled"
+    private const val KEY_PINCH_ZOOM = "pinch_to_zoom_enabled"
+    private const val KEY_SUBTITLE_DRAG = "subtitle_vertical_drag_enabled"
+    private const val KEY_MAX_VOLUME_BOOST = "max_volume_boost_percent"
+    private const val KEY_DEFAULT_AUDIO_DELAY = "default_audio_delay_ms"
 
     private lateinit var appContext: Context
 
@@ -95,7 +105,12 @@ object PlayerSettingsManager {
                 savedBrightness = prefs.getFloat(KEY_SAVED_BRIGHTNESS, -1f),
                 autoPiPOnNavigation = prefs.getBoolean(KEY_AUTO_PIP, true),
                 keepScreenOnWhenPaused = prefs.getBoolean(KEY_KEEP_SCREEN_ON_PAUSED, false),
-                volumeNormalization = prefs.getBoolean(KEY_VOLUME_NORMALIZATION, false)
+                volumeNormalization = prefs.getBoolean(KEY_VOLUME_NORMALIZATION, false),
+                holdTo2XEnabled = prefs.getBoolean(KEY_HOLD_2X, true),
+                pinchToZoomEnabled = prefs.getBoolean(KEY_PINCH_ZOOM, true),
+                subtitleVerticalDragEnabled = prefs.getBoolean(KEY_SUBTITLE_DRAG, true),
+                maxVolumeBoostPercent = prefs.getInt(KEY_MAX_VOLUME_BOOST, 200),
+                defaultAudioDelayMs = prefs.getInt(KEY_DEFAULT_AUDIO_DELAY, 0)
             )
         } catch (e: Exception) {
             prefs.edit().clear().apply()
@@ -304,6 +319,43 @@ object PlayerSettingsManager {
         if (!::appContext.isInitialized) return
         _settingsFlow.update { it.copy(volumeOnRight = onRight) }
         getPrefs().edit().putBoolean(KEY_VOLUME_ON_RIGHT, onRight).apply()
+    }
+
+    @Synchronized
+    fun updateHoldTo2XEnabled(enabled: Boolean) {
+        if (!::appContext.isInitialized) return
+        _settingsFlow.update { it.copy(holdTo2XEnabled = enabled) }
+        getPrefs().edit().putBoolean(KEY_HOLD_2X, enabled).apply()
+    }
+
+    @Synchronized
+    fun updatePinchToZoomEnabled(enabled: Boolean) {
+        if (!::appContext.isInitialized) return
+        _settingsFlow.update { it.copy(pinchToZoomEnabled = enabled) }
+        getPrefs().edit().putBoolean(KEY_PINCH_ZOOM, enabled).apply()
+    }
+
+    @Synchronized
+    fun updateSubtitleVerticalDragEnabled(enabled: Boolean) {
+        if (!::appContext.isInitialized) return
+        _settingsFlow.update { it.copy(subtitleVerticalDragEnabled = enabled) }
+        getPrefs().edit().putBoolean(KEY_SUBTITLE_DRAG, enabled).apply()
+    }
+
+    @Synchronized
+    fun updateMaxVolumeBoostPercent(percent: Int) {
+        if (!::appContext.isInitialized) return
+        val clamped = percent.coerceIn(100, 300)
+        _settingsFlow.update { it.copy(maxVolumeBoostPercent = clamped) }
+        getPrefs().edit().putInt(KEY_MAX_VOLUME_BOOST, clamped).apply()
+    }
+
+    @Synchronized
+    fun updateDefaultAudioDelayMs(delayMs: Int) {
+        if (!::appContext.isInitialized) return
+        val clamped = delayMs.coerceIn(-5000, 5000)
+        _settingsFlow.update { it.copy(defaultAudioDelayMs = clamped) }
+        getPrefs().edit().putInt(KEY_DEFAULT_AUDIO_DELAY, clamped).apply()
     }
 
     private fun getPrefs(): SharedPreferences {

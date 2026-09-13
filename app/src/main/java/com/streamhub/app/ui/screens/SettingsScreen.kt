@@ -49,8 +49,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.streamhub.app.ui.screens.settings.DownloadPathCard
-import com.streamhub.app.ui.screens.settings.ScreenshotPathCard
+import com.streamhub.app.ui.screens.settings.DownloadPathPreferenceItem
+import com.streamhub.app.ui.screens.settings.ScreenshotPathPreferenceItem
 import com.streamhub.app.ui.screens.settings.components.PreferenceCard
 import com.streamhub.app.ui.screens.settings.components.PreferenceDivider
 import com.streamhub.app.ui.screens.settings.components.PreferenceItem
@@ -350,14 +350,11 @@ fun SettingsScreen(
                 // Section 4: Downloads & Paths
                 item {
                     PreferenceSectionHeader(title = "DOWNLOADS & PATHS", accentColor = currentAccent.color)
-                }
-
-                item {
-                    DownloadPathCard(currentAccent = currentAccent)
-                }
-
-                item {
-                    ScreenshotPathCard(currentAccent = currentAccent)
+                    PreferenceCard {
+                        DownloadPathPreferenceItem(currentAccent = currentAccent)
+                        PreferenceDivider()
+                        ScreenshotPathPreferenceItem(currentAccent = currentAccent)
+                    }
                 }
 
                 // Section 5: Advanced & Backup

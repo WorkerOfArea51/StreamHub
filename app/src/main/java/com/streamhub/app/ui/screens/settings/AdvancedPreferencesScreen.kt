@@ -170,23 +170,19 @@ fun AdvancedPreferencesScreen(
             // Section 2: Network & Diagnostics
             item {
                 PreferenceSectionHeader(title = "NETWORK SPEED & NOTIFICATIONS", accentColor = currentAccent.color)
-            }
-
-            item {
-                SpeedTestCard(currentAccent = currentAccent)
-            }
-
-            item {
-                NotificationAlertCard(currentAccent = currentAccent)
+                PreferenceCard {
+                    SpeedTestPreferenceItem(currentAccent = currentAccent)
+                    PreferenceDivider()
+                    NotificationAlertPreferenceItem(currentAccent = currentAccent)
+                }
             }
 
             // Section 3: App Updates & Release Notes
             item {
                 PreferenceSectionHeader(title = "APPLICATION UPDATES", accentColor = currentAccent.color)
-            }
-
-            item {
-                AppUpdateCard()
+                PreferenceCard {
+                    AppUpdatePreferenceItem(currentAccent = currentAccent)
+                }
             }
         }
     }

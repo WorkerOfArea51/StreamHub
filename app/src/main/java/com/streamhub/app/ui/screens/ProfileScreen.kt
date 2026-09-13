@@ -105,6 +105,7 @@ fun ProfileScreen(
     onNavigateToStorage: () -> Unit = {},
     onOpenAdminPanel: () -> Unit = {},
     onOpenAddContent: () -> Unit = {},
+    onNavigateToAbout: () -> Unit = {},
     repository: FirebaseRepository = remember { FirebaseRepository.getInstance() },
     modifier: Modifier = Modifier
 ) {
@@ -127,7 +128,6 @@ fun ProfileScreen(
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
     var showAddContentDialog by remember { mutableStateOf(false) }
     var showLiveTelemetryDialog by remember { mutableStateOf(false) }
-    var showAboutScreen by remember { mutableStateOf(false) }
     var showEditProfileDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
@@ -283,16 +283,9 @@ fun ProfileScreen(
                 title = "About StreamHub",
                 subtitle = "App information, open source licenses & credits",
                 badge = "v${com.streamhub.app.BuildConfig.VERSION_NAME}",
-                onClick = { showAboutScreen = true }
+                onClick = onNavigateToAbout
             )
         }
-    }
-
-    // Dedicated About Screen (Full Screen View)
-    if (showAboutScreen) {
-        AboutScreen(
-            onBackClick = { showAboutScreen = false }
-        )
     }
 
     // Live Audience & Telemetry Dialog

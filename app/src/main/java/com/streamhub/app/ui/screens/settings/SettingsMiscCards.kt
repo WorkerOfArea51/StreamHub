@@ -61,212 +61,239 @@ import com.streamhub.app.ui.theme.AppThemeAccent
 import kotlinx.coroutines.launch
 
 @Composable
-fun SpeedTestCard(currentAccent: AppThemeAccent) {
+fun SpeedTestPreferenceItem(currentAccent: AppThemeAccent) {
     val testState by SpeedTestManager.testState.collectAsState()
     val scope = rememberCoroutineScope()
 
-    val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "pulse")
-    val pulseAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 0.9f,
-        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            animation = androidx.compose.animation.core.tween(800, easing = androidx.compose.animation.core.LinearEasing),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-        ),
-        label = "pulseAlpha"
-    )
-
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
-    ) {
-        Column(
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(currentAccent.color.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Security,
-                            contentDescription = "Speed Test",
-                            tint = currentAccent.color,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text("Stream CDN & Latency Speedometer ⚡", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("Real-time network ping & download bandwidth benchmark", color = TextSecondary, fontSize = 11.sp)
+                .clickable {
+                    if (testState !is SpeedTestState.Testing) {
+                        scope.launch { SpeedTestManager.runSpeedTest() }
                     }
                 }
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(currentAccent.color.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Security,
+                    contentDescription = null,
+                    tint = currentAccent.color,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Stream CDN Speedometer",
+                    color = TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = when (testState) {
+                        is SpeedTestState.Idle -> "Benchmark ping & edge streaming throughput"
+                        is SpeedTestState.Testing -> "Benchmarking Cloudflare & Telegram edge..."
+                        is SpeedTestState.Completed -> {
+                            val res = testState as SpeedTestState.Completed
+                            "Ping: ${res.pingMs}ms • Speed: ${res.speedMbps} Mbps • ${res.qualityRating}"
+                        }
+                        is SpeedTestState.Error -> {
+                            val err = testState as SpeedTestState.Error
+                            "Failed: ${err.message}"
+                        }
+                    },
+                    color = TextSecondary.copy(alpha = 0.75f),
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.width(8.dp))
 
             when (testState) {
-                is SpeedTestState.Idle -> {
-                    Button(
-                        onClick = { scope.launch { SpeedTestManager.runSpeedTest() } },
-                        colors = ButtonDefaults.buttonColors(containerColor = currentAccent.color),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("🚀 Run Speed Test", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-                    }
-                }
-
                 is SpeedTestState.Testing -> {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFF161622), RoundedCornerShape(12.dp))
-                            .padding(16.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(
-                                color = currentAccent.color.copy(alpha = pulseAlpha),
-                                strokeWidth = 3.dp,
-                                modifier = Modifier.size(54.dp)
-                            )
-                            Text("⚡", fontSize = 20.sp)
-                        }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text("Benchmarking CDN ping & streaming throughput...", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("Measuring Cloudflare & Telegram Media edge servers", color = TextSecondary, fontSize = 10.sp)
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Button(
-                            onClick = { SpeedTestManager.cancelTest() },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0x33EF4444)),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.height(32.dp)
-                        ) {
-                            Text("Cancel", color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-
-                is SpeedTestState.Completed -> {
-                    val res = testState as SpeedTestState.Completed
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFF13131F), RoundedCornerShape(12.dp))
-                            .border(1.dp, Color(0xFF2A2A3E), RoundedCornerShape(12.dp))
-                            .padding(14.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text("LATENCY PING", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                Text("${res.pingMs} ms", color = Color(0xFF10B981), fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .height(28.dp)
-                                    .width(1.dp)
-                                    .background(Color(0xFF2A2A3E))
-                            )
-
-                            Column {
-                                Text("DOWNLOAD BANDWIDTH", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                Text("${res.speedMbps} Mbps", color = AccentOrange, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .height(28.dp)
-                                    .width(1.dp)
-                                    .background(Color(0xFF2A2A3E))
-                            )
-
-                            Column {
-                                Text("RATING", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                Text(
-                                    text = if (res.speedMbps >= 15.0) "1080p FHD Ready" else if (res.speedMbps >= 8.0) "720p HD Ready" else "Standard Ready",
-                                    color = currentAccent.color,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = currentAccent.color,
+                            strokeWidth = 2.dp
+                        )
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(currentAccent.color.copy(alpha = 0.12f))
-                                .padding(10.dp)
+                                .background(Color(0x33EF4444))
+                                .clickable { SpeedTestManager.cancelTest() }
+                                .padding(horizontal = 8.dp, vertical = 5.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("✨ ", fontSize = 12.sp)
-                                Text(
-                                    text = "Streaming Quality: ${res.qualityRating}",
-                                    color = TextPrimary,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.sp
-                                )
-                            }
+                            Text(
+                                text = "Cancel",
+                                color = Color(0xFFEF4444),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Button(
-                        onClick = { scope.launch { SpeedTestManager.runSpeedTest() } },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E1E2D)),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth()
+                }
+                is SpeedTestState.Completed -> {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(currentAccent.color.copy(alpha = 0.15f))
+                            .clickable { scope.launch { SpeedTestManager.runSpeedTest() } }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
-                        Text("🔄 Retest Connection", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                        Text(
+                            text = "Retest",
+                            color = currentAccent.color,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
-
                 is SpeedTestState.Error -> {
-                    val err = testState as SpeedTestState.Error
-                    Column(
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0x22EF4444), RoundedCornerShape(10.dp))
-                            .padding(12.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0x33EF4444))
+                            .clickable { scope.launch { SpeedTestManager.runSpeedTest() } }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
-                        Text("Test failed: ${err.message}", color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "Retry",
+                            color = Color(0xFFEF4444),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                        onClick = { scope.launch { SpeedTestManager.runSpeedTest() } },
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth()
+                }
+                is SpeedTestState.Idle -> {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(currentAccent.color.copy(alpha = 0.15f))
+                            .clickable { scope.launch { SpeedTestManager.runSpeedTest() } }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
-                        Text("Retry Speed Test", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "Test Speed",
+                            color = currentAccent.color,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
         }
+
+        if (testState is SpeedTestState.Testing || testState is SpeedTestState.Completed || testState is SpeedTestState.Error) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 12.dp)
+            ) {
+                when (testState) {
+                    is SpeedTestState.Testing -> {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF13131F), RoundedCornerShape(12.dp))
+                                .border(0.5.dp, Color(0xFF2A2A3E), RoundedCornerShape(12.dp))
+                                .padding(12.dp)
+                        ) {
+                            Text(
+                                "Measuring latency & throughput to streaming edge...",
+                                color = TextPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                    is SpeedTestState.Completed -> {
+                        val res = testState as SpeedTestState.Completed
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF13131F), RoundedCornerShape(12.dp))
+                                .border(0.5.dp, Color(0xFF2A2A3E), RoundedCornerShape(12.dp))
+                                .padding(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text("LATENCY PING", color = TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    Text("${res.pingMs} ms", color = Color(0xFF10B981), fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .height(24.dp)
+                                        .width(1.dp)
+                                        .background(Color(0xFF2A2A3E))
+                                )
+                                Column {
+                                    Text("DOWNLOAD BANDWIDTH", color = TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    Text("${res.speedMbps} Mbps", color = AccentOrange, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .height(24.dp)
+                                        .width(1.dp)
+                                        .background(Color(0xFF2A2A3E))
+                                )
+                                Column {
+                                    Text("STREAM RATING", color = TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        text = if (res.speedMbps >= 15.0) "1080p FHD" else if (res.speedMbps >= 8.0) "720p HD" else "Standard",
+                                        color = currentAccent.color,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    is SpeedTestState.Error -> {
+                        val err = testState as SpeedTestState.Error
+                        Text(
+                            text = "Connection test failed: ${err.message}",
+                            color = PrimaryRed,
+                            fontSize = 11.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0x22EF4444), RoundedCornerShape(8.dp))
+                                .padding(8.dp)
+                        )
+                    }
+                    else -> {}
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SpeedTestCard(currentAccent: AppThemeAccent) {
+    com.streamhub.app.ui.screens.settings.components.PreferenceCard {
+        SpeedTestPreferenceItem(currentAccent = currentAccent)
     }
 }
 
@@ -314,10 +341,10 @@ fun VideoSettingsEntryCard(currentAccent: AppThemeAccent, onNavigateToVideoSetti
 
 
 @Composable
-fun AppUpdateCard() {
+fun AppUpdatePreferenceItem(currentAccent: AppThemeAccent = AppThemeAccent.CYAN) {
     val context = LocalContext.current
     val updateState by AppUpdateManager.updateState.collectAsState()
-    val primaryColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
+    val accentColor = currentAccent.color
 
     val currentVersionName = remember(context) {
         try {
@@ -353,7 +380,6 @@ fun AppUpdateCard() {
         is UpdateState.Error -> 6
     }
 
-    // Only show dialog on TRANSITION into UpdateAvailable, not on re-composition with same state
     LaunchedEffect(updateStateCategory) {
         if (updateState is UpdateState.UpdateAvailable && previousState !is UpdateState.UpdateAvailable && userChecked) {
             showUpdateDialog = true
@@ -373,38 +399,12 @@ fun AppUpdateCard() {
         )
     }
 
-    Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(primaryColor.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.SystemUpdate, contentDescription = "Update", tint = primaryColor, modifier = Modifier.size(20.dp))
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text("App Updates & Version 🚀", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("StreamHub v$currentVersionName", color = TextSecondary, fontSize = 11.sp)
-                    }
-                }
-
-                Button(
-                    onClick = {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable {
+                    if (updateState !is UpdateState.Checking && updateState !is UpdateState.Downloading) {
                         userChecked = true
                         AppUpdateManager.checkForUpdate(
                             currentVersionCode = currentVersionCode,
@@ -413,47 +413,142 @@ fun AppUpdateCard() {
                             repoName = "StreamHub",
                             forceCheck = true
                         )
+                    }
+                }
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(accentColor.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.SystemUpdate,
+                    contentDescription = null,
+                    tint = accentColor,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "App Updates & Version",
+                    color = TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = when (updateState) {
+                        is UpdateState.Idle -> "StreamHub v$currentVersionName"
+                        is UpdateState.Checking -> "Checking for updates on GitHub..."
+                        is UpdateState.UpdateAvailable -> "v${(updateState as UpdateState.UpdateAvailable).info.versionName} ready to install"
+                        is UpdateState.UpToDate -> "StreamHub v$currentVersionName • Up to date"
+                        is UpdateState.Downloading -> "Downloading update: ${(updateState as UpdateState.Downloading).progressPercent}%"
+                        is UpdateState.Downloaded -> "Update downloaded • Ready to install"
+                        is UpdateState.Error -> "Check failed: ${(updateState as UpdateState.Error).message}"
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
-                    shape = RoundedCornerShape(8.dp),
-                    enabled = updateState !is UpdateState.Checking && updateState !is UpdateState.Downloading
-                ) {
-                    when (updateState) {
-                        is UpdateState.Checking -> {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                        }
-                        is UpdateState.Downloading -> {
-                            val progress = (updateState as UpdateState.Downloading).progressPercent
-                            Text("$progress%", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                        is UpdateState.UpdateAvailable -> {
-                            Text("Update Available", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                        else -> {
-                            Text("Check Updates", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
+                    color = TextSecondary.copy(alpha = 0.75f),
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            when (updateState) {
+                is UpdateState.Checking -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = accentColor,
+                        strokeWidth = 2.dp
+                    )
+                }
+                is UpdateState.Downloading -> {
+                    val progress = (updateState as UpdateState.Downloading).progressPercent
+                    Text(
+                        text = "$progress%",
+                        color = accentColor,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                is UpdateState.UpdateAvailable -> {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(accentColor)
+                            .clickable { showUpdateDialog = true }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "Install",
+                            color = Color.Black,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                else -> {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(accentColor.copy(alpha = 0.15f))
+                            .clickable {
+                                userChecked = true
+                                AppUpdateManager.checkForUpdate(
+                                    currentVersionCode = currentVersionCode,
+                                    currentVersionName = currentVersionName,
+                                    repoOwner = "WorkerOfArea51",
+                                    repoName = "StreamHub",
+                                    forceCheck = true
+                                )
+                            }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "Check",
+                            color = accentColor,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
+        }
 
-            if (userChecked && updateState is UpdateState.UpToDate) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("You are on the latest version (v$currentVersionName).", color = primaryColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-            }
-
-            if (updateState is UpdateState.Downloading) {
-                val download = updateState as UpdateState.Downloading
-                Spacer(modifier = Modifier.height(12.dp))
-                LinearProgressIndicator(progress = { download.progressPercent / 100f }, color = primaryColor, modifier = Modifier.fillMaxWidth())
+        if (updateState is UpdateState.Downloading) {
+            val download = updateState as UpdateState.Downloading
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 12.dp)
+            ) {
+                LinearProgressIndicator(
+                    progress = { download.progressPercent / 100f },
+                    color = accentColor,
+                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp))
+                )
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("${download.downloadedMb} MB / ${download.totalMb} MB", color = TextSecondary, fontSize = 11.sp)
-            }
-
-            if (updateState is UpdateState.Error) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Update check failed: ${(updateState as UpdateState.Error).message}", color = primaryColor, fontSize = 11.sp)
+                Text(
+                    text = "${download.downloadedMb} MB / ${download.totalMb} MB",
+                    color = TextSecondary,
+                    fontSize = 10.sp
+                )
             }
         }
+    }
+}
+
+@Composable
+fun AppUpdateCard(currentAccent: AppThemeAccent = AppThemeAccent.CYAN) {
+    com.streamhub.app.ui.screens.settings.components.PreferenceCard {
+        AppUpdatePreferenceItem(currentAccent = currentAccent)
     }
 }
 

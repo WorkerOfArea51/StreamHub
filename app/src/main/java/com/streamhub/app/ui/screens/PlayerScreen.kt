@@ -400,7 +400,7 @@ fun PlayerScreen(
     var showOnlineSubSearchSheet by remember { mutableStateOf(false) }
     var isFrameNavExpanded by remember { mutableStateOf(false) }
     var isSnapshotLoading by remember { mutableStateOf(false) }
-    var audioDelayMs by remember { mutableLongStateOf(0L) }
+    var audioDelayMs by remember(playerSettings.defaultAudioDelayMs) { mutableLongStateOf(playerSettings.defaultAudioDelayMs.toLong()) }
     var dismissedNextEpIndex by remember { mutableIntStateOf(-1) }
 
     // Intercept back when a dialog/sheet is open — close the sheet first, don't pop the nav stack.
@@ -627,7 +627,8 @@ fun PlayerScreen(
                     audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, nextVol, 0)
                     currentVolumePercent = (nextVol.toFloat() / maxVolume) * 100f
                 } else {
-                    val nextBoost = (boost + 5).coerceAtMost(100)
+                    val maxBoost = (playerSettings.maxVolumeBoostPercent - 100).coerceAtLeast(0)
+                    val nextBoost = (boost + 5).coerceAtMost(maxBoost)
                     viewModel.setVolumeBoost(nextBoost)
                     currentVolumePercent = 100f + nextBoost
                 }
@@ -1004,7 +1005,8 @@ fun PlayerScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(Unit) {
+                        .pointerInput(playerSettings.pinchToZoomEnabled) {
+                            if (!playerSettings.pinchToZoomEnabled) return@pointerInput
                             awaitEachGesture {
                                 do {
                                     val event = awaitPointerEvent()
@@ -1053,7 +1055,7 @@ fun PlayerScreen(
 
                                         val longPressJob = scope.launch {
                                             delay(450L)
-                                            if (!isDragging && down.pressed) {
+                                            if (!isDragging && down.pressed && playerSettings.holdTo2XEnabled) {
                                                 if (uiState.isPlaying) {
                                                     isLongPressed = true
                                                     speedBeforeHold = uiState.playbackSpeed
@@ -1107,7 +1109,8 @@ fun PlayerScreen(
                                                         }
                                                     } else {
                                                         val dragDelta = (startPos.y - currentPos.y) / (size.height * 0.85f) * 200f
-                                                        val newVol = (originalVolume + dragDelta).coerceIn(0f, 200f)
+                                                        val maxBoost = playerSettings.maxVolumeBoostPercent.toFloat()
+                                                        val newVol = (originalVolume + dragDelta).coerceIn(0f, maxBoost)
                                                         currentVolumePercent = newVol
                                                         if (newVol <= 100f) {
                                                             val targetVol = ((newVol / 100f) * maxVolume).toInt()
@@ -1187,7 +1190,7 @@ fun PlayerScreen(
 
                                         val longPressJob = scope.launch {
                                             delay(450L)
-                                            if (!isDragging && down.pressed) {
+                                            if (!isDragging && down.pressed && playerSettings.holdTo2XEnabled) {
                                                 if (uiState.isPlaying) {
                                                     isLongPressed = true
                                                     speedBeforeHold = uiState.playbackSpeed
@@ -1209,7 +1212,7 @@ fun PlayerScreen(
 
                                                 if (!isDragging && distance > 16f) {
                                                     longPressJob.cancel()
-                                                    if (kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX) * 1.1f) {
+                                                    if (kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX) * 1.1f && playerSettings.subtitleVerticalDragEnabled) {
                                                         isDragging = true
                                                         if (isLongPressed) {
                                                             viewModel.setPlaybackSpeed(speedBeforeHold)
@@ -1287,7 +1290,7 @@ fun PlayerScreen(
 
                                         val longPressJob = scope.launch {
                                             delay(450L)
-                                            if (!isDragging && down.pressed) {
+                                            if (!isDragging && down.pressed && playerSettings.holdTo2XEnabled) {
                                                 if (uiState.isPlaying) {
                                                     isLongPressed = true
                                                     speedBeforeHold = uiState.playbackSpeed
@@ -1334,7 +1337,8 @@ fun PlayerScreen(
                                                     pointer.consume()
                                                     if (playerSettings.volumeOnRight) {
                                                         val dragDelta = (startPos.y - currentPos.y) / (size.height * 0.85f) * 200f
-                                                        val newVol = (originalVolume + dragDelta).coerceIn(0f, 200f)
+                                                        val maxBoost = playerSettings.maxVolumeBoostPercent.toFloat()
+                                                        val newVol = (originalVolume + dragDelta).coerceIn(0f, maxBoost)
                                                         currentVolumePercent = newVol
                                                         if (newVol <= 100f) {
                                                             val targetVol = ((newVol / 100f) * maxVolume).toInt()

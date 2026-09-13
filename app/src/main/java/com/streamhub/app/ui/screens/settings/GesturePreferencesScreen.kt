@@ -36,6 +36,7 @@ import com.streamhub.app.ui.screens.settings.components.PreferenceDivider
 import com.streamhub.app.ui.screens.settings.components.PreferenceItem
 import com.streamhub.app.ui.screens.settings.components.PreferenceRadioItem
 import com.streamhub.app.ui.screens.settings.components.PreferenceSectionHeader
+import com.streamhub.app.ui.screens.settings.components.PreferenceSwitchItem
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
@@ -154,36 +155,42 @@ fun GesturePreferencesScreen(
                 }
             }
 
-            // Section 3: Player Touch Gestures Guide
+            // Section 3: Player Touch Gestures
             item {
                 PreferenceSectionHeader(title = "INTERACTIVE TOUCH GESTURES", accentColor = currentAccent.color)
                 PreferenceCard {
-                    PreferenceItem(
+                    PreferenceSwitchItem(
                         title = "Hold to 2.0X Fast-Forward",
-                        subtitle = "Touch and hold anywhere on the video to temporarily trigger 2.0X speed with HUD feedback. Releasing finger restores original speed.",
+                        subtitle = "Touch and hold anywhere on the video surface to temporarily engage 2.0X speed with HUD feedback. Releasing finger restores original speed.",
+                        checked = playerSettings.holdTo2XEnabled,
+                        onCheckedChange = { PlayerSettingsManager.updateHoldTo2XEnabled(it) },
                         icon = Icons.Outlined.FastForward,
                         iconTint = currentAccent.color,
-                        trailingContent = null
+                        accentColor = currentAccent.color
                     )
 
                     PreferenceDivider()
 
-                    PreferenceItem(
+                    PreferenceSwitchItem(
                         title = "Multi-Touch Pinch to Zoom & Pan",
                         subtitle = "Pinch with two fingers to smoothly scale the video canvas from 0.5x to 5.0x zoom. Drag with two fingers to pan around the frame.",
+                        checked = playerSettings.pinchToZoomEnabled,
+                        onCheckedChange = { PlayerSettingsManager.updatePinchToZoomEnabled(it) },
                         icon = Icons.Outlined.ZoomIn,
                         iconTint = currentAccent.color,
-                        trailingContent = null
+                        accentColor = currentAccent.color
                     )
 
                     PreferenceDivider()
 
-                    PreferenceItem(
+                    PreferenceSwitchItem(
                         title = "Center Subtitle Vertical Drag",
                         subtitle = "Drag vertically in the center 30% gesture zone to smoothly adjust subtitle vertical padding and placement in real time.",
+                        checked = playerSettings.subtitleVerticalDragEnabled,
+                        onCheckedChange = { PlayerSettingsManager.updateSubtitleVerticalDragEnabled(it) },
                         icon = Icons.Outlined.Subtitles,
                         iconTint = currentAccent.color,
-                        trailingContent = null
+                        accentColor = currentAccent.color
                     )
                 }
             }

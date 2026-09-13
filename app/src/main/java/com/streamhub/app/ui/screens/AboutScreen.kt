@@ -100,6 +100,8 @@ fun AboutScreen(
         }
     }
 
+    androidx.activity.compose.BackHandler(onBack = onBackClick)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -162,24 +164,10 @@ fun AboutScreen(
                             .padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // Glowing Logo Ring
-                        Box(
-                            modifier = Modifier
-                                .size(88.dp)
-                                .clip(CircleShape)
-                                .background(Brush.linearGradient(listOf(PrimaryRed, Color(0xFF7C4DFF), Color(0xFF00E5FF))))
-                                .padding(3.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF0D0D15)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PlayCircle,
-                                contentDescription = "StreamHub Logo",
-                                tint = PrimaryRed,
-                                modifier = Modifier.size(52.dp)
-                            )
-                        }
+                        // Official StreamHub Brand Logo
+                        com.streamhub.app.ui.components.StreamHubBrandLogo(
+                            size = 88.dp
+                        )
 
                         Spacer(modifier = Modifier.height(14.dp))
 
