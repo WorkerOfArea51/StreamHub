@@ -303,7 +303,7 @@ fun VideoSettingsScreen(
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "Seconds before video end to prompt Next Episode button:",
+                            "When to prompt the Next Episode card during ending outro/credits:",
                             color = TextSecondary,
                             fontSize = 11.sp
                         )
