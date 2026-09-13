@@ -479,7 +479,7 @@ The following redundant or obsolete files were discovered during the project aud
 
 ## 10. Active Build & Version State
 
-- **Active Version**: `v4.8.310` (Build 310) — Commit `7a3dd5e`
+- **Active Version**: `v4.8.310` (Build 310) — Commit `36e0a15`
 - **Status**: Production Release Candidate
 - **Recent Completed Sprint**:
   - Persistent Audio & Subtitle Track Memory (`v4.8.310` Build 310):
