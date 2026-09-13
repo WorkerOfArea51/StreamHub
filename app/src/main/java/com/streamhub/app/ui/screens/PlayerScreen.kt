@@ -577,16 +577,23 @@ fun PlayerScreen(
     // mpvEx Parity: Synchronize with system volume only when resuming from background
     // Eliminates ContentObserver snapping down volume upon releasing finger drag.
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, audioManager, maxVolume) {
+    DisposableEffect(lifecycleOwner, audioManager, maxVolume, viewModel) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                val curVol = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
-                val boost = viewModel.uiState.value.volumeBoostPercent
-                if (boost == 0 || curVol < maxVolume.toInt()) {
-                    currentVolumePercent = (curVol / maxVolume) * 100f
-                } else {
-                    currentVolumePercent = 100f + boost
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> {
+                    viewModel.onAppBackgrounded()
                 }
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
+                    viewModel.onAppForegrounded()
+                    val curVol = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
+                    val boost = viewModel.uiState.value.volumeBoostPercent
+                    if (boost == 0 || curVol < maxVolume.toInt()) {
+                        currentVolumePercent = (curVol / maxVolume) * 100f
+                    } else {
+                        currentVolumePercent = 100f + boost
+                    }
+                }
+                else -> {}
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)

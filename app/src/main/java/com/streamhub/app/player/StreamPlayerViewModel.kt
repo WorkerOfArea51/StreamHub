@@ -133,6 +133,9 @@ class StreamPlayerViewModel : ViewModel() {
 
     private var bandwidthTracker: StreamBandwidthTracker? = null
     private var prepareStartTimeMs: Long = 0L
+    private var lastBackgroundTimestampMs: Long = 0L
+    private var lastPauseTimestampMs: Long = 0L
+    private var stallAccumulatorMs: Long = 0L
 
     fun getPlayer(): ExoPlayer? = exoPlayer
 
@@ -206,6 +209,9 @@ class StreamPlayerViewModel : ViewModel() {
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _uiState.update { it.copy(isPlaying = isPlaying) }
+                if (!isPlaying) {
+                    lastPauseTimestampMs = System.currentTimeMillis()
+                }
                 syncTelemetry(if (isPlaying) "PLAYING" else "PAUSED")
             }
 
@@ -1057,9 +1063,61 @@ class StreamPlayerViewModel : ViewModel() {
     }
 
     fun togglePlayPause() {
-        exoPlayer?.let {
-            if (it.isPlaying) it.pause() else it.play()
+        val player = exoPlayer ?: return
+        if (player.isPlaying) {
+            lastPauseTimestampMs = System.currentTimeMillis()
+            player.pause()
+        } else {
+            val pauseDurationMs = if (lastPauseTimestampMs > 0L) System.currentTimeMillis() - lastPauseTimestampMs else 0L
+            lastPauseTimestampMs = 0L
+            // If the player was paused for >= 10 seconds (whether in-app or in background),
+            // the server-side keep-alive socket is likely closed. Refresh the socket pool
+            // and reconnect cleanly so resuming is instant and never hangs on a dead socket.
+            if (pauseDurationMs >= 10_000L) {
+                Log.i("StreamPlayerViewModel", "Resuming after prolonged pause (${pauseDurationMs}ms). Refreshing connection...")
+                try {
+                    com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+                } catch (_: Exception) {}
+                player.seekTo(player.currentPosition)
+            }
+            player.play()
         }
+    }
+
+    fun onAppBackgrounded() {
+        lastBackgroundTimestampMs = System.currentTimeMillis()
+        Log.i("StreamPlayerViewModel", "App backgrounded at $lastBackgroundTimestampMs")
+        StreamPreloadManager.cancelDetailsPrewarm()
+        StreamPreloadManager.cancelBingePrecache()
+        nextEpisodePreloadJob?.cancel()
+        nextEpisodePreloadJob = null
+    }
+
+    fun onAppForegrounded() {
+        val now = System.currentTimeMillis()
+        val elapsedMs = if (lastBackgroundTimestampMs > 0L) now - lastBackgroundTimestampMs else 0L
+        lastBackgroundTimestampMs = 0L
+        Log.i("StreamPlayerViewModel", "App foregrounded after ${elapsedMs}ms in background")
+
+        stallAccumulatorMs = 0L // Reset stall accumulator to prevent false watchdog trigger upon returning
+
+        // If the app was in the background for >= 3 seconds, the TCP connection to the streaming
+        // server is likely dead or timed out by the server/proxy. Proactively refresh it.
+        if (elapsedMs >= 3000L && exoPlayer != null && _uiState.value.resolvedStreamUrl.isNotBlank()) {
+            refreshStreamConnection()
+        }
+    }
+
+    fun refreshStreamConnection() {
+        Log.i("StreamPlayerViewModel", "Proactively refreshing streaming connection...")
+        try {
+            com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+        } catch (e: Exception) {
+            Log.w("StreamPlayerViewModel", "Failed to evict connection pool", e)
+        }
+        val player = exoPlayer ?: return
+        val pos = pendingSeekTargetMs ?: player.currentPosition
+        player.seekTo(pos)
     }
 
     fun seekTo(positionMs: Long) {
@@ -1198,7 +1256,7 @@ class StreamPlayerViewModel : ViewModel() {
     private fun startPositionTracker() {
         var lastProgressSaveMs = 0L
         var watchTimeAccumulatorMs = 0L
-        var stallAccumulatorMs = 0L
+        stallAccumulatorMs = 0L
         positionTrackerJob?.cancel()
         positionTrackerJob = viewModelScope.launch {
             while (isActive) {

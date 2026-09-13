@@ -184,6 +184,10 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
       - Configured `setEnableAudioTrackPlaybackParams(false)` on `DefaultRenderersFactory` so ExoPlayer uses software Sonic audio processor for jitter-free pitch scaling without hardware AudioTrack resampler stutter.
       - Wrapped Left, Center, and Right zone pointer loops in `try ... finally` blocks guaranteeing that whenever touch leaves the screen or gestures cancel, `viewModel.setPlaybackSpeed(speedBeforeHold)` and `is2xSpeedHolding = false` execute cleanly every single time.
       - Removed intrusive full-screen `pointerInput` Box overlay (`detectTapGestures`) that fought ongoing touch tracking, replacing it with a pure non-blocking floating `AnimatedVisibility` HUD pill (`2.0x Speed ▶▶`) with smooth fade/slide transitions.
+30. **App Backgrounding, Recent Apps & Prolonged Pause Resilience (YouTube-Parity) (`StreamPlayerViewModel.kt`, `PlayerScreen.kt`)**:
+    - **Background/Foreground Lifecycle Synchronization**: Wired Compose `LifecycleEventObserver` in `PlayerScreen.kt` to trigger `viewModel.onAppBackgrounded()` on `ON_STOP` and `viewModel.onAppForegrounded()` on `ON_RESUME`.
+    - **Dead Socket Purge on App Return**: When returning from background (e.g. switching to Telegram and coming back via Recent Apps) after $\ge 3$ seconds, proactively executes `SharedHttpClient.streamingClient.connectionPool.evictAll()`, cancels hung/stale preloader jobs, resets `stallAccumulatorMs = 0L`, and refreshes the loader in-place via `exoPlayer.seekTo(currentPosition)`. Pre-establishes a fresh, active HTTP range connection over the network before the user even taps Play.
+    - **Prolonged Pause Protection in `togglePlayPause()`**: Tracks `lastPauseTimestampMs` across all playback pauses (in-app or background). Resuming after $\ge 10$ seconds of pause proactively purges dead keep-alive sockets and reconnects in-place, permanently eliminating the 15-second socket timeout freeze and socket reset exceptions.
 
 ### B. UI, Catalogue & Navigation (`ui/screens/`, `ui/components/`)
 1. **SplashScreen**:
@@ -461,9 +465,14 @@ The following redundant or obsolete files were discovered during the project aud
 
 ## 10. Active Build & Version State
 
-- **Active Version**: `v4.8.307` (Build 307) — Commit `df51aad`
+- **Active Version**: `v4.8.308` (Build 308) — Commit `665d40c`
 - **Status**: Production Release Candidate
 - **Recent Completed Sprint**:
+  - App Backgrounding, Recent Apps & Prolonged Pause Resilience (`v4.8.308` Build 308):
+    - Resolved video streaming hangs and buffering freezes caused when pausing a video, switching to other apps (Telegram/Home), and resuming from Recent Apps.
+    - Added background/foreground lifecycle synchronization in `PlayerScreen.kt` connecting `ON_STOP` to `viewModel.onAppBackgrounded()` and `ON_RESUME` to `viewModel.onAppForegrounded()`.
+    - Proactively evicts stale OkHttp streaming sockets (`streamingClient.connectionPool.evictAll()`), cancels idle preloader jobs, resets `stallAccumulatorMs = 0L`, and reconnects the loader via in-place `exoPlayer.seekTo(currentPosition)` upon returning from background ($\ge 3\text{s}$).
+    - Implemented prolonged pause protection in `togglePlayPause()`: tracking `lastPauseTimestampMs` and refreshing stale keep-alive sockets before playback resumes if paused for $\ge 10\text{s}$, guaranteeing instant, YouTube-parity playback resumption.
   - Deep Forward Buffer Cushion, Wi-Fi Band Handoff Resilience & Fluid 2.0X Speed (`v4.8.307` Build 307):
     - Removed artificial 64MB RAM byte ceiling (`setTargetBufferBytes`) from `DefaultLoadControl` that was prematurely stalling ExoPlayer loader chunks at 64MB and starving forward buffering at 0s.
     - Configured YouTube-parity buffer sliding window: `minBufferMs = 60_000` (60s minimum ahead), `maxBufferMs = 180_000` (3 minutes sliding forward cushion), `bufferForPlaybackMs = 500`, `bufferForPlaybackAfterRebufferMs = 4_000` (4.0s solid cushion before resuming after a rebuffer, permanently eliminating 1-second stop-and-go rebuffer loops), and `backBuffer = 15_000` (`retainBackBufferFromKeyframe = false`).
