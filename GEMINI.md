@@ -274,6 +274,7 @@ app/src/main/java/com/streamhub/app/
 │   ├── SubtitleSettingsManager.kt       # Subtitle appearance persistence (font, color, padding)
 │   ├── TelegramLinkResolver.kt          # Telegram F2L link parser and playable URL sanitizer
 │   ├── ThumbnailPrefetchManager.kt      # Coil image memory/disk prefetcher
+│   ├── TrackPreferenceManager.kt        # Persistent audio & subtitle track memory per media & global
 │   ├── UserProfileManager.kt            # Profile nickname, bio, preset/custom avatar
 │   ├── UserStatsManager.kt              # Total watch hours, streak days, daily watch time
 │   ├── UserTelemetryManager.kt          # Real-time audience telemetry & remote commands
