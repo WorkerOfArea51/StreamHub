@@ -473,6 +473,7 @@ fun PlayerScreen(
     var showBrightnessIndicator by remember { mutableStateOf(false) }
     var showVolumeIndicator by remember { mutableStateOf(false) }
     var autoHideJob by remember { mutableStateOf<Job?>(null) }
+    var lastControlsInteractionTimestamp by remember { mutableLongStateOf(0L) }
 
     // FIX: Two-finger pinch-to-zoom — zooms the video surface (0.5x to 5.0x).
     var videoZoomScale by remember { mutableFloatStateOf(1.0f) }
@@ -496,7 +497,7 @@ fun PlayerScreen(
         }
     }
 
-    // Auto-hide controls timer: never fires while sheets, dialogs, or gestures are active
+    // Auto-hide controls timer: YouTube-parity engine (never fires during scrubbing/sheets/gestures, resets on touch)
     LaunchedEffect(
         uiState.isControlsVisible,
         uiState.isPlaying,
@@ -505,16 +506,17 @@ fun PlayerScreen(
         isScrubbing,
         is2xSpeedHolding,
         showBrightnessIndicator,
-        showVolumeIndicator
+        showVolumeIndicator,
+        lastControlsInteractionTimestamp
     ) {
         autoHideJob?.cancel()
         if (uiState.isControlsVisible && uiState.isPlaying && !uiState.isLocked &&
             !isAnySheetOpen && !isScrubbing && !is2xSpeedHolding &&
             !showBrightnessIndicator && !showVolumeIndicator) {
             autoHideJob = scope.launch {
-                delay(4500L)
+                delay(4000L) // YouTube-parity 4.0s grace countdown
                 val current = viewModel.uiState.value
-                if (current.isControlsVisible && current.isPlaying && !current.isLocked && !isAnySheetOpen) {
+                if (current.isControlsVisible && current.isPlaying && !current.isLocked && !isAnySheetOpen && !isScrubbing) {
                     viewModel.toggleControlsVisibility()
                 }
             }
@@ -1685,6 +1687,12 @@ fun PlayerScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color(0x59000000))
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            lastControlsInteractionTimestamp = System.currentTimeMillis()
+                        }
+                    }
             ) {
                 // ── 1. Top Bar ──
                 Box(
@@ -1830,7 +1838,7 @@ fun PlayerScreen(
                 }
 
                 // ── 2. Center Playback Controls (Previous, Play/Pause, Next) ──
-                if (errorInfo == null) {
+                if (errorInfo == null && !isScrubbing) {
                     Row(
                         modifier = Modifier.align(Alignment.Center),
                         horizontalArrangement = Arrangement.spacedBy(if (isPortrait) 24.dp else 36.dp),
@@ -2464,7 +2472,9 @@ fun PlayerScreen(
                             isPaused = !uiState.isPlaying,
                             thumbnailBitmap = scrubberThumbnailBitmap,
                             sourceUrl = uiState.resolvedStreamUrl,
-                            fallbackPosterUrl = mediaItem.posterUrl
+                            fallbackPosterUrl = mediaItem.posterUrl,
+                            onScrubbingChanged = { isScrubbing = it },
+                            onScrubPositionChanged = { scrubbingPositionMs = it }
                         )
                     }
                 }

@@ -5,7 +5,9 @@ import android.content.SharedPreferences
 import android.os.Environment
 import android.os.StatFs
 import android.util.Log
+import android.net.Uri
 import coil.Coil
+import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.player.StreamCacheManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -357,6 +359,115 @@ object StorageCacheManager {
     }
 
     /**
+     * Smart reverse lookup: matches raw stream URLs/hashes against Firebase media catalog
+     * and Watch History to resolve real movie/series titles, episode names, and posters.
+     */
+    private fun resolveMediaInfoForCacheKey(cacheKey: String, sizeBytes: Long): CachedMediaMetadata {
+        val fileId = TelegramLinkResolver.extractTelegramMessageOrFileId(cacheKey)
+        val uri = try { Uri.parse(cacheKey) } catch (_: Exception) { null }
+        val lastSegment = uri?.lastPathSegment ?: ""
+
+        // 1. Search Firebase Media Catalog
+        val catalog = FirebaseRepository.getInstance().mediaCatalog.value
+        for (media in catalog) {
+            val isMovie = media.type.equals("MOVIE", ignoreCase = true) || media.category.equals("MOVIE", ignoreCase = true)
+            // Check episodes (movies have a single episode or episode list)
+            for (ep in media.episodes) {
+                val epFileId = ep.telegramFileId.ifBlank { TelegramLinkResolver.extractTelegramMessageOrFileId(ep.streamUrl) }
+                val epMirrorFileId = TelegramLinkResolver.extractTelegramMessageOrFileId(ep.mirrorStreamUrl)
+                val isEpMatch = (fileId.isNotBlank() && (epFileId.equals(fileId, ignoreCase = true) || epMirrorFileId.equals(fileId, ignoreCase = true))) ||
+                    (ep.streamUrl.isNotBlank() && (cacheKey.contains(ep.streamUrl, ignoreCase = true) || ep.streamUrl.contains(cacheKey, ignoreCase = true))) ||
+                    (lastSegment.isNotBlank() && (ep.streamUrl.contains(lastSegment, ignoreCase = true) || ep.mirrorStreamUrl.contains(lastSegment, ignoreCase = true))) ||
+                    (ep.fileName.isNotBlank() && (cacheKey.contains(ep.fileName, ignoreCase = true) || lastSegment.contains(ep.fileName, ignoreCase = true)))
+
+                if (isEpMatch) {
+                    val sub = when {
+                        isMovie -> if (ep.title.isNotBlank() && !ep.title.equals(media.title, ignoreCase = true)) ep.title else "Movie"
+                        ep.seasonNumber > 0 -> "Season ${ep.seasonNumber} • Episode ${ep.episodeNumber}${if (ep.title.isNotBlank()) ": ${ep.title}" else ""}"
+                        ep.episodeNumber > 0 -> "Episode ${ep.episodeNumber}${if (ep.title.isNotBlank()) ": ${ep.title}" else ""}"
+                        else -> ep.title.ifBlank { "Episode" }
+                    }
+                    val poster = ep.thumbnailUrl.ifBlank { media.posterUrl }
+                    val resolved = CachedMediaMetadata(
+                        cacheKey = cacheKey,
+                        mediaId = media.id,
+                        title = media.title,
+                        subtitle = sub,
+                        posterUrl = poster,
+                        registeredTimestamp = System.currentTimeMillis()
+                    )
+                    registerCachedStream(cacheKey, media.id, media.title, sub, poster)
+                    return resolved
+                }
+            }
+
+            // Also check if cacheKey or lastSegment matches media title directly
+            if (media.title.isNotBlank() && (cacheKey.contains(media.title, ignoreCase = true) || (lastSegment.isNotBlank() && lastSegment.contains(media.title, ignoreCase = true)))) {
+                val sub = if (isMovie) "Movie" else "Series"
+                val resolved = CachedMediaMetadata(
+                    cacheKey = cacheKey,
+                    mediaId = media.id,
+                    title = media.title,
+                    subtitle = sub,
+                    posterUrl = media.posterUrl,
+                    registeredTimestamp = System.currentTimeMillis()
+                )
+                registerCachedStream(cacheKey, media.id, media.title, sub, media.posterUrl)
+                return resolved
+            }
+        }
+
+        // 2. Search Watch History
+        val historyMap = WatchHistoryManager.historyFlow.value
+        for ((_, progress) in historyMap) {
+            if (progress.title.isNotBlank()) {
+                val matchesHistory = (fileId.isNotBlank() && progress.mediaId.contains(fileId, ignoreCase = true)) ||
+                    (historyMap.size == 1) // If only one item in watch history, associate it
+
+                if (matchesHistory) {
+                    val sub = when {
+                        progress.seasonNumber > 0 -> "Season ${progress.seasonNumber} • Episode ${progress.episodeNumber}${if (progress.episodeTitle.isNotBlank()) ": ${progress.episodeTitle}" else ""}"
+                        progress.episodeNumber > 0 -> "Episode ${progress.episodeNumber}${if (progress.episodeTitle.isNotBlank()) ": ${progress.episodeTitle}" else ""}"
+                        else -> if (progress.mediaType.isNotBlank()) progress.mediaType else "Movie"
+                    }
+                    val resolved = CachedMediaMetadata(
+                        cacheKey = cacheKey,
+                        mediaId = progress.mediaId,
+                        title = progress.title,
+                        subtitle = sub,
+                        posterUrl = progress.posterUrl,
+                        registeredTimestamp = System.currentTimeMillis()
+                    )
+                    registerCachedStream(cacheKey, progress.mediaId, progress.title, sub, progress.posterUrl)
+                    return resolved
+                }
+            }
+        }
+
+        // 3. Clean human-readable fallback (NEVER display raw hex strings)
+        val cleanFallback = try {
+            val last = uri?.lastPathSegment ?: "Video Stream"
+            val stripped = last.substringBeforeLast(".").replace('_', ' ').replace('-', ' ').trim()
+            if (stripped.matches(Regex("""(?i)^[a-f0-9]{12,}$"""))) {
+                "Cached Video Stream"
+            } else {
+                stripped.ifBlank { "Cached Video Stream" }
+            }
+        } catch (_: Exception) {
+            "Cached Video Stream"
+        }
+
+        return CachedMediaMetadata(
+            cacheKey = cacheKey,
+            mediaId = null,
+            title = cleanFallback,
+            subtitle = "Direct Stream (${formatBytes(sizeBytes)})",
+            posterUrl = null,
+            registeredTimestamp = System.currentTimeMillis()
+        )
+    }
+
+    /**
      * Fetch list of all active cached video streams with their metadata, size, and auto-delete countdowns.
      */
     suspend fun getCachedStreamEntries(): List<CachedStreamItem> = withContext(Dispatchers.IO) {
@@ -369,8 +480,14 @@ object StorageCacheManager {
             val now = System.currentTimeMillis()
 
             resources.map { res ->
-                val meta = getCachedMetadata(res.key)
-                val effectiveTime = maxOf(res.lastTouchTimestamp, meta?.registeredTimestamp ?: 0L)
+                val meta = getCachedMetadata(res.key).let { m ->
+                    if (m != null && m.title.isNotBlank() && !m.title.matches(Regex("""(?i)^[a-f0-9]{12,}$"""))) {
+                        m
+                    } else {
+                        resolveMediaInfoForCacheKey(res.key, res.sizeBytes)
+                    }
+                }
+                val effectiveTime = maxOf(res.lastTouchTimestamp, meta.registeredTimestamp)
                 val expiryTimestamp = if (ttlMillis > 0L) effectiveTime + ttlMillis else null
                 val isExpired = expiryTimestamp != null && now >= expiryTimestamp
 
@@ -392,20 +509,12 @@ object StorageCacheManager {
                     }
                 }
 
-                val fallbackTitle = try {
-                    val uri = android.net.Uri.parse(res.key)
-                    val last = uri.lastPathSegment ?: "Stream Buffer"
-                    last.substringBeforeLast(".").replace('_', ' ').replace('-', ' ').trim().ifBlank { "Stream Buffer" }
-                } catch (_: Exception) {
-                    "Stream Buffer"
-                }
-
                 CachedStreamItem(
                     key = res.key,
-                    mediaId = meta?.mediaId,
-                    title = meta?.title?.ifBlank { fallbackTitle } ?: fallbackTitle,
-                    subtitle = meta?.subtitle ?: "",
-                    posterUrl = meta?.posterUrl,
+                    mediaId = meta.mediaId,
+                    title = meta.title,
+                    subtitle = meta.subtitle,
+                    posterUrl = meta.posterUrl,
                     sizeBytes = res.sizeBytes,
                     formattedSize = formatBytes(res.sizeBytes),
                     lastAccessedTimestamp = effectiveTime,

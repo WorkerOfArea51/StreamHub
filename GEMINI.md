@@ -134,8 +134,12 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
     - Explicit `DataSource.close()` on preloader cancellations (`cancelDetailsPrewarm`, `cancelBingePrecache`) guaranteeing in-flight sockets terminate immediately and release locks.
 21. **Safe Sliding RAM Window & OutOfMemory Prevention (`StreamPlayerViewModel.kt`)**:
     - `DefaultLoadControl` utilizes a 2.5-minute safe sliding window (`maxBufferMs = 150_000`, `minBufferMs = 30_000`) with a strict 64 MB hard RAM ceiling (`targetBufferBytes = 64 * 1024 * 1024`) and `backBuffer = 15_000` (`retainBackBufferFromKeyframe = false`). Eliminates JVM heap exhaustion and prevents `OutOfMemoryError` during movie playback while preserving instant startup (<250ms).
-22. **120fps Unified Silky-Smooth Seekbar Scrubbing (`MpvSeekbar.kt`)**:
+22. **120fps Unified Silky-Smooth Seekbar Scrubbing & YouTube-Parity Auto-Hide Engine (`MpvSeekbar.kt`, `PlayerScreen.kt`)**:
     - Unified gesture touch engine (`awaitEachGesture`) replacing conflicting tap/drag detectors. Provides instant 1:1 hardware touch tracking at 120fps, YouTube-style tactile thumb expansion (`animatedThumbScale`), and jitter-free release locking without snapping backward.
+    - **Active Scrubbing Auto-Hide Freeze (YouTube-Parity)**: Connected `onScrubbingChanged` and `onScrubPositionChanged` between `MpvSeekbar` and `PlayerScreen.isScrubbing`. Touching/dragging the seekbar immediately suspends and cancels the auto-hide timer (`autoHideJob?.cancel()`), permanently eliminating controls disappearance mid-scrub.
+    - **4.0s Grace Countdown on Release**: Releasing the seekbar triggers a fresh 4.0-second auto-hide countdown, ensuring controls stay visible for 4 seconds after scrubbing before fading out smoothly.
+    - **Interactive Controls Touch Interceptor**: Added non-consuming pointer listener (`awaitFirstDown(requireUnconsumed = false)`) to root controls overlay; touching any button, chip, or slider resets the auto-hide timer back to 4.0s.
+    - **Clean Scrubbing Visual Focus**: Center Play/Pause/Next/Previous controls dynamically hide during active scrub (`!isScrubbing`), allowing the center scrubbing HUD card (live timestamp, delta `[+MM:SS]`, and frame preview) to display clearly without UI overlap.
 23. **Seamless Auto-Resume with Non-Intrusive 'Start Over' Pill & Black Screen Prevention (`PlayerScreen.kt`, `PlayerIndicators.kt`, `StreamPlayerViewModel.kt`)**:
     - Video auto-resumes immediately from saved position (`savedPositionMs`) with zero startup delay.
     - Displays a non-intrusive floating HUD pill (`SmartResumePill`) for 7 seconds: *"Resumed from MM:SS"* with **[Start Over]** and **[X]** (dismiss).
@@ -277,7 +281,8 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
    - `StorageManagementScreen.kt`: Granular breakdown of video disk cache, thumbnails, app cache with 1-tap clear.
       - **Media3-Native TTL Auto-Delete Engine (`StorageCacheManager.kt`, `StreamCacheManager.kt`)**: Automatically purges watched video chunk fragments and spans older than user-configured TTL (e.g. 3 Days) via `StreamCacheManager.removeResource()`, cleanly removing disk files and SQLite database records without index corruption or accumulation.
       - **Self-Healing Background & Lifecycle Schedule**: Enforces cache TTL on app startup, every 30 minutes in a periodic background coroutine while active, upon entering `StorageManagementScreen`, and on video player release.
-      - **Interactive "Video Stream Buffer" Inspector (`CachedStreamsSheet.kt`)**: Clicking the Video Stream Buffer row opens a bottom sheet listing each cached movie/episode with its title, poster thumbnail, cached byte size, cached date, live auto-delete countdown ("Auto-deletes in 18h 30m"), and individual single-stream delete button (`[🗑️]`).
+      - **Interactive "Video Stream Buffer" Inspector (`CachedStreamsSheet.kt`)**: Clicking the Video Stream Buffer row opens a bottom sheet listing each cached movie/episode with its canonical title, poster thumbnail, season/episode subtitle, cached byte size, cached date, live auto-delete countdown ("Auto-deletes in 18h 30m"), and individual single-stream delete button (`[🗑️]`).
+      - **Smart Reverse-Lookup & Canonical Metadata Matching Engine (`StorageCacheManager.kt`)**: Automatically resolves raw Telegram hex hashes (`cc62326f58fe991c57e8cef1d6132d2183065...`) and direct URL paths back to canonical movie and series titles, episode labels (`Season 1 • Episode 4`), and official posters. Scans `FirebaseRepository.mediaCatalog` across all movies and episodes (`ep.streamUrl`, `ep.mirrorStreamUrl`, `ep.telegramFileId`, `ep.fileName`, `ep.thumbnailUrl`), cross-references `WatchHistoryManager`, suppresses raw hex hashes with clean human-readable fallbacks ("Cached Video Stream"), and persists resolved metadata to `streamhub_cache_metadata` SharedPreferences for instant future lookups.
    - `VideoSettingsScreen.kt`: Skip intro seconds, next episode threshold, auto-play next ep, volume on right/left, ambient mood.
 9. **Material 3 Expressive Navigation Motion (`MainActivity.kt`)**:
    - Seamless spatial navigation transitions across entire `NavHost`:
@@ -679,5 +684,18 @@ The following redundant or obsolete files were discovered during the project aud
     - Implemented self-healing cache policy triggers: automatically runs TTL eviction on app startup, every 30 minutes in a recurring background coroutine, upon opening `StorageManagementScreen`, and on video playback release.
     - Built interactive `CachedStreamsSheet.kt` modal bottom sheet accessible by tapping the "Video Stream Buffer" row in `StorageManagementScreen.kt`. Lists all cached movies/episodes with poster thumbnail, title, season/episode subtitle, cached byte size, cached timestamp, live auto-delete countdown ("Auto-deletes in 18h 30m"), and individual single-stream delete button (`[🗑️]`).
     - Added persistent cached stream metadata registry in `StorageCacheManager.kt` (`streamhub_cache_metadata`), registering played video titles and posters from `StreamPlayerViewModel.kt`.
+  - Smart Reverse-Lookup & Canonical Title Matching in Stream Buffer (`v4.8.310` Build 310):
+    - Completely resolved the issue where cached video streams in the "Video Stream Buffer" inspector menu displayed raw Telegram unique hex hashes (`cc62326f58fe991c57e8cef1d6132d2183065...`) instead of actual media names.
+    - Implemented `resolveMediaInfoForCacheKey()` in `StorageCacheManager.kt`: automatically scans the in-memory `FirebaseRepository.mediaCatalog` across all movies and episodes (`streamUrl`, `mirrorStreamUrl`, `telegramFileId`, `fileName`), reverse-matching by file ID or path segment.
+    - Resolves real movie titles, episode subtitles (`Season 1 • Episode 4: Courage`), and official poster thumbnails (`thumbnailUrl` / `posterUrl`).
+    - Added secondary matching against `WatchHistoryManager` and guaranteed suppression of raw hex hashes (`^[a-f0-9]{12,}$`) with clean fallbacks ("Cached Video Stream").
+    - Automatically persists resolved metadata back into `streamhub_cache_metadata` SharedPreferences for instant zero-latency future lookups.
+  - YouTube-Parity Controls Auto-Hide & Scrubbing Engine (`v4.8.311` Build 311):
+    - Completely resolved the issue where player controls abruptly vanished while scrubbing the seekbar, destroying the user's scrubbing interaction.
+    - Connected `MpvSeekbar` with `PlayerScreen` via `onScrubbingChanged` and `onScrubPositionChanged`: dragging/touching the seekbar sets `isScrubbing = true`, immediately cancelling and freezing the auto-hide timer (`autoHideJob?.cancel()`). Controls remain 100% visible indefinitely while scrubbing.
+    - Added a 4.0-second grace period on scrub release: when lifting finger, `isScrubbing` resets to `false`, kicking off a fresh 4.0-second countdown before smoothly auto-hiding.
+    - Added non-consuming gesture listener (`awaitFirstDown(requireUnconsumed = false)`) on the root controls overlay, resetting the 4.0-second auto-hide timer on any user touch/interaction (Play/Pause, Next/Prev, Speed chip, Aspect ratio, Audio/Subs, sliders).
+    - Dynamically hidden center Play/Pause/Next/Previous buttons during active scrub (`!isScrubbing`), allowing the mpvEx scrubbing HUD card (live timestamp, delta `[+MM:SS]`, and thumbnail preview) to render clearly at center screen without UI overlap.
+
 
 

@@ -74,7 +74,9 @@ fun MpvSeekbar(
     accentColor: Color? = null,
     thumbnailBitmap: Bitmap? = null,
     sourceUrl: String? = null,
-    fallbackPosterUrl: String? = null
+    fallbackPosterUrl: String? = null,
+    onScrubbingChanged: ((Boolean) -> Unit)? = null,
+    onScrubPositionChanged: ((Long) -> Unit)? = null
 ) {
     val totalDuration = durationMs.coerceAtLeast(1L)
     var isUserInteracting by remember { mutableStateOf(false) }
@@ -191,28 +193,34 @@ fun MpvSeekbar(
                             val down = awaitFirstDown(requireUnconsumed = false)
                             down.consume()
                             isUserInteracting = true
+                            onScrubbingChanged?.invoke(true)
                             val width = size.width.toFloat().coerceAtLeast(1f)
                             var currentFrac = (down.position.x / width).coerceIn(0f, 1f)
                             userPositionMs = (currentFrac.toDouble() * totalDuration).toLong()
+                            onScrubPositionChanged?.invoke(userPositionMs)
 
                             val pointerId = down.id
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull { it.id == pointerId } ?: event.changes.firstOrNull()
-                                if (change == null || !change.pressed) {
-                                    break
+                            try {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == pointerId } ?: event.changes.firstOrNull()
+                                    if (change == null || !change.pressed) {
+                                        break
+                                    }
+                                    change.consume()
+                                    currentFrac = (change.position.x / width).coerceIn(0f, 1f)
+                                    userPositionMs = (currentFrac.toDouble() * totalDuration).toLong()
+                                    onScrubPositionChanged?.invoke(userPositionMs)
                                 }
-                                change.consume()
-                                currentFrac = (change.position.x / width).coerceIn(0f, 1f)
-                                userPositionMs = (currentFrac.toDouble() * totalDuration).toLong()
-                            }
-
-                            val target = userPositionMs
-                            onSeek(target)
-                            scope.launch {
-                                animatedProgress.snapTo(currentFrac)
-                                delay(120L)
-                                isUserInteracting = false
+                            } finally {
+                                val target = userPositionMs
+                                onSeek(target)
+                                scope.launch {
+                                    animatedProgress.snapTo(currentFrac)
+                                    delay(120L)
+                                    isUserInteracting = false
+                                    onScrubbingChanged?.invoke(false)
+                                }
                             }
                         }
                     }
