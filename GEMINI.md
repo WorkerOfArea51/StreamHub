@@ -7,6 +7,7 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
 ## 1. Core Architectural Tenets
 
 ### A. Strict Layer Separation
+
 1. **Data Layer (`app/.../data/`)**:
    - Sole custodian of network communication, raw TDLib MTProto RPC queries, web stream extractors (YouTube, NewPipe), storage management, download schedulers, and Room/EncryptedSharedPreferences repositories.
    - **ZERO UI Imports**: Never import `androidx.compose.*`, UI layouts, or UI composables in this layer.
@@ -43,7 +44,7 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
 - **INVESTIGATION & PRE-WORK EXPLANATION PROTOCOL (INVIOLABLE)**:
   - Whenever the user reports an issue, bug, or feature request:
     1. **Monitor & Investigate**: First, thoroughly trace the relevant code, state flows, or error logs in the codebase.
-    2. **Report & Explain Before Editing**: Report your findings to the user and clearly explain *what* the problem is and *how* you plan to fix or build it BEFORE writing any code.
+    2. **Report & Explain Before Editing**: Report your findings to the user and clearly explain _what_ the problem is and _how_ you plan to fix or build it BEFORE writing any code.
     3. **Solicit Feedback**: Give the user the chance to review the plan, provide suggestions, or redirect the approach before execution begins.
 
 - **NEVER PUSH TO GITHUB WITHOUT EXPLICIT PERMISSION (INVIOLABLE)**:
@@ -75,13 +76,16 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
 ---
 
 ## 4. Master Feature Register (ALREADY IMPLEMENTED & ACTIVE)
-*CRITICAL: Read this list before proposing or discussing features. DO NOT propose building features that already exist.*
+
+_CRITICAL: Read this list before proposing or discussing features. DO NOT propose building features that already exist._
 
 ### A. Player & Gestures (`PlayerScreen.kt`, `player/controls/`, `player/sheets/`)
+
 1. **Hold to 2X Fast-Forward**:
    - Touch-and-hold anywhere on the video triggers `2.0x` speed (`is2xSpeedHolding`), sets speed dynamically via `dynamicHoldSpeed`, shows a glassmorphic HUD pill indicator, and smoothly restores previous speed upon releasing finger.
-2. **Multi-Touch Pinch-to-Zoom & 2-Finger Pan**:
+2. **Multi-Touch Pinch-to-Zoom & 2-Finger Pan with Single-Touch Isolation**:
    - Smooth 2-finger pinch scales video surface from `0.5x` to `5.0x` (`videoZoomScale`) with two-finger translation offset (`videoZoomOffsetX`, `videoZoomOffsetY`).
+   - **Multi-Touch Isolation Guard (`isMultiTouchActive`)**: Tracks active pointers across the screen (`event.changes.count { it.pressed } >= 2`). When 2 or more fingers touch down for pinch-to-zoom, single-finger drag gestures (brightness and volume sliders) are 100% suppressed and active slider indicators immediately cancel, permanently preventing simultaneous brightness/volume popups during pinch gestures.
 3. **3-Zone Gesture System**:
    - **Left 35%**: Vertical drag adjusts screen brightness (with `BrightnessSliderCard`) + double-tap seeks backward.
    - **Center 30%**: Single-tap toggles controls visibility, double-tap toggles play/pause, vertical drag repositions subtitle placement vertically (`bottomPaddingFraction`).
@@ -138,11 +142,10 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
     - Unified gesture touch engine (`awaitEachGesture`) replacing conflicting tap/drag detectors. Provides instant 1:1 hardware touch tracking at 120fps, YouTube-style tactile thumb expansion (`animatedThumbScale`), and jitter-free release locking without snapping backward.
     - **Active Scrubbing Auto-Hide Freeze (YouTube-Parity)**: Connected `onScrubbingChanged` and `onScrubPositionChanged` between `MpvSeekbar` and `PlayerScreen.isScrubbing`. Touching/dragging the seekbar immediately suspends and cancels the auto-hide timer (`autoHideJob?.cancel()`), permanently eliminating controls disappearance mid-scrub.
     - **4.0s Grace Countdown on Release**: Releasing the seekbar triggers a fresh 4.0-second auto-hide countdown, ensuring controls stay visible for 4 seconds after scrubbing before fading out smoothly.
-    - **Interactive Controls Touch Interceptor**: Added non-consuming pointer listener (`awaitFirstDown(requireUnconsumed = false)`) to root controls overlay; touching any button, chip, or slider resets the auto-hide timer back to 4.0s.
-    - **Clean Scrubbing Visual Focus**: Center Play/Pause/Next/Previous controls dynamically hide during active scrub (`!isScrubbing`), allowing the center scrubbing HUD card (live timestamp, delta `[+MM:SS]`, and frame preview) to display clearly without UI overlap.
+    - **1-Tap Controls Dismiss on Empty Space (Playing & Paused)**: Root controls overlay `Box` handles zero-indication click (`clickable(indication = null) { viewModel.toggleControlsVisibility() }`). When controls are visible, tapping anywhere on empty space (outside buttons and seekbar) immediately hides the controls, both during active playback and while paused. When controls are hidden, tapping the screen brings them back instantly.
 23. **Seamless Auto-Resume with Non-Intrusive 'Start Over' Pill & Black Screen Prevention (`PlayerScreen.kt`, `PlayerIndicators.kt`, `StreamPlayerViewModel.kt`)**:
     - Video auto-resumes immediately from saved position (`savedPositionMs`) with zero startup delay.
-    - Displays a non-intrusive floating HUD pill (`SmartResumePill`) for 7 seconds: *"Resumed from MM:SS"* with **[Start Over]** and **[X]** (dismiss).
+    - Displays a non-intrusive floating HUD pill (`SmartResumePill`) for 7 seconds: _"Resumed from MM:SS"_ with **[Start Over]** and **[X]** (dismiss).
     - Clicking **[Start Over]** rewinds to 0:00 (`restartFromBeginning()`).
     - Clicking **[X]** or letting the 7-second timer expire automatically dismisses the pill (`dismissResume()`) without rewinding, ensuring playback continues seamlessly from where the user left off.
     - Replaced `SeekParameters.CLOSEST_SYNC` with `SeekParameters.DEFAULT` ensuring keyframe synchronization at or before target timestamp without missing IDR frames.
@@ -201,10 +204,11 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
     - **Countdown Card Polish**: Formats remaining countdown cleanly into minutes and seconds (`Next Episode in 6m 40s` instead of raw seconds) with instant 1-tap **[Play Now]** and **[✕]** dismiss.
     - **Settings Presets in VideoSettingsScreen**: Offers `Smart Auto` (default), `90s (Anime)`, `3m`, `5m`, `7m`, and `Off` in a horizontally scrollable chip row.
 32. **Persistent Audio & Subtitle Track Memory (`TrackPreferenceManager.kt`, `StreamPlayerViewModel.kt`, `StreamHubApplication.kt`)**:
-    - **Per-Media & Global Disk Persistence**: User's chosen audio track (e.g. "Japanese", "English") and subtitle track (e.g. "English [ASS]" or "Off") are automatically saved to `SharedPreferences` via `TrackPreferenceManager` whenever selected in the player sheets.
+    - **Strict Per-Media Subtitle Scoping & Series Carry-Over**: Subtitle preferences are strictly scoped per-media (`mediaId`). Subtitles default strictly to **Off** for any new movie or series. When a user explicitly chooses a subtitle on an episode of an anime/series (or turns it Off), that choice is saved for that anime/series and automatically carries over to subsequent episodes if the same subtitle track (by label or ISO language code) exists.
+    - **Zero Cross-Media Subtitle Bleeding**: Eliminated the global subtitle fallback (`KEY_GLOBAL_SUBTITLE_LANG`) from `TrackPreferenceManager.kt` and reset `selectedSubtitleTrack = "Off"` on media transitions in `StreamPlayerViewModel.kt`. Subtitles chosen on one show never automatically turn on for another show or movie.
     - **Survives App Restarts, Recent Apps & Continue Watching**: Permanently eliminates the bug where returning from Recent Apps or reopening an anime/series from Continue Watching wiped user choices and forced audio back to container track 0 and subtitles to "Off".
     - **Smart Label & Language Code Matching**: On episode load (`updateAvailableTracks`), matches saved preferences via exact label, ISO language codes (`"ja"`, `"en"`), or cleaned track names. Ensures seamless continuity even if subsequent episodes use different audio codecs (e.g. AAC vs Opus) or formatting.
-    - **Explicit "Off" Respect**: Remembers if the user turned subtitles Off so they remain Off across sessions without unwanted reactivation.
+    - **Explicit "Off" Respect**: Remembers if the user turned subtitles Off for that anime/series so subsequent episodes remain Off across sessions without unwanted reactivation.
     - **Zero-Footprint Storage with LRU Auto-Prune**: Hard-caps stored track preferences to 500 recent media entries with timestamp-based auto-pruning. Enforces a strict maximum disk footprint of $< 25\text{ KB}$ (0.025 MB), guaranteeing zero device storage impact over years of use.
 33. **mpvEx 1:1 Preferences & Feature Parity (`SettingsScreen.kt`, `PlayerSettingsManager.kt`, `SettingsBackupManager.kt`, `ui/screens/settings/`)**:
     - **Grouped Category Cards with Search**: Clean mpvEx-parity settings menu with prominent search bar filtering through categories and individual settings in real-time.
@@ -238,8 +242,16 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
       - Created `StreamHubBrandLogo.kt` composable implementing the official brand identity matching launcher icons and banner art (neon gradient squircle, film-cut play triangle, and 3-color equalizer waveforms: Cyan, Crimson, Gold with optional animated bounces).
       - Displayed official brand logo in `AboutScreen.kt` and cinematic bouncing waveform logo in `SplashScreen.kt` with glowing ambient back-glow.
       - Registered `Screen.About` route in `NavGraph.kt` and `MainActivity.kt` with explicit `BackHandler` in `AboutScreen.kt`, ensuring back navigation returns directly to the Profile tab instead of popping to My List.
+35. **Option C Scrubbing HUD & Zero-Contention Local-Only Video Previews (`VideoThumbnailHelper.kt`, `PlayerScreen.kt`)**:
+    - **Enforced Local-Only Frame Extraction (Strict Invariant Compliance)**: Restricts `VideoThumbnailHelper.getThumbnail()` strictly to local disk files (`!isHttp`, `file.exists()`). For remote HTTP/HTTPS streaming URLs, returns `null` immediately without initializing `MediaMetadataRetriever` or making remote range requests, eliminating network contention and preventing playback buffer starvation during scrubbing.
+    - **Purged Misleading Poster Fallback**: Eliminated the misleading static movie poster fallback (`AsyncImage(model = uiState.posterUrl)`) and empty placeholder boxes that previously appeared in the center of the screen while scrubbing.
+    - **Dynamic Glassmorphic Scrubbing HUD**:
+      - **Local / Downloaded Media**: When a video frame thumbnail is extracted from a local file, displays the 160x90 frame preview box with target timestamp and delta jump.
+      - **Remote Streaming**: Dynamically collapses to a sleek, compact glassmorphic time capsule pill (`15:11 [-00:12] / 48:18`) with zero screen obstruction.
+      - **Auto-Clear on Scrub Release**: Proactively clears `scrubberThumbnailBitmap = null` when scrubbing ends (`!isScrubbing`), preventing stale frame flash on subsequent seeks.
 
 ### B. UI, Catalogue & Navigation (`ui/screens/`, `ui/components/`)
+
 1. **SplashScreen (`SplashScreen.kt`, `MainActivity.kt`)**:
    - 120fps GPU-accelerated `Modifier.graphicsLayer` animation, deferred storage walks, IO-dispatched non-critical manager initialization.
    - **YouTube-Parity Cinematic Entrance & Waveform Showcase Hold**:
@@ -258,8 +270,8 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
    - **Full Canonical Franchise Titles**: Franchise & season cards (`FranchiseCard`) and selector sheets (`SeasonArcSelectorSheet`) display complete, untruncated media titles (`fItem.title`) up to 4 lines with zero artificial abbreviation, generic `"Season X"` replacements, or story arc truncations.
 4. **Creator Studio / Admin Mode (`AdminEditorDialog.kt`, `ProfileScreen.kt`)**:
    - Master password protection with SHA-256 access authentication.
-   - **Strict Profile-Only Easter Egg**: Owner authentication is exclusively triggered via the 5-tap avatar gesture on `ProfileScreen.kt`. If already authenticated as Owner (`isAdminMode == true`), tapping 5 times suppresses the password dialog and displays the modern HUD toast: *"You are already Owner 👑"*. Purged redundant `#admin` and `#publish` search shortcuts from `SearchScreen.kt`.
-   - **Live Movie Stream Link Health Probe Tester**: Upgraded the inert "Set Direct Stream Link" button into an active `[Test Stream Link ⚡]` button powered by `StreamHealthChecker.probeUrl()`. Performs instant HTTP range check (latency, HTTP status code, format), displays a dynamic health badge (e.g. `✅ Stream Online & Reachable (HTTP 200 • 85ms)`), and triggers real-time confirmation HUD toasts while preserving automatic URL saving on `[Save Changes]`.
+   - **Strict Profile-Only Easter Egg**: Owner authentication is exclusively triggered via the 5-tap avatar gesture on `ProfileScreen.kt`. If already authenticated as Owner (`isAdminMode == true`), tapping 5 times suppresses the password dialog and displays the modern HUD toast: _"You are already Owner 👑"_. Purged redundant `#admin` and `#publish` search shortcuts from `SearchScreen.kt`.
+   - **Movie Stream Link & Series Parity Importer**: Refactored Movie stream link input in `AdminEditorDialog.kt` to mirror Series format 1:1. Features instant clipboard paste (`📋 Paste from Clipboard`), automatic movie stream preparation (`🎬 1 Movie Stream Ready`), format detection badge (Serv00 Direct Stream, F2L Direct Stream, Telegram Direct, Web Stream URL), and an optional, non-blocking health check chip (`🩺 Check Link` -> `🩺 Live (Xms)` / `🩺 Unreachable`) powered by resilient `StreamHealthChecker.kt` (20s timeout, dual-stage GET byte-range 0-1024 + HEAD fallback, Serv00/Telegram proxy intelligence). Eliminates blocking verification hurdles, removes intimidating false error banners, and ensures seamless saving and playback on `[Save Changes]`.
    - Metadata Health Inspector (`MetadataInspectorDialog.kt`) with 11-spec audit, deep sync, and TMDB/MAL batch auto-repair engine.
    - Server Migration Engine (`ServerMigrationDialog.kt`).
    - Voucher Generator & Device Lock Manager (`VoucherManagerDialog.kt`).
@@ -279,10 +291,10 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
    - `ThemeSettingsCards.kt`: Dynamic color themes, notification alerts.
    - `SettingsMiscCards.kt`: Integrated network speed test engine (`SpeedTestManager.kt`).
    - `StorageManagementScreen.kt`: Granular breakdown of video disk cache, thumbnails, app cache with 1-tap clear.
-      - **Media3-Native TTL Auto-Delete Engine (`StorageCacheManager.kt`, `StreamCacheManager.kt`)**: Automatically purges watched video chunk fragments and spans older than user-configured TTL (e.g. 3 Days) via `StreamCacheManager.removeResource()`, cleanly removing disk files and SQLite database records without index corruption or accumulation.
-      - **Self-Healing Background & Lifecycle Schedule**: Enforces cache TTL on app startup, every 30 minutes in a periodic background coroutine while active, upon entering `StorageManagementScreen`, and on video player release.
-      - **Interactive "Video Stream Buffer" Inspector (`CachedStreamsSheet.kt`)**: Clicking the Video Stream Buffer row opens a bottom sheet listing each cached movie/episode with its canonical title, poster thumbnail, season/episode subtitle, cached byte size, cached date, live auto-delete countdown ("Auto-deletes in 18h 30m"), and individual single-stream delete button (`[🗑️]`).
-      - **Smart Reverse-Lookup & Canonical Metadata Matching Engine (`StorageCacheManager.kt`)**: Automatically resolves raw Telegram hex hashes (`cc62326f58fe991c57e8cef1d6132d2183065...`) and direct URL paths back to canonical movie and series titles, episode labels (`Season 1 • Episode 4`), and official posters. Scans `FirebaseRepository.mediaCatalog` across all movies and episodes (`ep.streamUrl`, `ep.mirrorStreamUrl`, `ep.telegramFileId`, `ep.fileName`, `ep.thumbnailUrl`), cross-references `WatchHistoryManager`, suppresses raw hex hashes with clean human-readable fallbacks ("Cached Video Stream"), and persists resolved metadata to `streamhub_cache_metadata` SharedPreferences for instant future lookups.
+     - **Media3-Native TTL Auto-Delete Engine (`StorageCacheManager.kt`, `StreamCacheManager.kt`)**: Automatically purges watched video chunk fragments and spans older than user-configured TTL (e.g. 3 Days) via `StreamCacheManager.removeResource()`, cleanly removing disk files and SQLite database records without index corruption or accumulation.
+     - **Self-Healing Background & Lifecycle Schedule**: Enforces cache TTL on app startup, every 30 minutes in a periodic background coroutine while active, upon entering `StorageManagementScreen`, and on video player release.
+     - **Interactive "Video Stream Buffer" Inspector (`CachedStreamsSheet.kt`)**: Clicking the Video Stream Buffer row opens a bottom sheet listing each cached movie/episode with its canonical title, poster thumbnail, season/episode subtitle, cached byte size, cached date, live auto-delete countdown ("Auto-deletes in 18h 30m"), and individual single-stream delete button (`[🗑️]`).
+     - **Smart Reverse-Lookup & Canonical Metadata Matching Engine (`StorageCacheManager.kt`)**: Automatically resolves raw Telegram hex hashes (`cc62326f58fe991c57e8cef1d6132d2183065...`) and direct URL paths back to canonical movie and series titles, episode labels (`Season 1 • Episode 4`), and official posters. Scans `FirebaseRepository.mediaCatalog` across all movies and episodes (`ep.streamUrl`, `ep.mirrorStreamUrl`, `ep.telegramFileId`, `ep.fileName`, `ep.thumbnailUrl`), cross-references `WatchHistoryManager`, suppresses raw hex hashes with clean human-readable fallbacks ("Cached Video Stream"), and persists resolved metadata to `streamhub_cache_metadata` SharedPreferences for instant future lookups.
    - `VideoSettingsScreen.kt`: Skip intro seconds, next episode threshold, auto-play next ep, volume on right/left, ambient mood.
 9. **Material 3 Expressive Navigation Motion (`MainActivity.kt`)**:
    - Seamless spatial navigation transitions across entire `NavHost`:
@@ -463,6 +475,7 @@ app/src/main/java/com/streamhub/app/
 ## 6. Dead / Obsolete Code Removed (AUDIT LOG)
 
 The following redundant or obsolete files were discovered during the project audit and have been **permanently removed**:
+
 1. `HeroBanner.kt`: Completely dead code. Replaced by the upgraded `HeroCarousel.kt` on HomeScreen.
 2. `CategoryRow.kt`: Completely dead code. Replaced by dynamic ranked shelves directly in `HomeScreen.kt`.
 3. `MpvPlayerPanels.kt`: Completely dead code. Replaced by direct sheet invocations (`MpvAudioDelaySheet`, `MpvSubtitleDelaySheet`, `MpvVideoFiltersSheet`) in `PlayerScreen.kt`.
@@ -481,6 +494,7 @@ The following redundant or obsolete files were discovered during the project aud
 ## 7. Core Subsystems & Technical Invariants (Under the Hood)
 
 ### A. Player Lifecycle & Background Continuity
+
 - **Singleton Adoption (`PlayerHolder.kt`)**: When returning to `PlayerScreen` from PiP, background playback, or another screen, `StreamPlayerViewModel` MUST adopt any existing player from `PlayerHolder.currentPlayer`. Never construct a second ExoPlayer instance while one is playing.
 - **Background Media Service (`StreamMediaService.kt`)**: Foreground service registered with `mediaPlayback` type. Manages the system notification session and media buttons.
 - **Player Configuration**:
@@ -488,11 +502,13 @@ The following redundant or obsolete files were discovered during the project aud
   - `MatroskaExtractor`: Seek cues MUST remain enabled. Raw subtitle data emitted via `FLAG_EMIT_RAW_SUBTITLE_DATA`.
 
 ### B. Disk Caching & Binge Pre-Caching Engine
+
 - **Multi-Gigabyte LRU Disk Cache (`StreamCacheManager.kt`)**: Backed by Media3 `SimpleCache` with `LeastRecentlyUsedCacheEvictor`. Default limit 20GB.
 - **Preload Engine (`StreamPreloadManager.kt`)**: While episode $N$ is playing, once the buffer is comfortable, it automatically preloads episode $N+1$ into the disk cache under the exact same cache key. When the user taps "Next" or auto-play triggers, playback starts instantaneously (<100ms) with zero network spin.
 - **Cache Key Canonicalization**: Always use `TelegramLinkResolver.sanitizePlayableUrl(url)` as the canonical cache key across playback, preloading, and downloads.
 
 ### C. Backend & Stream Resolvers
+
 - **Serv00 Proxy Configuration (`StreamBackendConfig.kt`)**: Production streaming routed via `midnighthawk.serv00.net`.
 - **Telegram Resolution (`TelegramLinkResolver.kt`)**: Asynchronously resolves Telegram message/bot links to playable direct HTTP streams with fallback mirrors.
 - **YouTube Extractors (`YoutubeStreamExtractor.kt`, `NewPipeDownloader.kt`)**: Safely resolves trailer URLs without invoking heavyweight WebViews.
@@ -518,31 +534,35 @@ The following redundant or obsolete files were discovered during the project aud
 ## 9. The Known Traps & Anti-Pattern Checklist (NEVER DO THESE)
 
 1. **TRAP 1: Re-Adding `FLAG_DISABLE_SEEK_FOR_CUES`**
-   - *Result*: Completely destroys MKV seeking. Rewinds to 0s on any tap or drag.
-   - *Rule*: Never add this flag. Startup speed is achieved via `bufferForPlaybackMs = 250`.
+   - _Result_: Completely destroys MKV seeking. Rewinds to 0s on any tap or drag.
+   - _Rule_: Never add this flag. Startup speed is achieved via `bufferForPlaybackMs = 250`.
 2. **TRAP 2: Frame Extraction Over Remote Streams**
-   - *Result*: Chokes HTTP/Telegram range requests, exhausts bandwidth, starves playback buffer.
-   - *Rule*: Never extract thumbnails over remote range requests during seekbar dragging.
+   - _Result_: Chokes HTTP/Telegram range requests, exhausts bandwidth, starves playback buffer.
+   - _Rule_: Never extract thumbnails over remote range requests during seekbar dragging.
 3. **TRAP 3: Blocking Main Thread on Launch**
-   - *Result*: Splash screen stutters and drops below 120fps.
-   - *Rule*: Heavy disk walks, Room queries, and non-critical manager initializations must run on `Dispatchers.IO`.
+   - _Result_: Splash screen stutters and drops below 120fps.
+   - _Rule_: Heavy disk walks, Room queries, and non-critical manager initializations must run on `Dispatchers.IO`.
 4. **TRAP 4: Nulling Player on Screen Disposal**
-   - *Result*: Destroys background playback and kills Picture-in-Picture.
-   - *Rule*: Keep player alive in `PlayerHolder` unless the user explicitly stops playback or closes the app.
+   - _Result_: Destroys background playback and kills Picture-in-Picture.
+   - _Rule_: Keep player alive in `PlayerHolder` unless the user explicitly stops playback or closes the app.
 5. **TRAP 5: Forcing Opaque Background Spans on Subtitles**
-   - *Result*: Destroys anime ASS song karaoke and signs, rendering black boxes in the top-left corner.
-   - *Rule*: Preserve `Spanned` styles and respect embedded coordinates when cues have explicit positions.
+   - _Result_: Destroys anime ASS song karaoke and signs, rendering black boxes in the top-left corner.
+   - _Rule_: Preserve `Spanned` styles and respect embedded coordinates when cues have explicit positions.
 6. **TRAP 6: Proposing Features Without Checking the Codebase**
-   - *Result*: Proposing features that are already implemented (e.g. Hold 2X, Pinch-to-zoom, PiP).
-   - *Rule*: Always check Section 4 (Master Feature Register) and grep the codebase first.
+   - _Result_: Proposing features that are already implemented (e.g. Hold 2X, Pinch-to-zoom, PiP).
+   - _Rule_: Always check Section 4 (Master Feature Register) and grep the codebase first.
 
 ---
 
 ## 10. Active Build & Version State
 
-- **Active Version**: `v4.8.315` (Build 315)
+- **Active Version**: `v4.8.316` (Build 316)
 - **Status**: Production Release Candidate
 - **Recent Completed Sprint**:
+  - Creator Studio Movie Stream Series Parity & Player Touch Pass-Through (`v4.8.316` Build 316):
+    - Refactored Creator Studio Movie stream link in `AdminEditorDialog.kt` to mirror Series format 1:1. Replaced the obstructive "Test Stream Link" requirement with instant "📋 Paste from Clipboard", automatic episode readiness (`🎬 1 Movie Stream Ready`), stream format detection badges (Serv00 Direct Stream, F2L Direct Stream, Telegram Direct, Web Stream URL), and a non-blocking on-demand health check pill (`🩺 Check Link` -> `🩺 Live (Xms)`).
+    - Upgraded `StreamHealthChecker.kt` probe engine to match ExoPlayer's `SharedHttpClient.streamingClient` with resilient 20s timeouts, `retryOnConnectionFailure = true`, dual-stage byte-range GET (0-1024) + HEAD fallback, official player User-Agent, and Serv00/Telegram proxy hash intelligence.
+    - Cleaned up `PlayerScreen.kt` root controls overlay by removing conflicting `pointerInput` on the full-screen `Box`. Restored transparent touch pass-through so single-tap toggles controls visibility and underlying double-tap gestures function smoothly, while preserving YouTube-parity seekbar scrubbing auto-hide freeze via `isScrubbing`.
   - Live Movie Stream Link Health Probe Tester in Creator Studio (`v4.8.315` Build 315):
     - Transformed the inert and confusing "Set Direct Stream Link" button in `AdminEditorDialog.kt` into a functional `[Test Stream Link ⚡]` button.
     - Connected `StreamHealthChecker.probeUrl(url)`: performs live sub-second HTTP probe, displays real-time reachability status, latency in milliseconds, format type, and failure reasons.
@@ -552,7 +572,7 @@ The following redundant or obsolete files were discovered during the project aud
     - Added instant auto-pause in `MainActivity.kt` `onUserLeaveHint()` and `PlayerScreen.kt` `ON_STOP` when not in PiP (`activity.isInPictureInPictureMode == false`), matching YouTube behavior 1:1.
     - Returning to the app from Recent Apps preserves the exact millisecond pause timestamp with controls ready to resume on demand.
   - Owner 5-Tap Toast & Search Admin Purge (`v4.8.313` Build 313):
-    - In `ProfileScreen.kt`, when tapping 5 times on the profile picture while already an authenticated Owner (`isAdminMode == true`), suppressed the redundant Creator Studio Unlock password dialog and displayed the modern glassmorphic HUD toast: *"You are already Owner 👑"*.
+    - In `ProfileScreen.kt`, when tapping 5 times on the profile picture while already an authenticated Owner (`isAdminMode == true`), suppressed the redundant Creator Studio Unlock password dialog and displayed the modern glassmorphic HUD toast: _"You are already Owner 👑"_.
     - Completely purged `#admin` and `#publish` secret search triggers and duplicate `AdminPasswordDialog` / `AdminEditorDialog` from `SearchScreen.kt`, enforcing single source of truth for owner authentication on `ProfileScreen.kt`.
   - Unified Settings Aesthetics, Interactive Audio/Gesture Controls & Brand Logo Polish (`v4.8.312` Build 312):
     - Replaced mismatched standalone cards and giant colored buttons in Downloads, Screenshots, Network Speed, and App Updates with standard mpvEx `PreferenceCard` items, compact action pills (`[Browse]`, `[Reset]`, `[Test Speed]`, `[Check]`), and `PreferenceDivider`.
@@ -696,6 +716,20 @@ The following redundant or obsolete files were discovered during the project aud
     - Added a 4.0-second grace period on scrub release: when lifting finger, `isScrubbing` resets to `false`, kicking off a fresh 4.0-second countdown before smoothly auto-hiding.
     - Added non-consuming gesture listener (`awaitFirstDown(requireUnconsumed = false)`) on the root controls overlay, resetting the 4.0-second auto-hide timer on any user touch/interaction (Play/Pause, Next/Prev, Speed chip, Aspect ratio, Audio/Subs, sliders).
     - Dynamically hidden center Play/Pause/Next/Previous buttons during active scrub (`!isScrubbing`), allowing the mpvEx scrubbing HUD card (live timestamp, delta `[+MM:SS]`, and thumbnail preview) to render clearly at center screen without UI overlap.
-
-
+  - Creator Studio Series Parity & Player Gesture Isolation (`v4.8.316` Build 316):
+    - Completely resolved the false "Stream Link Verification Failed" error in Creator Studio for Movie stream links by refactoring Movie mode in `AdminEditorDialog.kt` to match Series 1:1 (`📋 Paste from Clipboard`, `🎬 1 Movie Stream Ready` card, backend detection badges, and optional non-blocking health check chip).
+    - Upgraded `StreamHealthChecker.kt` probe engine to mirror ExoPlayer's streaming client (20s timeout, dual-stage byte-range GET `0-1024` + HEAD fallback, official player User-Agent `StreamHub/4.8`, and Serv00/Telegram proxy intelligence).
+    - Added empty space tap dismissal on the controls overlay container (`clickable(indication = null) { viewModel.toggleControlsVisibility() }`), allowing users to instantly hide controls on empty space tap both while playing and while paused.
+    - Added multi-touch pinch-to-zoom isolation (`isMultiTouchActive` tracking `event.changes.count { it.pressed } >= 2`), completely suppressing single-finger brightness and volume drag sliders during 2-finger zoom gestures.
+  - Option C Scrubbing HUD & Zero-Contention Local-Only Video Previews (`v4.8.317` Build 317):
+    - Enforced strict invariant compliance in `VideoThumbnailHelper.kt`: restricted `getThumbnail()` strictly to local disk files (`!isHttp`, `file.exists()`). For remote HTTP/HTTPS streaming URLs, returns `null` immediately without initializing `MediaMetadataRetriever` or making remote range requests, eliminating network contention and preventing playback buffer starvation during scrubbing.
+    - Purged the misleading static movie poster fallback (`AsyncImage(model = uiState.posterUrl)`) and empty placeholder boxes that previously appeared in the center of the screen while scrubbing.
+    - Implemented dynamic glassmorphic scrubbing HUD in `PlayerScreen.kt`: displays 160x90 frame thumbnail preview when extracted from a local file; collapses to a sleek, compact glassmorphic time capsule pill (`15:11 [-00:12] / 48:18`) during remote streaming.
+    - Added proactive memory clearing of `scrubberThumbnailBitmap = null` when scrubbing ends (`!isScrubbing`), preventing stale frame flash on subsequent seeks.
+  - Strict Per-Media Subtitle Scoping & Series Carry-Over (`v4.8.318` Build 318):
+    - Completely resolved the bug where player automatically picked and displayed subtitles on newly started videos.
+    - Removed `KEY_GLOBAL_SUBTITLE_LANG` fallback from `TrackPreferenceManager.kt` and purged legacy global subtitle keys on init. Subtitle preferences are strictly scoped per-media (`mediaId`).
+    - Subtitles default strictly to **Off** for any new movie or series where the user has not explicitly chosen one.
+    - Added series/anime carry-over in `StreamPlayerViewModel.kt`: when the user explicitly chooses a subtitle (e.g. English) on an episode of an anime or series, that preference is saved for that anime/series and automatically carries over to subsequent episodes if matching subtitle tracks exist.
+    - Explicitly reset `selectedSubtitleTrack = "Off"` when transitioning between different media in `StreamPlayerViewModel.initializePlayer()`.
 

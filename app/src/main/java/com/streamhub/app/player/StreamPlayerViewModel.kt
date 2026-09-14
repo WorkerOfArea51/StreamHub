@@ -337,9 +337,13 @@ class StreamPlayerViewModel : ViewModel() {
     fun initializePlayer(context: Context, mediaItem: MediaItem, initialEpisodeIndex: Int = 0) {
         StreamPreloadManager.cancelDetailsPrewarm()
         val safeContext = context.applicationContext
-        appContext = safeContext
+        val isDifferentMedia = currentMediaItem?.id != mediaItem.id
         currentMediaItem = mediaItem
         episodesList = mediaItem.episodes
+
+        if (isDifferentMedia) {
+            _uiState.update { it.copy(selectedSubtitleTrack = "Off") }
+        }
 
         // 1. If this ViewModel already has an active ExoPlayer playing this exact media & episode,
         // PRESERVE IT directly! Do not restart, do not seek to 0s, do not re-buffer.
@@ -738,17 +742,16 @@ class StreamPlayerViewModel : ViewModel() {
             _uiState.update { it.copy(selectedAudioTrack = audioTrackNames.firstOrNull() ?: "Default") }
         }
 
-        // 2. Subtitle Track Restoration
-        val currentSub = _uiState.value.selectedSubtitleTrack
+        // 2. Subtitle Track Restoration (Carry-over for Series/Anime if chosen, otherwise strictly Off)
         val savedSub = com.streamhub.app.data.TrackPreferenceManager.getSubtitlePreference(mediaId)
-        val targetSubLabel = currentSub.ifBlank { savedSub?.trackLabel.orEmpty() }
 
-        if (targetSubLabel.isNotBlank() && !targetSubLabel.equals("Off", ignoreCase = true)) {
+        if (savedSub != null && !savedSub.trackLabel.equals("Off", ignoreCase = true)) {
+            val targetSubLabel = savedSub.trackLabel
             var matchedSubTrack: String? = null
             if (subtitleTrackNames.contains(targetSubLabel)) {
                 matchedSubTrack = targetSubLabel
             } else {
-                val targetLang = savedSub?.languageCode?.lowercase(java.util.Locale.ROOT)
+                val targetLang = savedSub.languageCode?.lowercase(java.util.Locale.ROOT)
                 val targetClean = cleanTrackName(targetSubLabel, targetLang, true).lowercase(java.util.Locale.ROOT)
                 var subIdx = 0
                 subLoop@ for (trackGroup in tracks.groups) {
@@ -784,6 +787,7 @@ class StreamPlayerViewModel : ViewModel() {
                 }
             }
         } else {
+            // User did not explicitly choose a subtitle for this media/series — strictly Off by default
             _uiState.update { it.copy(selectedSubtitleTrack = "Off") }
             trackSelector?.let { sel ->
                 sel.parameters = sel.buildUponParameters()

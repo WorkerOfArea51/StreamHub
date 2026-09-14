@@ -34,6 +34,11 @@ object VideoThumbnailHelper {
     suspend fun getThumbnail(sourceUrl: String, positionMs: Long): Bitmap? {
         if (sourceUrl.isBlank()) return null
 
+        // Invariant: NEVER extract remote frames over HTTP range requests during playback.
+        // Frame thumbnails are strictly extracted from local files on disk.
+        val isHttp = sourceUrl.startsWith("http://", ignoreCase = true) || sourceUrl.startsWith("https://", ignoreCase = true)
+        if (isHttp) return null
+
         val bucketMs = (positionMs / 3000L) * 3000L
         val cacheKey = "${sourceUrl}_$bucketMs"
 
@@ -50,30 +55,19 @@ object VideoThumbnailHelper {
                         retriever = null
                         released = false
 
+                        val cleanPath = sourceUrl.removePrefix("file://")
+                        val file = File(cleanPath)
+
+                        if (!file.exists() || file.length() < 1024L) {
+                            return@withLock null
+                        }
+
                         val newRetriever = MediaMetadataRetriever()
-                        val isHttp = sourceUrl.startsWith("http://") || sourceUrl.startsWith("https://")
-
-                        if (isHttp) {
-                            try {
-                                newRetriever.setDataSource(sourceUrl, HashMap())
-                            } catch (e: Exception) {
-                                Log.d(TAG, "setDataSource for HTTP URL failed: ${e.message}")
-                                return@withLock null
-                            }
-                        } else {
-                            val cleanPath = sourceUrl.removePrefix("file://")
-                            val file = File(cleanPath)
-
-                            if (!file.exists() || file.length() < 1024L) {
-                                return@withLock null
-                            }
-
-                            try {
-                                newRetriever.setDataSource(cleanPath)
-                            } catch (e: Exception) {
-                                Log.d(TAG, "setDataSource failed for local file: ${e.message}")
-                                return@withLock null
-                            }
+                        try {
+                            newRetriever.setDataSource(cleanPath)
+                        } catch (e: Exception) {
+                            Log.d(TAG, "setDataSource failed for local file: ${e.message}")
+                            return@withLock null
                         }
                         retriever = newRetriever
                         currentSourceUrl = sourceUrl

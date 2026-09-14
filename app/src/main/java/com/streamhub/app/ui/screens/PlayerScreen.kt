@@ -535,7 +535,9 @@ fun PlayerScreen(
     var scrubberThumbnailBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
 
     LaunchedEffect(isScrubbing, scrubbingPositionMs / 3000L, uiState.resolvedStreamUrl) {
-        if (isScrubbing && uiState.resolvedStreamUrl.isNotBlank()) {
+        if (!isScrubbing) {
+            scrubberThumbnailBitmap = null
+        } else if (uiState.resolvedStreamUrl.isNotBlank()) {
             val bmp = VideoThumbnailHelper.getThumbnail(
                 sourceUrl = uiState.resolvedStreamUrl,
                 positionMs = scrubbingPositionMs
@@ -1537,67 +1539,43 @@ fun PlayerScreen(
             )
             AspectRatioToast(visible = showAspectToast, text = aspectToastText)
 
-            // mpvEx Horizontal Swipe Scrubbing HUD Card
+            // mpvEx Horizontal Swipe Scrubbing HUD Card (Option C: Local frame or sleek time capsule)
             if (isScrubbing) {
                 val deltaMs = scrubbingPositionMs - playbackProgress.currentPositionMs
                 val deltaText = if (deltaMs >= 0) "+${formatMpvTime(deltaMs)}" else "-${formatMpvTime(-deltaMs)}"
+                val hasLocalFrame = scrubberThumbnailBitmap != null && !scrubberThumbnailBitmap!!.isRecycled
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = Color(0xF212121A),
-                    border = BorderStroke(1.dp, Color(0xFFD0BCFF)),
+                    border = BorderStroke(1.dp, Color(0xFFD0BCFF).copy(alpha = 0.5f)),
                     shadowElevation = 12.dp,
                     modifier = Modifier.align(Alignment.Center)
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                        modifier = Modifier.padding(
+                            horizontal = if (hasLocalFrame) 20.dp else 16.dp,
+                            vertical = if (hasLocalFrame) 12.dp else 10.dp
+                        )
                     ) {
-                        // FIX: Show thumbnail if available, otherwise show poster as fallback.
-                        // MediaMetadataRetriever can't extract frames from partially-downloaded
-                        // TDLib files, so the poster is the fallback during streaming.
-                        Box(
-                            modifier = Modifier
-                                .size(width = 160.dp, height = 90.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFF1E1E28))
-                        ) {
-                            if (scrubberThumbnailBitmap != null && !scrubberThumbnailBitmap!!.isRecycled) {
+                        // Option C: Only show video frame thumbnail if extracted from a local file.
+                        // For remote streams, omit image box entirely to avoid misleading posters or blank frames.
+                        if (hasLocalFrame) {
+                            Box(
+                                modifier = Modifier
+                                    .size(width = 160.dp, height = 90.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFF1E1E28))
+                            ) {
                                 Image(
                                     bitmap = scrubberThumbnailBitmap!!.asImageBitmap(),
                                     contentDescription = null,
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier.fillMaxSize()
                                 )
-                            } else if (uiState.posterUrl.isNotBlank()) {
-                                // Fallback: show poster image with a timestamp overlay
-                                AsyncImage(
-                                    model = uiState.posterUrl,
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                                // Dark overlay to indicate it's a preview position
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(Color.Black.copy(alpha = 0.4f))
-                                )
-                            } else {
-                                // No poster — show a placeholder with timestamp
-                                Box(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = formatMpvTime(scrubbingPositionMs),
-                                        color = Color.White,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
                             }
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = formatMpvTime(scrubbingPositionMs),

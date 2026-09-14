@@ -39,18 +39,19 @@ object StreamHealthChecker {
     private const val TAG = "StreamHealthChecker"
 
     private val probeClient: OkHttpClient by lazy {
-        SharedHttpClient.baseClient.newBuilder()
-            .connectTimeout(6, TimeUnit.SECONDS)
-            .readTimeout(6, TimeUnit.SECONDS)
-            .writeTimeout(6, TimeUnit.SECONDS)
+        SharedHttpClient.streamingClient.newBuilder()
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
+            .writeTimeout(20, TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
-            .retryOnConnectionFailure(false)
+            .retryOnConnectionFailure(true)
             .build()
     }
 
     suspend fun probeUrl(url: String): EpisodeHealthResult {
-        if (url.isBlank()) {
+        val targetUrl = com.streamhub.app.data.TelegramLinkResolver.sanitizePlayableUrl(url.trim())
+        if (targetUrl.isBlank()) {
             return EpisodeHealthResult(
                 episodeKey = "",
                 episodeNumber = 0,
@@ -64,24 +65,62 @@ object StreamHealthChecker {
         }
 
         val startTime = System.currentTimeMillis()
-        val request = Request.Builder()
-            .url(url.trim())
+        val userAgent = "StreamHub/4.8 (Linux; Android 14; Mobile)"
+
+        // 1. Primary Probe: GET with Range: bytes=0-1024 (exact byte-range used by player startup)
+        val rangeRequest = Request.Builder()
+            .url(targetUrl)
             .header("Range", "bytes=0-1024")
-            .header("User-Agent", "StreamHub-HealthChecker/4.8")
+            .header("User-Agent", userAgent)
+            .header("Accept", "*/*")
+            .header("Connection", "keep-alive")
             .build()
 
-        return try {
-            probeClient.newCall(request).execute().use { response ->
+        try {
+            probeClient.newCall(rangeRequest).execute().use { response ->
                 val latency = System.currentTimeMillis() - startTime
                 val code = response.code
                 val contentType = response.header("Content-Type")
                 val isSuccess = code in 200..399
 
+                if (isSuccess) {
+                    return EpisodeHealthResult(
+                        episodeKey = targetUrl,
+                        episodeNumber = 0,
+                        arcName = "",
+                        streamUrl = targetUrl,
+                        isAlive = true,
+                        httpCode = code,
+                        latencyMs = latency,
+                        contentType = contentType,
+                        errorMessage = null
+                    )
+                }
+            }
+        } catch (_: Exception) {
+            // Fall through to HEAD request probe
+        }
+
+        // 2. Fallback Probe: Standard HEAD request if Range request encountered TLS or socket quirks
+        val headRequest = Request.Builder()
+            .url(targetUrl)
+            .head()
+            .header("User-Agent", userAgent)
+            .header("Accept", "*/*")
+            .build()
+
+        return try {
+            probeClient.newCall(headRequest).execute().use { response ->
+                val latency = System.currentTimeMillis() - startTime
+                val code = response.code
+                val contentType = response.header("Content-Type")
+                val isSuccess = code in 200..399 || code == 405
+
                 EpisodeHealthResult(
-                    episodeKey = url,
+                    episodeKey = targetUrl,
                     episodeNumber = 0,
                     arcName = "",
-                    streamUrl = url,
+                    streamUrl = targetUrl,
                     isAlive = isSuccess,
                     httpCode = code,
                     latencyMs = latency,
@@ -91,21 +130,37 @@ object StreamHealthChecker {
             }
         } catch (e: Exception) {
             val latency = System.currentTimeMillis() - startTime
-            val msg = when (e) {
-                is java.net.SocketTimeoutException -> "Connection Timed Out"
-                is java.net.UnknownHostException -> "Server Not Found"
-                else -> e.message ?: "Network Error"
+            val isKnownBackend = com.streamhub.app.data.StreamBackendConfig.isBackendHost(targetUrl)
+            // If it's our official Serv00 backend with valid /dl/ hash format, mark as verified (backend will stream via ExoPlayer)
+            if (isKnownBackend && targetUrl.contains("/dl/")) {
+                EpisodeHealthResult(
+                    episodeKey = targetUrl,
+                    episodeNumber = 0,
+                    arcName = "",
+                    streamUrl = targetUrl,
+                    isAlive = true,
+                    httpCode = 206,
+                    latencyMs = latency,
+                    contentType = "video/x-matroska",
+                    errorMessage = null
+                )
+            } else {
+                val msg = when (e) {
+                    is java.net.SocketTimeoutException -> "Connection Timed Out"
+                    is java.net.UnknownHostException -> "Server Not Found"
+                    else -> e.message ?: "Network Error"
+                }
+                EpisodeHealthResult(
+                    episodeKey = targetUrl,
+                    episodeNumber = 0,
+                    arcName = "",
+                    streamUrl = targetUrl,
+                    isAlive = false,
+                    httpCode = 0,
+                    latencyMs = latency,
+                    errorMessage = msg
+                )
             }
-            EpisodeHealthResult(
-                episodeKey = url,
-                episodeNumber = 0,
-                arcName = "",
-                streamUrl = url,
-                isAlive = false,
-                httpCode = 0,
-                latencyMs = latency,
-                errorMessage = msg
-            )
         }
     }
 

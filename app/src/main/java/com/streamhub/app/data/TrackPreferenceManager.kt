@@ -35,7 +35,12 @@ object TrackPreferenceManager {
     fun init(context: Context) {
         if (prefs != null) return
         try {
-            prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val sp = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs = sp
+            // Clean up any legacy global subtitle key to permanently eliminate cross-media subtitle bleeding
+            if (sp.contains(KEY_GLOBAL_SUBTITLE_LANG)) {
+                sp.edit().remove(KEY_GLOBAL_SUBTITLE_LANG).apply()
+            }
             Log.i(TAG, "TrackPreferenceManager initialized")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to initialize TrackPreferenceManager", e)
@@ -66,14 +71,13 @@ object TrackPreferenceManager {
     @Synchronized
     fun saveSubtitlePreference(mediaId: String, trackLabel: String, languageCode: String?) {
         val p = prefs ?: return
+        if (mediaId.isBlank()) return
         try {
             val encoded = encodePreference(trackLabel, languageCode)
             val editor = p.edit()
-            if (mediaId.isNotBlank()) {
-                editor.putString(KEY_PREFIX_SUBTITLE + mediaId, encoded)
-            }
-            // If explicitly turned Off or selected a valid language, remember it globally
-            editor.putString(KEY_GLOBAL_SUBTITLE_LANG, encoded)
+            editor.putString(KEY_PREFIX_SUBTITLE + mediaId, encoded)
+            // Ensure no legacy global subtitle key lingers to prevent cross-media auto-selection
+            editor.remove(KEY_GLOBAL_SUBTITLE_LANG)
             pruneOldEntriesIfNeeded(editor, p)
             editor.apply()
             Log.d(TAG, "Saved subtitle preference for '$mediaId': label='$trackLabel', lang='$languageCode'")
@@ -95,17 +99,16 @@ object TrackPreferenceManager {
         return if (!global.isNullOrBlank()) decodePreference(global) else null
     }
 
+    /**
+     * Retrieves the subtitle preference strictly for [mediaId].
+     * Returns null if the user has not explicitly selected a subtitle for this media/series,
+     * guaranteeing subtitles remain strictly Off by default for any new video.
+     */
     fun getSubtitlePreference(mediaId: String): SavedTrackPreference? {
         val p = prefs ?: return null
-        if (mediaId.isNotBlank()) {
-            val saved = p.getString(KEY_PREFIX_SUBTITLE + mediaId, null)
-            if (!saved.isNullOrBlank()) {
-                return decodePreference(saved)
-            }
-        }
-        // Fallback to global last-used subtitle preference
-        val global = p.getString(KEY_GLOBAL_SUBTITLE_LANG, null)
-        return if (!global.isNullOrBlank()) decodePreference(global) else null
+        if (mediaId.isBlank()) return null
+        val saved = p.getString(KEY_PREFIX_SUBTITLE + mediaId, null)
+        return if (!saved.isNullOrBlank()) decodePreference(saved) else null
     }
 
     private fun pruneOldEntriesIfNeeded(editor: SharedPreferences.Editor, p: SharedPreferences) {

@@ -686,17 +686,19 @@ fun AdminEditorDialog(
                         // TAB 1: EPISODES & STREAM LINKS
                         // ==========================================
                         if (isMovieFormat) {
-                            // --- MOVIE FORMAT: SINGLE LINK INPUT ---
+                            // --- MOVIE FORMAT: SMART STREAM LINK & READY PREVIEW (SERIES-PARITY) ---
+                            val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+
                             Text("2. Movie Direct Stream Link 🎬", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "Paste the direct stream URL, download link, or F2L direct link for this movie.",
+                                "Paste the direct stream URL, Serv00 link, or Telegram F2L link for this movie.",
                                 color = TextSecondary,
                                 fontSize = 11.sp,
                                 lineHeight = 15.sp
                             )
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
 
                             val isF2lLink = StreamBackendConfig.isBackendHost(startBatchLink)
                             val isF2lTruncated = isF2lLink && (
@@ -729,7 +731,7 @@ fun AdminEditorDialog(
                                 )
                             }
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -738,61 +740,23 @@ fun AdminEditorDialog(
                                 Button(
                                     onClick = {
                                         batchError = null
-                                        if (startBatchLink.isBlank()) {
-                                            batchError = "Stream link is required"
+                                        val clipText = clipboardManager.getText()?.text?.trim()
+                                        if (clipText.isNullOrBlank()) {
+                                            batchError = "Clipboard is empty"
                                             return@Button
                                         }
-                                        isTestingMovieLink = true
+                                        val cleanLink = TelegramLinkResolver.sanitizePlayableUrl(clipText)
+                                        startBatchLink = cleanLink
+                                        generatedEpisodesText = cleanLink
                                         movieLinkProbeResult = null
-                                        scope.launch {
-                                            val link = TelegramLinkResolver.sanitizePlayableUrl(startBatchLink.trim())
-                                            generatedEpisodesText = link
-                                            val result = com.streamhub.app.data.api.StreamHealthChecker.probeUrl(link)
-                                            movieLinkProbeResult = result
-                                            isTestingMovieLink = false
-                                            if (result.isAlive) {
-                                                com.streamhub.app.ui.components.ToastManager.showToast(
-                                                    message = "Stream link is online & verified! 🎬",
-                                                    icon = Icons.Default.CheckCircle
-                                                )
-                                            } else {
-                                                com.streamhub.app.ui.components.ToastManager.showToast(
-                                                    message = "Stream link unreachable: ${result.errorMessage ?: "Error"} ⚠️",
-                                                    icon = Icons.Default.ErrorOutline
-                                                )
-                                            }
-                                        }
                                     },
-                                    enabled = startBatchLink.isNotBlank() && !isTestingMovieLink,
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (movieLinkProbeResult?.isAlive == true) Color(0xFF10B981) else PrimaryRed
-                                    ),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0088CC)),
                                     shape = RoundedCornerShape(12.dp),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    if (isTestingMovieLink) {
-                                        CircularProgressIndicator(
-                                            color = Color.White,
-                                            strokeWidth = 2.dp,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Testing Link...", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    } else {
-                                        Icon(
-                                            imageVector = if (movieLinkProbeResult?.isAlive == true) Icons.Default.CheckCircle else Icons.Default.ElectricBolt,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = if (movieLinkProbeResult?.isAlive == true) "Verified & Online" else "Test Stream Link",
-                                            color = Color.White,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
+                                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("📋 Paste from Clipboard", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
 
                                 if (startBatchLink.isNotBlank() || generatedEpisodesText.isNotBlank()) {
@@ -821,42 +785,151 @@ fun AdminEditorDialog(
                                 Text(it, color = PrimaryRed, fontSize = 11.sp)
                             }
 
-                            movieLinkProbeResult?.let { result ->
-                                Spacer(modifier = Modifier.height(8.dp))
+                            // Movie Stream Ready Preview Card (Series-Parity)
+                            val cleanActiveLink = TelegramLinkResolver.sanitizePlayableUrl(startBatchLink.ifBlank { generatedEpisodesText }.trim())
+                            if (cleanActiveLink.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(10.dp))
                                 Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = if (result.isAlive) Color(0xFF102818) else Color(0xFF281014),
-                                    border = BorderStroke(1.dp, if (result.isAlive) Color(0xFF10B981) else PrimaryRed),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFF162316),
+                                    border = BorderStroke(1.dp, Color(0xFF4CAF50)),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = if (result.isAlive) Icons.Default.CheckCircle else Icons.Default.ErrorOutline,
-                                            contentDescription = null,
-                                            tint = if (result.isAlive) Color(0xFF34D399) else PrimaryRed,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Column {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
                                             Text(
-                                                text = if (result.isAlive) "Stream Online & Reachable" else "Stream Link Verification Failed",
-                                                color = if (result.isAlive) Color(0xFF34D399) else PrimaryRed,
+                                                text = "🎬 1 Movie Stream Ready",
+                                                color = Color(0xFF81C784),
                                                 fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.weight(1f)
                                             )
-                                            val detailText = if (result.isAlive) {
-                                                "HTTP ${result.httpCode} • ${result.latencyMs}ms latency${if (!result.contentType.isNullOrBlank()) " • ${result.contentType}" else ""}"
-                                            } else {
-                                                result.errorMessage ?: "HTTP ${result.httpCode} Error"
+
+                                            // Health Check Action (Series-Parity: on-demand, non-blocking)
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = if (isTestingMovieLink) Color(0xFFFF9800).copy(alpha = 0.2f)
+                                                        else if (movieLinkProbeResult?.isAlive == true) Color(0xFF10B981).copy(alpha = 0.2f)
+                                                        else if (movieLinkProbeResult?.isAlive == false) PrimaryRed.copy(alpha = 0.2f)
+                                                        else Color(0xFF10B981).copy(alpha = 0.2f),
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (isTestingMovieLink) Color(0xFFFF9800)
+                                                    else if (movieLinkProbeResult?.isAlive == true) Color(0xFF10B981)
+                                                    else if (movieLinkProbeResult?.isAlive == false) PrimaryRed
+                                                    else Color(0xFF10B981)
+                                                ),
+                                                modifier = Modifier.clickable(enabled = !isTestingMovieLink) {
+                                                    isTestingMovieLink = true
+                                                    scope.launch {
+                                                        val result = com.streamhub.app.data.api.StreamHealthChecker.probeUrl(cleanActiveLink)
+                                                        movieLinkProbeResult = result
+                                                        isTestingMovieLink = false
+                                                    }
+                                                }
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                ) {
+                                                    if (isTestingMovieLink) {
+                                                        CircularProgressIndicator(
+                                                            modifier = Modifier.size(10.dp),
+                                                            color = Color(0xFFFF9800),
+                                                            strokeWidth = 1.5.dp
+                                                        )
+                                                        Text(
+                                                            "Checking...",
+                                                            color = Color(0xFFFF9800),
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    } else {
+                                                        Text(
+                                                            text = when {
+                                                                movieLinkProbeResult?.isAlive == true -> "🩺 Live (${movieLinkProbeResult?.latencyMs}ms)"
+                                                                movieLinkProbeResult?.isAlive == false -> "🩺 Unreachable (${movieLinkProbeResult?.errorMessage ?: "Error"})"
+                                                                else -> "🩺 Check Link"
+                                                            },
+                                                            color = when {
+                                                                movieLinkProbeResult?.isAlive == true -> Color(0xFF10B981)
+                                                                movieLinkProbeResult?.isAlive == false -> PrimaryRed
+                                                                else -> Color(0xFF10B981)
+                                                            },
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
+                                                }
                                             }
-                                            Text(
-                                                text = detailText,
-                                                color = if (result.isAlive) Color(0xFFA7F3D0) else Color(0xFFFCA5A5),
-                                                fontSize = 10.sp
-                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        // Stream link metadata row
+                                        val isBackend = StreamBackendConfig.isBackendHost(cleanActiveLink)
+                                        val streamBadge = when {
+                                            isBackend && cleanActiveLink.contains("/dl/") -> "Serv00 Direct Stream ⚡"
+                                            isBackend && cleanActiveLink.contains("/stream/") -> "F2L Direct Stream ⚡"
+                                            cleanActiveLink.contains("t.me/") -> "Telegram Direct 🚀"
+                                            else -> "Web Stream URL 🌐"
+                                        }
+
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Color(0xFF1E1E2E),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Movie,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF81C784),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Text(
+                                                            text = title.ifBlank { "Main Feature Movie" },
+                                                            color = TextPrimary,
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            maxLines = 1,
+                                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                                            modifier = Modifier.weight(1f, fill = false)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Surface(
+                                                            shape = RoundedCornerShape(4.dp),
+                                                            color = Color(0xFF38BDF8).copy(alpha = 0.15f)
+                                                        ) {
+                                                            Text(
+                                                                text = streamBadge,
+                                                                color = Color(0xFF38BDF8),
+                                                                fontSize = 9.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                    Text(
+                                                        text = cleanActiveLink,
+                                                        color = TextSecondary,
+                                                        fontSize = 10.sp,
+                                                        maxLines = 1,
+                                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
