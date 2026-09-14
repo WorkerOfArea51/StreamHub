@@ -89,9 +89,10 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
 4. **Double-Tap Seek with Visual Concave Ripple Overlay & Configurable Step**:
    - Animated concave oval overlay (`DoubleTapSeekRippleOverlay`, `RightSideOvalShape`, `LeftSideOvalShape`) showing cumulative seek feedback (`+10s`, `+20s`, etc.).
    - Configurable seek step duration (`doubleTapSeekSeconds`: 5s, 10s default, 15s, 30s) managed by `PlayerSettingsManager` and customizable in `VideoSettingsScreen.kt`.
-5. **Picture-in-Picture (PiP) & Zero-Restart Continuity**:
+5. **Picture-in-Picture (PiP), Auto-Pause & Zero-Restart Continuity**:
    - Auto-enters on Home gesture (`onUserLeaveHint`), matches source video aspect ratio, provides custom RemoteActions for Play/Pause, Next Episode, Previous Episode.
    - Dynamic System PiP Synchronization (`updatePipAutoEnter` in `MainActivity.kt`): auto-enter is strictly enabled only when video is actively streaming in `PlayerScreen` and immediately disabled (`setAutoEnterEnabled(false)`) when paused or exiting the player, preventing non-player screens (Details, Home) from ever entering PiP on Home gesture.
+   - **YouTube-Parity Auto-Pause when PiP Disabled**: When `autoPiPOnNavigation` is disabled by the user in settings, leaving the app (pressing phone Home or opening Recents) immediately calls `player.pause()` on `onUserLeaveHint()` and `ON_STOP` (with `isInPictureInPictureMode == false`), preventing media audio from running invisibly in the background.
    - Unified navigation shell (`AdaptiveNavShell.kt`) and active-playback guard (`StreamPlayerViewModel.initializePlayer`) ensure switching into PiP and returning to fullscreen landscape maintains 100% uninterrupted playback continuity without restarting from 0:00.
 6. **Configurable Skip Intro & Skip Outro**:
    - Floating 90s Skip Intro button (`skipIntroSeconds`), next-episode threshold countdown popup (`nextEpisodeThresholdSeconds`), and seamless auto-play next episode.
@@ -235,8 +236,12 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
       - Registered `Screen.About` route in `NavGraph.kt` and `MainActivity.kt` with explicit `BackHandler` in `AboutScreen.kt`, ensuring back navigation returns directly to the Profile tab instead of popping to My List.
 
 ### B. UI, Catalogue & Navigation (`ui/screens/`, `ui/components/`)
-1. **SplashScreen**:
+1. **SplashScreen (`SplashScreen.kt`, `MainActivity.kt`)**:
    - 120fps GPU-accelerated `Modifier.graphicsLayer` animation, deferred storage walks, IO-dispatched non-critical manager initialization.
+   - **YouTube-Parity Cinematic Entrance & Waveform Showcase Hold**:
+     - **Entrance (550-650ms)**: Smooth spring scale (`0.7f -> 1.0f`) with `ExpressiveScaleEasing` and fade-in (`0f -> 1f`).
+     - **Hero Waveform Showcase Hold (1,100ms)**: Deliberate resting phase allowing the user to clearly appreciate the official `StreamHubBrandLogo`, bouncing equalizer waveforms, neon radial back-glow, and brand tagline before navigation begins.
+     - **Seamless In-Place Cross-Dissolve into HomeScreen (400ms)**: NavHost executes simultaneous `scaleOut(1.05f) + fadeOut(400ms)` on Splash while fading in HomeScreen (`fadeIn(400ms)`), permanently eliminating horizontal slide-ins, black screen dips, and premature dismissals.
 2. **HomeScreen**:
    - `HeroCarousel` with auto-scroll and quick-play/add-to-list.
    - Category filter pills: All, Anime, Movies, Series with persistent selection memory across navigation (`selectedCategoryFilter` backed by `HomeScreenLayoutManager` and SharedPreferences, preventing reset to "All" on back navigation from Details or Player).
@@ -247,8 +252,10 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
 3. **DetailsScreen**:
    - Cinema slate layout, backdrop, synopsis, season/episode list with arc grouping, franchise connections, YouTube trailer preview.
    - **Full Canonical Franchise Titles**: Franchise & season cards (`FranchiseCard`) and selector sheets (`SeasonArcSelectorSheet`) display complete, untruncated media titles (`fItem.title`) up to 4 lines with zero artificial abbreviation, generic `"Season X"` replacements, or story arc truncations.
-4. **Creator Studio / Admin Mode (`AdminEditorDialog.kt`)**:
+4. **Creator Studio / Admin Mode (`AdminEditorDialog.kt`, `ProfileScreen.kt`)**:
    - Master password protection with SHA-256 access authentication.
+   - **Strict Profile-Only Easter Egg**: Owner authentication is exclusively triggered via the 5-tap avatar gesture on `ProfileScreen.kt`. If already authenticated as Owner (`isAdminMode == true`), tapping 5 times suppresses the password dialog and displays the modern HUD toast: *"You are already Owner 👑"*. Purged redundant `#admin` and `#publish` search shortcuts from `SearchScreen.kt`.
+   - **Live Movie Stream Link Health Probe Tester**: Upgraded the inert "Set Direct Stream Link" button into an active `[Test Stream Link ⚡]` button powered by `StreamHealthChecker.probeUrl()`. Performs instant HTTP range check (latency, HTTP status code, format), displays a dynamic health badge (e.g. `✅ Stream Online & Reachable (HTTP 200 • 85ms)`), and triggers real-time confirmation HUD toasts while preserving automatic URL saving on `[Save Changes]`.
    - Metadata Health Inspector (`MetadataInspectorDialog.kt`) with 11-spec audit, deep sync, and TMDB/MAL batch auto-repair engine.
    - Server Migration Engine (`ServerMigrationDialog.kt`).
    - Voucher Generator & Device Lock Manager (`VoucherManagerDialog.kt`).
@@ -268,11 +275,14 @@ StreamHub is a cutting-edge, high-performance Android media streaming ecosystem 
    - `ThemeSettingsCards.kt`: Dynamic color themes, notification alerts.
    - `SettingsMiscCards.kt`: Integrated network speed test engine (`SpeedTestManager.kt`).
    - `StorageManagementScreen.kt`: Granular breakdown of video disk cache, thumbnails, app cache with 1-tap clear.
+      - **Media3-Native TTL Auto-Delete Engine (`StorageCacheManager.kt`, `StreamCacheManager.kt`)**: Automatically purges watched video chunk fragments and spans older than user-configured TTL (e.g. 3 Days) via `StreamCacheManager.removeResource()`, cleanly removing disk files and SQLite database records without index corruption or accumulation.
+      - **Self-Healing Background & Lifecycle Schedule**: Enforces cache TTL on app startup, every 30 minutes in a periodic background coroutine while active, upon entering `StorageManagementScreen`, and on video player release.
+      - **Interactive "Video Stream Buffer" Inspector (`CachedStreamsSheet.kt`)**: Clicking the Video Stream Buffer row opens a bottom sheet listing each cached movie/episode with its title, poster thumbnail, cached byte size, cached date, live auto-delete countdown ("Auto-deletes in 18h 30m"), and individual single-stream delete button (`[🗑️]`).
    - `VideoSettingsScreen.kt`: Skip intro seconds, next episode threshold, auto-play next ep, volume on right/left, ambient mood.
 9. **Material 3 Expressive Navigation Motion (`MainActivity.kt`)**:
    - Seamless spatial navigation transitions across entire `NavHost`:
      - Global enter/exit: 280ms fast-out slow-in 10% horizontal parallax slide combined with fade.
-     - Splash to Home: Smooth 300ms crossfade ensuring zero abrupt visual jumps.
+     - Splash to Home: Smooth 400ms in-place cross-dissolve (`scaleOut(1.05f) + fadeOut` concurrent with `fadeIn`) ensuring zero abrupt visual jumps or horizontal slides.
      - Video Player launch: Cinema theatre expansion scale (`scaleIn(0.94f) + fadeIn(320ms)`) and scale-out exit (`scaleOut(0.94f) + fadeOut(260ms)`).
 
 ---
@@ -357,6 +367,7 @@ app/src/main/java/com/streamhub/app/
     │   ├── AdminEditorDialog.kt         # Master Creator Studio editor (add/edit media)
     │   ├── ArcEpisodeEditorDialog.kt    # Season & story-arc episode manager
     │   ├── CatalogBackupDialog.kt       # Catalog backup & restore dialog
+    │   ├── CachedStreamsSheet.kt        # Bottom sheet inspector for cached video streams, TTL countdowns & granular deletion
     │   ├── EditProfileDialog.kt         # Profile editing modal (avatars, bio, name)
     │   ├── EmptyStateCard.kt            # Standard empty state card with icon & message
     │   ├── FolderSelectionDialog.kt     # Folder organization selector
@@ -455,6 +466,8 @@ The following redundant or obsolete files were discovered during the project aud
 6. `Background Audio` (Headphones) button & Floating Left Lock circle: Permanently removed from `PlayerScreen.kt`. Background audio is redundant for visual media playback. Lock Controls is now cleanly located in the bottom action row next to Skip Intro matching mpvEx 1:1, and the floating lock button on the middle-left screen edge was eliminated.
 7. `In-Composable AboutScreen Overlay in ProfileScreen`: Removed unmanaged boolean state overlay (`var showAbout by remember { mutableStateOf(false) }`) that bypassed Compose back-stack and broke Android back button navigation. Replaced with proper top-level route `Screen.About` with hardware `BackHandler(onBack = onBackClick)` returning reliably to Profile.
 8. `Oversized Standalone Path & Network Speed Cards`: Replaced standalone, mismatched `Card` components and full-width colored buttons in `SettingsScreen.kt` and `AdvancedPreferencesScreen.kt` with unified `PreferenceCard` list rows and compact action pills (`[Browse]`, `[Reset]`, `[Test Speed]`, `[Check]`).
+9. `#admin` and `#publish` Search Triggers & Admin Dialogs in `SearchScreen.kt`: Completely purged secret search keywords and admin dialogs from `SearchScreen.kt`. Owner access and Creator Studio unlock are strictly and exclusively hosted on `ProfileScreen.kt` via the 5-tap profile picture easter egg.
+10. `Raw Disk Traversal & File System Deletion for ExoPlayer Cache`: Purged dangerous and ineffective `videoCacheDir.walkTopDown() + file.delete()` based on OS `lastModified()`. Replaced with Media3-native `StreamCacheManager.removeResource(key)` which safely removes chunk files and updates the SQLite database index without cache corruption or desync.
 
 **RULE**: Never re-create, re-import, or resurrect these deleted files or patterns.
 
@@ -522,9 +535,20 @@ The following redundant or obsolete files were discovered during the project aud
 
 ## 10. Active Build & Version State
 
-- **Active Version**: `v4.8.312` (Build 312 - Commit `440c7b7`)
+- **Active Version**: `v4.8.315` (Build 315)
 - **Status**: Production Release Candidate
 - **Recent Completed Sprint**:
+  - Live Movie Stream Link Health Probe Tester in Creator Studio (`v4.8.315` Build 315):
+    - Transformed the inert and confusing "Set Direct Stream Link" button in `AdminEditorDialog.kt` into a functional `[Test Stream Link ⚡]` button.
+    - Connected `StreamHealthChecker.probeUrl(url)`: performs live sub-second HTTP probe, displays real-time reachability status, latency in milliseconds, format type, and failure reasons.
+    - Added instant feedback: flashes modern HUD toasts (`Stream link is online & verified! 🎬` or failure notice) and dynamic green/red status cards with one-tap `[Clear]` reset, while preserving automatic URL saving on `[Save Changes]`.
+  - YouTube-Parity Auto-Pause on Home & Recents when PiP Disabled (`v4.8.314` Build 314):
+    - Fixed background audio leak where disabling `autoPiPOnNavigation` in Video Settings and pressing the phone's Home button or opening Recents left ExoPlayer running and playing audio in the background.
+    - Added instant auto-pause in `MainActivity.kt` `onUserLeaveHint()` and `PlayerScreen.kt` `ON_STOP` when not in PiP (`activity.isInPictureInPictureMode == false`), matching YouTube behavior 1:1.
+    - Returning to the app from Recent Apps preserves the exact millisecond pause timestamp with controls ready to resume on demand.
+  - Owner 5-Tap Toast & Search Admin Purge (`v4.8.313` Build 313):
+    - In `ProfileScreen.kt`, when tapping 5 times on the profile picture while already an authenticated Owner (`isAdminMode == true`), suppressed the redundant Creator Studio Unlock password dialog and displayed the modern glassmorphic HUD toast: *"You are already Owner 👑"*.
+    - Completely purged `#admin` and `#publish` secret search triggers and duplicate `AdminPasswordDialog` / `AdminEditorDialog` from `SearchScreen.kt`, enforcing single source of truth for owner authentication on `ProfileScreen.kt`.
   - Unified Settings Aesthetics, Interactive Audio/Gesture Controls & Brand Logo Polish (`v4.8.312` Build 312):
     - Replaced mismatched standalone cards and giant colored buttons in Downloads, Screenshots, Network Speed, and App Updates with standard mpvEx `PreferenceCard` items, compact action pills (`[Browse]`, `[Reset]`, `[Test Speed]`, `[Check]`), and `PreferenceDivider`.
     - Made Audio Preferences interactive: connected `HardwareVolumeBoostDialog` (100% to 200% max hardware boost limiter) and `DefaultAudioDelayDialog` (continuous slider `-3000ms`..`+3000ms`, steppers `±50ms`/`±100ms`/`±500ms`, and reset to 0ms) with persistent storage in `PlayerSettingsManager`.
@@ -646,4 +670,14 @@ The following redundant or obsolete files were discovered during the project aud
   - "Force Clean Typography" Subtitle toggle in `SubtitleSettingsManager`, `MpvSubtitleSheets.kt`, and `PlayerScreen.kt`.
   - Long-Press Quick Actions Bottom Sheet on Continue Watching cards (`ContinueWatchingQuickActionsSheet` in `HomeScreen.kt`).
   - Material 3 Expressive spatial navigation transitions in `NavHost` (`MainActivity.kt`).
+  - YouTube-Parity Cinematic Splash Screen & In-Place Cross-Dissolve (`v4.8.304` Build 304):
+    - Added 1,100ms deliberate waveform and neon ambient showcase hold in `SplashScreen.kt`, allowing user to clearly see and feel the animated equalizer bars, ambient radial glow, and branding typography before transition begins.
+    - Set refined spring entrance curve (`scale: 0.7f -> 1.0f` over 650ms, `alpha: 0f -> 1f` over 550ms).
+    - Replaced abrupt internal 260ms fade-to-black and default horizontal slide-in with simultaneous NavHost cross-dissolve: `Screen.Splash` executes `scaleOut(1.05f) + fadeOut(400ms)` while `Screen.Home` executes `fadeIn(400ms)`, eliminating the jarring black screen dip and horizontal jump.
+  - Media3-Native TTL Auto-Delete & Interactive Stream Buffer Inspector (`v4.8.305` Build 305):
+    - Replaced broken OS-level file deletion (`walkTopDown() + file.delete()`) with Media3-native `StreamCacheManager.removeResource(key)`, safely evicting all chunk spans and updating the SQLite database index without cache corruption or orphaned disk bloat.
+    - Implemented self-healing cache policy triggers: automatically runs TTL eviction on app startup, every 30 minutes in a recurring background coroutine, upon opening `StorageManagementScreen`, and on video playback release.
+    - Built interactive `CachedStreamsSheet.kt` modal bottom sheet accessible by tapping the "Video Stream Buffer" row in `StorageManagementScreen.kt`. Lists all cached movies/episodes with poster thumbnail, title, season/episode subtitle, cached byte size, cached timestamp, live auto-delete countdown ("Auto-deletes in 18h 30m"), and individual single-stream delete button (`[🗑️]`).
+    - Added persistent cached stream metadata registry in `StorageCacheManager.kt` (`streamhub_cache_metadata`), registering played video titles and posters from `StreamPlayerViewModel.kt`.
+
 

@@ -9,15 +9,18 @@ import coil.Coil
 import com.streamhub.app.player.StreamCacheManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.File
 
 data class StorageMetrics(
@@ -37,11 +40,35 @@ data class CacheConfig(
     val keepWatchedForInstantResume: Boolean = true
 )
 
+data class CachedStreamItem(
+    val key: String,
+    val mediaId: String? = null,
+    val title: String,
+    val subtitle: String = "",
+    val posterUrl: String? = null,
+    val sizeBytes: Long,
+    val formattedSize: String,
+    val lastAccessedTimestamp: Long,
+    val expiryTimestamp: Long? = null,
+    val isExpired: Boolean = false,
+    val timeRemainingText: String = ""
+)
+
+data class CachedMediaMetadata(
+    val cacheKey: String,
+    val mediaId: String?,
+    val title: String,
+    val subtitle: String,
+    val posterUrl: String?,
+    val registeredTimestamp: Long
+)
+
 @OptIn(coil.annotation.ExperimentalCoilApi::class)
 object StorageCacheManager {
 
     private const val TAG = "StorageCacheManager"
     private const val PREFS_NAME = "streamhub_storage_settings"
+    private const val PREFS_METADATA = "streamhub_cache_metadata"
     private const val KEY_CACHE_LIMIT = "cache_limit_mb"
     private const val KEY_CACHE_TTL = "cache_ttl_hours"
     private const val KEY_INSTANT_RESUME = "keep_watched_instant_resume"
@@ -49,6 +76,7 @@ object StorageCacheManager {
     private lateinit var appContext: Context
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val clearMutex = Mutex()
+    private var periodicEnforceJob: Job? = null
 
     private val _metricsFlow = MutableStateFlow(StorageMetrics())
     val metricsFlow: StateFlow<StorageMetrics> = _metricsFlow.asStateFlow()
@@ -61,12 +89,23 @@ object StorageCacheManager {
         appContext = context.applicationContext
 
         loadConfig()
-        // FIX: Defer heavy disk directory walks (media_stream_cache, coil, etc.) by 2.5s
-        // so storage I/O and flash bus remain 100% free for the 120fps splash animation.
+        startPeriodicEnforcement()
+
+        // Defer heavy disk directory walks by 2.5s so startup remains 120fps smooth
         scope.launch {
             delay(2_500L)
-            calculateStorageUsage()
             enforceCachePolicies()
+            calculateStorageUsage()
+        }
+    }
+
+    private fun startPeriodicEnforcement() {
+        periodicEnforceJob?.cancel()
+        periodicEnforceJob = scope.launch {
+            while (isActive) {
+                delay(30 * 60_000L) // Self-healing check every 30 minutes while app is running
+                enforceCachePolicies()
+            }
         }
     }
 
@@ -161,6 +200,7 @@ object StorageCacheManager {
         clearMutex.withLock {
             try {
                 StreamCacheManager.clearCache(appContext)
+                clearAllCachedMetadata()
                 val videoCacheDir = File(appContext.cacheDir, "media_stream_cache")
                 if (videoCacheDir.exists()) {
                     videoCacheDir.listFiles()?.forEach { it.delete() }
@@ -199,6 +239,7 @@ object StorageCacheManager {
         clearMutex.withLock {
             try {
                 StreamCacheManager.clearCache(appContext)
+                clearAllCachedMetadata()
                 val imageLoader = Coil.imageLoader(appContext)
                 imageLoader.memoryCache?.clear()
                 imageLoader.diskCache?.clear()
@@ -235,35 +276,199 @@ object StorageCacheManager {
         }
     }
 
-    private fun enforceCachePolicies() {
+    /**
+     * Register a newly watched/prewarmed video stream into the persistent cache metadata registry.
+     */
+    fun registerCachedStream(
+        cacheKey: String,
+        mediaId: String?,
+        title: String,
+        subtitle: String = "",
+        posterUrl: String? = null
+    ) {
+        if (!::appContext.isInitialized || cacheKey.isBlank()) return
         scope.launch {
             try {
-                val config = _configFlow.value
-                // 1. Enforce max size limit if not unlimited (-1)
-                if (config.cacheLimitMb > 0) {
-                    val maxLimitBytes = config.cacheLimitMb * 1024L * 1024L
-                    val currentVideoBytes = _metricsFlow.value.videoCacheBytes
-                    if (currentVideoBytes > maxLimitBytes) {
-                        StreamCacheManager.clearCache(appContext)
-                    }
+                val prefs = appContext.getSharedPreferences(PREFS_METADATA, Context.MODE_PRIVATE)
+                val json = JSONObject().apply {
+                    put("mediaId", mediaId ?: "")
+                    put("title", title)
+                    put("subtitle", subtitle)
+                    put("posterUrl", posterUrl ?: "")
+                    put("registeredTimestamp", System.currentTimeMillis())
                 }
-                // 2. Enforce TTL policy (auto-clear chunks older than TTL)
-                if (config.cacheTtlHours > 0) {
-                    val ttlMillis = config.cacheTtlHours * 3600_000L
-                    val threshold = System.currentTimeMillis() - ttlMillis
-                    val videoCacheDir = File(appContext.cacheDir, "media_stream_cache")
-                    if (videoCacheDir.exists()) {
-                        videoCacheDir.walkTopDown().forEach { file ->
-                            if (file.isFile && file.lastModified() < threshold) {
-                                try { file.delete() } catch (_: Exception) {}
-                            }
+                prefs.edit().putString(cacheKey, json.toString()).apply()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to register cache metadata for $cacheKey", e)
+            }
+        }
+    }
+
+    fun getCachedMetadata(cacheKey: String): CachedMediaMetadata? {
+        if (!::appContext.isInitialized) return null
+        return try {
+            val prefs = appContext.getSharedPreferences(PREFS_METADATA, Context.MODE_PRIVATE)
+            val jsonStr = prefs.getString(cacheKey, null) ?: return null
+            val obj = JSONObject(jsonStr)
+            CachedMediaMetadata(
+                cacheKey = cacheKey,
+                mediaId = obj.optString("mediaId").takeIf { it.isNotBlank() },
+                title = obj.optString("title", "Unknown Video"),
+                subtitle = obj.optString("subtitle", ""),
+                posterUrl = obj.optString("posterUrl").takeIf { it.isNotBlank() },
+                registeredTimestamp = obj.optLong("registeredTimestamp", System.currentTimeMillis())
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun removeCachedMetadata(cacheKey: String) {
+        if (!::appContext.isInitialized) return
+        try {
+            appContext.getSharedPreferences(PREFS_METADATA, Context.MODE_PRIVATE)
+                .edit().remove(cacheKey).apply()
+        } catch (_: Exception) {}
+    }
+
+    private fun clearAllCachedMetadata() {
+        if (!::appContext.isInitialized) return
+        try {
+            appContext.getSharedPreferences(PREFS_METADATA, Context.MODE_PRIVATE)
+                .edit().clear().apply()
+        } catch (_: Exception) {}
+    }
+
+    /**
+     * Delete an individual cached video stream by its cacheKey.
+     */
+    suspend fun deleteCachedStream(cacheKey: String): Boolean = withContext(Dispatchers.IO) {
+        clearMutex.withLock {
+            try {
+                StreamCacheManager.removeResource(cacheKey)
+                removeCachedMetadata(cacheKey)
+                calculateStorageUsage()
+                true
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to delete cached stream $cacheKey", e)
+                false
+            }
+        }
+    }
+
+    /**
+     * Fetch list of all active cached video streams with their metadata, size, and auto-delete countdowns.
+     */
+    suspend fun getCachedStreamEntries(): List<CachedStreamItem> = withContext(Dispatchers.IO) {
+        if (!::appContext.isInitialized) return@withContext emptyList()
+        try {
+            val resources = StreamCacheManager.getCachedResources(appContext)
+            val config = _configFlow.value
+            val ttlHours = config.cacheTtlHours
+            val ttlMillis = if (ttlHours > 0) ttlHours * 3600_000L else -1L
+            val now = System.currentTimeMillis()
+
+            resources.map { res ->
+                val meta = getCachedMetadata(res.key)
+                val effectiveTime = maxOf(res.lastTouchTimestamp, meta?.registeredTimestamp ?: 0L)
+                val expiryTimestamp = if (ttlMillis > 0L) effectiveTime + ttlMillis else null
+                val isExpired = expiryTimestamp != null && now >= expiryTimestamp
+
+                val timeRemainingText = when {
+                    expiryTimestamp == null -> "Retained (Auto-delete off)"
+                    isExpired -> "Expired (Ready to purge)"
+                    else -> {
+                        val diffMs = expiryTimestamp - now
+                        val totalMinutes = diffMs / 60_000L
+                        val hours = totalMinutes / 60L
+                        val minutes = totalMinutes % 60L
+                        val days = hours / 24L
+                        when {
+                            days > 1L -> "Auto-deletes in $days days"
+                            days == 1L -> "Auto-deletes in 1 day"
+                            hours > 0L -> "Auto-deletes in ${hours}h ${minutes}m"
+                            else -> "Auto-deletes in ${minutes.coerceAtLeast(1)}m"
                         }
                     }
                 }
-                calculateStorageUsage()
-            } catch (e: Exception) {
-                Log.w(TAG, "Error enforcing cache policies", e)
+
+                val fallbackTitle = try {
+                    val uri = android.net.Uri.parse(res.key)
+                    val last = uri.lastPathSegment ?: "Stream Buffer"
+                    last.substringBeforeLast(".").replace('_', ' ').replace('-', ' ').trim().ifBlank { "Stream Buffer" }
+                } catch (_: Exception) {
+                    "Stream Buffer"
+                }
+
+                CachedStreamItem(
+                    key = res.key,
+                    mediaId = meta?.mediaId,
+                    title = meta?.title?.ifBlank { fallbackTitle } ?: fallbackTitle,
+                    subtitle = meta?.subtitle ?: "",
+                    posterUrl = meta?.posterUrl,
+                    sizeBytes = res.sizeBytes,
+                    formattedSize = formatBytes(res.sizeBytes),
+                    lastAccessedTimestamp = effectiveTime,
+                    expiryTimestamp = expiryTimestamp,
+                    isExpired = isExpired,
+                    timeRemainingText = timeRemainingText
+                )
+            }.sortedByDescending { it.lastAccessedTimestamp }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get cached stream entries", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * Enforce cache policies: Media3-native TTL auto-delete and LRU size limits.
+     */
+    fun enforceCachePolicies() {
+        if (!::appContext.isInitialized) return
+        scope.launch {
+            clearMutex.withLock {
+                try {
+                    val config = _configFlow.value
+                    val resources = StreamCacheManager.getCachedResources(appContext)
+                    val ttlHours = config.cacheTtlHours
+                    val ttlMillis = if (ttlHours > 0) ttlHours * 3600_000L else -1L
+                    val now = System.currentTimeMillis()
+
+                    // 1. Enforce TTL Policy: purge any stream resource whose age >= TTL
+                    if (ttlMillis > 0L) {
+                        resources.forEach { res ->
+                            val meta = getCachedMetadata(res.key)
+                            val effectiveTime = maxOf(res.lastTouchTimestamp, meta?.registeredTimestamp ?: 0L)
+                            val age = now - effectiveTime
+                            if (age >= ttlMillis) {
+                                Log.i(TAG, "TTL Expired for key: ${res.key} (Age: ${age / 3600_000L}h >= ${ttlHours}h). Evicting from SimpleCache.")
+                                StreamCacheManager.removeResource(res.key)
+                                removeCachedMetadata(res.key)
+                            }
+                        }
+                    }
+
+                    // 2. Enforce Size Limit Policy: evict oldest if total exceeds configured MB
+                    if (config.cacheLimitMb > 0) {
+                        val maxLimitBytes = config.cacheLimitMb * 1024L * 1024L
+                        val currentResources = StreamCacheManager.getCachedResources(appContext)
+                        var currentTotalBytes = currentResources.sumOf { it.sizeBytes }
+                        if (currentTotalBytes > maxLimitBytes) {
+                            val sortedOldestFirst = currentResources.sortedBy { it.lastTouchTimestamp }
+                            for (res in sortedOldestFirst) {
+                                if (currentTotalBytes <= maxLimitBytes) break
+                                Log.i(TAG, "Cache size limit exceeded. Evicting oldest: ${res.key} (${res.sizeBytes} bytes)")
+                                StreamCacheManager.removeResource(res.key)
+                                removeCachedMetadata(res.key)
+                                currentTotalBytes -= res.sizeBytes
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error enforcing cache policies", e)
+                }
             }
+            calculateStorageUsage()
         }
     }
 

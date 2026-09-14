@@ -159,7 +159,16 @@ fun ProfileScreen(
                 isAccessKeyVerified = isAccessKeyUnlocked,
                 remainingDays = remainingVoucherDays,
                 primaryColor = primaryColor,
-                onSecretTapUnlock = { showAdminPasswordDialog = true },
+                onSecretTapUnlock = {
+                    if (isAdminMode) {
+                        ToastManager.showToast(
+                            message = "You are already Owner 👑",
+                            icon = Icons.Default.AdminPanelSettings
+                        )
+                    } else {
+                        showAdminPasswordDialog = true
+                    }
+                },
                 onOpenStudio = { showAddContentDialog = true },
                 onLockAdmin = {
                     AdminManager.disableAdmin()
@@ -468,7 +477,14 @@ private fun StreamHubUserProfileCard(
 
                             if (tapCount >= 5) {
                                 tapCount = 0
-                                onSecretTapUnlock()
+                                if (isAdmin) {
+                                    ToastManager.showToast(
+                                        message = "You are already Owner 👑",
+                                        icon = Icons.Default.AdminPanelSettings
+                                    )
+                                } else {
+                                    onSecretTapUnlock()
+                                }
                             }
                         },
                     contentAlignment = Alignment.Center

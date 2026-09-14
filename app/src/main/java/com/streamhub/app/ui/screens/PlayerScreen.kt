@@ -591,7 +591,8 @@ fun PlayerScreen(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             when (event) {
                 androidx.lifecycle.Lifecycle.Event.ON_STOP -> {
-                    viewModel.onAppBackgrounded()
+                    val inPip = activity?.isInPictureInPictureMode == true
+                    viewModel.onAppBackgrounded(isInPip = inPip)
                 }
                 androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
                     viewModel.onAppForegrounded()

@@ -899,6 +899,20 @@ class StreamPlayerViewModel : ViewModel() {
                 .setCustomCacheKey(cacheKey)
                 .build()
 
+            val ep = episodesList.getOrNull(index)
+            val subtitleStr = when {
+                ep != null && ep.seasonNumber > 0 -> "Season ${ep.seasonNumber} • Episode ${ep.episodeNumber}${if (ep.title.isNotBlank()) ": ${ep.title}" else ""}"
+                ep != null && ep.episodeNumber > 0 -> "Episode ${ep.episodeNumber}${if (ep.title.isNotBlank()) ": ${ep.title}" else ""}"
+                else -> "Movie"
+            }
+            com.streamhub.app.data.StorageCacheManager.registerCachedStream(
+                cacheKey = cacheKey,
+                mediaId = currentMediaItem?.id,
+                title = currentMediaItem?.title ?: "Video Stream",
+                subtitle = subtitleStr,
+                posterUrl = currentMediaItem?.posterUrl
+            )
+
             PlayerHolder.currentMediaId = currentMediaItem?.id
             PlayerHolder.currentEpisodeIndex = index
 
@@ -1200,13 +1214,24 @@ class StreamPlayerViewModel : ViewModel() {
         }
     }
 
-    fun onAppBackgrounded() {
+    fun pause() {
+        val player = exoPlayer ?: return
+        if (player.isPlaying) {
+            lastPauseTimestampMs = System.currentTimeMillis()
+            player.pause()
+        }
+    }
+
+    fun onAppBackgrounded(isInPip: Boolean = false) {
         lastBackgroundTimestampMs = System.currentTimeMillis()
-        Log.i("StreamPlayerViewModel", "App backgrounded at $lastBackgroundTimestampMs")
+        Log.i("StreamPlayerViewModel", "App backgrounded at $lastBackgroundTimestampMs (isInPip=$isInPip)")
         StreamPreloadManager.cancelDetailsPrewarm()
         StreamPreloadManager.cancelBingePrecache()
         nextEpisodePreloadJob?.cancel()
         nextEpisodePreloadJob = null
+        if (!isInPip && !_uiState.value.isBackgroundAudioEnabled) {
+            pause()
+        }
     }
 
     fun onAppForegrounded() {
@@ -1756,6 +1781,7 @@ class StreamPlayerViewModel : ViewModel() {
         PlayerHolder.currentBandwidthTracker = null
         com.streamhub.app.data.UserStatsManager.flushToDisk()
         com.streamhub.app.data.UserTelemetryManager.clearPlaybackState()
+        com.streamhub.app.data.StorageCacheManager.enforceCachePolicies()
     }
 
     private fun syncTelemetry(playerState: String) {

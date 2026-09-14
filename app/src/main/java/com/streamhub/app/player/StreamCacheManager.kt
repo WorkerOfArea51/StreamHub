@@ -15,6 +15,12 @@ import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
 
+data class CachedResourceInfo(
+    val key: String,
+    val sizeBytes: Long,
+    val lastTouchTimestamp: Long
+)
+
 @OptIn(UnstableApi::class)
 object StreamCacheManager {
     private const val TAG = "StreamCacheManager"
@@ -32,6 +38,31 @@ object StreamCacheManager {
     val cacheStateFlow: StateFlow<CacheState> = _cacheStateFlow.asStateFlow()
 
     enum class CacheState { IDLE, ACTIVE_READERS, PENDING_CLEAR }
+
+    fun getCachedResources(context: Context): List<CachedResourceInfo> {
+        val cache = getCache(context)
+        return cacheLock.read {
+            try {
+                val keys = cache.keys
+                keys.mapNotNull { key ->
+                    val spans = cache.getCachedSpans(key)
+                    if (spans.isEmpty()) null
+                    else {
+                        val totalBytes = spans.sumOf { it.length }
+                        val lastTouch = spans.maxOfOrNull { it.lastTouchTimestamp } ?: 0L
+                        CachedResourceInfo(
+                            key = key,
+                            sizeBytes = totalBytes,
+                            lastTouchTimestamp = lastTouch
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to get cached resources", e)
+                emptyList()
+            }
+        }
+    }
 
     fun getCache(context: Context): SimpleCache {
         cachedContext = context.applicationContext

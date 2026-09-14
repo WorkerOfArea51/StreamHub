@@ -298,15 +298,20 @@ class MainActivity : ComponentActivity() {
      */
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        val player = StreamPlayerViewModel.currentPlayer
-        if (!shouldAutoEnterPip || player == null || !player.isPlaying || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            return
-        }
-        try {
-            val params = buildPipParams(autoEnter = true)
-            enterPictureInPictureMode(params)
-        } catch (e: Exception) {
-            Log.w(TAG, "PiP entry failed: ${e.message}")
+        val player = StreamPlayerViewModel.currentPlayer ?: return
+        if (!player.isPlaying) return
+
+        if (shouldAutoEnterPip && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val params = buildPipParams(autoEnter = true)
+                enterPictureInPictureMode(params)
+            } catch (e: Exception) {
+                Log.w(TAG, "PiP entry failed: ${e.message}")
+            }
+        } else {
+            // When auto-PiP is disabled or unsupported, leaving the app (pressing home/recents)
+            // auto-pauses playback immediately (YouTube parity).
+            player.pause()
         }
     }
 
@@ -565,7 +570,10 @@ fun StreamHubApp(
             composable(
                 route = Screen.Splash.route,
                 enterTransition = { fadeIn(animationSpec = tween(300)) },
-                exitTransition = { fadeOut(animationSpec = tween(300)) }
+                exitTransition = {
+                    fadeOut(animationSpec = tween(400, easing = FastOutSlowInEasing)) +
+                    scaleOut(targetScale = 1.05f, animationSpec = tween(400, easing = FastOutSlowInEasing))
+                }
             ) {
                 SplashScreen(
                     repository = repository,
@@ -577,7 +585,19 @@ fun StreamHubApp(
                 )
             }
 
-            composable(Screen.Home.route) {
+            composable(
+                route = Screen.Home.route,
+                enterTransition = {
+                    if (initialState.destination.route == Screen.Splash.route) {
+                        fadeIn(animationSpec = tween(400, easing = FastOutSlowInEasing))
+                    } else {
+                        slideInHorizontally(
+                            initialOffsetX = { (it * 0.10f).toInt() },
+                            animationSpec = tween(280, easing = FastOutSlowInEasing)
+                        ) + fadeIn(animationSpec = tween(280))
+                    }
+                }
+            ) {
                 HomeScreen(
                     repository = repository,
                     onMediaClick = { media ->

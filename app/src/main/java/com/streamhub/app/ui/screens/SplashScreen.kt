@@ -37,6 +37,7 @@ import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -49,10 +50,8 @@ fun SplashScreen(
     onSplashFinished: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scale = remember { Animatable(0.4f) }
+    val scale = remember { Animatable(0.7f) }
     val alpha = remember { Animatable(0f) }
-    val exitAlpha = remember { Animatable(1f) }
-    val exitScale = remember { Animatable(1.0f) }
 
     LaunchedEffect(Unit) {
         coroutineScope {
@@ -66,31 +65,27 @@ fun SplashScreen(
                 launch {
                     alpha.animateTo(
                         targetValue = 1f,
-                        animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing)
+                        animationSpec = tween(durationMillis = 550, easing = FastOutSlowInEasing)
                     )
                 }
                 launch {
                     scale.animateTo(
                         targetValue = 1.0f,
-                        animationSpec = tween(durationMillis = 850, easing = ExpressiveScaleEasing)
+                        animationSpec = tween(durationMillis = 650, easing = ExpressiveScaleEasing)
                     )
                 }
             }
 
             animJob.join()
+
+            // YouTube-style showcase hold: deliberate resting duration
+            // allowing user to clearly see and feel the animated equalizer waveforms and neon glow
+            delay(1_100L)
+
+            // Ensure catalog is ready before proceeding
             catalogReady.await()
 
-            // Silky smooth cinematic expansion & cross-dissolve exit into home screen
-            launch {
-                exitScale.animateTo(
-                    targetValue = 1.06f,
-                    animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
-                )
-            }
-            exitAlpha.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
-            )
+            // Seamless handoff to NavHost cross-dissolve into HomeScreen
             onSplashFinished()
         }
     }
@@ -98,12 +93,7 @@ fun SplashScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(BackgroundDark)
-            .graphicsLayer {
-                this.alpha = exitAlpha.value
-                this.scaleX = exitScale.value
-                this.scaleY = exitScale.value
-            },
+            .background(BackgroundDark),
         contentAlignment = Alignment.Center
     ) {
         // Ambient Neon Back-Glow Blob

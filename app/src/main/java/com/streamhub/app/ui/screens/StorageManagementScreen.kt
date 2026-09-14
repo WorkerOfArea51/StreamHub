@@ -90,8 +90,10 @@ fun StorageManagementScreen(
 
     var showClearAllConfirmDialog by remember { mutableStateOf(false) }
     var isOptimizingDb by remember { mutableStateOf(false) }
+    var showCachedStreamsSheet by remember { mutableStateOf(false) }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
+        StorageCacheManager.enforceCachePolicies()
         StorageCacheManager.calculateStorageUsage()
     }
 
@@ -126,16 +128,26 @@ fun StorageManagementScreen(
                         )
                     }
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Storage & Cache",
-                        color = TextPrimary,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column {
+                        Text(
+                            text = "Storage & Cache",
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp
+                        )
+                        Text(
+                            text = "Disk space management & cache eviction",
+                            color = TextSecondary,
+                            fontSize = 12.sp
+                        )
+                    }
                 }
 
                 IconButton(
-                    onClick = { StorageCacheManager.calculateStorageUsage() },
+                    onClick = {
+                        StorageCacheManager.enforceCachePolicies()
+                        StorageCacheManager.calculateStorageUsage()
+                    },
                     enabled = !metrics.isCalculating
                 ) {
                     if (metrics.isCalculating) {
@@ -187,6 +199,8 @@ fun StorageManagementScreen(
                         subtitle = "Cached video chunks & temporary stream segments",
                         sizeStr = StorageCacheManager.formatBytes(metrics.videoCacheBytes),
                         actionText = "Clear",
+                        inspectHint = "Inspect Streams ▾",
+                        onClick = { showCachedStreamsSheet = true },
                         onAction = {
                             scope.launch {
                                 val ok = StorageCacheManager.clearVideoCache()
@@ -546,6 +560,23 @@ fun StorageManagementScreen(
             shape = RoundedCornerShape(16.dp)
         )
     }
+
+    // Interactive Cached Streams Inspector Sheet
+    if (showCachedStreamsSheet) {
+        com.streamhub.app.ui.components.CachedStreamsSheet(
+            onDismiss = { showCachedStreamsSheet = false },
+            onClearAllStreams = {
+                scope.launch {
+                    val ok = StorageCacheManager.clearVideoCache()
+                    val message = when {
+                        ok -> "Video stream cache cleared"
+                        else -> "Cache will clear automatically when playback ends"
+                    }
+                    ToastManager.showToast(message, if (ok) Icons.Default.CloudDone else Icons.Default.Refresh)
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -696,10 +727,15 @@ fun CacheActionRow(
     subtitle: String,
     sizeStr: String,
     actionText: String,
+    inspectHint: String? = null,
+    onClick: (() -> Unit)? = null,
     onAction: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -723,12 +759,29 @@ fun CacheActionRow(
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column {
-                Text(
-                    text = title,
-                    color = TextPrimary,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = title,
+                        color = TextPrimary,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                    if (inspectHint != null) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = iconColor.copy(alpha = 0.15f)
+                        ) {
+                            Text(
+                                text = inspectHint,
+                                color = iconColor,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+                }
                 Text(
                     text = subtitle,
                     color = TextSecondary,
@@ -752,7 +805,10 @@ fun CacheActionRow(
                 color = PrimaryRed,
                 fontWeight = FontWeight.Bold,
                 fontSize = 12.sp,
-                modifier = Modifier.clickable { onAction() }
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable { onAction() }
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
             )
         }
     }

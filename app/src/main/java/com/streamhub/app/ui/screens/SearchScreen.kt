@@ -91,20 +91,12 @@ fun SearchScreen(
 
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var debouncedQuery by remember { mutableStateOf("") }
-    var showAdminPasswordDialog by remember { mutableStateOf(false) }
-    var showAddContentDialog by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
     LaunchedEffect(searchQuery) {
-        val trimmed = searchQuery.trim()
-        if (trimmed.equals("#admin", ignoreCase = true) || trimmed.equals("#publish", ignoreCase = true)) {
-            searchQuery = ""
-            showAdminPasswordDialog = true
-        } else {
-            delay(300L)
-            debouncedQuery = searchQuery
-        }
+        delay(300L)
+        debouncedQuery = searchQuery
     }
 
     var selectedTypeFilter by rememberSaveable { mutableStateOf("ALL") }
@@ -323,7 +315,7 @@ fun SearchScreen(
             keyboardActions = KeyboardActions(
                 onSearch = {
                     val trimmed = searchQuery.trim()
-                    if (trimmed.length >= 2 && !trimmed.startsWith("#")) {
+                    if (trimmed.length >= 2) {
                         com.streamhub.app.data.SearchHistoryManager.addQuery(trimmed)
                     }
                     keyboardController?.hide()
@@ -626,7 +618,7 @@ fun SearchScreen(
                             item = item,
                             onClick = {
                                 val trimmed = searchQuery.trim()
-                                if (trimmed.length >= 2 && !trimmed.startsWith("#")) {
+                                if (trimmed.length >= 2) {
                                     com.streamhub.app.data.SearchHistoryManager.addQuery(trimmed)
                                 }
                                 onMediaClick(item)
@@ -637,28 +629,5 @@ fun SearchScreen(
                 }
             }
         }
-    }
-
-    if (showAdminPasswordDialog) {
-        com.streamhub.app.ui.screens.AdminPasswordDialog(
-            onDismiss = { showAdminPasswordDialog = false },
-            onSuccess = {
-                showAdminPasswordDialog = false
-                showAddContentDialog = true
-                com.streamhub.app.ui.components.ToastManager.showToast("Creator Studio Unlocked! 🎬")
-            }
-        )
-    }
-
-    if (showAddContentDialog) {
-        com.streamhub.app.ui.components.AdminEditorDialog(
-            initialItem = null,
-            existingIds = catalog.map { it.id }.toSet(),
-            onDismiss = { showAddContentDialog = false },
-            onSave = { newItem ->
-                repository.saveMediaItem(newItem)
-                showAddContentDialog = false
-            }
-        )
     }
 }
