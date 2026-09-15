@@ -59,7 +59,7 @@ data class PlayerUiState(
     val isLocked: Boolean = false,
     val showEpisodeDrawer: Boolean = false,
     val selectedAudioTrack: String = "",
-    val selectedSubtitleTrack: String = "",
+    val selectedSubtitleTrack: String = "Off",
     val showAudioDialog: Boolean = false,
     val showSubtitleDialog: Boolean = false,
     val availableAudioTracks: List<String> = emptyList(),
@@ -343,6 +343,12 @@ class StreamPlayerViewModel : ViewModel() {
 
         if (isDifferentMedia) {
             _uiState.update { it.copy(selectedSubtitleTrack = "Off") }
+            trackSelector?.let { sel ->
+                sel.parameters = sel.buildUponParameters()
+                    .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true)
+                    .clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_TEXT)
+                    .build()
+            }
         }
 
         // 1. If this ViewModel already has an active ExoPlayer playing this exact media & episode,

@@ -39,6 +39,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -848,7 +850,7 @@ fun PlayerScreen(
         var rememberPlayerViewRef by remember { mutableStateOf<androidx.media3.ui.PlayerView?>(null) }
         var rememberSubtitleViewRef by remember { mutableStateOf<androidx.media3.ui.SubtitleView?>(null) }
 
-        val isSubOff = uiState.selectedSubtitleTrack.equals("Off", ignoreCase = true)
+        val isSubOff = uiState.selectedSubtitleTrack.isBlank() || uiState.selectedSubtitleTrack.equals("Off", ignoreCase = true)
 
         // Live Subtitle Styling Engine — propagates custom font size, colors & outlines to dedicated SubtitleView
         val exoPlayerInstance = activePlayer ?: viewModel.getPlayer()
@@ -1005,8 +1007,12 @@ fun PlayerScreen(
         // All Gestures, Controls, Overlays & Dialogs (Hidden in PiP Mode)
         // ──────────────────────────────────────────────────────────────
         if (!isPipMode) {
+            var isMultiTouchActive by remember { mutableStateOf(false) }
+
             // Gesture Zones (Left 35%, Center 30%, Right 35%) with Full-Screen Multi-touch Pinch to Zoom & Pan
-            if (!uiState.isLocked) {
+            // YouTube Parity: Gesture zones (Brightness/Volume drags, Pinch-to-Zoom, Double-tap Seek)
+            // are active strictly when controls are hidden, ensuring zero touch conflicts while navigating controls.
+            if (!uiState.isLocked && !uiState.isControlsVisible) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -1014,8 +1020,15 @@ fun PlayerScreen(
                             if (!playerSettings.pinchToZoomEnabled) return@pointerInput
                             awaitEachGesture {
                                 do {
-                                    val event = awaitPointerEvent()
-                                    if (event.changes.size >= 2) {
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    val pressedPointers = event.changes.count { it.pressed }
+                                    if (pressedPointers >= 2) {
+                                        isMultiTouchActive = true
+                                        showBrightnessIndicator = false
+                                        showVolumeIndicator = false
+                                        isDraggingBrightness = false
+                                        isDraggingVolume = false
+
                                         val zoomChange = event.calculateZoom()
                                         val panChange = event.calculatePan()
                                         if (zoomChange != 1.0f || (videoZoomScale > 1.05f && panChange != androidx.compose.ui.geometry.Offset.Zero)) {
@@ -1035,8 +1048,11 @@ fun PlayerScreen(
                                             }
                                             event.changes.forEach { it.consume() }
                                         }
+                                    } else if (pressedPointers == 0) {
+                                        isMultiTouchActive = false
                                     }
                                 } while (event.changes.any { it.pressed })
+                                isMultiTouchActive = false
                             }
                         }
                 ) {
@@ -1073,6 +1089,20 @@ fun PlayerScreen(
                                         try {
                                             while (true) {
                                                 val event = awaitPointerEvent()
+                                                if (isMultiTouchActive || event.changes.count { it.pressed } >= 2) {
+                                                    longPressJob.cancel()
+                                                    if (isLongPressed) {
+                                                        viewModel.setPlaybackSpeed(speedBeforeHold)
+                                                        is2xSpeedHolding = false
+                                                        isLongPressed = false
+                                                    }
+                                                    isDragging = false
+                                                    isDraggingBrightness = false
+                                                    isDraggingVolume = false
+                                                    showBrightnessIndicator = false
+                                                    showVolumeIndicator = false
+                                                    break
+                                                }
                                                 val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
 
                                                 val currentPos = pointer.position
@@ -1208,6 +1238,16 @@ fun PlayerScreen(
                                         try {
                                             while (true) {
                                                 val event = awaitPointerEvent()
+                                                if (isMultiTouchActive || event.changes.count { it.pressed } >= 2) {
+                                                    longPressJob.cancel()
+                                                    if (isLongPressed) {
+                                                        viewModel.setPlaybackSpeed(speedBeforeHold)
+                                                        is2xSpeedHolding = false
+                                                        isLongPressed = false
+                                                    }
+                                                    isDragging = false
+                                                    break
+                                                }
                                                 val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
 
                                                 val currentPos = pointer.position
@@ -1308,6 +1348,20 @@ fun PlayerScreen(
                                         try {
                                             while (true) {
                                                 val event = awaitPointerEvent()
+                                                if (isMultiTouchActive || event.changes.count { it.pressed } >= 2) {
+                                                    longPressJob.cancel()
+                                                    if (isLongPressed) {
+                                                        viewModel.setPlaybackSpeed(speedBeforeHold)
+                                                        is2xSpeedHolding = false
+                                                        isLongPressed = false
+                                                    }
+                                                    isDragging = false
+                                                    isDraggingBrightness = false
+                                                    isDraggingVolume = false
+                                                    showBrightnessIndicator = false
+                                                    showVolumeIndicator = false
+                                                    break
+                                                }
                                                 val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
 
                                                 val currentPos = pointer.position
@@ -1665,11 +1719,11 @@ fun PlayerScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color(0x59000000))
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false)
-                            lastControlsInteractionTimestamp = System.currentTimeMillis()
-                        }
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        viewModel.toggleControlsVisibility()
                     }
             ) {
                 // ── 1. Top Bar ──

@@ -556,7 +556,7 @@ The following redundant or obsolete files were discovered during the project aud
 
 ## 10. Active Build & Version State
 
-- **Active Version**: `v4.8.316` (Build 316)
+- **Active Version**: `v4.8.319` (Build 319)
 - **Status**: Production Release Candidate
 - **Recent Completed Sprint**:
   - Creator Studio Movie Stream Series Parity & Player Touch Pass-Through (`v4.8.316` Build 316):
@@ -726,10 +726,25 @@ The following redundant or obsolete files were discovered during the project aud
     - Purged the misleading static movie poster fallback (`AsyncImage(model = uiState.posterUrl)`) and empty placeholder boxes that previously appeared in the center of the screen while scrubbing.
     - Implemented dynamic glassmorphic scrubbing HUD in `PlayerScreen.kt`: displays 160x90 frame thumbnail preview when extracted from a local file; collapses to a sleek, compact glassmorphic time capsule pill (`15:11 [-00:12] / 48:18`) during remote streaming.
     - Added proactive memory clearing of `scrubberThumbnailBitmap = null` when scrubbing ends (`!isScrubbing`), preventing stale frame flash on subsequent seeks.
-  - Strict Per-Media Subtitle Scoping & Series Carry-Over (`v4.8.318` Build 318):
-    - Completely resolved the bug where player automatically picked and displayed subtitles on newly started videos.
-    - Removed `KEY_GLOBAL_SUBTITLE_LANG` fallback from `TrackPreferenceManager.kt` and purged legacy global subtitle keys on init. Subtitle preferences are strictly scoped per-media (`mediaId`).
-    - Subtitles default strictly to **Off** for any new movie or series where the user has not explicitly chosen one.
-    - Added series/anime carry-over in `StreamPlayerViewModel.kt`: when the user explicitly chooses a subtitle (e.g. English) on an episode of an anime or series, that preference is saved for that anime/series and automatically carries over to subsequent episodes if matching subtitle tracks exist.
-    - Explicitly reset `selectedSubtitleTrack = "Off"` when transitioning between different media in `StreamPlayerViewModel.initializePlayer()`.
+  - Airtight Gesture Isolation, Controls Dismissal & Strict Subtitle Off Engine (`v4.8.319` Build 319):
+    - **Controls Tap Dismissal on Empty Space (Issue #2)**:
+      - Replaced `pointerInput` on the main controls overlay `Box` with `Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { viewModel.toggleControlsVisibility() }`.
+      - Tapping anywhere on empty space (outside buttons and seekbar) immediately hides the controls, both during active playback and while paused (eliminating stuck controls on pause).
+      - When controls are hidden, tapping empty space hits the Left/Center/Right zone single-tap detector to show controls instantly.
+    - **Multi-Touch Pinch-to-Zoom Gesture Isolation (Issue #3)**:
+      - Hoisted `isMultiTouchActive` state at gesture container level in `PlayerScreen.kt`.
+      - Outer pinch Box monitors touches via `awaitPointerEvent(PointerEventPass.Initial)`: as soon as 2 fingers touch down (`event.changes.count { it.pressed } >= 2`), sets `isMultiTouchActive = true` and immediately cancels/hides active brightness and volume slider indicators (`showBrightnessIndicator = false`, `showVolumeIndicator = false`, `isDraggingBrightness = false`, `isDraggingVolume = false`).
+      - Left Zone, Center Zone, and Right Zone check `if (isMultiTouchActive || event.changes.count { it.pressed } >= 2)` at the top of their pointer event loops, immediately breaking out of single-finger tracking before drag or tap release callbacks fire.
+      - Completely suppresses brightness and volume sliders during 2-finger pinch-to-zoom and pan gestures.
+    - **Strict Subtitle Off Default & Explicit Choice Scoping (Issue #5)**:
+      - Changed `selectedSubtitleTrack` default in `PlayerUiState` from `""` to `"Off"`.
+      - Updated `isSubOff` in `PlayerScreen.kt` to `uiState.selectedSubtitleTrack.isBlank() || uiState.selectedSubtitleTrack.equals("Off", ignoreCase = true)`.
+      - In `initializePlayer()`, explicitly applies `.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)` on `trackSelector` when loading new media.
+      - Guarantees subtitles start strictly **Off** for any newly started movie or series unless the user explicitly chooses one. When chosen, preferences are saved per-media in `TrackPreferenceManager` and seamlessly carry over across subsequent episodes of that series/anime.
+    - **YouTube-Parity Gesture Gating (Clean-Screen Gestures)**:
+      - Gated gesture system behind `!uiState.isControlsVisible`: Brightness swipe, Volume swipe, Pinch-to-Zoom, and Double-tap Seek are active strictly when player controls are hidden.
+      - Eliminates touch ambiguity and completely prevents accidental brightness or volume slider popups while tapping buttons, scrubbing the seekbar, or scrolling action rows.
+      - As soon as controls hide (or are dismissed by tapping empty space), the entire clean screen becomes a 100% active gesture canvas for brightness, volume, and pinch-to-zoom.
+
+
 
