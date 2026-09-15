@@ -126,8 +126,10 @@ class StreamPlayerViewModel : ViewModel() {
     private var resolutionJob: Job? = null
     private var playerListener: Player.Listener? = null
     private var nextEpisodePreloadJob: Job? = null
-    private var pendingSeekTargetMs: Long? = null
+    var pendingSeekTargetMs: Long? = null
+        private set
     private var pendingSeekTimeoutJob: Job? = null
+    private var debouncedSeekJob: Job? = null
     private var sleepTimerJob: Job? = null
     private val triedMirrorUrls = mutableSetOf<String>()
 
@@ -265,14 +267,18 @@ class StreamPlayerViewModel : ViewModel() {
                 reason: Int
             ) {
                 if (reason == Player.DISCONTINUITY_REASON_SEEK) {
-                    pendingSeekTargetMs = null
-                    // FIX: Cancel the seek timeout — the seek completed successfully.
-                    pendingSeekTimeoutJob?.cancel()
-                    pendingSeekTimeoutJob = null
-                    _uiState.update { it.copy(currentPositionMs = newPosition.positionMs) }
+                    if (debouncedSeekJob == null) {
+                        pendingSeekTargetMs = null
+                        // FIX: Cancel the seek timeout — the seek completed successfully.
+                        pendingSeekTimeoutJob?.cancel()
+                        pendingSeekTimeoutJob = null
+                        _uiState.update { it.copy(currentPositionMs = newPosition.positionMs) }
+                    }
                 }
                 // FIX: Also clear pending seek on auto-transition (e.g. next episode).
                 if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) {
+                    debouncedSeekJob?.cancel()
+                    debouncedSeekJob = null
                     pendingSeekTargetMs = null
                     pendingSeekTimeoutJob?.cancel()
                     pendingSeekTimeoutJob = null
@@ -815,6 +821,8 @@ class StreamPlayerViewModel : ViewModel() {
     }
 
     fun playEpisode(index: Int, startPositionMs: Long = 0L) {
+        debouncedSeekJob?.cancel()
+        debouncedSeekJob = null
         if (episodesList.isEmpty() || index !in episodesList.indices) return
 
         // 1. Immediately halt previous playback and unload old media decoders/streams
@@ -1272,6 +1280,8 @@ class StreamPlayerViewModel : ViewModel() {
     }
 
     fun seekTo(positionMs: Long) {
+        debouncedSeekJob?.cancel()
+        debouncedSeekJob = null
         val player = exoPlayer ?: return
         val duration = player.duration.coerceAtLeast(0L)
         val target = if (duration > 0L) positionMs.coerceIn(0L, duration) else positionMs.coerceAtLeast(0L)
@@ -1300,6 +1310,48 @@ class StreamPlayerViewModel : ViewModel() {
                 pendingSeekTargetMs = null
             }
         }
+    }
+
+    /**
+     * Immediately renders the target position preview (seekbar thumb, time label)
+     * and locks pendingSeekTargetMs so the background telemetry loop does not jump back.
+     */
+    fun previewSeek(positionMs: Long) {
+        val player = exoPlayer ?: return
+        val duration = player.duration.coerceAtLeast(0L)
+        val target = if (duration > 0L) positionMs.coerceIn(0L, duration) else positionMs.coerceAtLeast(0L)
+        pendingSeekTargetMs = target
+        _playbackProgress.value = _playbackProgress.value.copy(
+            currentPositionMs = target,
+            bufferedPositionMs = player.bufferedPosition.coerceAtLeast(target)
+        )
+        _uiState.update {
+            it.copy(
+                currentPositionMs = target,
+                bufferedPositionMs = player.bufferedPosition.coerceAtLeast(target)
+            )
+        }
+    }
+
+    /**
+     * Fluid Rapid Seeking Engine:
+     * Immediately renders the target position preview for 0ms UI responsiveness,
+     * but debounces the actual heavy hardware seekTo(targetMs) on ExoPlayer by debounceMs.
+     * Prevents decoder flushes, network socket aborts, and buffer drops during continuous double-tapping.
+     */
+    fun seekDebounced(targetMs: Long, debounceMs: Long = 400L) {
+        previewSeek(targetMs)
+        debouncedSeekJob?.cancel()
+        debouncedSeekJob = viewModelScope.launch {
+            delay(debounceMs)
+            debouncedSeekJob = null
+            seekTo(targetMs)
+        }
+    }
+
+    fun cancelDebouncedSeek() {
+        debouncedSeekJob?.cancel()
+        debouncedSeekJob = null
     }
 
     fun seekForward(offsetMs: Long = 10000L) {
@@ -1719,6 +1771,8 @@ class StreamPlayerViewModel : ViewModel() {
             nextEpisodePreloadJob = null
             sleepTimerJob?.cancel()
             sleepTimerJob = null
+            debouncedSeekJob?.cancel()
+            debouncedSeekJob = null
             pendingSeekTimeoutJob?.cancel()
             pendingSeekTimeoutJob = null
             pendingSeekTargetMs = null
@@ -1739,6 +1793,8 @@ class StreamPlayerViewModel : ViewModel() {
         nextEpisodePreloadJob = null
         sleepTimerJob?.cancel()
         sleepTimerJob = null
+        debouncedSeekJob?.cancel()
+        debouncedSeekJob = null
         pendingSeekTimeoutJob?.cancel()
         pendingSeekTimeoutJob = null
 

@@ -249,6 +249,28 @@ _CRITICAL: Read this list before proposing or discussing features. DO NOT propos
       - **Local / Downloaded Media**: When a video frame thumbnail is extracted from a local file, displays the 160x90 frame preview box with target timestamp and delta jump.
       - **Remote Streaming**: Dynamically collapses to a sleek, compact glassmorphic time capsule pill (`15:11 [-00:12] / 48:18`) with zero screen obstruction.
       - **Auto-Clear on Scrub Release**: Proactively clears `scrubberThumbnailBitmap = null` when scrubbing ends (`!isScrubbing`), preventing stale frame flash on subsequent seeks.
+36. **Fluid Rapid Seeking Engine, Continuous Tap Chaining & Zero-Thrash Debounced Seek (`PlayerScreen.kt`, `StreamPlayerViewModel.kt`)**:
+    - **Root Cause Elimination (Issue #1)**:
+      - **Continuous Tap Chaining**: Purged the flaw where `lastTapTime` was reset to `0L` upon completing a double tap. Added `isContinuousSeeking` guard (`showDoubleTapRipple && (isDoubleTapForward / !isDoubleTapForward)`). When rapid seeking is in progress, every single tap immediately increments `cumulativeSeekSeconds` (+10s, +20s, +30s...) without dropping odd taps or scheduling single-tap controls visibility toggles.
+      - **Zero-Thrash Debounced Seek**: Replaced raw, back-to-back `player.seekTo()` invocations with a dual-stage seek architecture:
+        1. **Instant UI Preview (0ms Latency)**: `viewModel.previewSeek(targetPos)` immediately locks `pendingSeekTargetMs`, updates the seekbar thumb, and reflects the target timestamp on the HUD readout with 0ms lag.
+        2. **400ms Debounce Execution**: `viewModel.seekDebounced(targetPos, 400L)` waits 400ms after the user's final tap before issuing a single, clean `seekTo()` to ExoPlayer. Completely eliminates decoder thrashing (`MediaCodec` flushes), prevents HTTP range socket resets (`ECONNRESET`), and stops infinite buffer loading / playback sticking loops.
+      - **Discontinuity Protection**: Guarded `onPositionDiscontinuity(DISCONTINUITY_REASON_SEEK)` so intermediate seek completions never clear `pendingSeekTargetMs` while rapid tap debouncing is in-flight.
+      - **Scrub & Lifecycle Cancellation**: Automatically cancels any pending debounced seek upon seekbar touch/scrub (`onScrubbingChanged = { if (it) viewModel.cancelDebouncedSeek() }`), track changes, or player release.
+37. **System Notification Full-Color Brand Icon & Status-Bar Glyph Engine (`NotificationAlertManager.kt`, `DownloadNotificationHelper.kt`, `StreamMediaService.kt`, `NotificationIconHelper.kt`, `ic_notification.xml`)**:
+    - **Root Cause Elimination (Issue #2)**:
+      - Resolved the missing notification icon issue on Android / Xiaomi HyperOS / MIUI where notifications displayed a blank, hollow squircle outline.
+      - Adaptive icons (`R.mipmap.ic_launcher`) passed to `setSmallIcon()` are forcefully alpha-masked into single-channel white blobs by Android's notification renderer, destroying complex multi-layer art.
+      - Without `setLargeIcon()`, Android omits the rich app logo entirely and displays only the flattened small icon inside a system-tinted circle.
+    - **Crisp Monochrome Status-Bar Vector (`ic_notification.xml`)**:
+      - Designed a dedicated 24x24dp monochrome vector featuring the StreamHub play triangle flanked by dynamic stream broadcast arcs.
+      - Renders razor-sharp in the Android status bar, lock screen, and notification headers without downscaling artifacts or clipping.
+    - **High-Res Full-Color App Icon (`NotificationIconHelper.kt`)**:
+      - Extracts and rasterizes the official full-color StreamHub launcher icon into a high-density ARGB_8888 bitmap.
+      - Injected via `.setLargeIcon(appIcon)` across all notification builders (Broadcast & Admin Announcements, New Episode alerts, Background Downloads, and Media Playback Service).
+      - Notifications now display the vibrant, official StreamHub logo badge matching top-tier apps (YouTube, Telegram, Netflix).
+    - **Branded Notification Glow**:
+      - Explicitly applies `.setColor(0xFFE50914.toInt())` (StreamHub Brand Red), tinting notification accents and badges with the app's signature identity.
 
 ### B. UI, Catalogue & Navigation (`ui/screens/`, `ui/components/`)
 
@@ -556,9 +578,23 @@ The following redundant or obsolete files were discovered during the project aud
 
 ## 10. Active Build & Version State
 
-- **Active Version**: `v4.8.319` (Build 319)
+- **Active Version**: `v4.8.320` (Build 320)
 - **Status**: Production Release Candidate
 - **Recent Completed Sprint**:
+  - Fluid Rapid Seeking Engine, Continuous Tap Chaining & System Notification Brand Icon (`v4.8.320` Build 320):
+    - **Rapid Double-Tap Continuous Seeking & Tap Chaining (Issue #1)**:
+      - Purged the flaw where `lastTapTime` was reset to `0L` upon completing a double tap, which previously caused odd taps (3rd, 5th, 7th) to fall into the `else` branch and schedule single-tap controls visibility toggles.
+      - Implemented `isContinuousSeeking` guard (`showDoubleTapRipple && (isDoubleTapForward / !isDoubleTapForward)`) in Left and Right zone tap detectors. When continuous seeking is active, every single tap immediately increments `cumulativeSeekSeconds` (+10s, +20s, +30s, +40s...) without dropping taps.
+      - **Zero-Thrash Debounced Seeking**: Replaced rapid back-to-back `player.seekTo()` invocations with a dual-stage seek architecture:
+        1. **Instant UI Preview (0ms Latency)**: `viewModel.previewSeek(targetPos)` immediately locks `pendingSeekTargetMs`, updates the seekbar thumb, and reflects the target timestamp on the HUD readout with zero lag.
+        2. **400ms Debounce Execution**: `viewModel.seekDebounced(targetPos, 400L)` waits 400ms after the user's final tap before issuing a single, clean `seekTo()` to ExoPlayer. Completely eliminates decoder thrashing (`MediaCodec` flushes), prevents HTTP range socket resets (`ECONNRESET`), and stops infinite buffer loading / video sticking loops.
+      - **Discontinuity Protection**: Guarded `onPositionDiscontinuity(DISCONTINUITY_REASON_SEEK)` so intermediate seek completions never clear `pendingSeekTargetMs` while rapid tap debouncing is in-flight.
+      - Automatically cancels debounced seek upon manual seekbar scrubbing (`onScrubbingChanged`), track change, or player release.
+    - **System Notification Full-Color Brand Icon & Status-Bar Glyph Engine (Issue #2)**:
+      - Resolved the missing notification icon issue on Android / Xiaomi HyperOS / MIUI where broadcast and admin announcements displayed a blank, hollow squircle outline.
+      - Created `ic_notification.xml`: crisp 24x24dp monochrome vector of the StreamHub play triangle and stream broadcast arcs for the Android status bar and notification header badge.
+      - Created `NotificationIconHelper.kt`: extracts and rasterizes the official full-color StreamHub launcher icon into a high-density ARGB_8888 bitmap.
+      - Applied `.setSmallIcon(R.drawable.ic_notification)`, `.setLargeIcon(appIconBitmap)`, and `.setColor(0xFFE50914.toInt())` (StreamHub Brand Red) across `NotificationAlertManager` (Announcements & Episodes), `DownloadNotificationHelper` (Downloads), and `StreamMediaService` (Playback). Notifications now render rich full-color branding matching top-tier apps (YouTube, Telegram, Netflix).
   - Creator Studio Movie Stream Series Parity & Player Touch Pass-Through (`v4.8.316` Build 316):
     - Refactored Creator Studio Movie stream link in `AdminEditorDialog.kt` to mirror Series format 1:1. Replaced the obstructive "Test Stream Link" requirement with instant "📋 Paste from Clipboard", automatic episode readiness (`🎬 1 Movie Stream Ready`), stream format detection badges (Serv00 Direct Stream, F2L Direct Stream, Telegram Direct, Web Stream URL), and a non-blocking on-demand health check pill (`🩺 Check Link` -> `🩺 Live (Xms)`).
     - Upgraded `StreamHealthChecker.kt` probe engine to match ExoPlayer's `SharedHttpClient.streamingClient` with resilient 20s timeouts, `retryOnConnectionFailure = true`, dual-stage byte-range GET (0-1024) + HEAD fallback, official player User-Agent, and Serv00/Telegram proxy hash intelligence.

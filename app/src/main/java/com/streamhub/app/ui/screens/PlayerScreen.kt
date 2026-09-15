@@ -442,6 +442,7 @@ fun PlayerScreen(
     var cumulativeSeekSeconds by remember { mutableIntStateOf(0) }
     var lastSeekDirection by remember { mutableStateOf("") }
     var resetCumulativeJob by remember { mutableStateOf<Job?>(null) }
+    var seekBasePositionMs by remember { mutableStateOf<Long?>(null) }
 
     var showCenterPlayPauseRipple by remember { mutableStateOf(false) }
     var centerPlayPauseIsPlaying by remember { mutableStateOf(false) }
@@ -712,25 +713,45 @@ fun PlayerScreen(
 
     fun triggerDoubleTapSeek(isForward: Boolean) {
         val stepSec = playerSettings.doubleTapSeekSeconds.coerceIn(5, 60)
-        val stepMs = stepSec * 1000L
         val direction = if (isForward) "forward" else "backward"
-        if (lastSeekDirection == direction) {
+
+        val effectiveDuration = if (playbackProgress.durationMs > 0L) {
+            playbackProgress.durationMs
+        } else {
+            Long.MAX_VALUE
+        }
+
+        // Anchor base position to first tap or existing pending preview seek
+        val currentAnchor = seekBasePositionMs ?: viewModel.pendingSeekTargetMs ?: playbackProgress.currentPositionMs
+
+        val basePos = if (lastSeekDirection == direction && seekBasePositionMs != null) {
             cumulativeSeekSeconds += stepSec
+            seekBasePositionMs!!
         } else {
             cumulativeSeekSeconds = stepSec
             lastSeekDirection = direction
+            seekBasePositionMs = currentAnchor
+            currentAnchor
         }
         isDoubleTapForward = isForward
 
+        val totalOffsetMs = cumulativeSeekSeconds * 1000L
+        val targetPos = if (isForward) {
+            (basePos + totalOffsetMs).coerceAtMost(effectiveDuration)
+        } else {
+            (basePos - totalOffsetMs).coerceAtLeast(0L)
+        }
+
         if (isForward) {
-            viewModel.seekForward(stepMs)
             doubleTapRippleText = "+${cumulativeSeekSeconds}s"
             doubleTapAlignment = Alignment.CenterEnd
         } else {
-            viewModel.seekBackward(stepMs)
             doubleTapRippleText = "-${cumulativeSeekSeconds}s"
             doubleTapAlignment = Alignment.CenterStart
         }
+
+        // Debounced seek: gives instant 0ms UI preview and executes single seek to ExoPlayer 400ms after final tap
+        viewModel.seekDebounced(targetPos, debounceMs = 400L)
 
         haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
         showDoubleTapRipple = true
@@ -740,6 +761,9 @@ fun PlayerScreen(
             showDoubleTapRipple = false
             cumulativeSeekSeconds = 0
             lastSeekDirection = ""
+            seekBasePositionMs = null
+            lastLeftTapTime = 0L
+            lastRightTapTime = 0L
         }
     }
 
@@ -1178,10 +1202,11 @@ fun PlayerScreen(
                                                         }
                                                     } else {
                                                         val now = System.currentTimeMillis()
-                                                        if (now - lastLeftTapTime < 320L && kotlin.math.abs(currentPos.x - startPos.x) < 50f) {
+                                                        val isContinuousSeeking = showDoubleTapRipple && !isDoubleTapForward
+                                                        if (isContinuousSeeking || (now - lastLeftTapTime < 320L && kotlin.math.abs(currentPos.x - startPos.x) < 50f)) {
                                                             leftTapJob?.cancel()
                                                             leftTapJob = null
-                                                            lastLeftTapTime = 0L
+                                                            lastLeftTapTime = now
                                                             triggerDoubleTapSeek(isForward = false)
                                                         } else {
                                                             lastLeftTapTime = now
@@ -1437,10 +1462,11 @@ fun PlayerScreen(
                                                         }
                                                     } else {
                                                         val now = System.currentTimeMillis()
-                                                        if (now - lastRightTapTime < 320L && kotlin.math.abs(currentPos.x - startPos.x) < 50f) {
+                                                        val isContinuousSeeking = showDoubleTapRipple && isDoubleTapForward
+                                                        if (isContinuousSeeking || (now - lastRightTapTime < 320L && kotlin.math.abs(currentPos.x - startPos.x) < 50f)) {
                                                             rightTapJob?.cancel()
                                                             rightTapJob = null
-                                                            lastRightTapTime = 0L
+                                                            lastRightTapTime = now
                                                             triggerDoubleTapSeek(isForward = true)
                                                         } else {
                                                             lastRightTapTime = now
@@ -2505,7 +2531,13 @@ fun PlayerScreen(
                             thumbnailBitmap = scrubberThumbnailBitmap,
                             sourceUrl = uiState.resolvedStreamUrl,
                             fallbackPosterUrl = mediaItem.posterUrl,
-                            onScrubbingChanged = { isScrubbing = it },
+                            onScrubbingChanged = {
+                                isScrubbing = it
+                                if (it) {
+                                    viewModel.cancelDebouncedSeek()
+                                    seekBasePositionMs = null
+                                }
+                            },
                             onScrubPositionChanged = { scrubbingPositionMs = it }
                         )
                     }

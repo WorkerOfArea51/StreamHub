@@ -156,8 +156,13 @@ object NotificationAlertManager {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
+            val appIcon = NotificationIconHelper.getAppIconBitmap(context)
             val builder = NotificationCompat.Builder(context, CHANNEL_EPISODE_ID)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setColor(0xFFE50914.toInt())
+                .apply {
+                    if (appIcon != null) setLargeIcon(appIcon)
+                }
                 .setContentTitle("New Episode Available!")
                 .setContentText("$mediaTitle - $episodeTitle is now ready to stream!")
                 .setStyle(
@@ -208,8 +213,13 @@ object NotificationAlertManager {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
+            val appIcon = NotificationIconHelper.getAppIconBitmap(context)
             val builder = NotificationCompat.Builder(context, CHANNEL_ADMIN_ID)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setColor(0xFFE50914.toInt())
+                .apply {
+                    if (appIcon != null) setLargeIcon(appIcon)
+                }
                 .setContentTitle(title)
                 .setContentText(message)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(message))

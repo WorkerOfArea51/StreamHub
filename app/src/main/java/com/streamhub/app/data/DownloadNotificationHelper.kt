@@ -105,8 +105,13 @@ object DownloadNotificationHelper {
             " • %.1f / %.1f MB".format(downloadedMb, totalMb)
         } else ""
 
+        val appIcon = NotificationIconHelper.getAppIconBitmap(context)
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(0xFFE50914.toInt())
+            .apply {
+                if (appIcon != null) setLargeIcon(appIcon)
+            }
             .setContentTitle("Downloading: $mediaTitle")
             .setContentText("$episodeTitle ($progressPercent%)$sizeInfo")
             .setProgress(100, progressPercent.coerceIn(0, 100), progressPercent <= 0)
@@ -173,8 +178,13 @@ object DownloadNotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val appIcon = NotificationIconHelper.getAppIconBitmap(context)
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(0xFFE50914.toInt())
+            .apply {
+                if (appIcon != null) setLargeIcon(appIcon)
+            }
             .setContentTitle("Paused: $mediaTitle")
             .setContentText("$episodeTitle (Paused • $progressPercent%)")
             .setProgress(100, progressPercent.coerceIn(0, 100), false)
@@ -210,8 +220,13 @@ object DownloadNotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val appIcon = NotificationIconHelper.getAppIconBitmap(context)
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(0xFFE50914.toInt())
+            .apply {
+                if (appIcon != null) setLargeIcon(appIcon)
+            }
             .setContentTitle("Download Complete: $mediaTitle")
             .setContentText("$episodeTitle is ready for offline streaming")
             .setProgress(0, 0, false)

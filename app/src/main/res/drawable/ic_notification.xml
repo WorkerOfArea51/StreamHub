@@ -1,0 +1,26 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Center Play Triangle -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M9,7 L17,12 L9,17 Z" />
+
+    <!-- Left Stream Signal Arc -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M5.5,8.5 A5,5 0 0 0 5.5,15.5" />
+
+    <!-- Right Stream Signal Arc -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M18.5,8.5 A5,5 0 0 1 18.5,15.5" />
+
+</vector>

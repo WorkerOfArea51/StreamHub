@@ -18,6 +18,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.streamhub.app.MainActivity
 import com.streamhub.app.R
+import com.streamhub.app.data.NotificationIconHelper
 
 class StreamMediaService : MediaSessionService() {
 
@@ -207,10 +208,15 @@ class StreamMediaService : MediaSessionService() {
 
         val playPauseIcon = if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
 
+        val appIcon = NotificationIconHelper.getAppIconBitmap(this)
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(subtitle)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(0xFFE50914.toInt())
+            .apply {
+                if (appIcon != null) setLargeIcon(appIcon)
+            }
             .setContentIntent(pendingIntent)
             .setOngoing(isPlaying)
             .setShowWhen(false)
