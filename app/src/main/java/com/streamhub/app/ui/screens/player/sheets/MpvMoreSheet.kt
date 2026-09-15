@@ -153,7 +153,7 @@ fun MpvMoreSheet(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text("Stats for Nerds", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Display real-time stream bitrate, fps and buffer metrics", color = TextSecondary, fontSize = 10.sp)
+                            Text("Draggable overlay with RAM, framerate, buffer & decoder stats", color = TextSecondary, fontSize = 10.sp)
                         }
                     }
                     Switch(

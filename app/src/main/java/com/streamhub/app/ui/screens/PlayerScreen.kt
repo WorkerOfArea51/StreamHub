@@ -1,6 +1,7 @@
 package com.streamhub.app.ui.screens
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.pm.ActivityInfo
@@ -56,6 +57,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import coil.compose.AsyncImage
 import com.streamhub.app.player.VideoThumbnailHelper
 import androidx.compose.foundation.layout.Arrangement
@@ -161,8 +163,11 @@ import android.content.res.Configuration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.isActive
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -392,7 +397,7 @@ fun PlayerScreen(
 
     val isAnySheetOpen = showAspectRatioSheet || showSpeedSheet || showZoomSheet ||
                          showPlaylistSheet || showAudioSheet || showSubtitleSheet ||
-                         showSubtitleSettingsDrawer || showMoreSheet || showStatsForNerds ||
+                         showSubtitleSettingsDrawer || showMoreSheet ||
                          showAmbientSheet ||
                          uiState.showAudioDialog || uiState.showSubtitleDialog || uiState.playerErrorInfo != null
 
@@ -413,6 +418,10 @@ fun PlayerScreen(
                   showFrameNavSheet || showAudioDelaySheet || showSubtitleDelaySheet ||
                   showOnlineSubSearchSheet || showAmbientSheet
     ) {
+        if (showStatsForNerds) {
+            showStatsForNerds = false
+            return@BackHandler
+        }
         showAspectRatioSheet = false
         showSpeedSheet = false
         showZoomSheet = false
@@ -421,7 +430,6 @@ fun PlayerScreen(
         showSubtitleSheet = false
         showSubtitleSettingsDrawer = false
         showMoreSheet = false
-        showStatsForNerds = false
         showFrameNavSheet = false
         showAudioDelaySheet = false
         showSubtitleDelaySheet = false
@@ -2796,21 +2804,13 @@ fun PlayerScreen(
 
         // 14. Stats for Nerds HUD Diagnostics Overlay (mpvEx Parity)
         if (showStatsForNerds) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
-                    .padding(top = 56.dp, end = 16.dp),
-                contentAlignment = Alignment.TopEnd
-            ) {
-                StatsForNerdsOverlay(
-                    player = exoPlayerInstance,
-                    uiState = uiState,
-                    playbackProgress = playbackProgress,
-                    aspectRatioLabel = selectedRatioOption.label,
-                    onDismiss = { showStatsForNerds = false }
-                )
-            }
+            StatsForNerdsOverlay(
+                player = exoPlayerInstance,
+                uiState = uiState,
+                playbackProgress = playbackProgress,
+                aspectRatioLabel = selectedRatioOption.label,
+                onDismiss = { showStatsForNerds = false }
+            )
         }
 
         // 15. Modern Glassmorphic HUD Pill Toast (mpvEx Parity)
@@ -2844,14 +2844,60 @@ private fun StatsForNerdsOverlay(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+
+    // Polled telemetry: App RAM, System RAM, Dropped Frames
+    var appRamText by remember { mutableStateOf("") }
+    var systemRamText by remember { mutableStateOf("") }
+    var droppedFramesText by remember { mutableStateOf("0 dropped") }
+
+    LaunchedEffect(player) {
+        while (isActive) {
+            // 1. App JVM Heap RAM (Used / Max)
+            val rt = Runtime.getRuntime()
+            val usedMb = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024)
+            val maxMb = rt.maxMemory() / (1024 * 1024)
+            appRamText = "${usedMb} MB / ${maxMb} MB (Heap)"
+
+            // 2. System RAM (Available vs Total)
+            val actManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            val memInfo = ActivityManager.MemoryInfo()
+            actManager?.getMemoryInfo(memInfo)
+            val availGb = memInfo.availMem / (1024.0 * 1024.0 * 1024.0)
+            val totalGb = memInfo.totalMem / (1024.0 * 1024.0 * 1024.0)
+            systemRamText = String.format(java.util.Locale.US, "%.1f GB / %.1f GB Free", availGb, totalGb)
+
+            // 3. Dropped Frames from ExoPlayer video decoder counters
+            val exo = player as? androidx.media3.exoplayer.ExoPlayer
+            val counters = exo?.videoDecoderCounters
+            if (counters != null) {
+                val dropped = counters.droppedBufferCount
+                val rendered = counters.renderedOutputBufferCount
+                val total = dropped + rendered
+                droppedFramesText = if (total > 0) {
+                    val pct = (dropped.toDouble() / total) * 100.0
+                    "$dropped / $total (${String.format(java.util.Locale.US, "%.1f", pct)}%)"
+                } else {
+                    "0 dropped"
+                }
+            } else {
+                droppedFramesText = "0 dropped"
+            }
+            delay(1000L)
+        }
+    }
+
     val videoSize = player?.videoSize
     val vWidth = videoSize?.width ?: 0
     val vHeight = videoSize?.height ?: 0
-    val resolution = if (vWidth > 0 && vHeight > 0) "${vWidth}x${vHeight}" else "1920x1080"
 
     val exo = player as? androidx.media3.exoplayer.ExoPlayer
     val vFmt = exo?.videoFormat
     val aFmt = exo?.audioFormat
+
+    val fps = vFmt?.frameRate?.takeIf { it > 0f }?.let { " @ ${it.toInt()}fps" } ?: ""
+    val resolution = if (vWidth > 0 && vHeight > 0) "${vWidth}x${vHeight}$fps" else "1920x1080$fps"
 
     val videoCodec = vFmt?.sampleMimeType?.let { mime ->
         when {
@@ -2906,91 +2952,172 @@ private fun StatsForNerdsOverlay(
     val bufferHealthSeconds = playbackProgress.bufferHealthSeconds
     val networkSpeedKbps = playbackProgress.networkSpeedKbps
 
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = Color(0xDD0D0D14),
-        border = BorderStroke(1.dp, Color(0x44D0BCFF)),
-        shadowElevation = 16.dp,
+    BoxWithConstraints(
         modifier = modifier
-            .widthIn(max = 340.dp)
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing)
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = null,
-                        tint = Color(0xFFD0BCFF),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Stats for Nerds",
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+        val parentWidthPx = with(density) { maxWidth.toPx() }
+        val parentHeightPx = with(density) { maxHeight.toPx() }
+
+        var cardWidthPx by remember { mutableFloatStateOf(0f) }
+        var cardHeightPx by remember { mutableFloatStateOf(0f) }
+
+        // Initial offset: top-right with margin
+        var offsetX by remember { mutableFloatStateOf(-1f) }
+        var offsetY by remember { mutableFloatStateOf(-1f) }
+
+        val defaultMarginEnd = with(density) { 16.dp.toPx() }
+        val defaultMarginTop = with(density) { 48.dp.toPx() }
+
+        val currentX = if (offsetX < 0f) {
+            (parentWidthPx - cardWidthPx - defaultMarginEnd).coerceAtLeast(0f)
+        } else {
+            offsetX.coerceIn(0f, (parentWidthPx - cardWidthPx).coerceAtLeast(0f))
+        }
+
+        val currentY = if (offsetY < 0f) {
+            defaultMarginTop.coerceIn(0f, (parentHeightPx - cardHeightPx).coerceAtLeast(0f))
+        } else {
+            offsetY.coerceIn(0f, (parentHeightPx - cardHeightPx).coerceAtLeast(0f))
+        }
+
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = Color(0xF00D0D14),
+            border = BorderStroke(1.dp, Color(0x44D0BCFF)),
+            shadowElevation = 16.dp,
+            modifier = Modifier
+                .offset { IntOffset(currentX.roundToInt(), currentY.roundToInt()) }
+                .onSizeChanged {
+                    cardWidthPx = it.width.toFloat()
+                    cardHeightPx = it.height.toFloat()
                 }
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.size(24.dp)
+                .widthIn(max = 350.dp)
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                // Draggable Header Area
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pointerInput(parentWidthPx, parentHeightPx) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                val maxX = (parentWidthPx - cardWidthPx).coerceAtLeast(0f)
+                                val maxY = (parentHeightPx - cardHeightPx).coerceAtLeast(0f)
+                                offsetX = (currentX + dragAmount.x).coerceIn(0f, maxX)
+                                offsetY = (currentY + dragAmount.y).coerceIn(0f, maxY)
+                            }
+                        },
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close Stats",
-                        tint = Color.LightGray,
-                        modifier = Modifier.size(16.dp)
-                    )
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "⋮⋮",
+                            color = Color(0xFFD0BCFF),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = Color(0xFFD0BCFF),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Stats for Nerds",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close Stats",
+                            tint = Color.LightGray,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+                androidx.compose.material3.HorizontalDivider(color = Color(0x22FFFFFF), thickness = 0.8.dp)
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Draggable Stats Rows Area
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pointerInput(parentWidthPx, parentHeightPx) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                val maxX = (parentWidthPx - cardWidthPx).coerceAtLeast(0f)
+                                val maxY = (parentHeightPx - cardHeightPx).coerceAtLeast(0f)
+                                offsetX = (currentX + dragAmount.x).coerceIn(0f, maxX)
+                                offsetY = (currentY + dragAmount.y).coerceIn(0f, maxY)
+                            }
+                        }
+                ) {
+                    StatRowItem("Resolution", resolution)
+                    StatRowItem("Video Codec", videoCodec)
+                    StatRowItem("Audio Codec", audioCodec)
+                    StatRowItem("Playback Speed", "${uiState.playbackSpeed}x")
+
+                    val dur = playbackProgress.durationMs.coerceAtLeast(0L)
+                    val buf = playbackProgress.bufferedPositionMs.coerceAtLeast(0L)
+                    val isFullyBuffered = dur > 10_000L && buf >= (dur - 3_000L)
+                    val isNextEpPreloading = com.streamhub.app.player.StreamPreloadManager.isBingePrecacheActive
+
+                    val bufferHealthDisplay = when {
+                        isFullyBuffered && isNextEpPreloading -> "100% Cached (Next Ep Preloading)"
+                        isFullyBuffered -> "100% Cached (Fully Buffered)"
+                        bufferHealthSeconds > 0L -> "${bufferHealthSeconds}s ahead (128MB max)"
+                        else -> "0s"
+                    }
+                    StatRowItem("Buffer Health", bufferHealthDisplay)
+
+                    val speedDisplay = when {
+                        isNextEpPreloading && networkSpeedKbps > 0L -> {
+                            val speed = if (networkSpeedKbps >= 1024L) String.format(java.util.Locale.US, "%.1f MB/s", networkSpeedKbps / 1024.0) else "$networkSpeedKbps KB/s"
+                            "$speed (Caching Next Ep)"
+                        }
+                        networkSpeedKbps >= 1024L -> {
+                            String.format(java.util.Locale.US, "%.1f MB/s", networkSpeedKbps / 1024.0)
+                        }
+                        networkSpeedKbps > 0L -> {
+                            "$networkSpeedKbps KB/s"
+                        }
+                        isFullyBuffered -> {
+                            "Idle (Fully Cached)"
+                        }
+                        bufferHealthSeconds >= 15L -> {
+                            "Idle (Buffered)"
+                        }
+                        else -> "0 KB/s"
+                    }
+                    StatRowItem("Network Speed", speedDisplay)
+                    StatRowItem("Aspect Mode", aspectRatioLabel)
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    androidx.compose.material3.HorizontalDivider(color = Color(0x18FFFFFF), thickness = 0.6.dp)
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    StatRowItem("App RAM", appRamText.ifBlank { "Checking..." })
+                    StatRowItem("Device RAM", systemRamText.ifBlank { "Checking..." })
+                    StatRowItem("Dropped Frames", droppedFramesText)
                 }
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
-            androidx.compose.material3.HorizontalDivider(color = Color(0x22FFFFFF), thickness = 0.8.dp)
-            Spacer(modifier = Modifier.height(8.dp))
-
-            StatRowItem("Resolution", resolution)
-            StatRowItem("Video Codec", videoCodec)
-            StatRowItem("Audio Codec", audioCodec)
-            StatRowItem("Playback Speed", "${uiState.playbackSpeed}x")
-
-            val dur = playbackProgress.durationMs.coerceAtLeast(0L)
-            val buf = playbackProgress.bufferedPositionMs.coerceAtLeast(0L)
-            val isFullyBuffered = dur > 10_000L && buf >= (dur - 3_000L)
-            val isNextEpPreloading = com.streamhub.app.player.StreamPreloadManager.isBingePrecacheActive
-
-            val bufferHealthDisplay = when {
-                isFullyBuffered && isNextEpPreloading -> "100% Cached (Buffering Next Ep)"
-                isFullyBuffered -> "100% Cached (Fully Buffered)"
-                bufferHealthSeconds > 0L -> "${bufferHealthSeconds}s ahead"
-                else -> "0s"
-            }
-            StatRowItem("Buffer Health", bufferHealthDisplay)
-
-            val speedDisplay = when {
-                isNextEpPreloading && networkSpeedKbps > 0L -> {
-                    val speed = if (networkSpeedKbps >= 1024L) String.format(java.util.Locale.US, "%.1f MB/s", networkSpeedKbps / 1024.0) else "$networkSpeedKbps KB/s"
-                    "$speed (Caching Next Ep)"
-                }
-                networkSpeedKbps >= 1024L -> {
-                    String.format(java.util.Locale.US, "%.1f MB/s", networkSpeedKbps / 1024.0)
-                }
-                networkSpeedKbps > 0L -> {
-                    "$networkSpeedKbps KB/s"
-                }
-                isFullyBuffered -> {
-                    "Idle (Fully Cached)"
-                }
-                bufferHealthSeconds >= 15L -> {
-                    "Idle (Buffered)"
-                }
-                else -> "0 KB/s"
-            }
-            StatRowItem("Network Speed", speedDisplay)
-            StatRowItem("Aspect Mode", aspectRatioLabel)
         }
     }
 }
