@@ -28,12 +28,12 @@ object SharedHttpClient {
     val streamingClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS) // Resilient 15s read timeout to detect hung backend sockets promptly
+            .readTimeout(0, TimeUnit.SECONDS) // 0 = no read timeout for streaming; prevents socket drops when buffer drains or player pauses
             .writeTimeout(0, TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
             .retryOnConnectionFailure(true)
-            .connectionPool(okhttp3.ConnectionPool(5, 15, TimeUnit.SECONDS)) // 15s keep-alive: prevents stale/poisoned sockets from being reused
+            .connectionPool(okhttp3.ConnectionPool(10, 5, TimeUnit.MINUTES)) // 5 minutes keep-alive for instant warm socket reuse
             .build()
     }
 }

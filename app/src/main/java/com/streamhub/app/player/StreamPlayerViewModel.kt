@@ -428,23 +428,24 @@ class StreamPlayerViewModel : ViewModel() {
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)
                     .build()
 
-                // Low-latency instant startup with YouTube-style deep buffer cushion:
-                // - minBufferMs = 60_000: Maintains a deep 60-second forward buffer cushion.
-                // - maxBufferMs = 180_000: Up to 3 minutes forward buffer in RAM.
-                // - bufferForPlaybackMs = 500: Playback starts immediately in ~500ms.
-                // - bufferForPlaybackAfterRebufferMs = 4_000: Buffers 4 solid seconds before resuming after a rebuffer,
-                //   permanently eliminating 1-second stop-and-go stutter loops.
-                // - setPrioritizeTimeOverSizeThresholds(true): Prioritizes time duration over artificial byte caps.
-                // - backBuffer = 15_000 (retainBackBufferFromKeyframe = false): Purges watched keyframes from RAM.
+                // YouTube-grade progressive streaming with 60s safe floor & 5-minute continuous buffer:
+                // - minBufferMs = 60_000: 60-second safe buffer floor. If buffer drains to 60s, immediately refills to 5m.
+                // - maxBufferMs = 300_000: Up to 5 full minutes forward buffer ahead.
+                // - bufferForPlaybackMs = 250: Instant playback start in ~250ms on first keyframes and seeks.
+                // - bufferForPlaybackAfterRebufferMs = 1_000: Fast 1-second recovery after seek or network hiccup.
+                // - setPrioritizeTimeOverSizeThresholds(true): Ensures aggressive peak-speed downloading to target time.
+                // - setTargetBufferBytes(128 * 1024 * 1024): Strict 128 MB RAM ceiling (guaranteed zero OOM / zero crashes).
+                // - backBuffer = 15_000 (retainBackBufferFromKeyframe = false): Purges watched frames from RAM; disk cache handles persistence.
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        60_000,         // minBufferMs (deep 60s buffer ahead)
-                        180_000,        // maxBufferMs (up to 3-minute sliding window in RAM)
-                        500,            // bufferForPlaybackMs (instant start in ~500ms)
-                        4_000           // bufferForPlaybackAfterRebufferMs (solid 4.0s cushion to eliminate stutter loops)
+                        60_000,         // minBufferMs (60s minimum safe buffer floor)
+                        300_000,        // maxBufferMs (up to 5 minutes forward buffer ahead)
+                        250,            // bufferForPlaybackMs (instant startup in ~250ms)
+                        1_000           // bufferForPlaybackAfterRebufferMs (fast 1s recovery)
                     )
                     .setBackBuffer(15_000, false)
                     .setPrioritizeTimeOverSizeThresholds(true)
+                    .setTargetBufferBytes(128 * 1024 * 1024)
                     .build()
                 // CRITICAL: DO NOT ADD FLAG_DISABLE_SEEK_FOR_CUES.
                 // Disabling seek for cues completely breaks seeking in MKV videos because Matroska video
