@@ -65,7 +65,7 @@ import kotlin.math.roundToInt
  * mpvEx-parity Video Player & Engine Preferences Screen.
  * Configures:
  * 1. General Playback (Remember brightness, Auto-PiP, Keep screen on paused, Auto-play next).
- * 2. Seek & Timings (Skip intro duration, Next episode outro threshold).
+ * 2. Seek & Timings (Skip intro duration).
  * 3. Cinema Ambient Lighting & Mood presets.
  * 4. Stream Pre-warming & Binge Caching.
  * 5. Offline Downloads Wi-Fi policies.
@@ -221,59 +221,6 @@ fun VideoSettingsScreen(
                                 ) {
                                     Text(
                                         text = "${sec}s",
-                                        color = if (isSelected) Color.White else TextSecondary,
-                                        fontSize = 12.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    PreferenceDivider()
-
-                    // Next Episode Outro Threshold
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(currentAccent.color.copy(alpha = 0.12f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Outlined.SkipNext, contentDescription = null, tint = currentAccent.color, modifier = Modifier.size(20.dp))
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("Next Episode Auto-Prompt", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                                Text("When to prompt the Next Episode card during ending outro/credits", color = TextSecondary, fontSize = 11.sp)
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        val thresholdOptions = listOf(-1, 90, 180, 300, 420, 0)
-                        val thresholdLabels = listOf("Smart Auto", "90s", "3m", "5m", "7m", "Off")
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            thresholdOptions.forEachIndexed { index, sec ->
-                                val isSelected = playerSettings.nextEpisodeThresholdSeconds == sec
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (isSelected) currentAccent.color else Color(0xFF14141E))
-                                        .border(if (isSelected) 0.dp else 1.dp, Color(0xFF2A2A3A), RoundedCornerShape(10.dp))
-                                        .clickable { PlayerSettingsManager.updateNextEpisodeThreshold(sec) }
-                                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                                ) {
-                                    Text(
-                                        text = thresholdLabels[index],
                                         color = if (isSelected) Color.White else TextSecondary,
                                         fontSize = 12.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium

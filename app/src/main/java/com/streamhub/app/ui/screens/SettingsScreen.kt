@@ -110,7 +110,6 @@ fun SettingsScreen(
             SearchableItem("Keep Screen On When Paused", "Prevent display sleep timeout when video is paused", "Playback & Controls", Icons.Outlined.PlayCircle, onNavigateToVideoSettings),
             SearchableItem("Auto-Play Next Episode", "Smoothly start next episode upon current video completion", "Playback & Controls", Icons.Outlined.PlayCircle, onNavigateToVideoSettings),
             SearchableItem("Skip Intro Duration", "Set seconds to fast-forward on Skip Intro tap (60s, 85s, 90s)", "Playback & Controls", Icons.Outlined.PlayCircle, onNavigateToVideoSettings),
-            SearchableItem("Next Episode Outro Threshold", "When to prompt Next Episode card before video ends", "Playback & Controls", Icons.Outlined.PlayCircle, onNavigateToVideoSettings),
             SearchableItem("Stream Pre-Warming & Binge Caching", "Pre-buffer container headers and 25 MB next episode", "Playback & Controls", Icons.Outlined.PlayCircle, onNavigateToVideoSettings),
             SearchableItem("Cinema Ambient Lighting", "Atmospheric diffused back-glow with customizable mood presets", "Playback & Controls", Icons.Outlined.PlayCircle, onNavigateToVideoSettings),
             SearchableItem("Swap Volume & Brightness Sliders", "Change left/right side mapping for vertical drag sliders", "Playback & Controls", Icons.Outlined.Gesture, onNavigateToGestures),

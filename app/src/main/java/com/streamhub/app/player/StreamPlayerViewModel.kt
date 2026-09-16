@@ -253,7 +253,9 @@ class StreamPlayerViewModel : ViewModel() {
                 if (playbackState == Player.STATE_ENDED) {
                     // FIX: Clear stale pending seek target before next episode starts.
                     pendingSeekTargetMs = null
-                    playNextEpisode()
+                    if (com.streamhub.app.data.PlayerSettingsManager.settingsFlow.value.autoPlayNextEpisode) {
+                        playNextEpisode()
+                    }
                 }
             }
 

@@ -140,25 +140,6 @@ object PlayerSettingsManager {
         getPrefs().edit().putInt(KEY_NEXT_EPISODE_THRESHOLD, clamped).apply()
     }
 
-    /**
-     * Computes the effective countdown threshold in seconds for the next episode prompt.
-     * If configured as -1 (Smart Auto):
-     *  - Short form / Anime (<= 32 min): 90 seconds (standard anime ED).
-     *  - Long form / Web series (> 32 min): 10% of total duration clamped between 180s (3m) and 420s (7m).
-     * Otherwise returns the explicitly configured seconds (or 0 if disabled).
-     */
-    fun computeEffectiveNextEpThresholdSec(durationMs: Long, configuredSec: Int): Int {
-        if (configuredSec == 0) return 0
-        if (configuredSec > 0) return configuredSec
-        // -1 = Smart Auto
-        if (durationMs <= 0L) return 90
-        val durationSec = durationMs / 1000L
-        return if (durationSec <= 32 * 60) {
-            90
-        } else {
-            (durationSec * 0.10).toInt().coerceIn(180, 420)
-        }
-    }
 
     @Synchronized
     fun updateAutoPlayNext(autoPlay: Boolean) {

@@ -186,7 +186,6 @@ import com.streamhub.app.ui.screens.player.PlayerErrorOverlay
 import com.streamhub.app.ui.screens.player.ReconnectingStreamHud
 import com.streamhub.app.ui.screens.player.SmartResumePill
 import com.streamhub.app.ui.screens.player.StreamRestoredPill
-import com.streamhub.app.ui.screens.player.NextEpisodeCountdownCard
 import com.streamhub.app.ui.screens.player.controls.AmbientDiscoIcon
 import com.streamhub.app.ui.screens.player.controls.BrightnessSliderCard
 import com.streamhub.app.ui.screens.player.controls.CenterPlayPauseRippleOverlay
@@ -409,7 +408,6 @@ fun PlayerScreen(
     var isFrameNavExpanded by remember { mutableStateOf(false) }
     var isSnapshotLoading by remember { mutableStateOf(false) }
     var audioDelayMs by remember(playerSettings.defaultAudioDelayMs) { mutableLongStateOf(playerSettings.defaultAudioDelayMs.toLong()) }
-    var dismissedNextEpIndex by remember { mutableIntStateOf(-1) }
 
     var showBufferingHud by remember { mutableStateOf(false) }
     LaunchedEffect(uiState.isBuffering, uiState.isFirstFrameRendered) {
@@ -1710,53 +1708,6 @@ fun PlayerScreen(
             }
         }
 
-        // ──────────────────────────────────────────────────────────────
-        // Netflix-Style Next Episode Countdown Card
-        // ──────────────────────────────────────────────────────────────
-        val episodes = mediaItem.episodes
-        val nextEpIndex = uiState.currentEpisodeIndex + 1
-        val nextEp = if (nextEpIndex in episodes.indices) episodes[nextEpIndex] else null
-        val nextEpThresholdSec = com.streamhub.app.data.PlayerSettingsManager.computeEffectiveNextEpThresholdSec(
-            playbackProgress.durationMs,
-            playerSettings.nextEpisodeThresholdSeconds
-        )
-        val remainingSeconds = if (playbackProgress.durationMs > 0L) {
-            ((playbackProgress.durationMs - playbackProgress.currentPositionMs) / 1000L).toInt().coerceAtLeast(0)
-        } else 0
-
-        val showNextEpCountdown = nextEp != null &&
-                                  nextEpThresholdSec > 0 &&
-                                  remainingSeconds in 1..nextEpThresholdSec &&
-                                  dismissedNextEpIndex != uiState.currentEpisodeIndex &&
-                                  !uiState.isReconnecting &&
-                                  !isPipMode &&
-                                  uiState.playerErrorInfo == null
-
-        if (nextEp != null && !isPipMode) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(
-                        end = 24.dp,
-                        bottom = if (uiState.isControlsVisible && !uiState.isLocked) 92.dp else 24.dp
-                    ),
-                contentAlignment = Alignment.BottomEnd
-            ) {
-                NextEpisodeCountdownCard(
-                    visible = showNextEpCountdown,
-                    nextEpisodeTitle = nextEp.title.ifBlank { "Episode ${nextEpIndex + 1}" },
-                    remainingSeconds = remainingSeconds,
-                    thresholdSeconds = nextEpThresholdSec,
-                    onPlayNext = {
-                        dismissedNextEpIndex = uiState.currentEpisodeIndex
-                        viewModel.playNextEpisode()
-                    },
-                    onDismiss = {
-                        dismissedNextEpIndex = uiState.currentEpisodeIndex
-                    }
-                )
-            }
-        }
 
         // ──────────────────────────────────────────────────────────────
         // Main Player Controls Overlay (mpvEx Complete UI/UX Layout)
