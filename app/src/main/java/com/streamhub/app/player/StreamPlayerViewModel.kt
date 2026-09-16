@@ -343,6 +343,7 @@ class StreamPlayerViewModel : ViewModel() {
     fun initializePlayer(context: Context, mediaItem: MediaItem, initialEpisodeIndex: Int = 0) {
         StreamPreloadManager.cancelDetailsPrewarm()
         val safeContext = context.applicationContext
+        appContext = safeContext
         val isDifferentMedia = currentMediaItem?.id != mediaItem.id
         currentMediaItem = mediaItem
         episodesList = mediaItem.episodes
@@ -1525,7 +1526,7 @@ class StreamPlayerViewModel : ViewModel() {
 
                         // Bandwidth Protection: If active episode buffer is thin, prioritize current playback
                         if (bufferSec < 12 && nextEpisodePreloadJob?.isActive == true) {
-                            StreamPreloadManager.cancelBingePrecache()
+                            StreamPreloadManager.cancelBingePrecache(resetCompleted = false)
                             nextEpisodePreloadJob = null
                         }
 
@@ -1539,8 +1540,11 @@ class StreamPlayerViewModel : ViewModel() {
                         val isInClosingPhase = (progressFraction >= 0.75f || (remainingMs in 1..480_000L && progressFraction >= 0.65f))
                         val isEligibleForNextEpPrecache = isFullyBuffered || (isInClosingPhase && bufferSec >= 25)
 
+                        val isPrecacheFinished = StreamPreloadManager.bingePrecacheStatus.value.isCompleted
+                        val isPrecacheRunning = nextEpisodePreloadJob?.isActive == true
+
                         if (totalDuration > 30_000L && isEligibleForNextEpPrecache &&
-                            nextEpisodePreloadJob == null &&
+                            !isPrecacheRunning && !isPrecacheFinished &&
                             com.streamhub.app.data.PlayerSettingsManager.settingsFlow.value.bingePrecacheEnabled) {
                             val nextIdx = _uiState.value.currentEpisodeIndex + 1
                             if (nextIdx in episodesList.indices) {
@@ -1549,12 +1553,20 @@ class StreamPlayerViewModel : ViewModel() {
                                 if (nextUrl.isNotBlank()) {
                                     appContext?.let { ctx ->
                                         Log.i("StreamPlayerViewModel", "Active playback healthy ($bufferSec s ahead). Enqueuing binge pre-cache for: ${nextEp.title}")
-                                        nextEpisodePreloadJob = StreamPreloadManager.precacheNextEpisode(
+                                        val job = StreamPreloadManager.precacheNextEpisode(
                                             context = ctx,
                                             rawNextUrl = nextUrl,
+                                            episodeTitle = nextEp.title,
                                             targetBytes = StreamPreloadManager.BINGE_PRECACHE_BYTES,
                                             scope = viewModelScope
                                         )
+                                        job.invokeOnCompletion { cause ->
+                                            if (cause != null && cause !is kotlinx.coroutines.CancellationException) {
+                                                Log.w("StreamPlayerViewModel", "Binge pre-cache failed: ${cause.message}")
+                                                nextEpisodePreloadJob = null
+                                            }
+                                        }
+                                        nextEpisodePreloadJob = job
                                     }
                                 }
                             }

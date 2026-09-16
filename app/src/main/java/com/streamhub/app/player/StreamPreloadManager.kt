@@ -22,9 +22,28 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Request
+
+/**
+ * Real-time telemetry snapshot of background binge pre-caching progress for Episode N+1.
+ */
+data class BingePrecacheStatus(
+    val isActive: Boolean = false,
+    val isCompleted: Boolean = false,
+    val cachedBytes: Long = 0L,
+    val targetBytes: Long = StreamPreloadManager.BINGE_PRECACHE_BYTES,
+    val speedKbps: Long = 0L,
+    val episodeTitle: String = "",
+    val cacheKey: String = ""
+) {
+    val progressPercent: Int
+        get() = if (targetBytes > 0) ((cachedBytes.toFloat() / targetBytes.toFloat()) * 100f).toInt().coerceIn(0, 100) else 0
+}
 
 /**
  * Intelligent Media Stream Pre-Warming & Binge Pre-Caching Engine.
@@ -56,12 +75,15 @@ object StreamPreloadManager {
     private var activeBingeWriter: CacheWriter? = null
     private var activeBingeDataSource: androidx.media3.datasource.DataSource? = null
 
+    private val _bingePrecacheStatus = MutableStateFlow(BingePrecacheStatus())
+    val bingePrecacheStatus: StateFlow<BingePrecacheStatus> = _bingePrecacheStatus.asStateFlow()
+
     /** Dedicated OkHttpClient for background preloader to isolate sockets from active player */
     private val preloadClient: okhttp3.OkHttpClient by lazy {
         SharedHttpClient.baseClient.newBuilder()
-            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-            .connectionPool(okhttp3.ConnectionPool(2, 1, java.util.concurrent.TimeUnit.MINUTES))
+            .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .connectionPool(okhttp3.ConnectionPool(2, 2, java.util.concurrent.TimeUnit.MINUTES))
             .build()
     }
 
@@ -194,10 +216,11 @@ object StreamPreloadManager {
     fun precacheNextEpisode(
         context: Context,
         rawNextUrl: String,
+        episodeTitle: String = "",
         targetBytes: Long = BINGE_PRECACHE_BYTES,
         scope: CoroutineScope
     ): Job {
-        cancelBingePrecache()
+        cancelBingePrecache(resetCompleted = false)
 
         val job = scope.launch(Dispatchers.IO) {
             try {
@@ -222,11 +245,29 @@ object StreamPreloadManager {
                 // Check if already cached in disk using unified cache key
                 val alreadyCached = simpleCache.isCached(cacheKey, 0, targetBytes)
                 if (alreadyCached) {
-                    Log.i(TAG, "Binge precache skipped: Next episode already cached in disk")
+                    Log.i(TAG, "Binge precache skipped: Next episode already cached in disk ($cacheKey)")
+                    _bingePrecacheStatus.value = BingePrecacheStatus(
+                        isActive = false,
+                        isCompleted = true,
+                        cachedBytes = targetBytes,
+                        targetBytes = targetBytes,
+                        speedKbps = 0L,
+                        episodeTitle = episodeTitle,
+                        cacheKey = cacheKey
+                    )
                     return@launch
                 }
 
                 Log.i(TAG, "Starting binge pre-cache (${targetBytes / (1024 * 1024)} MB) for next episode: $sanitizedUrl")
+                _bingePrecacheStatus.value = BingePrecacheStatus(
+                    isActive = true,
+                    isCompleted = false,
+                    cachedBytes = 0L,
+                    targetBytes = targetBytes,
+                    speedKbps = 0L,
+                    episodeTitle = episodeTitle,
+                    cacheKey = cacheKey
+                )
 
                 val upstreamFactory = OkHttpDataSource.Factory(preloadClient)
                     .setUserAgent(USER_AGENT)
@@ -249,7 +290,27 @@ object StreamPreloadManager {
                     .setLength(targetBytes)
                     .build()
 
+                var lastCalcTimeMs = System.currentTimeMillis()
+                var lastBytesAtCalc = 0L
+
                 val writer = CacheWriter(cacheDataSource, dataSpec, null) { totalLength, bytesCached, _ ->
+                    val now = System.currentTimeMillis()
+                    val elapsed = now - lastCalcTimeMs
+                    if (elapsed >= 400L) {
+                        val deltaBytes = (bytesCached - lastBytesAtCalc).coerceAtLeast(0L)
+                        val speedKbps = if (elapsed > 0) ((deltaBytes * 1000L / elapsed) / 1024L) else 0L
+                        lastCalcTimeMs = now
+                        lastBytesAtCalc = bytesCached
+                        _bingePrecacheStatus.value = BingePrecacheStatus(
+                            isActive = true,
+                            isCompleted = false,
+                            cachedBytes = bytesCached,
+                            targetBytes = targetBytes,
+                            speedKbps = speedKbps,
+                            episodeTitle = episodeTitle,
+                            cacheKey = cacheKey
+                        )
+                    }
                     if (totalLength > 0 && bytesCached % (4 * 1024 * 1024L) < 65536) {
                         Log.d(TAG, "Binge pre-cache progress: ${bytesCached / (1024 * 1024)} MB cached")
                     }
@@ -262,10 +323,25 @@ object StreamPreloadManager {
 
                 writer.cache()
                 Log.i(TAG, "Binge pre-cache completed successfully! Next episode is ready for instant play.")
+                _bingePrecacheStatus.value = BingePrecacheStatus(
+                    isActive = false,
+                    isCompleted = true,
+                    cachedBytes = targetBytes,
+                    targetBytes = targetBytes,
+                    speedKbps = 0L,
+                    episodeTitle = episodeTitle,
+                    cacheKey = cacheKey
+                )
             } catch (_: CancellationException) {
                 Log.d(TAG, "Binge pre-cache paused/cancelled")
+                if (!_bingePrecacheStatus.value.isCompleted) {
+                    _bingePrecacheStatus.value = BingePrecacheStatus()
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "Binge pre-cache non-fatal error: ${e.message}")
+                if (!_bingePrecacheStatus.value.isCompleted) {
+                    _bingePrecacheStatus.value = BingePrecacheStatus()
+                }
             } finally {
                 synchronized(this@StreamPreloadManager) {
                     activeBingeWriter = null
@@ -284,7 +360,7 @@ object StreamPreloadManager {
     /**
      * Cancels any ongoing binge pre-cache job.
      */
-    fun cancelBingePrecache() {
+    fun cancelBingePrecache(resetCompleted: Boolean = true) {
         synchronized(this) {
             try {
                 activeBingeWriter?.cancel()
@@ -296,6 +372,28 @@ object StreamPreloadManager {
             activeBingeDataSource = null
             activeBingeJob?.cancel()
             activeBingeJob = null
+            if (resetCompleted || !_bingePrecacheStatus.value.isCompleted) {
+                _bingePrecacheStatus.value = BingePrecacheStatus()
+            } else {
+                _bingePrecacheStatus.value = _bingePrecacheStatus.value.copy(isActive = false, speedKbps = 0L)
+            }
+        }
+    }
+
+    /**
+     * Checks whether the beginning of a stream is already pre-cached on disk.
+     */
+    fun isStreamPrecached(context: Context, rawUrl: String, minBytes: Long = 2 * 1024 * 1024L): Boolean {
+        if (rawUrl.isBlank()) return false
+        val sanitized = TelegramLinkResolver.sanitizePlayableUrl(rawUrl)
+        if (sanitized.isBlank()) return false
+        val uri = Uri.parse(sanitized)
+        val key = StreamDataSourceFactory.sanitizeCacheKey(uri)
+        return try {
+            val simpleCache = StreamCacheManager.getCache(context.applicationContext)
+            simpleCache.isCached(key, 0, minBytes)
+        } catch (_: Exception) {
+            false
         }
     }
 

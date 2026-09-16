@@ -240,6 +240,7 @@ fun PlayerScreen(
     val playerSettings by PlayerSettingsManager.settingsFlow.collectAsStateWithLifecycle()
     val subConfig by SubtitleSettingsManager.subtitleConfig.collectAsStateWithLifecycle()
     val activePlayer by PlayerHolder.currentPlayerFlow.collectAsStateWithLifecycle()
+    val bingePrecacheStatus by com.streamhub.app.player.StreamPreloadManager.bingePrecacheStatus.collectAsStateWithLifecycle()
 
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
@@ -409,6 +410,22 @@ fun PlayerScreen(
     var isSnapshotLoading by remember { mutableStateOf(false) }
     var audioDelayMs by remember(playerSettings.defaultAudioDelayMs) { mutableLongStateOf(playerSettings.defaultAudioDelayMs.toLong()) }
     var dismissedNextEpIndex by remember { mutableIntStateOf(-1) }
+
+    var showBufferingHud by remember { mutableStateOf(false) }
+    LaunchedEffect(uiState.isBuffering, uiState.isFirstFrameRendered) {
+        if (uiState.isBuffering && !uiState.isFirstFrameRendered) {
+            // Debounce initial episode startup/transition: give local cache / warm stream 350ms to decode
+            // before showing the buffering spinner. Eliminates the flash of "Buffer: 0s" for pre-cached episodes.
+            delay(350L)
+            showBufferingHud = true
+        } else if (uiState.isBuffering) {
+            // Mid-stream buffering stall
+            delay(200L)
+            showBufferingHud = true
+        } else {
+            showBufferingHud = false
+        }
+    }
 
     // Intercept back when a dialog/sheet is open — close the sheet first, don't pop the nav stack.
     androidx.activity.compose.BackHandler(
@@ -1573,7 +1590,7 @@ fun PlayerScreen(
                 onBack = { onBackClick() },
                 modifier = Modifier.align(Alignment.Center)
             )
-        } else if (uiState.isBuffering && !uiState.isReconnecting) {
+        } else if (showBufferingHud && !uiState.isReconnecting) {
             BufferingHud(
                 visible = true,
                 networkSpeedKbps = playbackProgress.networkSpeedKbps,
@@ -2809,6 +2826,7 @@ fun PlayerScreen(
                 uiState = uiState,
                 playbackProgress = playbackProgress,
                 aspectRatioLabel = selectedRatioOption.label,
+                bingePrecacheStatus = bingePrecacheStatus,
                 onDismiss = { showStatsForNerds = false }
             )
         }
@@ -2841,6 +2859,7 @@ private fun StatsForNerdsOverlay(
     uiState: PlayerUiState,
     playbackProgress: PlaybackProgress,
     aspectRatioLabel: String,
+    bingePrecacheStatus: com.streamhub.app.player.BingePrecacheStatus = com.streamhub.app.player.BingePrecacheStatus(),
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -2970,16 +2989,28 @@ private fun StatsForNerdsOverlay(
         val defaultMarginEnd = with(density) { 16.dp.toPx() }
         val defaultMarginTop = with(density) { 48.dp.toPx() }
 
+        // Keep within bounds on orientation changes
+        LaunchedEffect(parentWidthPx, parentHeightPx, cardWidthPx, cardHeightPx) {
+            if (offsetX >= 0f && cardWidthPx > 0f) {
+                val maxX = (parentWidthPx - cardWidthPx).coerceAtLeast(0f)
+                val maxY = (parentHeightPx - cardHeightPx).coerceAtLeast(0f)
+                offsetX = offsetX.coerceIn(0f, maxX)
+                offsetY = offsetY.coerceIn(0f, maxY)
+            }
+        }
+
         val currentX = if (offsetX < 0f) {
             (parentWidthPx - cardWidthPx - defaultMarginEnd).coerceAtLeast(0f)
         } else {
-            offsetX.coerceIn(0f, (parentWidthPx - cardWidthPx).coerceAtLeast(0f))
+            val maxX = (parentWidthPx - cardWidthPx).coerceAtLeast(0f)
+            offsetX.coerceIn(0f, maxX)
         }
 
         val currentY = if (offsetY < 0f) {
             defaultMarginTop.coerceIn(0f, (parentHeightPx - cardHeightPx).coerceAtLeast(0f))
         } else {
-            offsetY.coerceIn(0f, (parentHeightPx - cardHeightPx).coerceAtLeast(0f))
+            val maxY = (parentHeightPx - cardHeightPx).coerceAtLeast(0f)
+            offsetY.coerceIn(0f, maxY)
         }
 
         Surface(
@@ -2992,23 +3023,30 @@ private fun StatsForNerdsOverlay(
                 .onSizeChanged {
                     cardWidthPx = it.width.toFloat()
                     cardHeightPx = it.height.toFloat()
+                    if (offsetX < 0f && parentWidthPx > 0f) {
+                        val maxX = (parentWidthPx - it.width.toFloat()).coerceAtLeast(0f)
+                        val maxY = (parentHeightPx - it.height.toFloat()).coerceAtLeast(0f)
+                        offsetX = (parentWidthPx - it.width.toFloat() - defaultMarginEnd).coerceIn(0f, maxX)
+                        offsetY = defaultMarginTop.coerceIn(0f, maxY)
+                    }
                 }
                 .widthIn(max = 350.dp)
+                .pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        val maxX = (parentWidthPx - cardWidthPx).coerceAtLeast(0f)
+                        val maxY = (parentHeightPx - cardHeightPx).coerceAtLeast(0f)
+                        val newX = (if (offsetX < 0f) currentX else offsetX) + dragAmount.x
+                        val newY = (if (offsetY < 0f) currentY else offsetY) + dragAmount.y
+                        offsetX = newX.coerceIn(0f, maxX)
+                        offsetY = newY.coerceIn(0f, maxY)
+                    }
+                }
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
-                // Draggable Header Area
+                // Header Area
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .pointerInput(parentWidthPx, parentHeightPx) {
-                            detectDragGestures { change, dragAmount ->
-                                change.consume()
-                                val maxX = (parentWidthPx - cardWidthPx).coerceAtLeast(0f)
-                                val maxY = (parentHeightPx - cardHeightPx).coerceAtLeast(0f)
-                                offsetX = (currentX + dragAmount.x).coerceIn(0f, maxX)
-                                offsetY = (currentY + dragAmount.y).coerceIn(0f, maxY)
-                            }
-                        },
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -3055,19 +3093,9 @@ private fun StatsForNerdsOverlay(
                 androidx.compose.material3.HorizontalDivider(color = Color(0x22FFFFFF), thickness = 0.8.dp)
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Draggable Stats Rows Area
+                // Stats Rows Area
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .pointerInput(parentWidthPx, parentHeightPx) {
-                            detectDragGestures { change, dragAmount ->
-                                change.consume()
-                                val maxX = (parentWidthPx - cardWidthPx).coerceAtLeast(0f)
-                                val maxY = (parentHeightPx - cardHeightPx).coerceAtLeast(0f)
-                                offsetX = (currentX + dragAmount.x).coerceIn(0f, maxX)
-                                offsetY = (currentY + dragAmount.y).coerceIn(0f, maxY)
-                            }
-                        }
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     StatRowItem("Resolution", resolution)
                     StatRowItem("Video Codec", videoCodec)
@@ -3077,19 +3105,21 @@ private fun StatsForNerdsOverlay(
                     val dur = playbackProgress.durationMs.coerceAtLeast(0L)
                     val buf = playbackProgress.bufferedPositionMs.coerceAtLeast(0L)
                     val isFullyBuffered = dur > 10_000L && buf >= (dur - 3_000L)
-                    val isNextEpPreloading = com.streamhub.app.player.StreamPreloadManager.isBingePrecacheActive
 
                     val bufferHealthDisplay = when {
-                        isFullyBuffered && isNextEpPreloading -> "100% Cached (Next Ep Preloading)"
+                        isFullyBuffered && bingePrecacheStatus.isActive -> "100% Cached (Caching Next Ep ${bingePrecacheStatus.progressPercent}%)"
+                        isFullyBuffered && bingePrecacheStatus.isCompleted -> "100% Cached (Next Ep 25MB Ready)"
                         isFullyBuffered -> "100% Cached (Fully Buffered)"
+                        bingePrecacheStatus.isActive -> "${bufferHealthSeconds}s ahead (Caching Next Ep ${bingePrecacheStatus.progressPercent}%)"
+                        bingePrecacheStatus.isCompleted -> "${bufferHealthSeconds}s ahead (Next Ep 25MB Ready)"
                         bufferHealthSeconds > 0L -> "${bufferHealthSeconds}s ahead (128MB max)"
                         else -> "0s"
                     }
                     StatRowItem("Buffer Health", bufferHealthDisplay)
 
                     val speedDisplay = when {
-                        isNextEpPreloading && networkSpeedKbps > 0L -> {
-                            val speed = if (networkSpeedKbps >= 1024L) String.format(java.util.Locale.US, "%.1f MB/s", networkSpeedKbps / 1024.0) else "$networkSpeedKbps KB/s"
+                        bingePrecacheStatus.isActive && bingePrecacheStatus.speedKbps > 0L -> {
+                            val speed = if (bingePrecacheStatus.speedKbps >= 1024L) String.format(java.util.Locale.US, "%.1f MB/s", bingePrecacheStatus.speedKbps / 1024.0) else "${bingePrecacheStatus.speedKbps} KB/s"
                             "$speed (Caching Next Ep)"
                         }
                         networkSpeedKbps >= 1024L -> {
@@ -3097,6 +3127,9 @@ private fun StatsForNerdsOverlay(
                         }
                         networkSpeedKbps > 0L -> {
                             "$networkSpeedKbps KB/s"
+                        }
+                        bingePrecacheStatus.isCompleted -> {
+                            "Idle (Next Ep 25MB Ready)"
                         }
                         isFullyBuffered -> {
                             "Idle (Fully Cached)"
