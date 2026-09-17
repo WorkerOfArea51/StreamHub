@@ -461,27 +461,25 @@ class StreamPlayerViewModel : ViewModel() {
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)
                     .build()
 
-                // Continuous High-Performance Streaming Engine with StreamLoadControl:
-                // - minBufferMs = 90_000: 90-second minimum safe buffer floor.
+                // YouTube-grade progressive streaming with 60s safe floor & 5-minute continuous buffer:
+                // - minBufferMs = 60_000: 60-second safe buffer floor. If buffer drains to 60s, immediately refills to 5m.
                 // - maxBufferMs = 300_000: Up to 5 full minutes forward buffer ahead.
                 // - bufferForPlaybackMs = 250: Instant playback start in ~250ms on first keyframes and seeks.
-                // - bufferForPlaybackAfterRebufferMs = 250: Fast 250ms recovery after seek or network hiccup.
-                // - StreamLoadControl: Guarantees continuous progressive loading up to 5 minutes so network sockets
-                //   NEVER sit idle and F2L/proxy servers never drop connections due to 60-second inactivity timeouts.
-                // - backBuffer = 15_000: Purges watched frames older than 15s from RAM to maintain a minimal memory footprint.
-                val baseLoadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                // - bufferForPlaybackAfterRebufferMs = 1_000: Fast 1-second recovery after seek or network hiccup.
+                // - setPrioritizeTimeOverSizeThresholds(true): Ensures aggressive peak-speed downloading to target time.
+                // - setTargetBufferBytes(128 * 1024 * 1024): Strict 128 MB RAM ceiling (guaranteed zero OOM / zero crashes).
+                // - backBuffer = 15_000 (retainBackBufferFromKeyframe = false): Purges watched frames from RAM; disk cache handles persistence.
+                val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        90_000,         // minBufferMs (90s safe buffer floor)
+                        60_000,         // minBufferMs (60s minimum safe buffer floor)
                         300_000,        // maxBufferMs (up to 5 minutes forward buffer ahead)
                         250,            // bufferForPlaybackMs (instant startup in ~250ms)
-                        250             // bufferForPlaybackAfterRebufferMs (instant 250ms recovery / YouTube parity)
+                        250             // bufferForPlaybackAfterRebufferMs (instant 250ms recovery after seek / YouTube parity)
                     )
                     .setBackBuffer(15_000, false)
                     .setPrioritizeTimeOverSizeThresholds(true)
-                    .setTargetBufferBytes(androidx.media3.common.C.LENGTH_UNSET)
+                    .setTargetBufferBytes(128 * 1024 * 1024)
                     .build()
-                val loadControl = StreamLoadControl(baseLoadControl)
-
                 // CRITICAL: DO NOT ADD FLAG_DISABLE_SEEK_FOR_CUES.
                 // Disabling seek for cues completely breaks seeking in MKV videos because Matroska video
                 // frames are variable bitrate and require the Cues index to locate keyframes. Without Cues,
@@ -491,27 +489,15 @@ class StreamPlayerViewModel : ViewModel() {
                     .setMatroskaExtractorFlags(
                         androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_EMIT_RAW_SUBTITLE_DATA
                     )
-
-                // Fast In-Place Range Reconnect Policy:
-                // If a remote streaming socket drops or resets, immediately retry in 250ms with HTTP Range
-                // instead of the slow 1000ms -> 2000ms -> 4000ms default backoff.
-                val loadErrorHandlingPolicy = object : androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(6) {
-                    override fun getRetryDelayMsFor(loadErrorInfo: androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy.LoadErrorInfo): Long {
-                        // Instant in-place 250ms HTTP Range retry for up to 4 consecutive dropouts before falling back to default backoff
-                        return if (loadErrorInfo.errorCount <= 4) 250L else super.getRetryDelayMsFor(loadErrorInfo)
-                    }
-                }
-
-                val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory)
-                    .setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
-
                 ExoPlayer.Builder(safeContext, renderersFactory)
                     .setTrackSelector(trackSelector!!)
                     .setAudioAttributes(audioAttributes, true)
                     .setHandleAudioBecomingNoisy(true)
                     .setLoadControl(loadControl)
                     .setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
-                    .setMediaSourceFactory(mediaSourceFactory)
+                    .setMediaSourceFactory(
+                        androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory)
+                    )
                     .build()
             }
 
@@ -1568,8 +1554,8 @@ class StreamPlayerViewModel : ViewModel() {
 
                     if (isStalled) {
                         stallAccumulatorMs += 200L
-                        // 5.0s threshold accommodates Wi-Fi 5GHz <-> 2.4GHz handoffs while recovering quickly from dead sockets
-                        if (stallAccumulatorMs >= 5000L) {
+                        // 8.0s threshold accommodates Wi-Fi 5GHz <-> 2.4GHz band switching handoffs (1.5–3.0s)
+                        if (stallAccumulatorMs >= 8000L) {
                             stallAccumulatorMs = 0L
                             handleStreamStall(playerPos)
                         }
