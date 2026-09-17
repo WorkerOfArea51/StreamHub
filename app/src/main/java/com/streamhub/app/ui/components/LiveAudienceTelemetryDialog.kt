@@ -75,6 +75,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -1054,6 +1055,7 @@ fun GlobalBroadcastDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     var broadcastTitle by remember { mutableStateOf("StreamHub Announcement 📢") }
     var broadcastMessage by remember { mutableStateOf("") }
+    var expiryHours by remember { mutableIntStateOf(24) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1066,7 +1068,7 @@ fun GlobalBroadcastDialog(onDismiss: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "This notification will pop in the notification center of ALL users currently online or opening the app:",
+                    text = "Broadcasts a live heads-up notification to active users. Stored as a single self-expiring document in Firestore (0 database size growth).",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
@@ -1084,13 +1086,58 @@ fun GlobalBroadcastDialog(onDismiss: () -> Unit) {
                     placeholder = { Text("e.g. Bleach Thousand-Year Blood War Ep 13 is now streaming in 1080p! 🍿") },
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                // Expiration duration selector
+                Column(modifier = Modifier.padding(top = 4.dp)) {
+                    Text(
+                        text = "Notification Lifespan (Auto-Expires After):",
+                        color = TextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        listOf(6 to "6 Hours", 12 to "12 Hours", 24 to "24 Hours", 48 to "48 Hours").forEach { (hrs, label) ->
+                            val isSelected = expiryHours == hrs
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) Color(0xFF00E676).copy(alpha = 0.2f) else Color(0xFF232230),
+                                border = BorderStroke(1.dp, if (isSelected) Color(0xFF00E676) else CardBorderDark),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { expiryHours = hrs }
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (isSelected) Color(0xFF00E676) else TextSecondary,
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    modifier = Modifier.padding(vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Text(
+                    text = "🔒 Safety Guard: Past announcements will never be shown to new app downloads or fresh installs.",
+                    color = Color(0xFF00E676).copy(alpha = 0.85f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
             }
         },
         confirmButton = {
             Button(
                 onClick = {
                     if (broadcastMessage.isNotBlank()) {
-                        UserTelemetryManager.sendGlobalBroadcast(broadcastTitle.trim(), broadcastMessage.trim())
+                        UserTelemetryManager.sendGlobalBroadcast(broadcastTitle.trim(), broadcastMessage.trim(), expiryHours)
                         ToastManager.showToast("Broadcast announcement published to all users! 📢")
                         onDismiss()
                     }
@@ -1101,8 +1148,20 @@ fun GlobalBroadcastDialog(onDismiss: () -> Unit) {
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = TextSecondary)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(
+                    onClick = {
+                        UserTelemetryManager.clearActiveBroadcast { ok ->
+                            ToastManager.showToast(if (ok) "Active broadcast cleared! 🗑️" else "Failed to clear broadcast")
+                        }
+                        onDismiss()
+                    }
+                ) {
+                    Text("Clear Active 🗑️", color = PrimaryRed, fontSize = 12.sp)
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel", color = TextSecondary)
+                }
             }
         },
         containerColor = SurfaceDark

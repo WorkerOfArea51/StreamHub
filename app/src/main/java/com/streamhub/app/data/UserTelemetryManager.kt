@@ -143,6 +143,11 @@ object UserTelemetryManager {
             if (cachedCountryCode.isNotBlank()) countryCodeToEmoji(cachedCountryCode) else ""
         } else savedFlag
 
+        // Guard against new downloads: baseline to current timestamp so past broadcasts are never spammed to fresh installs
+        if (prefs?.contains(KEY_LAST_BROADCAST_TS) != true) {
+            prefs?.edit()?.putLong(KEY_LAST_BROADCAST_TS, System.currentTimeMillis())?.apply()
+        }
+
         fetchRealGeoLocation()
         startHeartbeat()
         startListeningToRemoteCommands()
@@ -478,9 +483,10 @@ object UserTelemetryManager {
         }
     }
 
-    fun sendGlobalBroadcast(title: String, message: String) {
+    fun sendGlobalBroadcast(title: String, message: String, expiryHours: Int = 24) {
         if (title.isBlank() || message.isBlank()) return
         val now = System.currentTimeMillis()
+        val expiresAt = now + (expiryHours.coerceIn(1, 168) * 3600_000L)
         prefs?.edit()?.putLong(KEY_LAST_BROADCAST_TS, now)?.apply()
         // Show immediately on the sender's own device as well
         appContext?.let { ctx ->
@@ -489,15 +495,49 @@ object UserTelemetryManager {
         }
         scope.launch {
             try {
+                val db = FirebaseFirestore.getInstance()
                 val broadcast = mapOf(
+                    "id" to UUID.randomUUID().toString(),
                     "title" to title,
                     "message" to message,
                     "timestamp" to now,
+                    "expiresAt" to expiresAt,
                     "sender" to "Owner Admin"
                 )
-                FirebaseFirestore.getInstance().collection(COLLECTION_BROADCASTS).add(broadcast)
+                // Single-document architecture: caps global_broadcasts at exactly 1 document (~200 bytes) forever
+                db.collection(COLLECTION_BROADCASTS).document("latest").set(broadcast)
+
+                // Auto-purge any legacy auto-generated documents (like SIEMWHlDt18FuuQUfRM2)
+                db.collection(COLLECTION_BROADCASTS).get().addOnSuccessListener { snapshot ->
+                    for (doc in snapshot.documents) {
+                        if (doc.id != "latest") {
+                            Log.i(TAG, "Purged legacy broadcast document: ${doc.id}")
+                            doc.reference.delete()
+                        }
+                    }
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send global broadcast: ${e.message}")
+            }
+        }
+    }
+
+    fun clearActiveBroadcast(onComplete: ((Boolean) -> Unit)? = null) {
+        scope.launch {
+            try {
+                val db = FirebaseFirestore.getInstance()
+                db.collection(COLLECTION_BROADCASTS).document("latest").delete()
+                db.collection(COLLECTION_BROADCASTS).get().addOnSuccessListener { snapshot ->
+                    for (doc in snapshot.documents) {
+                        doc.reference.delete()
+                    }
+                    onComplete?.invoke(true)
+                }.addOnFailureListener {
+                    onComplete?.invoke(true)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to clear active broadcast: ${e.message}")
+                onComplete?.invoke(false)
             }
         }
     }
@@ -604,21 +644,22 @@ object UserTelemetryManager {
         if (broadcastListener != null) return
         try {
             val db = FirebaseFirestore.getInstance()
-            broadcastListener = db.collection(COLLECTION_BROADCASTS)
-                .orderBy("timestamp", Query.Direction.DESCENDING)
-                .limit(1)
+            // 1. Listen strictly to the single "latest" document
+            broadcastListener = db.collection(COLLECTION_BROADCASTS).document("latest")
                 .addSnapshotListener { snapshot, error ->
-                    if (error != null || snapshot == null || snapshot.isEmpty) return@addSnapshotListener
-                    val latestDoc = snapshot.documents.firstOrNull() ?: return@addSnapshotListener
-                    val ts = latestDoc.getLong("timestamp") ?: 0L
+                    if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
+                    val ts = snapshot.getLong("timestamp") ?: 0L
+                    val expiresAt = snapshot.getLong("expiresAt") ?: (ts + 24 * 3600_000L)
                     val currentLastSeen = prefs?.getLong(KEY_LAST_BROADCAST_TS, 0L) ?: 0L
+                    val now = System.currentTimeMillis()
 
-                    // Deliver if newer than lastSeen and published within the last 48 hours
-                    val fortyEightHoursAgo = System.currentTimeMillis() - 48 * 60 * 60 * 1000L
-                    if (ts > currentLastSeen && ts > fortyEightHoursAgo) {
+                    // Deliver ONLY IF:
+                    // 1. Sent strictly AFTER user's baseline lastSeen timestamp (rules out new downloads)
+                    // 2. The broadcast has NOT expired yet (now < expiresAt)
+                    if (ts > currentLastSeen && now < expiresAt) {
                         prefs?.edit()?.putLong(KEY_LAST_BROADCAST_TS, ts)?.apply()
-                        val title = latestDoc.getString("title") ?: "StreamHub Announcement 📢"
-                        val msg = latestDoc.getString("message") ?: ""
+                        val title = snapshot.getString("title") ?: "StreamHub Announcement 📢"
+                        val msg = snapshot.getString("message") ?: ""
                         val ctx = appContext ?: return@addSnapshotListener
 
                         if (msg.isNotBlank()) {
@@ -627,6 +668,16 @@ object UserTelemetryManager {
                         }
                     }
                 }
+
+            // 2. One-time legacy cleanup: clean up legacy auto-generated documents (e.g. SIEMWHlDt18FuuQUfRM2)
+            db.collection(COLLECTION_BROADCASTS).get().addOnSuccessListener { snapshot ->
+                for (doc in snapshot.documents) {
+                    if (doc.id != "latest") {
+                        Log.i(TAG, "Cleaning up legacy broadcast doc: ${doc.id}")
+                        doc.reference.delete()
+                    }
+                }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to start global broadcast listener: ${e.message}")
         }
