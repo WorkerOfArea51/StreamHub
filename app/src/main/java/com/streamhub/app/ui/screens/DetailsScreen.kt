@@ -56,8 +56,10 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.streamhub.app.data.MyListManager
+import com.streamhub.app.data.NetworkMonitor
 import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.FranchiseTagType
 import androidx.compose.foundation.BorderStroke
@@ -147,6 +149,7 @@ fun DetailsScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val isOnline by NetworkMonitor.isOnline.collectAsState()
     val catalog by repository.mediaCatalog.collectAsState()
     val downloads by DownloadManager.downloads.collectAsState()
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
@@ -161,12 +164,30 @@ fun DetailsScreen(
         currentMediaId = mediaId
     }
 
-    val mediaItem = remember(currentMediaId, catalog) {
+    val mediaItem = remember(currentMediaId, catalog, downloads) {
         catalog.firstOrNull { 
             it.id == currentMediaId ||
             (it.tmdbId.isNotBlank() && (it.tmdbId == currentMediaId || it.tmdbId == currentMediaId.removePrefix("tmdb_rec_").removePrefix("tmdb_"))) ||
             (it.malId.isNotBlank() && (it.malId == currentMediaId || it.malId == currentMediaId.removePrefix("mal_rec_").removePrefix("mal_"))) ||
             (it.title.isNotBlank() && (it.title.equals(currentMediaId, ignoreCase = true) || it.title.replace(":", "").equals(currentMediaId.replace(":", ""), ignoreCase = true)))
+        } ?: run {
+            // Offline fallback: construct MediaItem from completed downloads if catalog is not available offline
+            val downloadedEps = downloads.filter { it.mediaId == currentMediaId && it.isCompleted }
+            if (downloadedEps.isNotEmpty()) {
+                val first = downloadedEps.first()
+                MediaItem(
+                    id = currentMediaId,
+                    title = first.mediaTitle,
+                    posterUrl = first.posterUrl,
+                    episodes = downloadedEps.map { d ->
+                        Episode(
+                            episodeNumber = d.episodeIndex,
+                            title = d.episodeTitle,
+                            streamUrl = d.localFilePath
+                        )
+                    }
+                )
+            } else null
         }
     }
 
@@ -250,6 +271,15 @@ fun DetailsScreen(
     val catalogState by repository.catalogState.collectAsState()
 
     if (mediaItem == null) {
+        if (!isOnline) {
+            AppEmptyState(
+                title = "Offline — Title Unavailable",
+                subtitle = "This title hasn't been downloaded for offline viewing. Connect to internet to view details.",
+                ctaLabel = "Go Back",
+                onCtaClick = onBackClick
+            )
+            return
+        }
         when (val state = catalogState) {
             is CatalogState.Loading -> {
                 AppLoadingState(message = "Loading details…")
@@ -314,9 +344,9 @@ fun DetailsScreen(
         }
     }
 
-    LaunchedEffect(currentMediaId, selectedSeasonNumber, selectedArcName, prewarmTargetEpisode?.streamUrl) {
+    LaunchedEffect(currentMediaId, selectedSeasonNumber, selectedArcName, prewarmTargetEpisode?.streamUrl, isOnline) {
         val urlToPrewarm = prewarmTargetEpisode?.streamUrl?.ifEmpty { prewarmTargetEpisode.mirrorStreamUrl } ?: ""
-        if (urlToPrewarm.isNotBlank()) {
+        if (isOnline && urlToPrewarm.isNotBlank() && !urlToPrewarm.startsWith("/")) {
             StreamPreloadManager.prewarmDetailsStream(context, urlToPrewarm, prewarmCoroutineScope)
         }
     }
@@ -659,10 +689,15 @@ fun DetailsScreen(
                     val isBookmarked = myListSet.contains(mediaItem.id)
 
                     val savedHistory = remember(mediaItem.id) { WatchHistoryManager.getProgress(mediaItem.id) }
+                    val completedDownloads = remember(downloads, mediaItem.id) {
+                        downloads.filter { it.mediaId == mediaItem.id && it.isCompleted }
+                    }
                     val targetPlayIndex = if (savedHistory != null && savedHistory.episodeNumber in mediaItem.episodes.indices) {
                         savedHistory.episodeNumber
                     } else 0
                     val playButtonText = when {
+                        !isOnline && completedDownloads.isEmpty() -> "Requires Internet"
+                        !isOnline && completedDownloads.isNotEmpty() -> "Play Offline 📥"
                         isMovie -> if (savedHistory != null && savedHistory.positionMs > 5000L) "Resume Movie" else "Play Movie"
                         savedHistory != null && savedHistory.episodeNumber in mediaItem.episodes.indices -> "Resume Ep ${savedHistory.episodeNumber + 1}"
                         else -> "Play"
@@ -675,16 +710,45 @@ fun DetailsScreen(
                         Button(
                             onClick = {
                                 com.streamhub.app.player.StreamPreloadManager.cancelDetailsPrewarm()
+                                if (!isOnline) {
+                                    if (completedDownloads.isEmpty()) {
+                                        ToastManager.showToast("Cannot stream while offline. Download episodes or connect to internet.", Icons.Default.WifiOff)
+                                        return@Button
+                                    }
+                                    val targetDownload = completedDownloads.firstOrNull { it.episodeIndex == targetPlayIndex }
+                                        ?: completedDownloads.first()
+                                    val offlineMedia = MediaItem(
+                                        id = "offline:${targetDownload.mediaId}:${targetDownload.episodeIndex}",
+                                        title = targetDownload.mediaTitle,
+                                        posterUrl = targetDownload.posterUrl,
+                                        episodes = listOf(
+                                            Episode(
+                                                episodeNumber = targetDownload.episodeIndex,
+                                                title = targetDownload.episodeTitle,
+                                                streamUrl = targetDownload.localFilePath
+                                            )
+                                        )
+                                    )
+                                    onPlayEpisode(offlineMedia, 0)
+                                    return@Button
+                                }
                                 onPlayEpisode(mediaItem, targetPlayIndex)
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (!isOnline && completedDownloads.isEmpty()) Color(0xFF38384E) else PrimaryRed
+                            ),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
                                 .weight(1.3f)
                                 .height(46.dp)
                                 .bouncyTouch()
                         ) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = "Play", tint = Color.White, modifier = Modifier.size(20.dp))
+                            Icon(
+                                imageVector = if (!isOnline && completedDownloads.isEmpty()) Icons.Default.WifiOff else Icons.Default.PlayArrow,
+                                contentDescription = "Play",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = playButtonText,
@@ -1044,19 +1108,43 @@ fun DetailsScreen(
                 } else {
                     itemsIndexed(seasonFilteredEpisodes, key = { _, episode -> "${episode.seasonNumber}_${episode.episodeNumber}_${episode.title}" }) { index, episode ->
                         val originalIndex = episodeIndexMap[episode] ?: index
-                        val isDownloaded = downloads.any { it.mediaId == mediaItem.id && it.episodeIndex == originalIndex && it.isCompleted }
+                        val downloadItem = downloads.firstOrNull { it.mediaId == mediaItem.id && it.episodeIndex == originalIndex && it.isCompleted }
+                        val isDownloaded = downloadItem != null
                         EpisodeRowItem(
                             episode = episode,
                             index = index,
                             mediaItem = mediaItem,
                             isDownloaded = isDownloaded,
+                            isOnline = isOnline,
                             onPlay = {
                                 com.streamhub.app.player.StreamPreloadManager.cancelDetailsPrewarm()
-                                onPlayEpisode(mediaItem, originalIndex)
+                                if (isDownloaded && downloadItem != null) {
+                                    val offlineMedia = MediaItem(
+                                        id = "offline:${downloadItem.mediaId}:${downloadItem.episodeIndex}",
+                                        title = downloadItem.mediaTitle,
+                                        posterUrl = downloadItem.posterUrl,
+                                        episodes = listOf(
+                                            Episode(
+                                                episodeNumber = downloadItem.episodeIndex,
+                                                title = downloadItem.episodeTitle,
+                                                streamUrl = downloadItem.localFilePath
+                                            )
+                                        )
+                                    )
+                                    onPlayEpisode(offlineMedia, 0)
+                                } else if (!isOnline) {
+                                    ToastManager.showToast("Cannot stream while offline. Connect to internet first.", Icons.Default.WifiOff)
+                                } else {
+                                    onPlayEpisode(mediaItem, originalIndex)
+                                }
                             },
                             onDownload = { 
-                                ToastManager.showToast("Starting download...", Icons.Default.Download)
-                                DownloadManager.startDownload(context, mediaItem, originalIndex) 
+                                if (!isOnline) {
+                                    ToastManager.showToast("Cannot download while offline. Connect to internet first.", Icons.Default.WifiOff)
+                                } else {
+                                    ToastManager.showToast("Starting download...", Icons.Default.Download)
+                                    DownloadManager.startDownload(context, mediaItem, originalIndex) 
+                                }
                             }
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -1285,6 +1373,7 @@ fun EpisodeRowItem(
     index: Int,
     mediaItem: MediaItem,
     isDownloaded: Boolean,
+    isOnline: Boolean = true,
     onPlay: () -> Unit,
     onDownload: () -> Unit
 ) {
@@ -1505,6 +1594,49 @@ fun EpisodeRowItem(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
+
+                    if (isDownloaded) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0x2610B981),
+                            border = BorderStroke(1.dp, Color(0x6610B981)),
+                            modifier = Modifier.padding(top = 4.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = Color(0xFF34D399),
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "Offline Ready",
+                                    color = Color(0xFF34D399),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    } else if (!isOnline) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0x1AFFFFFF),
+                            border = BorderStroke(0.5.dp, Color(0x33FFFFFF)),
+                            modifier = Modifier.padding(top = 4.dp)
+                        ) {
+                            Text(
+                                text = "Requires Internet 🌐",
+                                color = Color(0xFF9E9EA8),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -1518,7 +1650,7 @@ fun EpisodeRowItem(
                 Icon(
                     imageVector = if (isDownloaded) Icons.Default.Check else Icons.Default.Download,
                     contentDescription = "Download Episode",
-                    tint = if (isDownloaded) Color(0xFF4CAF50) else TextSecondary
+                    tint = if (isDownloaded) Color(0xFF4CAF50) else if (!isOnline) TextSecondary.copy(alpha = 0.4f) else TextSecondary
                 )
             }
         }

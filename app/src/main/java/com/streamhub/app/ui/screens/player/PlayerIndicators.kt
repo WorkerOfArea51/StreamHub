@@ -613,6 +613,7 @@ fun ReconnectingStreamHud(
     visible: Boolean,
     attempt: Int,
     maxAttempts: Int = 3,
+    isOffline: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "spin")
@@ -632,10 +633,13 @@ fun ReconnectingStreamHud(
         exit = fadeOut(tween(250)) + scaleOut(tween(250), targetScale = 0.85f),
         modifier = modifier
     ) {
+        val borderColor = if (isOffline) Color(0xFFFF9800).copy(alpha = 0.7f) else Color(0xFF00E5FF).copy(alpha = 0.7f)
+        val iconTint = if (isOffline) Color(0xFFFF9800) else Color(0xFF00E5FF)
+
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = Color(0xF0141420),
-            border = BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.7f)),
+            border = BorderStroke(1.dp, borderColor),
             shadowElevation = 10.dp
         ) {
             Row(
@@ -643,20 +647,35 @@ fun ReconnectingStreamHud(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "Reconnecting",
-                    tint = Color(0xFF00E5FF),
-                    modifier = Modifier
-                        .size(18.dp)
-                        .graphicsLayer { rotationZ = rotation }
-                )
-                Text(
-                    text = "Reconnecting stream... ($attempt/$maxAttempts)",
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                if (isOffline) {
+                    Icon(
+                        imageVector = Icons.Default.WifiOff,
+                        contentDescription = "Offline",
+                        tint = iconTint,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "Offline — Waiting for connection...",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Reconnecting",
+                        tint = iconTint,
+                        modifier = Modifier
+                            .size(18.dp)
+                            .graphicsLayer { rotationZ = rotation }
+                    )
+                    Text(
+                        text = "Reconnecting stream... ($attempt/$maxAttempts)",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
     }

@@ -15,6 +15,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.TelegramLinkResolver
+import com.streamhub.app.data.NetworkMonitor
 import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.models.MediaItem
 import kotlinx.coroutines.Dispatchers
@@ -138,6 +139,35 @@ class StreamPlayerViewModel : ViewModel() {
     private var lastBackgroundTimestampMs: Long = 0L
     private var lastPauseTimestampMs: Long = 0L
     private var stallAccumulatorMs: Long = 0L
+
+    init {
+        viewModelScope.launch {
+            NetworkMonitor.lastReconnectedAt.collect { timestamp ->
+                if (timestamp > 0L) {
+                    val snapshot = _uiState.value
+                    val isNetworkIssue = snapshot.playerErrorInfo?.type == PlayerErrorType.NETWORK ||
+                                         snapshot.isReconnecting ||
+                                         (snapshot.isBuffering && snapshot.bufferHealthSeconds == 0L)
+                    val isLocalStream = snapshot.resolvedStreamUrl.startsWith("/") || snapshot.resolvedStreamUrl.startsWith("file://")
+                    if (isNetworkIssue && !snapshot.isPlaying && exoPlayer != null && !isLocalStream) {
+                        Log.i("StreamPlayerViewModel", "Network restored ($timestamp). Auto-healing player connection immediately.")
+                        autoRetryCount = 0
+                        val resumePos = pendingSeekTargetMs ?: snapshot.currentPositionMs
+                        _uiState.update { 
+                            it.copy(
+                                isBuffering = true, 
+                                isReconnecting = true, 
+                                reconnectAttempt = 1, 
+                                playerError = null, 
+                                playerErrorInfo = null
+                            ) 
+                        }
+                        scheduleAutoReconnect(resumePos, serverDown = false)
+                    }
+                }
+            }
+        }
+    }
 
     fun getPlayer(): ExoPlayer? = exoPlayer
 
@@ -885,8 +915,23 @@ class StreamPlayerViewModel : ViewModel() {
         resolutionJob = viewModelScope.launch {
             // FIX: If rawUrl is already a local file path, bypass URL resolution entirely.
             // This makes offline playback instant — no network calls, no TelegramLinkResolver.
-            val resolvedUrl = if (rawUrl.startsWith("/") || rawUrl.startsWith("file://")) {
+            val isLocal = rawUrl.startsWith("/") || rawUrl.startsWith("file://")
+            val resolvedUrl = if (isLocal) {
                 rawUrl.removePrefix("file://")
+            } else if (!NetworkMonitor.isOnline.value) {
+                val errorMsg = "Cannot stream online video while offline. Connect to internet or play downloaded media."
+                _uiState.update {
+                    it.copy(
+                        isBuffering = false,
+                        playerError = errorMsg,
+                        playerErrorInfo = PlayerErrorInfo(
+                            PlayerErrorType.NETWORK,
+                            errorMsg,
+                            canRetry = true
+                        )
+                    )
+                }
+                return@launch
             } else {
                 resolveStreamUrl(rawUrl)
             }
@@ -1623,6 +1668,32 @@ class StreamPlayerViewModel : ViewModel() {
     private val maxAutoRetries: Int = 3
 
     private fun handleStreamStall(stalledPositionMs: Long) {
+        val snapshot = _uiState.value
+        val isLocal = snapshot.resolvedStreamUrl.startsWith("/") || snapshot.resolvedStreamUrl.startsWith("file://")
+        if (isLocal) {
+            // Local disk stream: not a network stall
+            return
+        }
+
+        if (!NetworkMonitor.isOnline.value) {
+            Log.w("StreamPlayerViewModel", "Stream stall watchdog detected network loss at ${stalledPositionMs}ms. Waiting for network restoration...")
+            _uiState.update {
+                it.copy(
+                    isBuffering = true,
+                    isPlaying = false,
+                    isReconnecting = true,
+                    reconnectAttempt = 1,
+                    playerError = null,
+                    playerErrorInfo = PlayerErrorInfo(
+                        PlayerErrorType.NETWORK,
+                        "Offline — Waiting for network connection...",
+                        canRetry = true
+                    )
+                )
+            }
+            return
+        }
+
         if (autoRetryCount < maxAutoRetries) {
             autoRetryCount++
             Log.w(
@@ -1673,6 +1744,24 @@ class StreamPlayerViewModel : ViewModel() {
 
     private fun scheduleAutoReconnect(savedPositionMs: Long, serverDown: Boolean = false) {
         autoRetryJob?.cancel()
+        if (!NetworkMonitor.isOnline.value) {
+            Log.i("StreamPlayerViewModel", "Network offline; suspending auto-reconnect until connection returns.")
+            _uiState.update {
+                it.copy(
+                    isBuffering = true,
+                    isPlaying = false,
+                    isReconnecting = true,
+                    reconnectAttempt = 1,
+                    playerError = null,
+                    playerErrorInfo = PlayerErrorInfo(
+                        PlayerErrorType.NETWORK,
+                        "Offline — Waiting for network connection...",
+                        canRetry = true
+                    )
+                )
+            }
+            return
+        }
         val backoffMs = when {
             // Server is returning 5xx — give the backend room to recover instead of
             // re-firing into a single-worker process every second.

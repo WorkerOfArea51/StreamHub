@@ -240,6 +240,7 @@ fun PlayerScreen(
     val subConfig by SubtitleSettingsManager.subtitleConfig.collectAsStateWithLifecycle()
     val activePlayer by PlayerHolder.currentPlayerFlow.collectAsStateWithLifecycle()
     val bingePrecacheStatus by com.streamhub.app.player.StreamPreloadManager.bingePrecacheStatus.collectAsStateWithLifecycle()
+    val isOnline by com.streamhub.app.data.NetworkMonitor.isOnline.collectAsStateWithLifecycle()
 
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
@@ -1559,6 +1560,7 @@ fun PlayerScreen(
             visible = uiState.isReconnecting,
             attempt = uiState.reconnectAttempt,
             maxAttempts = 3,
+            isOffline = !isOnline,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .padding(top = 18.dp)

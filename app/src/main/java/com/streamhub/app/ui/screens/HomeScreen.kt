@@ -42,6 +42,8 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -118,6 +120,7 @@ fun HomeScreen(
     onMediaClick: (MediaItem) -> Unit,
     onPlayEpisode: (MediaItem, Int) -> Unit,
     onNavigateToHistory: () -> Unit = {},
+    onNavigateToDownloads: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -127,6 +130,9 @@ fun HomeScreen(
     val watchHistoryMap by WatchHistoryManager.historyFlow.collectAsState()
     val updateState by com.streamhub.app.data.AppUpdateManager.updateState.collectAsState()
     val layoutConfig by com.streamhub.app.data.HomeScreenLayoutManager.layoutConfig.collectAsState()
+    val isOnline by com.streamhub.app.data.NetworkMonitor.isOnline.collectAsState()
+    val downloadsList by com.streamhub.app.data.DownloadManager.downloads.collectAsState()
+    val completedDownloads = remember(downloadsList) { downloadsList.filter { it.isCompleted } }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -505,41 +511,81 @@ fun HomeScreen(
 
             // Skeleton Loading state (Layout-shaped preview)
             if (catalogState is com.streamhub.app.data.repository.CatalogState.Loading) {
-                item(key = "catalog_loading_1") {
-                    SkeletonCardRow(cardCount = 4)
-                }
-                item(key = "catalog_loading_2") {
-                    SkeletonCardRow(cardCount = 4)
+                if (!isOnline && catalog.isEmpty()) {
+                    item(key = "offline_cinema_hub_loading") {
+                        OfflineCinemaHub(
+                            completedDownloads = completedDownloads,
+                            onNavigateToDownloads = onNavigateToDownloads
+                        )
+                    }
+                } else {
+                    item(key = "catalog_loading_1") {
+                        SkeletonCardRow(cardCount = 4)
+                    }
+                    item(key = "catalog_loading_2") {
+                        SkeletonCardRow(cardCount = 4)
+                    }
                 }
             }
 
             // Error state
             if (catalogState is com.streamhub.app.data.repository.CatalogState.Error) {
                 item(key = "catalog_error") {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                imageVector = Icons.Default.Warning,
-                                contentDescription = "Error",
-                                tint = androidx.compose.material3.MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(48.dp)
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = (catalogState as com.streamhub.app.data.repository.CatalogState.Error).message,
-                                color = androidx.compose.material3.MaterialTheme.colorScheme.error,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                            androidx.compose.material3.Button(onClick = { repository.retry() }) {
-                                Text("Retry")
+                    if (!isOnline && catalog.isEmpty()) {
+                        OfflineCinemaHub(
+                            completedDownloads = completedDownloads,
+                            onNavigateToDownloads = onNavigateToDownloads
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = "Error",
+                                    tint = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(48.dp)
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = (catalogState as com.streamhub.app.data.repository.CatalogState.Error).message,
+                                    color = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                                androidx.compose.material3.Button(onClick = { repository.retry() }) {
+                                    Text("Retry")
+                                }
                             }
                         }
                     }
+                }
+            }
+
+            // ── Offline Ready Shelf (Top placement when offline with downloaded media) ──
+            if (!isOnline && completedDownloads.isNotEmpty()) {
+                item(key = "offline_shelf_top") {
+                    OfflineDownloadsShelf(
+                        downloads = completedDownloads,
+                        onPlay = { downloadItem ->
+                            val offlineMediaId = "offline:${downloadItem.mediaId}:${downloadItem.episodeIndex}"
+                            val localEpisode = com.streamhub.app.data.models.Episode(
+                                title = downloadItem.episodeTitle,
+                                streamUrl = downloadItem.localFilePath
+                            )
+                            val offlineMedia = MediaItem(
+                                id = offlineMediaId,
+                                title = downloadItem.mediaTitle,
+                                posterUrl = downloadItem.posterUrl,
+                                episodes = listOf(localEpisode)
+                            )
+                            onPlayEpisode(offlineMedia, 0)
+                        },
+                        onViewAll = onNavigateToDownloads
+                    )
                 }
             }
 
@@ -1181,5 +1227,216 @@ private data class CategoryShelf(
     val items: List<MediaItem>,
     val newestIndex: Int
 )
+
+@Composable
+fun OfflineCinemaHub(
+    completedDownloads: List<com.streamhub.app.data.DownloadedItem>,
+    onNavigateToDownloads: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFF13131F),
+        border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFF59E0B).copy(alpha = 0.15f))
+                    .border(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.CloudOff,
+                    contentDescription = null,
+                    tint = Color(0xFFFBBF24),
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+
+            Text(
+                text = "You're Currently Offline",
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = if (completedDownloads.isNotEmpty())
+                    "No internet connection detected, but you have ${completedDownloads.size} downloaded items saved and ready for instant playback."
+                else
+                    "No internet connection detected. Connect to Wi-Fi or mobile data to stream your favorite titles.",
+                color = TextSecondary,
+                fontSize = 12.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                lineHeight = 16.sp
+            )
+
+            if (completedDownloads.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Button(
+                    onClick = onNavigateToDownloads,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth(0.9f)
+                ) {
+                    Icon(Icons.Default.DownloadDone, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Watch Offline Downloads (${completedDownloads.size}) 📥",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun OfflineDownloadsShelf(
+    downloads: List<com.streamhub.app.data.DownloadedItem>,
+    onPlay: (com.streamhub.app.data.DownloadedItem) -> Unit,
+    onViewAll: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFFF59E0B).copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.CloudOff, contentDescription = null, tint = Color(0xFFFBBF24), modifier = Modifier.size(14.dp))
+                }
+                Text(
+                    text = "OFFLINE READY ON THIS DEVICE",
+                    color = Color(0xFFFBBF24),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                )
+            }
+
+            Text(
+                text = "View All (${downloads.size}) >",
+                color = Color(0xFF38BDF8),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clickable { onViewAll() }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            items(downloads, key = { "${it.mediaId}_${it.episodeIndex}" }) { item ->
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF181824),
+                    border = BorderStroke(1.dp, Color(0xFF28283C)),
+                    modifier = Modifier
+                        .width(160.dp)
+                        .clickable { onPlay(item) }
+                ) {
+                    Column {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(95.dp)
+                                .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+                                .background(Color(0xFF14141E))
+                        ) {
+                            if (item.posterUrl.isNotBlank()) {
+                                AsyncImage(
+                                    model = item.posterUrl,
+                                    contentDescription = item.mediaTitle,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color(0x44000000)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xCC000000)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.PlayArrow,
+                                        contentDescription = null,
+                                        tint = Color(0xFF34D399),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xCC10B981),
+                                modifier = Modifier.align(Alignment.TopStart).padding(6.dp)
+                            ) {
+                                Text(
+                                    text = "Offline",
+                                    color = Color.White,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp)
+                                )
+                            }
+                        }
+
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text(
+                                text = item.mediaTitle,
+                                color = TextPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = item.episodeTitle.ifBlank { "Episode ${item.episodeIndex + 1}" },
+                                color = TextSecondary,
+                                fontSize = 10.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 

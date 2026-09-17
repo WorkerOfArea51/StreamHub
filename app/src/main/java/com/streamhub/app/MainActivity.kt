@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.draw.blur
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -193,6 +194,7 @@ class MainActivity : ComponentActivity() {
         }
         handleDeepLink(intent)
         registerPipActionReceiver()
+        com.streamhub.app.data.NetworkMonitor.init(this)
 
         @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
         setContent {
@@ -609,6 +611,9 @@ fun StreamHubApp(
                     },
                     onNavigateToHistory = {
                         navController.navigate(Screen.History.route)
+                    },
+                    onNavigateToDownloads = {
+                        navController.navigate(Screen.Downloads.route) { launchSingleTop = true }
                     }
                 )
             }
@@ -863,6 +868,18 @@ fun StreamHubApp(
         }
         if (currentRoute != Screen.Splash.route) {
             com.streamhub.app.ui.components.AccessGateOverlay(isUnlocked = isAppUnlocked)
+        }
+        if (currentRoute != Screen.Splash.route && !currentRoute.orEmpty().startsWith("player/")) {
+            com.streamhub.app.ui.components.OfflineBanner(
+                onNavigateToDownloads = {
+                    navController.navigate(Screen.Downloads.route) {
+                        launchSingleTop = true
+                    }
+                },
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .align(Alignment.TopCenter)
+            )
         }
         StreamHubToastHost()
     }
