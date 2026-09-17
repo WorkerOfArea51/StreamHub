@@ -359,6 +359,43 @@ object StorageCacheManager {
     }
 
     /**
+     * Purge all cached video streams that have exceeded the configured TTL lifespan.
+     * Returns the count of purged streams.
+     */
+    suspend fun purgeExpiredStreams(): Int = withContext(Dispatchers.IO) {
+        if (!::appContext.isInitialized) return@withContext 0
+        clearMutex.withLock {
+            try {
+                val resources = StreamCacheManager.getCachedResources(appContext)
+                val config = _configFlow.value
+                val ttlHours = config.cacheTtlHours
+                if (ttlHours <= 0) return@withContext 0
+                val ttlMillis = ttlHours * 3600_000L
+                val now = System.currentTimeMillis()
+                var purgedCount = 0
+
+                for (res in resources) {
+                    val meta = getCachedMetadata(res.key)
+                    val effectiveTime = maxOf(res.lastTouchTimestamp, meta?.registeredTimestamp ?: 0L)
+                    if (now - effectiveTime >= ttlMillis) {
+                        Log.i(TAG, "Purging expired stream key: ${res.key}")
+                        StreamCacheManager.removeResource(res.key)
+                        removeCachedMetadata(res.key)
+                        purgedCount++
+                    }
+                }
+                if (purgedCount > 0) {
+                    calculateStorageUsage()
+                }
+                purgedCount
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to purge expired streams", e)
+                0
+            }
+        }
+    }
+
+    /**
      * Smart reverse lookup: matches raw stream URLs/hashes against Firebase media catalog
      * and Watch History to resolve real movie/series titles, episode names, and posters.
      */
