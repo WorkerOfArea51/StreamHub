@@ -713,7 +713,12 @@ fun HomeScreen(
     if (showSurpriseMeDialog) {
         com.streamhub.app.ui.dialogs.SurpriseMeDialog(
             catalog = catalog,
+            initialCategoryFilter = selectedCategoryFilter,
             onDismiss = { showSurpriseMeDialog = false },
+            onPlayEpisode = { media, epIndex ->
+                showSurpriseMeDialog = false
+                onPlayEpisode(media, epIndex)
+            },
             onMediaClick = { media ->
                 showSurpriseMeDialog = false
                 onMediaClick(media)
