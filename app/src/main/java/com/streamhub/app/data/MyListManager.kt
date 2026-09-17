@@ -117,6 +117,8 @@ object MyListManager {
         return isAdded
     }
 
+    fun toggle(mediaId: String): Boolean = toggleBookmark(mediaId)
+
     @Synchronized
     fun toggleFavorite(mediaId: String): Boolean {
         if (!::appContext.isInitialized) return false

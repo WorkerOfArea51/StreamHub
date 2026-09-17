@@ -618,7 +618,8 @@ fun StreamHubApp(
                     repository = repository,
                     onMediaClick = { media ->
                         navController.navigate(Screen.Details.createRoute(media.id)) { launchSingleTop = true }
-                    }
+                    },
+                    onPlayEpisode = safePlayEpisode
                 )
             }
 

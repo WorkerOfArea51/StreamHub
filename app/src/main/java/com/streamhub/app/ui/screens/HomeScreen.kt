@@ -92,6 +92,7 @@ import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.data.models.matchesCategory
 import com.streamhub.app.ui.components.AdminEditorDialog
 import com.streamhub.app.ui.components.MediaCard
+import com.streamhub.app.ui.components.MediaQuickActionsSheet
 import com.streamhub.app.ui.components.MinTouchTarget
 import com.streamhub.app.ui.components.SkeletonCardRow
 import com.streamhub.app.ui.theme.AccentOrange
@@ -134,7 +135,7 @@ fun HomeScreen(
     var showAdminAddDialog by remember { mutableStateOf(false) }
     var showSurpriseMeDialog by remember { mutableStateOf(false) }
     var showClearHistoryDialog by remember { mutableStateOf(false) }
-    var selectedQuickActionItem by remember { mutableStateOf<Pair<MediaItem, PlaybackProgress>?>(null) }
+    var selectedQuickActionMedia by remember { mutableStateOf<MediaItem?>(null) }
 
     val myListIds by com.streamhub.app.data.MyListManager.myListFlow.collectAsState()
 
@@ -564,7 +565,7 @@ fun HomeScreen(
                                 }
                             }
                         },
-                        onLongClick = { item -> selectedQuickActionItem = item }
+                        onLongClick = { item -> selectedQuickActionMedia = item.first }
                     )
                 }
             }
@@ -603,7 +604,7 @@ fun HomeScreen(
                                 }
                             }
                         },
-                        onLongClick = { item -> selectedQuickActionItem = item }
+                        onLongClick = { item -> selectedQuickActionMedia = item.first }
                     )
                 }
             }
@@ -614,7 +615,8 @@ fun HomeScreen(
                     MediaSectionRow(
                         title = "✨ Recently Added",
                         items = recentlyAddedItems,
-                        onMediaClick = onMediaClick
+                        onMediaClick = onMediaClick,
+                        onMediaLongClick = { item -> selectedQuickActionMedia = item }
                     )
                 }
             }
@@ -626,7 +628,8 @@ fun HomeScreen(
                         MediaSectionRow(
                             title = title,
                             items = items,
-                            onMediaClick = onMediaClick
+                            onMediaClick = onMediaClick,
+                            onMediaLongClick = { item -> selectedQuickActionMedia = item }
                         )
                     }
                 }
@@ -638,7 +641,8 @@ fun HomeScreen(
                     MediaSectionRow(
                         title = "🔥 Trending & Popular",
                         items = trendingItems,
-                        onMediaClick = onMediaClick
+                        onMediaClick = onMediaClick,
+                        onMediaLongClick = { item -> selectedQuickActionMedia = item }
                     )
                 }
             }
@@ -650,7 +654,8 @@ fun HomeScreen(
                         MediaSectionRow(
                             title = shelf.title,
                             items = shelf.items,
-                            onMediaClick = onMediaClick
+                            onMediaClick = onMediaClick,
+                            onMediaLongClick = { item -> selectedQuickActionMedia = item }
                         )
                     }
                 }
@@ -663,7 +668,8 @@ fun HomeScreen(
                         MediaSectionRow(
                             title = title,
                             items = items,
-                            onMediaClick = onMediaClick
+                            onMediaClick = onMediaClick,
+                            onMediaLongClick = { item -> selectedQuickActionMedia = item }
                         )
                     }
                 }
@@ -739,39 +745,80 @@ fun HomeScreen(
         )
     }
 
-    selectedQuickActionItem?.let { (media, progress) ->
-        ContinueWatchingQuickActionsSheet(
+    selectedQuickActionMedia?.let { media ->
+        val progress = watchHistoryMap[media.id]
+        MediaQuickActionsSheet(
             media = media,
             progress = progress,
-            onResume = {
-                selectedQuickActionItem = null
-                onPlayEpisode(media, progress.episodeNumber)
+            onPlay = { epIndex ->
+                selectedQuickActionMedia = null
+                onPlayEpisode(media, epIndex)
             },
             onRestart = {
-                selectedQuickActionItem = null
-                WatchHistoryManager.saveProgress(media.id, progress.episodeNumber, 0L, progress.durationMs)
-                onPlayEpisode(media, progress.episodeNumber)
+                selectedQuickActionMedia = null
+                val epIndex = progress?.episodeNumber ?: 0
+                WatchHistoryManager.saveProgress(media.id, epIndex, 0L, progress?.durationMs ?: 0L)
+                onPlayEpisode(media, epIndex)
             },
-            onViewDetails = {
-                selectedQuickActionItem = null
-                onMediaClick(media)
-            },
-            onRemove = {
-                selectedQuickActionItem = null
-                WatchHistoryManager.removeMediaProgress(media.id)
+            onMarkCompleted = {
+                selectedQuickActionMedia = null
+                val previousProgress = progress
+                WatchHistoryManager.markAsCompleted(media)
                 coroutineScope.launch {
                     snackbarHostState.currentSnackbarData?.dismiss()
                     val result = snackbarHostState.showSnackbar(
-                        message = "Removed \"${media.title}\"",
+                        message = "Marked \"${media.title}\" as completed",
                         actionLabel = "Undo",
                         duration = SnackbarDuration.Short
                     )
                     if (result == SnackbarResult.ActionPerformed) {
-                        WatchHistoryManager.restoreMediaProgress(progress)
+                        if (previousProgress != null) {
+                            WatchHistoryManager.restoreMediaProgress(previousProgress)
+                        } else {
+                            WatchHistoryManager.markAsUnwatched(media.id)
+                        }
                     }
                 }
             },
-            onDismiss = { selectedQuickActionItem = null }
+            onMarkUnwatched = {
+                selectedQuickActionMedia = null
+                val previousProgress = progress
+                WatchHistoryManager.markAsUnwatched(media.id)
+                coroutineScope.launch {
+                    snackbarHostState.currentSnackbarData?.dismiss()
+                    val result = snackbarHostState.showSnackbar(
+                        message = "Removed completed mark for \"${media.title}\"",
+                        actionLabel = "Undo",
+                        duration = SnackbarDuration.Short
+                    )
+                    if (result == SnackbarResult.ActionPerformed && previousProgress != null) {
+                        WatchHistoryManager.restoreMediaProgress(previousProgress)
+                    }
+                }
+            },
+            onViewDetails = {
+                selectedQuickActionMedia = null
+                onMediaClick(media)
+            },
+            onRemoveFromHistory = if (progress != null) {
+                {
+                    selectedQuickActionMedia = null
+                    val previousProgress = progress
+                    WatchHistoryManager.removeMediaProgress(media.id)
+                    coroutineScope.launch {
+                        snackbarHostState.currentSnackbarData?.dismiss()
+                        val result = snackbarHostState.showSnackbar(
+                            message = "Removed \"${media.title}\"",
+                            actionLabel = "Undo",
+                            duration = SnackbarDuration.Short
+                        )
+                        if (result == SnackbarResult.ActionPerformed && previousProgress != null) {
+                            WatchHistoryManager.restoreMediaProgress(previousProgress)
+                        }
+                    }
+                }
+            } else null,
+            onDismiss = { selectedQuickActionMedia = null }
         )
     }
 }
@@ -780,7 +827,8 @@ fun HomeScreen(
 fun MediaSectionRow(
     title: String,
     items: List<MediaItem>,
-    onMediaClick: (MediaItem) -> Unit
+    onMediaClick: (MediaItem) -> Unit,
+    onMediaLongClick: ((MediaItem) -> Unit)? = null
 ) {
     val rowState = rememberLazyListState()
     val isParentScrolling = LocalIsScrollInProgress.current
@@ -811,6 +859,7 @@ fun MediaSectionRow(
                     MediaCard(
                         item = item,
                         onClick = { onMediaClick(item) },
+                        onLongClick = onMediaLongClick?.let { { it(item) } },
                         modifier = Modifier.width(115.dp)
                     )
                 }
@@ -1128,212 +1177,4 @@ private data class CategoryShelf(
     val newestIndex: Int
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ContinueWatchingQuickActionsSheet(
-    media: MediaItem,
-    progress: PlaybackProgress,
-    onResume: () -> Unit,
-    onRestart: () -> Unit,
-    onViewDetails: () -> Unit,
-    onRemove: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val isMovie = media.category.equals("Movie", ignoreCase = true) ||
-            media.category.equals("Movies", ignoreCase = true) ||
-            progress.mediaType.equals("Movie", ignoreCase = true) ||
-            progress.mediaType.equals("Movies", ignoreCase = true)
 
-    val currentEp = media.episodes.getOrNull(progress.episodeNumber)
-    val remainingMs = (progress.durationMs - progress.positionMs).coerceAtLeast(0L)
-    val remainingMinutes = remainingMs / 60_000L
-    val progressFraction = if (progress.durationMs > 0) {
-        (progress.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0f, 1f)
-    } else 0f
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = Color(0xFF14131C),
-        contentColor = TextPrimary,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        dragHandle = {
-            Box(
-                modifier = Modifier
-                    .padding(vertical = 12.dp)
-                    .width(48.dp)
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0x44FFFFFF))
-            )
-        }
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 36.dp)
-        ) {
-            // Media Header Card Preview
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(SurfaceDark)
-                    .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(width = 80.dp, height = 50.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                ) {
-                    coil.compose.AsyncImage(
-                        model = currentEp?.thumbnailUrl?.ifEmpty { media.bannerUrl.ifEmpty { media.posterUrl } } ?: media.posterUrl,
-                        contentDescription = media.title,
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    // Progress indicator line
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(3.dp)
-                            .align(Alignment.BottomCenter)
-                            .background(Color(0x66000000))
-                    ) {
-                        if (progressFraction > 0f) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .fillMaxWidth(progressFraction)
-                                    .background(MaterialTheme.colorScheme.primary)
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = media.title,
-                        color = TextPrimary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(3.dp))
-                    Text(
-                        text = if (isMovie) {
-                            if (remainingMinutes > 0) "Movie • ${remainingMinutes}m remaining" else "Movie"
-                        } else {
-                            val seasonNum = if (progress.seasonNumber > 0) progress.seasonNumber else (currentEp?.seasonNumber ?: 1)
-                            val epText = "S$seasonNum:E${progress.episodeNumber + 1}"
-                            if (remainingMinutes > 0) "$epText • ${remainingMinutes}m remaining" else epText
-                        },
-                        color = AccentOrange,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Action Items
-            QuickActionRow(
-                icon = Icons.Default.PlayArrow,
-                iconTint = MaterialTheme.colorScheme.primary,
-                title = "Resume Playback",
-                subtitle = if (remainingMinutes > 0) "Continue from ${remainingMinutes}m remaining" else "Resume playback where you left off",
-                onClick = onResume
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            QuickActionRow(
-                icon = Icons.Default.Replay,
-                iconTint = Color(0xFF64B5F6),
-                title = "Play from Beginning",
-                subtitle = "Restart this ${if (isMovie) "movie" else "episode"} from 0:00",
-                onClick = onRestart
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            QuickActionRow(
-                icon = Icons.Default.Info,
-                iconTint = Color(0xFFB388FF),
-                title = "View Details & Episodes",
-                subtitle = "Open synopsis, season arcs, and full episode list",
-                onClick = onViewDetails
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            QuickActionRow(
-                icon = Icons.Default.DeleteOutline,
-                iconTint = PrimaryRed,
-                title = "Remove from Continue Watching",
-                subtitle = "Remove this title from your active watch rail",
-                onClick = onRemove
-            )
-        }
-    }
-}
-
-@Composable
-private fun QuickActionRow(
-    icon: ImageVector,
-    iconTint: Color,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0x14FFFFFF))
-            .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(38.dp)
-                .clip(CircleShape)
-                .background(iconTint.copy(alpha = 0.16f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = iconTint,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.width(14.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                color = TextPrimary,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = subtitle,
-                color = TextSecondary,
-                fontSize = 11.sp
-            )
-        }
-    }
-}

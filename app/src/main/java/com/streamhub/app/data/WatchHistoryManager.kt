@@ -246,6 +246,101 @@ object WatchHistoryManager {
             .apply()
     }
 
+    /**
+     * Explicitly marks a media item as fully completed/watched.
+     * Updates persistent preferences and emits immediately to _historyFlow.
+     */
+    @Synchronized
+    fun markAsCompleted(
+        mediaId: String,
+        title: String = "",
+        posterUrl: String = "",
+        backdropUrl: String = "",
+        mediaType: String = "",
+        episodeNumber: Int = 0,
+        seasonNumber: Int = 0
+    ) {
+        if (!::appContext.isInitialized) {
+            Log.w(TAG, "markAsCompleted called before init — no-op")
+            return
+        }
+        if (mediaId.isBlank()) return
+
+        val existing = _historyFlow.value[mediaId]
+        val effectiveDuration = if ((existing?.durationMs ?: 0L) > 0L) existing!!.durationMs else 1000L
+
+        val progress = PlaybackProgress(
+            mediaId = mediaId,
+            episodeNumber = episodeNumber.coerceAtLeast(existing?.episodeNumber ?: 0),
+            positionMs = effectiveDuration,
+            durationMs = effectiveDuration,
+            lastUpdated = System.currentTimeMillis(),
+            title = title.ifEmpty { existing?.title ?: "" },
+            posterUrl = posterUrl.ifEmpty { existing?.posterUrl ?: "" },
+            backdropUrl = backdropUrl.ifEmpty { existing?.backdropUrl ?: "" },
+            mediaType = mediaType.ifEmpty { existing?.mediaType ?: "" },
+            episodeTitle = existing?.episodeTitle ?: "",
+            seasonNumber = if (seasonNumber >= 0) seasonNumber else (existing?.seasonNumber ?: 0),
+            isCompleted = true
+        )
+
+        val updatedMap = _historyFlow.value.toMutableMap()
+        updatedMap[mediaId] = progress
+        _historyFlow.value = updatedMap
+
+        try {
+            val json = JSONObject().apply {
+                put("mediaId", progress.mediaId)
+                put("episodeNumber", progress.episodeNumber)
+                put("positionMs", progress.positionMs)
+                put("durationMs", progress.durationMs)
+                put("lastUpdated", progress.lastUpdated)
+                put("title", progress.title)
+                put("posterUrl", progress.posterUrl)
+                put("backdropUrl", progress.backdropUrl)
+                put("mediaType", progress.mediaType)
+                put("episodeTitle", progress.episodeTitle)
+                put("seasonNumber", progress.seasonNumber)
+                put("isCompleted", true)
+            }
+            val prefs = getPrefs()
+            val currentIds = (prefs.getStringSet(KEY_ALL_HISTORY_IDS, emptySet()) ?: emptySet()).toMutableSet()
+            currentIds.add(mediaId)
+
+            prefs.edit()
+                .putString(mediaId, json.toString())
+                .putStringSet(KEY_ALL_HISTORY_IDS, currentIds)
+                .apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to persist markAsCompleted for $mediaId", e)
+        }
+    }
+
+    /**
+     * Convenience helper to mark a MediaItem as completed.
+     */
+    fun markAsCompleted(media: com.streamhub.app.data.models.MediaItem) {
+        val lastEpIndex = (media.episodes.size - 1).coerceAtLeast(0)
+        markAsCompleted(
+            mediaId = media.id,
+            title = media.title,
+            posterUrl = media.posterUrl,
+            backdropUrl = media.bannerUrl,
+            mediaType = media.category,
+            episodeNumber = lastEpIndex,
+            seasonNumber = media.episodes.getOrNull(lastEpIndex)?.seasonNumber ?: 1
+        )
+    }
+
+    /**
+     * Marks media as unwatched by removing its playback progress entirely,
+     * immediately removing any completion/progress indicators.
+     */
+    @Synchronized
+    fun markAsUnwatched(mediaId: String) {
+        removeMediaProgress(mediaId)
+    }
+
     @Synchronized
     fun restoreMediaProgress(progress: PlaybackProgress) {
         saveProgress(

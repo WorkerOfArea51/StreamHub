@@ -39,6 +39,9 @@ import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 import com.streamhub.app.ui.theme.bouncyClickable
+import com.streamhub.app.ui.theme.bouncyCombinedClickable
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -62,6 +65,7 @@ val LocalIsScrollInProgress = compositionLocalOf { false }
 fun MediaCard(
     item: MediaItem,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier.width(135.dp),
     isScrolling: Boolean = LocalIsScrollInProgress.current
 ) {
@@ -94,9 +98,19 @@ fun MediaCard(
         (progress.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0.04f, 1f)
     } else 0f
 
+    val haptic = LocalHapticFeedback.current
+
     Column(
         modifier = modifier
-            .bouncyClickable { onClick() }
+            .bouncyCombinedClickable(
+                onLongClick = if (onLongClick != null) {
+                    {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onLongClick()
+                    }
+                } else null,
+                onClick = onClick
+            )
     ) {
         Box(
             modifier = Modifier

@@ -4,6 +4,8 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -88,6 +90,47 @@ fun Modifier.bouncyClickable(
             indication = null, // Scale animation provides the primary tactile feedback
             enabled = enabled,
             role = role,
+            onClick = onClick
+        )
+}
+
+/**
+ * Material 3 Expressive bouncy combined clickable modifier.
+ * Combines touch press detection with spring scale animation, an onClick callback,
+ * and an optional onLongClick callback.
+ */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+fun Modifier.bouncyCombinedClickable(
+    pressedScale: Float = 0.94f,
+    enabled: Boolean = true,
+    role: Role? = null,
+    onLongClick: (() -> Unit)? = null,
+    onDoubleClick: (() -> Unit)? = null,
+    onClick: () -> Unit
+): Modifier = composed {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed && enabled) pressedScale else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = if (isPressed) Spring.StiffnessMediumLow else Spring.StiffnessLow
+        ),
+        label = "bouncy_combined_clickable_scale"
+    )
+
+    this
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
+        .combinedClickable(
+            interactionSource = interactionSource,
+            indication = null, // Scale animation provides the primary tactile feedback
+            enabled = enabled,
+            role = role,
+            onLongClick = onLongClick,
+            onDoubleClick = onDoubleClick,
             onClick = onClick
         )
 }

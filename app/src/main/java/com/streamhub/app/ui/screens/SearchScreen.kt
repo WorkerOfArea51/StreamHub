@@ -63,6 +63,14 @@ import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.components.EmptyStateCard
 import com.streamhub.app.ui.components.MediaCard
+import com.streamhub.app.ui.components.MediaQuickActionsSheet
+import com.streamhub.app.data.WatchHistoryManager
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.streamhub.app.data.repository.CatalogState
 import com.streamhub.app.ui.components.AppErrorState
@@ -84,6 +92,7 @@ enum class SortOption {
 fun SearchScreen(
     repository: FirebaseRepository,
     onMediaClick: (MediaItem) -> Unit,
+    onPlayEpisode: ((MediaItem, Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val catalogState by repository.catalogState.collectAsState()
@@ -91,6 +100,10 @@ fun SearchScreen(
     val searchHistory by com.streamhub.app.data.SearchHistoryManager.historyFlow.collectAsState()
     val topQueries by com.streamhub.app.data.SearchHistoryManager.topQueriesFlow.collectAsState()
     val watchHistoryMap by com.streamhub.app.data.WatchHistoryManager.historyFlow.collectAsState()
+
+    var selectedQuickActionMedia by remember { mutableStateOf<MediaItem?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var debouncedQuery by remember { mutableStateOf("") }
@@ -286,12 +299,16 @@ fun SearchScreen(
             (if (selectedYearFilter != "ALL") 1 else 0) +
             (if (debouncedQuery.isNotEmpty()) 1 else 0)
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
             .background(BackgroundDark)
-            .padding(16.dp)
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -846,6 +863,9 @@ fun SearchScreen(
                                 }
                                 onMediaClick(item)
                             },
+                            onLongClick = {
+                                selectedQuickActionMedia = item
+                            },
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -853,4 +873,97 @@ fun SearchScreen(
             }
         }
     }
+
+    SnackbarHost(
+        hostState = snackbarHostState,
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = 16.dp)
+    )
+
+    selectedQuickActionMedia?.let { media ->
+        val progress = watchHistoryMap[media.id]
+        MediaQuickActionsSheet(
+            media = media,
+            progress = progress,
+            onPlay = { epIndex ->
+                selectedQuickActionMedia = null
+                if (onPlayEpisode != null) {
+                    onPlayEpisode(media, epIndex)
+                } else {
+                    onMediaClick(media)
+                }
+            },
+            onRestart = {
+                selectedQuickActionMedia = null
+                val epIndex = progress?.episodeNumber ?: 0
+                WatchHistoryManager.saveProgress(media.id, epIndex, 0L, progress?.durationMs ?: 0L)
+                if (onPlayEpisode != null) {
+                    onPlayEpisode(media, epIndex)
+                } else {
+                    onMediaClick(media)
+                }
+            },
+            onMarkCompleted = {
+                selectedQuickActionMedia = null
+                val previousProgress = progress
+                WatchHistoryManager.markAsCompleted(media)
+                coroutineScope.launch {
+                    snackbarHostState.currentSnackbarData?.dismiss()
+                    val result = snackbarHostState.showSnackbar(
+                        message = "Marked \"${media.title}\" as completed",
+                        actionLabel = "Undo",
+                        duration = SnackbarDuration.Short
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        if (previousProgress != null) {
+                            WatchHistoryManager.restoreMediaProgress(previousProgress)
+                        } else {
+                            WatchHistoryManager.markAsUnwatched(media.id)
+                        }
+                    }
+                }
+            },
+            onMarkUnwatched = {
+                selectedQuickActionMedia = null
+                val previousProgress = progress
+                WatchHistoryManager.markAsUnwatched(media.id)
+                coroutineScope.launch {
+                    snackbarHostState.currentSnackbarData?.dismiss()
+                    val result = snackbarHostState.showSnackbar(
+                        message = "Removed completed mark for \"${media.title}\"",
+                        actionLabel = "Undo",
+                        duration = SnackbarDuration.Short
+                    )
+                    if (result == SnackbarResult.ActionPerformed && previousProgress != null) {
+                        WatchHistoryManager.restoreMediaProgress(previousProgress)
+                    }
+                }
+            },
+            onViewDetails = {
+                selectedQuickActionMedia = null
+                onMediaClick(media)
+            },
+            onRemoveFromHistory = if (progress != null) {
+                {
+                    selectedQuickActionMedia = null
+                    val previousProgress = progress
+                    WatchHistoryManager.removeMediaProgress(media.id)
+                    coroutineScope.launch {
+                        snackbarHostState.currentSnackbarData?.dismiss()
+                        val result = snackbarHostState.showSnackbar(
+                            message = "Removed \"${media.title}\"",
+                            actionLabel = "Undo",
+                            duration = SnackbarDuration.Short
+                        )
+                        if (result == SnackbarResult.ActionPerformed && previousProgress != null) {
+                            WatchHistoryManager.restoreMediaProgress(previousProgress)
+                        }
+                    }
+                }
+            } else null,
+            onDismiss = { selectedQuickActionMedia = null }
+        )
+    }
+}
 }
