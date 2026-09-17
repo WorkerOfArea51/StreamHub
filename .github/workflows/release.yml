@@ -171,23 +171,38 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ steps.release_meta.outputs.tag_name }}
-          name: StreamHub ${{ steps.release_meta.outputs.tag_name }}
-          generate_release_notes: true
-          files: |
-            app/build/outputs/apk/release/StreamHub-arm32-release.apk
-            app/build/outputs/apk/release/StreamHub-arm32-release.apk.sha256
-            app/build/outputs/apk/release/StreamHub-arm64-release.apk
-            app/build/outputs/apk/release/StreamHub-arm64-release.apk.sha256
-            app/build/outputs/apk/release/StreamHub-universal-release.apk
-            app/build/outputs/apk/release/StreamHub-universal-release.apk.sha256
-          draft: false
-          prerelease: ${{ contains(steps.release_meta.outputs.tag_name, '-') }}
+      - name: Publish GitHub Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.release_meta.outputs.tag_name }}"
+          echo "Publishing GitHub Release for $TAG..."
+          
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, uploading assets..."
+          else
+            echo "Creating new release $TAG..."
+            PRERELEASE_FLAG=""
+            if [[ "$TAG" == *-* ]]; then
+              PRERELEASE_FLAG="--prerelease"
+            fi
+            gh release create "$TAG" \
+              --title "StreamHub $TAG" \
+              --generate-notes \
+              $PRERELEASE_FLAG || echo "Release create returned non-zero, continuing to upload..."
+          fi
+          
+          echo "Uploading release assets with --clobber..."
+          gh release upload "$TAG" \
+            app/build/outputs/apk/release/StreamHub-arm32-release.apk \
+            app/build/outputs/apk/release/StreamHub-arm32-release.apk.sha256 \
+            app/build/outputs/apk/release/StreamHub-arm64-release.apk \
+            app/build/outputs/apk/release/StreamHub-arm64-release.apk.sha256 \
+            app/build/outputs/apk/release/StreamHub-universal-release.apk \
+            app/build/outputs/apk/release/StreamHub-universal-release.apk.sha256 \
+            --clobber
+          
+          echo "GitHub Release $TAG published successfully!"
 
       - name: Clean up temporary credentials
         if: always()
