@@ -39,6 +39,9 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.FindInPage
+import java.util.Locale
 import com.streamhub.app.data.StreamBackendConfig
 import com.streamhub.app.data.repository.FirebaseRepository
 import androidx.compose.material3.AlertDialog
@@ -207,6 +210,57 @@ fun AdminEditorDialog(
     var showMigrationDialog by remember { mutableStateOf(false) }
     var showVoucherDialog by remember { mutableStateOf(false) }
     var showMetadataInspector by remember { mutableStateOf(false) }
+    var showDuplicateDetector by remember { mutableStateOf(false) }
+    var showBroadcastDialog by remember { mutableStateOf(false) }
+
+    val loadItemForEditing: (MediaItem) -> Unit = { itemToEdit ->
+        activeEditItem = itemToEdit
+        title = itemToEdit.title
+        type = itemToEdit.type
+        category = itemToEdit.category
+        malId = itemToEdit.malId
+        tmdbId = itemToEdit.tmdbId
+        trailerId = itemToEdit.trailerId.takeIf { !it.equals("null", ignoreCase = true) } ?: ""
+        rating = itemToEdit.rating
+        maturityRating = itemToEdit.maturityRating
+        studio = itemToEdit.studio
+        synonyms = itemToEdit.synonyms
+        totalEpisodes = itemToEdit.totalEpisodes
+        status = itemToEdit.status
+        aired = itemToEdit.aired
+        premiered = itemToEdit.premiered
+        producers = itemToEdit.producers
+        source = itemToEdit.source
+        duration = itemToEdit.duration
+        genresText = itemToEdit.genres.joinToString(", ")
+        castText = itemToEdit.castList.joinToString(", ")
+        posterUrl = itemToEdit.posterUrl
+        bannerUrl = itemToEdit.bannerUrl
+        description = itemToEdit.description
+        isFeatured = itemToEdit.isFeatured
+        isTrending = itemToEdit.isTrending
+        franchiseId = itemToEdit.franchiseId
+        franchiseTitle = itemToEdit.franchiseTitle
+        seasonNumberText = if (itemToEdit.seasonNumber > 0) itemToEdit.seasonNumber.toString() else ""
+        partNumberText = if (itemToEdit.partNumber > 0) itemToEdit.partNumber.toString() else ""
+        franchiseOrderText = if (itemToEdit.franchiseOrder > 0.0) {
+            val ord = itemToEdit.franchiseOrder
+            if (ord % 1.0 == 0.0) ord.toInt().toString() else ord.toString()
+        } else ""
+        seasonTitle = itemToEdit.seasonTitle
+        relationType = itemToEdit.relationType
+        resolution = itemToEdit.mediaInfo.resolution
+        videoCodec = itemToEdit.mediaInfo.videoCodec
+        bitrate = itemToEdit.mediaInfo.bitrate
+        frameRate = itemToEdit.mediaInfo.frameRate
+        aspectRatio = itemToEdit.mediaInfo.aspectRatio
+        fileSize = itemToEdit.mediaInfo.fileSize
+        audioTracksText = itemToEdit.mediaInfo.audioTracks.joinToString(", ")
+        subtitleTracksText = itemToEdit.mediaInfo.subtitleTracks.joinToString(", ")
+        currentEpisodes.clear()
+        currentEpisodes.addAll(itemToEdit.episodes)
+        selectedTab = 0
+    }
 
     if (showDeleteConfirmDialog && initialItem != null && onDelete != null) {
         AlertDialog(
@@ -260,53 +314,25 @@ fun AdminEditorDialog(
             onDismiss = { showMetadataInspector = false },
             onEditShow = { itemToEdit ->
                 showMetadataInspector = false
-                activeEditItem = itemToEdit
-                title = itemToEdit.title
-                type = itemToEdit.type
-                category = itemToEdit.category
-                malId = itemToEdit.malId
-                tmdbId = itemToEdit.tmdbId
-                trailerId = itemToEdit.trailerId.takeIf { !it.equals("null", ignoreCase = true) } ?: ""
-                rating = itemToEdit.rating
-                maturityRating = itemToEdit.maturityRating
-                studio = itemToEdit.studio
-                synonyms = itemToEdit.synonyms
-                totalEpisodes = itemToEdit.totalEpisodes
-                status = itemToEdit.status
-                aired = itemToEdit.aired
-                premiered = itemToEdit.premiered
-                producers = itemToEdit.producers
-                source = itemToEdit.source
-                duration = itemToEdit.duration
-                genresText = itemToEdit.genres.joinToString(", ")
-                castText = itemToEdit.castList.joinToString(", ")
-                posterUrl = itemToEdit.posterUrl
-                bannerUrl = itemToEdit.bannerUrl
-                description = itemToEdit.description
-                isFeatured = itemToEdit.isFeatured
-                isTrending = itemToEdit.isTrending
-                franchiseId = itemToEdit.franchiseId
-                franchiseTitle = itemToEdit.franchiseTitle
-                seasonNumberText = if (itemToEdit.seasonNumber > 0) itemToEdit.seasonNumber.toString() else ""
-                partNumberText = if (itemToEdit.partNumber > 0) itemToEdit.partNumber.toString() else ""
-                franchiseOrderText = if (itemToEdit.franchiseOrder > 0.0) {
-                    val ord = itemToEdit.franchiseOrder
-                    if (ord % 1.0 == 0.0) ord.toInt().toString() else ord.toString()
-                } else ""
-                seasonTitle = itemToEdit.seasonTitle
-                relationType = itemToEdit.relationType
-                resolution = itemToEdit.mediaInfo.resolution
-                videoCodec = itemToEdit.mediaInfo.videoCodec
-                bitrate = itemToEdit.mediaInfo.bitrate
-                frameRate = itemToEdit.mediaInfo.frameRate
-                aspectRatio = itemToEdit.mediaInfo.aspectRatio
-                fileSize = itemToEdit.mediaInfo.fileSize
-                audioTracksText = itemToEdit.mediaInfo.audioTracks.joinToString(", ")
-                subtitleTracksText = itemToEdit.mediaInfo.subtitleTracks.joinToString(", ")
-                currentEpisodes.clear()
-                currentEpisodes.addAll(itemToEdit.episodes)
-                selectedTab = 0
+                loadItemForEditing(itemToEdit)
             }
+        )
+    }
+
+    if (showDuplicateDetector) {
+        DuplicateShowDetectorDialog(
+            repository = FirebaseRepository.getInstance(),
+            onDismiss = { showDuplicateDetector = false },
+            onEditShow = { itemToEdit ->
+                showDuplicateDetector = false
+                loadItemForEditing(itemToEdit)
+            }
+        )
+    }
+
+    if (showBroadcastDialog) {
+        GlobalBroadcastDialog(
+            onDismiss = { showBroadcastDialog = false }
         )
     }
 
@@ -1740,7 +1766,114 @@ fun AdminEditorDialog(
                                 }
                             }
 
-                            // 2. User Codes & Voucher Manager Card
+                            // 2. Duplicate Show Detector Card
+                            val duplicateGroupCount = remember(catalog) {
+                                catalog.groupBy { it.title.trim().lowercase(Locale.US) }.count { it.value.size > 1 }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFF181824),
+                                border = BorderStroke(1.dp, Color(0xFF28283C)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFFEC4899).copy(alpha = 0.15f))
+                                                .border(1.dp, Color(0xFFEC4899).copy(alpha = 0.4f), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.FindInPage, contentDescription = null, tint = Color(0xFFF472B6), modifier = Modifier.size(18.dp))
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Text("Duplicate Show Detector 🔍", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                                Surface(
+                                                    color = if (duplicateGroupCount > 0) Color(0xFFEC4899).copy(alpha = 0.2f) else Color(0xFF10B981).copy(alpha = 0.2f),
+                                                    shape = RoundedCornerShape(4.dp)
+                                                ) {
+                                                    Text(
+                                                        text = if (duplicateGroupCount > 0) "$duplicateGroupCount Found" else "Clean",
+                                                        color = if (duplicateGroupCount > 0) Color(0xFFF472B6) else Color(0xFF34D399),
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                                                    )
+                                                }
+                                            }
+                                            Text("Scan & resolve duplicate catalog titles", color = TextSecondary, fontSize = 11.sp)
+                                        }
+                                    }
+                                    Button(
+                                        onClick = { showDuplicateDetector = true },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEC4899)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Text("Scan", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            // 3. Global Broadcast Announcements Card
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFF181824),
+                                border = BorderStroke(1.dp, Color(0xFF28283C)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                                .background(PrimaryRed.copy(alpha = 0.15f))
+                                                .border(1.dp, PrimaryRed.copy(alpha = 0.4f), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.Campaign, contentDescription = null, tint = Color(0xFFFF6E6E), modifier = Modifier.size(18.dp))
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text("Global Broadcast News 📢", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                            Text("Send instant real-time banners to all users", color = TextSecondary, fontSize = 11.sp)
+                                        }
+                                    }
+                                    Button(
+                                        onClick = { showBroadcastDialog = true },
+                                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Text("Broadcast", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            // 4. User Codes & Voucher Manager Card
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
                                 color = Color(0xFF181824),
@@ -1785,7 +1918,7 @@ fun AdminEditorDialog(
                                 }
                             }
 
-                            // 3. Backup / Restore Card
+                            // 5. Backup / Restore Card
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
                                 color = Color(0xFF181824),
@@ -1815,8 +1948,8 @@ fun AdminEditorDialog(
                                         }
                                         Spacer(modifier = Modifier.width(12.dp))
                                         Column {
-                                            Text("Cloud Backup & Restore ☁️", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                            Text("Export or restore catalog JSON backups", color = TextSecondary, fontSize = 11.sp)
+                                            Text("Database Backup & Restore 💾", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                            Text("Export, share snapshots & manage device archives", color = TextSecondary, fontSize = 11.sp)
                                         }
                                     }
                                     Button(
@@ -1830,7 +1963,7 @@ fun AdminEditorDialog(
                                 }
                             }
 
-                            // 4. Server Migrate Card
+                            // 6. Server Migrate Card
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
                                 color = Color(0xFF181824),

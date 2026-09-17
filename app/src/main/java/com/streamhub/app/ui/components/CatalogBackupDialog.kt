@@ -3,7 +3,6 @@ package com.streamhub.app.ui.components
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -12,53 +11,17 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,12 +30,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.streamhub.app.data.importer.CatalogBackupManager
 import com.streamhub.app.data.importer.CatalogBackupPayload
+import com.streamhub.app.data.importer.LocalBackupInfo
+import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.theme.AccentGold
 import com.streamhub.app.ui.theme.AccentOrange
@@ -82,6 +49,8 @@ import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
+import java.io.File
+import java.util.Locale
 
 @Composable
 fun CatalogBackupDialog(
@@ -94,6 +63,26 @@ fun CatalogBackupDialog(
 
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = Export, 1 = Restore
 
+    // Category Scope Selection for Export
+    var selectedCategoryFilter by remember { mutableStateOf("ALL") }
+
+    // Local device backup archive state
+    var localBackups by remember { mutableStateOf<List<LocalBackupInfo>>(emptyList()) }
+    var isLoadingArchive by remember { mutableStateOf(false) }
+    var backupToDelete by remember { mutableStateOf<LocalBackupInfo?>(null) }
+
+    fun refreshArchive() {
+        scope.launch {
+            isLoadingArchive = true
+            localBackups = CatalogBackupManager.getLocalBackups(context)
+            isLoadingArchive = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        refreshArchive()
+    }
+
     // Export state
     var isExporting by remember { mutableStateOf(false) }
     var exportSuccessMessage by remember { mutableStateOf<String?>(null) }
@@ -105,8 +94,10 @@ fun CatalogBackupDialog(
     var isRestoring by remember { mutableStateOf(false) }
     var restoreProgress by remember { mutableIntStateOf(0) }
     var restoreTotal by remember { mutableIntStateOf(0) }
+    var restoreCurrentTitle by remember { mutableStateOf("") }
     var restoreSuccessMessage by remember { mutableStateOf<String?>(null) }
     var restoreErrorMessage by remember { mutableStateOf<String?>(null) }
+    var restoreSearchQuery by remember { mutableStateOf("") }
 
     // System file picker for restore
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -131,6 +122,51 @@ fun CatalogBackupDialog(
         }
     }
 
+    // Confirmation dialog before deleting a local backup file
+    if (backupToDelete != null) {
+        val target = backupToDelete!!
+        AlertDialog(
+            onDismissRequest = { backupToDelete = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Default.DeleteForever, contentDescription = null, tint = PrimaryRed, modifier = Modifier.size(22.dp))
+                    Text("Delete Local Backup?", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Text(
+                    "Are you sure you want to delete \"${target.fileName}\" (${target.formattedSize})? This cannot be undone.",
+                    color = TextSecondary,
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val deleted = CatalogBackupManager.deleteLocalBackup(target.file)
+                        backupToDelete = null
+                        if (deleted) {
+                            refreshArchive()
+                            Toast.makeText(context, "Backup deleted", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Could not delete backup file", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Delete", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { backupToDelete = null }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            },
+            containerColor = Color(0xFF1E1E2E)
+        )
+    }
+
     Dialog(
         onDismissRequest = { if (!isRestoring && !isExporting) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)
@@ -140,7 +176,7 @@ fun CatalogBackupDialog(
             colors = CardDefaults.cardColors(containerColor = Color(0xFF13131F)),
             modifier = Modifier
                 .fillMaxWidth(0.95f)
-                .fillMaxHeight(0.88f)
+                .fillMaxHeight(0.92f)
                 .border(
                     BorderStroke(1.5.dp, Brush.linearGradient(listOf(Color(0xFF38BDF8), AccentGold))),
                     RoundedCornerShape(24.dp)
@@ -149,7 +185,7 @@ fun CatalogBackupDialog(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(20.dp)
+                    .padding(18.dp)
             ) {
                 // Header
                 Row(
@@ -172,7 +208,7 @@ fun CatalogBackupDialog(
                         }
                         Column {
                             Text("Database Backup & Restore", color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                            Text("Full Catalog JSON Synchronization", color = Color(0xFF38BDF8), fontSize = 11.sp)
+                            Text("Full Catalog JSON Synchronization & Archive", color = Color(0xFF38BDF8), fontSize = 11.sp)
                         }
                     }
 
@@ -204,12 +240,12 @@ fun CatalogBackupDialog(
                             .clickable { selectedTab = 0 }
                     ) {
                         Text(
-                            "💾 Export Backup",
+                            "💾 Export & Archive",
                             color = if (selectedTab == 0) Color.White else TextSecondary,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(vertical = 8.dp),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            textAlign = TextAlign.Center
                         )
                     }
 
@@ -226,7 +262,7 @@ fun CatalogBackupDialog(
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(vertical = 8.dp),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
@@ -234,21 +270,26 @@ fun CatalogBackupDialog(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 // Tab Contents
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    if (selectedTab == 0) {
-                        // ==========================================
-                        // EXPORT TAB
-                        // ==========================================
-                        val totalEps = catalog.sumOf { it.episodes.size }
-                        val animeCount = catalog.count { it.category.equals("ANIME", ignoreCase = true) }
-                        val moviesCount = catalog.count { !it.category.equals("ANIME", ignoreCase = true) && (it.category.equals("MOVIE", ignoreCase = true) || it.category.equals("MOVIES", ignoreCase = true) || it.type.equals("MOVIE", ignoreCase = true)) }
-                        val seriesCount = (catalog.size - animeCount - moviesCount).coerceAtLeast(0)
+                if (selectedTab == 0) {
+                    // ==========================================
+                    // EXPORT TAB
+                    // ==========================================
+                    val totalEps = catalog.sumOf { it.episodes.size }
+                    val animeCount = catalog.count { it.category.equals("ANIME", ignoreCase = true) }
+                    val moviesCount = catalog.count { !it.category.equals("ANIME", ignoreCase = true) && (it.category.equals("MOVIE", ignoreCase = true) || it.category.equals("MOVIES", ignoreCase = true) || it.type.equals("MOVIE", ignoreCase = true)) }
+                    val seriesCount = (catalog.size - animeCount - moviesCount).coerceAtLeast(0)
 
+                    val targetCatalog = remember(catalog, selectedCategoryFilter) {
+                        CatalogBackupManager.filterCatalogByCategory(catalog, selectedCategoryFilter)
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        // Live Catalog Stats Card
                         Surface(
                             shape = RoundedCornerShape(14.dp),
                             color = SurfaceDark,
@@ -261,14 +302,14 @@ fun CatalogBackupDialog(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("📦 Current Live Catalog Stats", color = Color(0xFF38BDF8), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text("📦 Live Catalog Overview", color = Color(0xFF38BDF8), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                     Surface(
                                         color = Color(0xFF0284C7).copy(alpha = 0.2f),
                                         shape = RoundedCornerShape(6.dp),
                                         border = BorderStroke(0.5.dp, Color(0xFF0284C7).copy(alpha = 0.5f))
                                     ) {
                                         Text(
-                                            text = "${catalog.size} Total Titles",
+                                            text = "${catalog.size} Total Shows",
                                             color = Color(0xFF38BDF8),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
@@ -281,20 +322,61 @@ fun CatalogBackupDialog(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    StatChip("🎬 Links/Eps", "$totalEps")
+                                    StatChip("🎬 Episodes", "$totalEps")
                                     StatChip("🎌 Anime", "$animeCount")
                                     StatChip("🍿 Movies", "$moviesCount")
-                                    StatChip("📺 Web Series", "$seriesCount")
+                                    StatChip("📺 Series", "$seriesCount")
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                        Text("Choose Export Destination:", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        Spacer(modifier = Modifier.height(8.dp))
+                        // Category Scope Filter Chips
+                        Text("Export Scope / Category Filter:", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(
+                                "ALL" to "All (${catalog.size})",
+                                "ANIME" to "Anime ($animeCount)",
+                                "MOVIES" to "Movies ($moviesCount)",
+                                "SERIES" to "Series ($seriesCount)"
+                            ).forEach { (key, label) ->
+                                val isSelected = selectedCategoryFilter == key
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSelected) Color(0xFF0284C7).copy(alpha = 0.25f) else Color(0xFF1E1E2E),
+                                    border = BorderStroke(1.dp, if (isSelected) Color(0xFF38BDF8) else CardBorderDark),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { selectedCategoryFilter = key }
+                                ) {
+                                    Text(
+                                        text = label,
+                                        color = if (isSelected) Color(0xFF38BDF8) else TextSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        modifier = Modifier.padding(vertical = 6.dp),
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
 
                         // Destination Buttons
+                        Text(
+                            text = "Export Destination (${targetCatalog.size} items to export):",
+                            color = TextSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -306,19 +388,20 @@ fun CatalogBackupDialog(
                                     exportSuccessMessage = null
                                     exportErrorMessage = null
                                     scope.launch {
-                                        val result = CatalogBackupManager.saveBackupToDownloads(context, catalog)
+                                        val result = CatalogBackupManager.saveBackupToDownloads(context, catalog, selectedCategoryFilter)
                                         isExporting = false
                                         if (result.isSuccess) {
                                             exportSuccessMessage = "Saved to ${result.filePath}!"
+                                            refreshArchive()
                                         } else {
                                             exportErrorMessage = result.errorMessage
                                         }
                                     }
                                 },
-                                enabled = !isExporting && catalog.isNotEmpty(),
+                                enabled = !isExporting && targetCatalog.isNotEmpty(),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
                                 shape = RoundedCornerShape(10.dp),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 10.dp),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(15.dp))
@@ -329,16 +412,16 @@ fun CatalogBackupDialog(
                             // 2. Copy JSON
                             Button(
                                 onClick = {
-                                    val json = CatalogBackupManager.generateBackupJson(catalog)
+                                    val json = CatalogBackupManager.generateBackupJson(catalog, selectedCategoryFilter)
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                     clipboard.setPrimaryClip(ClipData.newPlainText("StreamHub Catalog Backup", json))
-                                    exportSuccessMessage = "Full Backup JSON copied to clipboard (${json.length} characters)!"
+                                    exportSuccessMessage = "Copied ${targetCatalog.size} titles JSON to clipboard (${json.length} characters)!"
                                     exportErrorMessage = null
                                 },
-                                enabled = !isExporting && catalog.isNotEmpty(),
+                                enabled = !isExporting && targetCatalog.isNotEmpty(),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
                                 shape = RoundedCornerShape(10.dp),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 10.dp),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(15.dp))
@@ -346,22 +429,28 @@ fun CatalogBackupDialog(
                                 Text("Copy JSON", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
 
-                            // 3. Share File / Intent
+                            // 3. Share File via FileProvider (Crash Proof!)
                             Button(
                                 onClick = {
-                                    val json = CatalogBackupManager.generateBackupJson(catalog)
-                                    val sendIntent = Intent().apply {
-                                        action = Intent.ACTION_SEND
-                                        putExtra(Intent.EXTRA_TEXT, json)
-                                        type = "text/plain"
+                                    isExporting = true
+                                    exportSuccessMessage = null
+                                    exportErrorMessage = null
+                                    scope.launch {
+                                        val res = CatalogBackupManager.prepareShareableBackupFile(context, catalog, selectedCategoryFilter)
+                                        isExporting = false
+                                        res.onSuccess { file ->
+                                            CatalogBackupManager.shareBackupFile(context, file)
+                                            exportSuccessMessage = "Backup file prepared and shared (${file.name})!"
+                                            refreshArchive()
+                                        }.onFailure { err ->
+                                            exportErrorMessage = "Failed to create shareable backup: ${err.message}"
+                                        }
                                     }
-                                    val shareIntent = Intent.createChooser(sendIntent, "Share StreamHub Catalog Backup")
-                                    context.startActivity(shareIntent)
                                 },
-                                enabled = !isExporting && catalog.isNotEmpty(),
+                                enabled = !isExporting && targetCatalog.isNotEmpty(),
                                 colors = ButtonDefaults.buttonColors(containerColor = AccentOrange),
                                 shape = RoundedCornerShape(10.dp),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 10.dp),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(15.dp))
@@ -371,7 +460,7 @@ fun CatalogBackupDialog(
                         }
 
                         exportSuccessMessage?.let { msg ->
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = Color(0x224CAF50),
@@ -380,30 +469,144 @@ fun CatalogBackupDialog(
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(12.dp)
+                                    modifier = Modifier.padding(10.dp)
                                 ) {
-                                    Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF81C784), modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF81C784), modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text(msg, color = Color(0xFF81C784), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text(msg, color = Color(0xFF81C784), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
 
                         exportErrorMessage?.let { err ->
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = Color(0x22F44336),
                                 border = BorderStroke(1.dp, PrimaryRed),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(err, color = PrimaryRed, fontSize = 12.sp, modifier = Modifier.padding(12.dp))
+                                Text(err, color = PrimaryRed, fontSize = 11.sp, modifier = Modifier.padding(10.dp))
                             }
                         }
-                    } else {
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
                         // ==========================================
-                        // RESTORE TAB
+                        // DEVICE BACKUP ARCHIVE SECTION (Fills Blank Area!)
                         // ==========================================
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFF181824),
+                            border = BorderStroke(1.dp, Color(0xFF28283C)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(28.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Color(0xFF38BDF8).copy(alpha = 0.15f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.FolderZip, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(16.dp))
+                                        }
+                                        Column {
+                                            Text("Device Backup Archive", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            Text("${localBackups.size} local snapshots available", color = TextSecondary, fontSize = 10.sp)
+                                        }
+                                    }
+
+                                    IconButton(
+                                        onClick = { refreshArchive() },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        if (isLoadingArchive) {
+                                            CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color(0xFF38BDF8), strokeWidth = 1.5.dp)
+                                        } else {
+                                            Icon(Icons.Default.Refresh, contentDescription = "Refresh Archive", tint = TextSecondary, modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                if (localBackups.isEmpty()) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color(0xFF12121A),
+                                        border = BorderStroke(0.8.dp, Color(0xFF222234)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(16.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(Icons.Default.History, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(24.dp))
+                                            Text("No local backup files saved yet", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                            Text(
+                                                "Tap 'Downloads' or 'Share' above to export your first catalog snapshot.",
+                                                color = TextSecondary.copy(alpha = 0.7f),
+                                                fontSize = 10.sp,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        localBackups.forEach { backup ->
+                                            LocalBackupCard(
+                                                backup = backup,
+                                                onShare = { CatalogBackupManager.shareBackupFile(context, backup.file) },
+                                                onLoadToRestore = {
+                                                    scope.launch {
+                                                        try {
+                                                            val text = backup.file.readText(Charsets.UTF_8)
+                                                            restoreInputJson = text
+                                                            val res = CatalogBackupManager.parseBackupJson(text)
+                                                            if (res.isSuccess) {
+                                                                parsedPayload = res.getOrNull()
+                                                                restoreErrorMessage = null
+                                                                selectedTab = 1 // Switch to Restore tab!
+                                                                Toast.makeText(context, "Loaded ${backup.fileName} into Restore!", Toast.LENGTH_SHORT).show()
+                                                            } else {
+                                                                Toast.makeText(context, "Failed to parse: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                                            }
+                                                        } catch (e: Exception) {
+                                                            Toast.makeText(context, "Error reading file: ${e.message}", Toast.LENGTH_LONG).show()
+                                                        }
+                                                    }
+                                                },
+                                                onDelete = { backupToDelete = backup }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                } else {
+                    // ==========================================
+                    // RESTORE TAB
+                    // ==========================================
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    ) {
+                        // Load JSON Header card
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = SurfaceDark,
@@ -422,7 +625,8 @@ fun CatalogBackupDialog(
                                         onClick = { filePickerLauncher.launch("application/json") },
                                         shape = RoundedCornerShape(8.dp),
                                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF38BDF8)),
-                                        border = BorderStroke(1.dp, Color(0xFF38BDF8))
+                                        border = BorderStroke(1.dp, Color(0xFF38BDF8)),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                                     ) {
                                         Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(14.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
@@ -448,7 +652,7 @@ fun CatalogBackupDialog(
                                     placeholder = { Text("Or paste full backup JSON payload here...", color = TextSecondary, fontSize = 11.sp) },
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(110.dp),
+                                        .height(80.dp),
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = Color(0xFF10B981),
                                         unfocusedBorderColor = CardBorderDark,
@@ -460,10 +664,19 @@ fun CatalogBackupDialog(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
-                        // Preview of Parsed Payload
+                        // Preview of Parsed Payload & Show Explorer
                         parsedPayload?.let { payload ->
+                            val resAnime = payload.mediaCatalog.count { it.category.equals("ANIME", ignoreCase = true) }
+                            val resMovies = payload.mediaCatalog.count { !it.category.equals("ANIME", ignoreCase = true) && (it.category.equals("MOVIE", ignoreCase = true) || it.category.equals("MOVIES", ignoreCase = true) || it.type.equals("MOVIE", ignoreCase = true)) }
+                            val resSeries = (payload.mediaCatalog.size - resAnime - resMovies).coerceAtLeast(0)
+
+                            val previewMatches = remember(payload, restoreSearchQuery) {
+                                if (restoreSearchQuery.isBlank()) payload.mediaCatalog
+                                else payload.mediaCatalog.filter { it.title.contains(restoreSearchQuery, ignoreCase = true) || it.category.contains(restoreSearchQuery, ignoreCase = true) }
+                            }
+
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = Color(0x2210B981),
@@ -471,25 +684,68 @@ fun CatalogBackupDialog(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(modifier = Modifier.padding(12.dp)) {
-                                    Text(
-                                        text = "✅ Valid Backup Detected (${payload.mediaCatalog.size} Titles, ${payload.header.totalEpisodeCount} Episodes)",
-                                        color = Color(0xFF81C784),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    val resAnime = payload.mediaCatalog.count { it.category.equals("ANIME", ignoreCase = true) }
-                                    val resMovies = payload.mediaCatalog.count { !it.category.equals("ANIME", ignoreCase = true) && (it.category.equals("MOVIE", ignoreCase = true) || it.category.equals("MOVIES", ignoreCase = true) || it.type.equals("MOVIE", ignoreCase = true)) }
-                                    val resSeries = (payload.mediaCatalog.size - resAnime - resMovies).coerceAtLeast(0)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "✅ Valid Backup: ${payload.mediaCatalog.size} Titles (${payload.header.totalEpisodeCount} Eps)",
+                                            color = Color(0xFF81C784),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        if (payload.header.categoryFilter.isNotBlank()) {
+                                            Surface(
+                                                color = Color(0xFF10B981).copy(alpha = 0.2f),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = payload.header.categoryFilter,
+                                                    color = Color(0xFF34D399),
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
 
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "🎌 Anime: $resAnime • 🍿 Movies: $resMovies • 📺 Web Series: $resSeries",
+                                        text = "🎌 Anime: $resAnime • 🍿 Movies: $resMovies • 📺 Series: $resSeries",
                                         color = Color(0xFF38BDF8),
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.SemiBold
                                     )
 
-                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Search Bar within Backup
+                                    OutlinedTextField(
+                                        value = restoreSearchQuery,
+                                        onValueChange = { restoreSearchQuery = it },
+                                        placeholder = { Text("Search shows inside backup...", color = TextSecondary, fontSize = 10.sp) },
+                                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(14.dp)) },
+                                        trailingIcon = {
+                                            if (restoreSearchQuery.isNotEmpty()) {
+                                                IconButton(onClick = { restoreSearchQuery = "" }, modifier = Modifier.size(18.dp)) {
+                                                    Icon(Icons.Default.Close, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(12.dp))
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = Color(0xFF10B981),
+                                            unfocusedBorderColor = CardBorderDark,
+                                            focusedTextColor = TextPrimary,
+                                            unfocusedTextColor = TextPrimary
+                                        ),
+                                        shape = RoundedCornerShape(8.dp),
+                                        singleLine = true
+                                    )
+
+                                    Spacer(modifier = Modifier.height(8.dp))
 
                                     // Restore Button
                                     Button(
@@ -501,9 +757,10 @@ fun CatalogBackupDialog(
                                                 val res = CatalogBackupManager.restoreToFirestore(
                                                     payload = payload,
                                                     repository = repository,
-                                                    onProgress = { current, total ->
+                                                    onProgress = { current, total, title ->
                                                         restoreProgress = current
                                                         restoreTotal = total
+                                                        restoreCurrentTitle = title
                                                     }
                                                 )
                                                 isRestoring = false
@@ -522,51 +779,225 @@ fun CatalogBackupDialog(
                                         if (isRestoring) {
                                             CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Restoring ($restoreProgress/$restoreTotal)...", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            Text(
+                                                "Restoring ($restoreProgress/$restoreTotal)...",
+                                                color = Color.White,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
                                         } else {
                                             Icon(Icons.Default.Sync, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Restore All ${payload.mediaCatalog.size} Titles to Firestore", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            Text(
+                                                "Restore All ${payload.mediaCatalog.size} Titles to Firestore",
+                                                color = Color.White,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (isRestoring && restoreTotal > 0) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    LinearProgressIndicator(
+                                        progress = { restoreProgress.toFloat() / restoreTotal.toFloat() },
+                                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                                        color = Color(0xFF10B981),
+                                        trackColor = Color(0xFF1E1E2E)
+                                    )
+                                    Text(
+                                        text = "Syncing: $restoreCurrentTitle",
+                                        color = Color(0xFF34D399),
+                                        fontSize = 10.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Scrollable list preview of shows inside the backup
+                            Text(
+                                text = "Shows Inside Backup (${previewMatches.size} shown):",
+                                color = TextSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                items(previewMatches.take(150), key = { it.id }) { item ->
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = Color(0xFF14141E),
+                                        border = BorderStroke(0.5.dp, Color(0xFF222230)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.weight(1f),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(3.dp),
+                                                    color = Color(0xFF38BDF8).copy(alpha = 0.15f)
+                                                ) {
+                                                    Text(
+                                                        text = item.category.take(1).uppercase(Locale.US),
+                                                        color = Color(0xFF38BDF8),
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                                Text(
+                                                    text = item.title,
+                                                    color = TextPrimary,
+                                                    fontSize = 11.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            Text(
+                                                text = "${item.episodes.size} eps",
+                                                color = Color(0xFF34D399),
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
                                         }
                                     }
                                 }
                             }
                         }
 
-                        if (isRestoring && restoreTotal > 0) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            LinearProgressIndicator(
-                                progress = { restoreProgress.toFloat() / restoreTotal.toFloat() },
-                                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                                color = Color(0xFF10B981),
-                                trackColor = Color(0xFF1E1E2E),
-                            )
-                        }
-
                         restoreSuccessMessage?.let { msg ->
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = Color(0x224CAF50),
                                 border = BorderStroke(1.dp, Color(0xFF4CAF50)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(msg, color = Color(0xFF81C784), fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(12.dp))
+                                Text(msg, color = Color(0xFF81C784), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(10.dp))
                             }
                         }
 
                         restoreErrorMessage?.let { err ->
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = Color(0x22F44336),
                                 border = BorderStroke(1.dp, PrimaryRed),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(err, color = PrimaryRed, fontSize = 12.sp, modifier = Modifier.padding(12.dp))
+                                Text(err, color = PrimaryRed, fontSize = 11.sp, modifier = Modifier.padding(10.dp))
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LocalBackupCard(
+    backup: LocalBackupInfo,
+    onShare: () -> Unit,
+    onLoadToRestore: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = Color(0xFF14141E),
+        border = BorderStroke(0.8.dp, Color(0xFF242436)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF0284C7).copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Description, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = backup.fileName,
+                        color = TextPrimary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(backup.formattedSize, color = Color(0xFF34D399), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text("•", color = TextSecondary, fontSize = 10.sp)
+                        Text(backup.formattedDate, color = TextSecondary, fontSize = 10.sp)
+                    }
+                }
+            }
+
+            // Action buttons: Share, Restore, Delete
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = onShare,
+                    modifier = Modifier
+                        .size(30.dp)
+                        .background(AccentOrange.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = "Share", tint = AccentOrange, modifier = Modifier.size(14.dp))
+                }
+
+                IconButton(
+                    onClick = onLoadToRestore,
+                    modifier = Modifier
+                        .size(30.dp)
+                        .background(Color(0xFF10B981).copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                ) {
+                    Icon(Icons.Default.Sync, contentDescription = "Load to Restore", tint = Color(0xFF34D399), modifier = Modifier.size(14.dp))
+                }
+
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier
+                        .size(30.dp)
+                        .background(PrimaryRed.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = PrimaryRed, modifier = Modifier.size(14.dp))
                 }
             }
         }
