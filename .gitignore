@@ -56,7 +56,11 @@ app/google-services.json
 # AI Agent Instructions & Brain Rules (Local Workspace Only)
 .agents/
 GEMINI.md
+**/GEMINI.md
 AGENTS.md
 **/AGENTS.md
+*grounded*memory*protocol*
+*SPRINT_HISTORY*
+*.agent.md
 scratch/
 design_concepts/
