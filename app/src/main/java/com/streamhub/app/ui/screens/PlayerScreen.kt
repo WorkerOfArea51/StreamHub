@@ -3005,20 +3005,13 @@ private fun StatsForNerdsOverlay(
                         modifier = Modifier.weight(1f),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "⋮⋮",
-                            color = Color(0xFFD0BCFF),
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
                         Icon(
                             imageVector = Icons.Default.Info,
                             contentDescription = null,
                             tint = Color(0xFFD0BCFF),
                             modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "Stats for Nerds",
                             color = Color.White,
