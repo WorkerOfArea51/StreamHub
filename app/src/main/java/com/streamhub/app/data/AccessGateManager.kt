@@ -200,5 +200,34 @@ object AccessGateManager {
             ?.remove(KEY_VOUCHER_EXPIRES_AT)
             ?.apply()
     }
+
+    fun getBackupUnlockInfo(): String? {
+        val p = prefs ?: return null
+        if (!p.getBoolean(KEY_IS_UNLOCKED, false)) return null
+        val type = p.getString(KEY_UNLOCK_TYPE, UNLOCK_TYPE_PERMANENT) ?: UNLOCK_TYPE_PERMANENT
+        val code = p.getString(KEY_VOUCHER_CODE, "") ?: ""
+        val expiresAt = p.getLong(KEY_VOUCHER_EXPIRES_AT, 0L)
+        return "$type::$code::$expiresAt"
+    }
+
+    fun restoreFromBackup(info: String?) {
+        if (info.isNullOrBlank()) return
+        val p = prefs ?: return
+        val parts = info.split("::")
+        if (parts.isNotEmpty()) {
+            val type = parts[0]
+            val code = parts.getOrNull(1) ?: ""
+            val expiresAt = parts.getOrNull(2)?.toLongOrNull() ?: 0L
+            if (type == UNLOCK_TYPE_PERMANENT) {
+                saveUnlock(UNLOCK_TYPE_PERMANENT, code, 0L)
+                _remainingDays.value = -1
+            } else if (type == UNLOCK_TYPE_VOUCHER && expiresAt > System.currentTimeMillis()) {
+                val now = System.currentTimeMillis()
+                val daysLeft = (((expiresAt - now) / (1000L * 60 * 60 * 24L)).toInt()).coerceAtLeast(1)
+                saveUnlock(UNLOCK_TYPE_VOUCHER, code, expiresAt)
+                _remainingDays.value = daysLeft
+            }
+        }
+    }
 }
 

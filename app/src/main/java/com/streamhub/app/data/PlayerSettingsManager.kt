@@ -339,6 +339,41 @@ object PlayerSettingsManager {
         getPrefs().edit().putInt(KEY_DEFAULT_AUDIO_DELAY, clamped).apply()
     }
 
+    /**
+     * Atomically restores all player settings from a backup in a single transaction.
+     */
+    @Synchronized
+    fun restoreSettings(settings: PlayerSettings) {
+        if (!::appContext.isInitialized) return
+        getPrefs().edit().apply {
+            putInt(KEY_SKIP_INTRO, settings.skipIntroSeconds)
+            putInt(KEY_NEXT_EPISODE_THRESHOLD, settings.nextEpisodeThresholdSeconds)
+            putBoolean(KEY_AUTO_PLAY, settings.autoPlayNextEpisode)
+            putBoolean(KEY_VOLUME_ON_RIGHT, settings.volumeOnRight)
+            putString(KEY_DEFAULT_ASPECT_RATIO, settings.defaultAspectRatioId)
+            putBoolean(KEY_REMEMBER_ASPECT_RATIO, settings.rememberAspectRatio)
+            putBoolean(KEY_AMBIENT_ENABLED, settings.isAmbientEnabled)
+            putString(KEY_AMBIENT_MOOD_ID, settings.ambientMoodId)
+            putFloat(KEY_AMBIENT_INTENSITY, settings.ambientIntensity)
+            putBoolean(KEY_SMART_PREWARM, settings.smartPrewarmEnabled)
+            putBoolean(KEY_BINGE_PRECACHE, settings.bingePrecacheEnabled)
+            putInt(KEY_DOUBLE_TAP_SEEK, settings.doubleTapSeekSeconds)
+            putString(KEY_SEEKBAR_STYLE, settings.seekbarStyle.name)
+            putBoolean(KEY_REMEMBER_BRIGHTNESS, settings.rememberBrightness)
+            putFloat(KEY_SAVED_BRIGHTNESS, settings.savedBrightness)
+            putBoolean(KEY_AUTO_PIP, settings.autoPiPOnNavigation)
+            putBoolean(KEY_KEEP_SCREEN_ON_PAUSED, settings.keepScreenOnWhenPaused)
+            putBoolean(KEY_VOLUME_NORMALIZATION, settings.volumeNormalization)
+            putBoolean(KEY_HOLD_2X, settings.holdTo2XEnabled)
+            putBoolean(KEY_PINCH_ZOOM, settings.pinchToZoomEnabled)
+            putBoolean(KEY_SUBTITLE_DRAG, settings.subtitleVerticalDragEnabled)
+            putInt(KEY_MAX_VOLUME_BOOST, settings.maxVolumeBoostPercent)
+            putInt(KEY_DEFAULT_AUDIO_DELAY, settings.defaultAudioDelayMs)
+            apply()
+        }
+        _settingsFlow.value = settings
+    }
+
     private fun getPrefs(): SharedPreferences {
         return appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }

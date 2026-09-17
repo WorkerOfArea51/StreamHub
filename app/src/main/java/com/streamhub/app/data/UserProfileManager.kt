@@ -141,6 +141,28 @@ object UserProfileManager {
             .apply()
     }
 
+    /**
+     * Restores user profile settings from backup payload.
+     */
+    @Synchronized
+    fun restoreProfile(profile: UserProfile?) {
+        if (!::appContext.isInitialized || profile == null) return
+        val current = _profileFlow.value
+        val updated = current.copy(
+            customName = profile.customName.ifBlank { current.customName },
+            customTagline = profile.customTagline.ifBlank { current.customTagline },
+            avatarPresetIndex = profile.avatarPresetIndex.coerceIn(0, PRESET_AVATARS.size - 1),
+            memberId = profile.memberId.ifBlank { current.memberId }
+        )
+        _profileFlow.value = updated
+        getPrefs().edit()
+            .putString(KEY_CUSTOM_NAME, updated.customName)
+            .putString(KEY_CUSTOM_TAGLINE, updated.customTagline)
+            .putInt(KEY_AVATAR_PRESET, updated.avatarPresetIndex)
+            .putString(KEY_MEMBER_ID, updated.memberId)
+            .apply()
+    }
+
     private fun getPrefs(): SharedPreferences {
         return appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }

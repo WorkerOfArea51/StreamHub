@@ -299,6 +299,74 @@ object MyListManager {
         _myListFlow.value = emptySet()
     }
 
+    /**
+     * Restores watchlist items and custom collections from backup payload.
+     * @param items List of MyListItem from backup.
+     * @param customCollections Set of user custom folders from backup.
+     * @param mergeMode If true, merges with existing; if false, performs clean replacement.
+     * @return Number of watchlist items restored.
+     */
+    @Synchronized
+    fun restoreFromBackup(
+        items: List<MyListItem>?,
+        customCollections: Set<String>?,
+        mergeMode: Boolean
+    ): Int {
+        if (!::appContext.isInitialized) return 0
+        val incomingItems = items ?: emptyList()
+        val incomingCustom = (customCollections ?: emptySet()).filterNot { isSystemCollection(it) }.toSet()
+        val prefs = getPrefs().edit()
+
+        if (mergeMode) {
+            val currentMap = _itemsFlow.value.toMutableMap()
+            val existingCustom = (_collectionsFlow.value - SYSTEM_COLLECTIONS).toMutableSet()
+            existingCustom.addAll(incomingCustom)
+
+            incomingItems.forEach { inc ->
+                val existing = currentMap[inc.mediaId]
+                if (existing != null) {
+                    val merged = existing.copy(
+                        isFavorite = existing.isFavorite || inc.isFavorite,
+                        collection = if (existing.collection != "Watchlist") existing.collection else inc.collection,
+                        addedAt = minOf(existing.addedAt, inc.addedAt)
+                    )
+                    currentMap[inc.mediaId] = merged
+                    saveItemToPrefs(prefs, merged)
+                } else {
+                    currentMap[inc.mediaId] = inc
+                    saveItemToPrefs(prefs, inc)
+                }
+            }
+
+            prefs.putStringSet(KEY_COLLECTIONS, existingCustom)
+            prefs.putStringSet(KEY_BOOKMARKS, currentMap.keys)
+            prefs.apply()
+
+            _itemsFlow.value = currentMap
+            _myListFlow.value = currentMap.keys
+            _collectionsFlow.value = (SYSTEM_COLLECTIONS + existingCustom).toSet()
+            return incomingItems.size
+        } else {
+            // Replace mode: clear previous items from prefs
+            _itemsFlow.value.keys.forEach { id ->
+                prefs.remove(KEY_ITEM_PREFIX + id)
+            }
+            val newMap = mutableMapOf<String, MyListItem>()
+            incomingItems.forEach { item ->
+                newMap[item.mediaId] = item
+                saveItemToPrefs(prefs, item)
+            }
+            prefs.putStringSet(KEY_COLLECTIONS, incomingCustom)
+            prefs.putStringSet(KEY_BOOKMARKS, newMap.keys)
+            prefs.apply()
+
+            _itemsFlow.value = newMap
+            _myListFlow.value = newMap.keys
+            _collectionsFlow.value = (SYSTEM_COLLECTIONS + incomingCustom).toSet()
+            return incomingItems.size
+        }
+    }
+
     private fun saveItemToPrefs(editor: SharedPreferences.Editor, item: MyListItem) {
         val json = JSONObject().apply {
             put("mediaId", item.mediaId)

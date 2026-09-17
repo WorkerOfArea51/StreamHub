@@ -272,6 +272,76 @@ object WatchHistoryManager {
         getPrefs().edit().clear().apply()
     }
 
+    /**
+     * Restores watch history from backup payload.
+     * @param historyList List of PlaybackProgress from backup.
+     * @param mergeMode If true, merges entries keeping newest timestamps; if false, performs clean replacement.
+     * @return Number of entries restored.
+     */
+    @Synchronized
+    fun restoreFromBackup(
+        historyList: List<PlaybackProgress>?,
+        mergeMode: Boolean
+    ): Int {
+        if (!::appContext.isInitialized) return 0
+        val incoming = historyList ?: emptyList()
+        val prefs = getPrefs().edit()
+
+        if (mergeMode) {
+            val currentMap = _historyFlow.value.toMutableMap()
+            incoming.forEach { item ->
+                val existing = currentMap[item.mediaId]
+                if (existing == null || item.lastUpdated > existing.lastUpdated) {
+                    currentMap[item.mediaId] = item
+                    val json = JSONObject().apply {
+                        put("mediaId", item.mediaId)
+                        put("episodeNumber", item.episodeNumber)
+                        put("positionMs", item.positionMs)
+                        put("durationMs", item.durationMs)
+                        put("lastUpdated", item.lastUpdated)
+                        put("title", item.title)
+                        put("posterUrl", item.posterUrl)
+                        put("backdropUrl", item.backdropUrl)
+                        put("mediaType", item.mediaType)
+                        put("episodeTitle", item.episodeTitle)
+                        put("seasonNumber", item.seasonNumber)
+                        put("isCompleted", item.isCompleted)
+                    }
+                    prefs.putString(item.mediaId, json.toString())
+                }
+            }
+            prefs.putStringSet(KEY_ALL_HISTORY_IDS, currentMap.keys).apply()
+            _historyFlow.value = currentMap
+            return incoming.size
+        } else {
+            // Replace mode: clear all existing
+            val oldKeys = (getPrefs().getStringSet(KEY_ALL_HISTORY_IDS, emptySet()) ?: emptySet()).toSet()
+            oldKeys.forEach { prefs.remove(it) }
+            val newMap = mutableMapOf<String, PlaybackProgress>()
+            incoming.forEach { item ->
+                newMap[item.mediaId] = item
+                val json = JSONObject().apply {
+                    put("mediaId", item.mediaId)
+                    put("episodeNumber", item.episodeNumber)
+                    put("positionMs", item.positionMs)
+                    put("durationMs", item.durationMs)
+                    put("lastUpdated", item.lastUpdated)
+                    put("title", item.title)
+                    put("posterUrl", item.posterUrl)
+                    put("backdropUrl", item.backdropUrl)
+                    put("mediaType", item.mediaType)
+                    put("episodeTitle", item.episodeTitle)
+                    put("seasonNumber", item.seasonNumber)
+                    put("isCompleted", item.isCompleted)
+                }
+                prefs.putString(item.mediaId, json.toString())
+            }
+            prefs.putStringSet(KEY_ALL_HISTORY_IDS, newMap.keys).apply()
+            _historyFlow.value = newMap
+            return incoming.size
+        }
+    }
+
     private var prefs: SharedPreferences? = null
 
     private fun getPrefs(): SharedPreferences {

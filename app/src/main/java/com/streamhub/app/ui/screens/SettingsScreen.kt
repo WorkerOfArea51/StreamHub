@@ -118,9 +118,8 @@ fun SettingsScreen(
             SearchableItem("Multi-Touch Pinch to Zoom & Pan", "Smooth 0.5x to 5.0x zoom and 2-finger frame panning", "Playback & Controls", Icons.Outlined.Gesture, onNavigateToGestures),
             SearchableItem("Volume Normalization", "Dynamic range compression (+3dB) for balanced listening", "Media & Audio", Icons.Outlined.Audiotrack, onNavigateToAudio),
             SearchableItem("Hardware Volume Boost (200%)", "Android LoudnessEnhancer volume amplification", "Media & Audio", Icons.Outlined.Audiotrack, onNavigateToAudio),
-            SearchableItem("Audio Delay Sync", "In-player audio timing offset (-5000ms to +5000ms)", "Media & Audio", Icons.Outlined.Audiotrack, onNavigateToAudio),
-            SearchableItem("Export Settings Backup", "Save all configurations to JSON backup via SAF", "Advanced & Backup", Icons.Outlined.Code, onNavigateToAdvanced),
-            SearchableItem("Import Settings Backup", "Restore configurations from JSON backup via SAF", "Advanced & Backup", Icons.Outlined.Code, onNavigateToAdvanced),
+            SearchableItem("Export Full App Backup", "Save Watchlist, History, Folders & Settings to JSON backup via SAF", "Advanced & Backup", Icons.Outlined.Code, onNavigateToAdvanced),
+            SearchableItem("Restore Application Backup", "Inspect & restore Watchlist, History & Preferences from JSON", "Advanced & Backup", Icons.Outlined.Code, onNavigateToAdvanced),
             SearchableItem("Stream CDN Speedometer", "Real-time latency ping and bandwidth throughput test", "Advanced & Backup", Icons.Outlined.Code, onNavigateToAdvanced),
             SearchableItem("Application Updates & Changelog", "Check GitHub releases, release notes and update app", "Advanced & Backup", Icons.Outlined.Code, onNavigateToAdvanced)
         )
@@ -362,7 +361,7 @@ fun SettingsScreen(
                     PreferenceCard {
                         PreferenceItem(
                             title = "Advanced, Backup & Updates",
-                            subtitle = "JSON backup & restore, stream CDN speedometer & app update checker",
+                            subtitle = "Full data backup & restore (Watchlist, History & Settings), CDN speedometer & updates",
                             icon = Icons.Outlined.Code,
                             iconTint = currentAccent.color,
                             onClick = onNavigateToAdvanced

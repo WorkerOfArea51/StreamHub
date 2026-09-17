@@ -79,6 +79,20 @@ object SearchHistoryManager {
         prefs?.edit()?.remove(KEY_HISTORY)?.apply()
     }
 
+    /**
+     * Restores search history from backup payload.
+     */
+    fun restoreFromBackup(queries: List<String>?, mergeMode: Boolean) {
+        if (queries.isNullOrEmpty()) return
+        val targetList = if (mergeMode) {
+            (queries + _historyFlow.value).distinct().take(MAX_HISTORY_ITEMS)
+        } else {
+            queries.distinct().take(MAX_HISTORY_ITEMS)
+        }
+        _historyFlow.value = targetList
+        saveToDisk(targetList)
+    }
+
     private fun saveToDisk(list: List<String>) {
         val p = prefs ?: return
         try {
