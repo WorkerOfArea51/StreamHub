@@ -142,6 +142,7 @@ fun HomeScreen(
     var showSurpriseMeDialog by remember { mutableStateOf(false) }
     var showClearHistoryDialog by remember { mutableStateOf(false) }
     var selectedQuickActionMedia by remember { mutableStateOf<MediaItem?>(null) }
+    var isUpdateSheetDismissed by rememberSaveable { mutableStateOf(false) }
 
     val myListIds by com.streamhub.app.data.MyListManager.myListFlow.collectAsState()
 
@@ -470,18 +471,6 @@ fun HomeScreen(
                 }
             }
 
-            // Material 3 Expressive Update Banner Item
-            (updateState as? com.streamhub.app.data.UpdateState.UpdateAvailable)?.let { availableState ->
-                item {
-                    Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-                        com.streamhub.app.ui.components.UpdateBanner(
-                            updateInfo = availableState.info,
-                            onDismiss = { com.streamhub.app.data.AppUpdateManager.resetState() }
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                }
-            }
 
             // Empty state — catalog is empty and Firestore has responded
             if (catalog.isEmpty() && catalogState is com.streamhub.app.data.repository.CatalogState.Ready) {
@@ -870,6 +859,27 @@ fun HomeScreen(
                 }
             } else null,
             onDismiss = { selectedQuickActionMedia = null }
+        )
+    }
+
+    // Cinema-Grade Material 3 In-App Update Bottom Sheet
+    val activeUpdateInfo = (updateState as? com.streamhub.app.data.UpdateState.UpdateAvailable)?.info
+        ?: com.streamhub.app.data.AppUpdateManager.currentUpdateInfo
+
+    val shouldShowUpdateSheet = activeUpdateInfo != null && !isUpdateSheetDismissed && (
+        updateState is com.streamhub.app.data.UpdateState.UpdateAvailable ||
+        updateState is com.streamhub.app.data.UpdateState.Downloading ||
+        updateState is com.streamhub.app.data.UpdateState.Downloaded ||
+        updateState is com.streamhub.app.data.UpdateState.Error
+    )
+
+    if (shouldShowUpdateSheet) {
+        com.streamhub.app.ui.components.UpdateBottomSheet(
+            info = activeUpdateInfo,
+            updateState = updateState,
+            onDismiss = { isUpdateSheetDismissed = true },
+            onDownload = { com.streamhub.app.data.AppUpdateManager.startDownload(context) },
+            onInstall = { apkFile -> com.streamhub.app.data.AppUpdateManager.installApk(context, apkFile) }
         )
     }
 }

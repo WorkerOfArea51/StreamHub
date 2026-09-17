@@ -50,7 +50,7 @@ import com.streamhub.app.data.AppUpdateManager
 import com.streamhub.app.data.SpeedTestManager
 import com.streamhub.app.data.SpeedTestState
 import com.streamhub.app.data.UpdateState
-import com.streamhub.app.ui.components.UpdateAvailableDialog
+import com.streamhub.app.ui.components.UpdateBottomSheet
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.CardBorderDark
 import com.streamhub.app.ui.theme.PrimaryRed
@@ -387,16 +387,18 @@ fun AppUpdatePreferenceItem(currentAccent: AppThemeAccent = AppThemeAccent.CYAN)
         previousState = updateState
     }
 
-    if (showUpdateDialog && updateState is UpdateState.UpdateAvailable) {
-        val info = (updateState as UpdateState.UpdateAvailable).info
-        UpdateAvailableDialog(
-            info = info,
-            onDismiss = { showUpdateDialog = false },
-            onConfirm = {
-                showUpdateDialog = false
-                AppUpdateManager.startDownload(context)
-            }
-        )
+    if (showUpdateDialog) {
+        val info = (updateState as? UpdateState.UpdateAvailable)?.info
+            ?: AppUpdateManager.currentUpdateInfo
+        if (info != null && (updateState is UpdateState.UpdateAvailable || updateState is UpdateState.Downloading || updateState is UpdateState.Downloaded || updateState is UpdateState.Error)) {
+            UpdateBottomSheet(
+                info = info,
+                updateState = updateState,
+                onDismiss = { showUpdateDialog = false },
+                onDownload = { AppUpdateManager.startDownload(context) },
+                onInstall = { apkFile -> AppUpdateManager.installApk(context, apkFile) }
+            )
+        }
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {

@@ -82,6 +82,9 @@ object AppUpdateManager {
     private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
+    var currentUpdateInfo: UpdateInfo? = null
+        private set
+
     // Follow redirects enabled for asset downloads
     private val httpClient by lazy {
         com.streamhub.app.data.api.SharedHttpClient.baseClient.newBuilder()
@@ -253,6 +256,7 @@ object AppUpdateManager {
                     apkSizeBytes = apkSizeBytes
                 )
 
+                currentUpdateInfo = info
                 _updateState.value = UpdateState.UpdateAvailable(info)
 
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -411,7 +415,7 @@ object AppUpdateManager {
      *
      * Requires REQUEST_INSTALL_PACKAGES permission in the manifest.
      */
-    private fun installApk(context: Context, apkFile: File) {
+    fun installApk(context: Context, apkFile: File) {
         try {
             if (!verifyApkSignature(context, apkFile)) {
                 Log.e(TAG, "APK signature verification failed — rejecting install")
