@@ -32,6 +32,8 @@ object MyListManager {
     private const val KEY_ITEM_PREFIX = "item_meta_"
     private const val KEY_COLLECTIONS = "user_collections_set"
 
+    val SYSTEM_COLLECTIONS = linkedSetOf("Watchlist", "Favorites", "Must Watch", "Rewatch")
+
     private lateinit var appContext: Context
 
     private val _itemsFlow = MutableStateFlow<Map<String, MyListItem>>(emptyMap())
@@ -40,8 +42,12 @@ object MyListManager {
     private val _myListFlow = MutableStateFlow<Set<String>>(emptySet())
     val myListFlow: StateFlow<Set<String>> = _myListFlow.asStateFlow()
 
-    private val _collectionsFlow = MutableStateFlow<Set<String>>(setOf("Watchlist", "Favorites", "Must Watch", "Rewatch"))
+    private val _collectionsFlow = MutableStateFlow<Set<String>>(SYSTEM_COLLECTIONS)
     val collectionsFlow: StateFlow<Set<String>> = _collectionsFlow.asStateFlow()
+
+    fun isSystemCollection(collectionName: String): Boolean {
+        return SYSTEM_COLLECTIONS.any { it.equals(collectionName.trim(), ignoreCase = true) }
+    }
 
     fun init(context: Context) {
         if (::appContext.isInitialized) return
@@ -76,7 +82,7 @@ object MyListManager {
 
         _itemsFlow.value = map
         _myListFlow.value = map.keys
-        _collectionsFlow.value = (setOf("Watchlist", "Favorites", "Must Watch", "Rewatch") + customCollections).toSet()
+        _collectionsFlow.value = (SYSTEM_COLLECTIONS + customCollections).toSet()
     }
 
     /**
@@ -169,14 +175,99 @@ object MyListManager {
         }
     }
 
+    fun getItemCollection(mediaId: String): String {
+        return _itemsFlow.value[mediaId]?.collection ?: "Watchlist"
+    }
+
+    fun getItemsInCollectionCount(collectionName: String): Int {
+        return _itemsFlow.value.values.count { it.collection.equals(collectionName.trim(), ignoreCase = true) }
+    }
+
     @Synchronized
-    fun addCustomCollection(collectionName: String) {
-        if (!::appContext.isInitialized || collectionName.isBlank()) return
+    fun addCustomCollection(collectionName: String): Boolean {
+        if (!::appContext.isInitialized || collectionName.isBlank()) return false
+        val trimmed = collectionName.trim()
+        if (isSystemCollection(trimmed) || _collectionsFlow.value.any { it.equals(trimmed, ignoreCase = true) }) {
+            return false
+        }
         val set = _collectionsFlow.value.toMutableSet()
-        set.add(collectionName.trim())
+        set.add(trimmed)
         _collectionsFlow.value = set
 
-        getPrefs().edit().putStringSet(KEY_COLLECTIONS, set).apply()
+        val customOnly = set.filterNot { isSystemCollection(it) }.toSet()
+        getPrefs().edit().putStringSet(KEY_COLLECTIONS, customOnly).apply()
+        return true
+    }
+
+    @Synchronized
+    fun renameCustomCollection(oldName: String, newName: String): Boolean {
+        if (!::appContext.isInitialized || oldName.isBlank() || newName.isBlank()) return false
+        val trimmedNew = newName.trim()
+        val trimmedOld = oldName.trim()
+        if (isSystemCollection(trimmedOld) || isSystemCollection(trimmedNew)) return false
+        if (_collectionsFlow.value.any { it.equals(trimmedNew, ignoreCase = true) }) return false
+
+        val set = _collectionsFlow.value.toMutableSet()
+        val match = set.firstOrNull { it.equals(trimmedOld, ignoreCase = true) } ?: return false
+        set.remove(match)
+        set.add(trimmedNew)
+        _collectionsFlow.value = set
+
+        val customOnly = set.filterNot { isSystemCollection(it) }.toSet()
+        val prefs = getPrefs().edit()
+        prefs.putStringSet(KEY_COLLECTIONS, customOnly)
+
+        // Safe migration: update all items in this collection to the new name
+        val currentMap = _itemsFlow.value.toMutableMap()
+        var hasChanges = false
+        currentMap.forEach { (id, item) ->
+            if (item.collection.equals(trimmedOld, ignoreCase = true)) {
+                val updated = item.copy(collection = trimmedNew)
+                currentMap[id] = updated
+                saveItemToPrefs(prefs, updated)
+                hasChanges = true
+            }
+        }
+        prefs.apply()
+
+        if (hasChanges) {
+            _itemsFlow.value = currentMap
+        }
+        return true
+    }
+
+    @Synchronized
+    fun deleteCustomCollection(collectionName: String): Boolean {
+        if (!::appContext.isInitialized || collectionName.isBlank()) return false
+        val trimmed = collectionName.trim()
+        if (isSystemCollection(trimmed)) return false
+
+        val set = _collectionsFlow.value.toMutableSet()
+        val match = set.firstOrNull { it.equals(trimmed, ignoreCase = true) } ?: return false
+        set.remove(match)
+        _collectionsFlow.value = set
+
+        val customOnly = set.filterNot { isSystemCollection(it) }.toSet()
+        val prefs = getPrefs().edit()
+        prefs.putStringSet(KEY_COLLECTIONS, customOnly)
+
+        // Safe migration: reassign items from deleted collection back to default "Watchlist"
+        val currentMap = _itemsFlow.value.toMutableMap()
+        var hasChanges = false
+        currentMap.forEach { (id, item) ->
+            if (item.collection.equals(trimmed, ignoreCase = true)) {
+                val updated = item.copy(collection = "Watchlist")
+                currentMap[id] = updated
+                saveItemToPrefs(prefs, updated)
+                hasChanges = true
+            }
+        }
+        prefs.apply()
+
+        if (hasChanges) {
+            _itemsFlow.value = currentMap
+        }
+        return true
     }
 
     @Synchronized
