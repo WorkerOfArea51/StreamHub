@@ -444,7 +444,7 @@ class StreamPlayerViewModel : ViewModel() {
                         60_000,         // minBufferMs (60s minimum safe buffer floor)
                         300_000,        // maxBufferMs (up to 5 minutes forward buffer ahead)
                         250,            // bufferForPlaybackMs (instant startup in ~250ms)
-                        1_000           // bufferForPlaybackAfterRebufferMs (fast 1s recovery)
+                        250             // bufferForPlaybackAfterRebufferMs (instant 250ms recovery after seek / YouTube parity)
                     )
                     .setBackBuffer(15_000, false)
                     .setPrioritizeTimeOverSizeThresholds(true)
@@ -464,7 +464,7 @@ class StreamPlayerViewModel : ViewModel() {
                     .setAudioAttributes(audioAttributes, true)
                     .setHandleAudioBecomingNoisy(true)
                     .setLoadControl(loadControl)
-                    .setSeekParameters(androidx.media3.exoplayer.SeekParameters.DEFAULT)
+                    .setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
                     .setMediaSourceFactory(
                         androidx.media3.exoplayer.source.DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory)
                     )
@@ -834,9 +834,7 @@ class StreamPlayerViewModel : ViewModel() {
             stop()
             clearMediaItems()
         }
-        try {
-            com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
-        } catch (_: Exception) {}
+        // NOTE: Keep warm TCP/TLS sockets in connectionPool alive across episode boundaries for 0ms transitions.
 
         val episode = episodesList[index]
         val rawUrl = episode.streamUrl.ifEmpty { episode.mirrorStreamUrl }
@@ -877,9 +875,9 @@ class StreamPlayerViewModel : ViewModel() {
             )
         }
 
-        // FIX: Cancel active preload jobs when starting a new episode — preloader will be eligible again.
+        // Cancel active preload jobs when starting a new episode — preloader will be eligible again.
         StreamPreloadManager.cancelDetailsPrewarm()
-        StreamPreloadManager.cancelBingePrecache()
+        StreamPreloadManager.cancelBingePrecache(resetCompleted = false)
         nextEpisodePreloadJob?.cancel()
         nextEpisodePreloadJob = null
 
