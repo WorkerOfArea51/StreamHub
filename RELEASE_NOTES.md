@@ -1,8 +1,5 @@
-### What's New in StreamHub v4.8.339 🚀
+### What's New in StreamHub v4.8.340 🚀
 
-- ⏱️ **Cold-Start Watchdog Gating (20s Safe Window)**: Eliminated false-positive "Reconnecting..." HUD triggers during initial video startup on remote streams (Telegram MTProto) while keeping rapid 5s stall detection during active playback.
-- 🎯 **12-Second Seek Resilience**: Extended range-seek safety timeout from 3s to 12s, permanently fixing the issue where remote range requests over mobile/Wi-Fi timed out and snapped the seekbar back.
-- 🔄 **Flawless 'Start Over' & Seek-to-Beginning**: Tapping "Start Over" or seeking to 00:00 now cleanly locks the seek target, clears background accumulators, and restarts playback from the beginning without snapping forward.
-- ⚡ **Asynchronous MediaCodec Queueing**: Enabled native asynchronous buffer queueing on `MediaCodec` decoders for buttery-smooth audio/video demuxing and zero dropped frames.
-- 🛠️ **Dual-Bot MTProto Streaming Compatibility**: Optimized chunk demuxer readiness for files with delayed initial audio tracks.
-
+- 🚀 **Zero-Stall Binge Episode Transitions**: Eliminated dangerous unaligned EOF range requests during next-episode pre-caching that caused socket drops and disk cache corruption on Telegram MTProto proxies. Pre-caching now focuses strictly on the continuous 25MB head for instant, crash-free episode playback.
+- 🔄 **Episode Transition Retry Budget Reset**: Transitioning between episodes now properly resets the auto-retry counter (`autoRetryCount = 0`) and clears pending reconnect jobs, guaranteeing a fresh 3-attempt connection budget and eliminating premature "Network Error" alerts.
+- 📊 **Accurate Binge Pre-Cache Telemetry & Stats for Nerds**: Completely resets next-episode pre-cache state on episode advance (`resetCompleted = true`), preventing stale "Next Ep 25MB Ready" badges from lingering and allowing Episode $N+2$ to enqueue seamlessly.

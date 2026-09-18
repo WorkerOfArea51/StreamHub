@@ -920,9 +920,14 @@ class StreamPlayerViewModel : ViewModel() {
 
         // Cancel active preload jobs when starting a new episode — preloader will be eligible again.
         StreamPreloadManager.cancelDetailsPrewarm()
-        StreamPreloadManager.cancelBingePrecache(resetCompleted = false)
+        StreamPreloadManager.cancelBingePrecache(resetCompleted = true)
         nextEpisodePreloadJob?.cancel()
         nextEpisodePreloadJob = null
+
+        // Fresh episode transition: cancel pending auto-reconnect and reset retry budget
+        autoRetryJob?.cancel()
+        autoRetryJob = null
+        autoRetryCount = 0
 
         resolutionJob?.cancel()
         resolutionJob = viewModelScope.launch {
@@ -1055,6 +1060,14 @@ class StreamPlayerViewModel : ViewModel() {
             com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
         } catch (_: Exception) {}
         StreamPreloadManager.cancelDetailsPrewarm()
+        StreamPreloadManager.cancelBingePrecache(resetCompleted = true)
+        nextEpisodePreloadJob?.cancel()
+        nextEpisodePreloadJob = null
+
+        // Fresh episode transition: cancel pending auto-reconnect and reset retry budget
+        autoRetryJob?.cancel()
+        autoRetryJob = null
+        autoRetryCount = 0
         val episode = episodesList.getOrNull(index)
         val savedDuration = WatchHistoryManager.getProgress(currentMediaItem?.id ?: "")?.durationMs ?: 0L
         val fallbackDurationMs = when {
