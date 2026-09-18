@@ -443,6 +443,7 @@ class StreamPlayerViewModel : ViewModel() {
                     setEnableDecoderFallback(true) // Software decoder fallback if hardware EAC3/DTS/AC3 decoder missing
                     setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
                     setEnableAudioTrackPlaybackParams(false) // Use Sonic software pitch/speed processor: buttery-smooth 2x playback, zero hardware AudioTrack stutter
+                    forceEnableMediaCodecAsynchronousQueueing()
                 }
                 trackSelector = DefaultTrackSelector(safeContext).apply {
                     parameters = buildUponParameters()
@@ -1068,6 +1069,8 @@ class StreamPlayerViewModel : ViewModel() {
                 playerError = null,
                 playerErrorInfo = null,
                 resolvedStreamUrl = rawUrl,
+                isFirstFrameRendered = false,
+                isBuffering = true,
                 durationMs = if (fallbackDurationMs > 0) fallbackDurationMs else it.durationMs
             )
         }
@@ -1341,6 +1344,7 @@ class StreamPlayerViewModel : ViewModel() {
     fun seekTo(positionMs: Long) {
         debouncedSeekJob?.cancel()
         debouncedSeekJob = null
+        stallAccumulatorMs = 0L
         val player = exoPlayer ?: return
         val duration = player.duration.coerceAtLeast(0L)
         val target = if (duration > 0L) positionMs.coerceIn(0L, duration) else positionMs.coerceAtLeast(0L)
@@ -1358,12 +1362,13 @@ class StreamPlayerViewModel : ViewModel() {
             )
         }
 
-        // FIX: Safety timeout — if ExoPlayer doesn't fire onPositionDiscontinuity within 3s
+        // FIX: Safety timeout — if ExoPlayer doesn't fire onPositionDiscontinuity within 12s
         // (e.g. broken source, network stall), clear pendingSeekTargetMs so future seeks
         // compute from the actual player position instead of a stale target.
+        // 12s accommodates remote range queries over cellular/Telegram MTProto without premature snapping.
         pendingSeekTimeoutJob?.cancel()
         pendingSeekTimeoutJob = viewModelScope.launch {
-            delay(3_000L)
+            delay(12_000L)
             if (pendingSeekTargetMs != null) {
                 Log.w("StreamPlayerViewModel", "Seek timeout — clearing stale pendingSeekTargetMs=$pendingSeekTargetMs")
                 pendingSeekTargetMs = null
@@ -1558,9 +1563,12 @@ class StreamPlayerViewModel : ViewModel() {
 
                     // Active Stream Stall Watchdog:
                     // Detects if the player is buffering with 0s buffer while trying to play (playWhenReady == true),
-                    // not actively seeking, not already reconnecting, and past the 4.5s initial startup grace period.
+                    // not actively seeking, not already reconnecting, and past the startup grace period.
+                    // When cold-starting before the first frame renders, allow 20s for remote Telegram MTProto demuxing.
+                    // Once playing (first frame rendered), maintain rapid 5s stall detection.
                     val timeSincePrepare = System.currentTimeMillis() - prepareStartTimeMs
-                    val isPastStartupGrace = timeSincePrepare >= 4500L
+                    val isFirstFrameDone = _uiState.value.isFirstFrameRendered
+                    val isPastStartupGrace = if (isFirstFrameDone) timeSincePrepare >= 5_000L else timeSincePrepare >= 20_000L
                     val isStalled = isBuffering && bufferHealthSec == 0L && player.playWhenReady &&
                         pendingSeekTargetMs == null && !_uiState.value.isReconnecting && isPastStartupGrace
 
@@ -1847,11 +1855,14 @@ class StreamPlayerViewModel : ViewModel() {
 
     fun restartFromBeginning() {
         _uiState.update {
-            it.copy(showResumePrompt = false, pendingResumePositionMs = 0L)
+            it.copy(showResumePrompt = false, pendingResumePositionMs = 0L, currentPositionMs = 0L)
         }
-        exoPlayer?.seekTo(0L)
-        _playbackProgress.update { it.copy(currentPositionMs = 0L) }
-        _uiState.update { it.copy(currentPositionMs = 0L) }
+        debouncedSeekJob?.cancel()
+        debouncedSeekJob = null
+        stallAccumulatorMs = 0L
+        autoRetryJob?.cancel()
+        autoRetryJob = null
+        seekTo(0L)
     }
 
     fun dismissResume() {

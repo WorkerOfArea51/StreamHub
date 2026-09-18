@@ -1,9 +1,8 @@
-### What's New in StreamHub v4.8.338 🚀
+### What's New in StreamHub v4.8.339 🚀
 
-- ✨ **Cinema-Grade In-App Update Experience**: Replaced the clunky top-feed banner with a stunning, non-intrusive Material 3 Cinema Bottom Sheet.
-- 📝 **Rich Formatted Changelogs**: Release notes now render with styled bold highlights, clean bullet points, and high readability—no more raw markdown characters or cut-off text!
-- 📊 **In-Place Live Download Progress**: Tapping "Update Now" transforms the action area into a live animated progress bar with percentage and real-time MB readouts (`45% • 5.7 MB / 12.6 MB`).
-- ⚡ **Continuous 5-Minute Progressive Buffering**: StreamHub buffers up to 5 minutes ahead at peak network speeds without stalling.
-- 🛡️ **2-Minute Safe Buffer Floor**: Prevents streaming servers and reverse proxies (such as Nginx/Serv00) from dropping idle sockets during playback.
-- 🔄 **Instant 250ms HTTP Range Reconnect**: Dropped server connections and network hiccups now trigger immediate 250ms in-place HTTP Range retries (`Range: bytes=CURRENT_POSITION-`).
-- 💎 **Crash-Proof Native Architecture**: Pure native Media3 DefaultLoadControl for 100% player stability.
+- ⏱️ **Cold-Start Watchdog Gating (20s Safe Window)**: Eliminated false-positive "Reconnecting..." HUD triggers during initial video startup on remote streams (Telegram MTProto) while keeping rapid 5s stall detection during active playback.
+- 🎯 **12-Second Seek Resilience**: Extended range-seek safety timeout from 3s to 12s, permanently fixing the issue where remote range requests over mobile/Wi-Fi timed out and snapped the seekbar back.
+- 🔄 **Flawless 'Start Over' & Seek-to-Beginning**: Tapping "Start Over" or seeking to 00:00 now cleanly locks the seek target, clears background accumulators, and restarts playback from the beginning without snapping forward.
+- ⚡ **Asynchronous MediaCodec Queueing**: Enabled native asynchronous buffer queueing on `MediaCodec` decoders for buttery-smooth audio/video demuxing and zero dropped frames.
+- 🛠️ **Dual-Bot MTProto Streaming Compatibility**: Optimized chunk demuxer readiness for files with delayed initial audio tracks.
+
