@@ -39,7 +39,6 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.AutoFixHigh
-import androidx.compose.material.icons.filled.FindInPage
 import java.util.Locale
 import com.streamhub.app.data.StreamBackendConfig
 import com.streamhub.app.data.repository.FirebaseRepository
@@ -209,7 +208,6 @@ fun AdminEditorDialog(
     var showMigrationDialog by remember { mutableStateOf(false) }
     var showVoucherDialog by remember { mutableStateOf(false) }
     var showMetadataInspector by remember { mutableStateOf(false) }
-    var showDuplicateDetector by remember { mutableStateOf(false) }
 
     val loadItemForEditing: (MediaItem) -> Unit = { itemToEdit ->
         activeEditItem = itemToEdit
@@ -312,17 +310,6 @@ fun AdminEditorDialog(
             onDismiss = { showMetadataInspector = false },
             onEditShow = { itemToEdit ->
                 showMetadataInspector = false
-                loadItemForEditing(itemToEdit)
-            }
-        )
-    }
-
-    if (showDuplicateDetector) {
-        DuplicateShowDetectorDialog(
-            repository = FirebaseRepository.getInstance(),
-            onDismiss = { showDuplicateDetector = false },
-            onEditShow = { itemToEdit ->
-                showDuplicateDetector = false
                 loadItemForEditing(itemToEdit)
             }
         )
@@ -1758,69 +1745,7 @@ fun AdminEditorDialog(
                                 }
                             }
 
-                            // 2. Duplicate Show Detector Card
-                            val duplicateGroupCount = remember(catalog) {
-                                catalog.groupBy { it.title.trim().lowercase(Locale.US) }.count { it.value.size > 1 }
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFF181824),
-                                border = BorderStroke(1.dp, Color(0xFF28283C)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        modifier = Modifier.weight(1f),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(36.dp)
-                                                .clip(CircleShape)
-                                                .background(Color(0xFFEC4899).copy(alpha = 0.15f))
-                                                .border(1.dp, Color(0xFFEC4899).copy(alpha = 0.4f), CircleShape),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(Icons.Default.FindInPage, contentDescription = null, tint = Color(0xFFF472B6), modifier = Modifier.size(18.dp))
-                                        }
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column {
-                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                Text("Duplicate Show Detector 🔍", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                                Surface(
-                                                    color = if (duplicateGroupCount > 0) Color(0xFFEC4899).copy(alpha = 0.2f) else Color(0xFF10B981).copy(alpha = 0.2f),
-                                                    shape = RoundedCornerShape(4.dp)
-                                                ) {
-                                                    Text(
-                                                        text = if (duplicateGroupCount > 0) "$duplicateGroupCount Found" else "Clean",
-                                                        color = if (duplicateGroupCount > 0) Color(0xFFF472B6) else Color(0xFF34D399),
-                                                        fontSize = 9.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
-                                                    )
-                                                }
-                                            }
-                                            Text("Scan & resolve duplicate catalog titles", color = TextSecondary, fontSize = 11.sp)
-                                        }
-                                    }
-                                    Button(
-                                        onClick = { showDuplicateDetector = true },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEC4899)),
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                    ) {
-                                        Text("Scan", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-
-                            // 3. User Codes & Voucher Manager Card
+                            // 2. User Codes & Voucher Manager Card
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
                                 color = Color(0xFF181824),
@@ -1865,7 +1790,7 @@ fun AdminEditorDialog(
                                 }
                             }
 
-                            // 4. Backup / Restore Card
+                            // 3. Backup / Restore Card
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
                                 color = Color(0xFF181824),
@@ -1910,7 +1835,7 @@ fun AdminEditorDialog(
                                 }
                             }
 
-                            // 5. Server Migrate Card
+                            // 4. Server Migrate Card
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
                                 color = Color(0xFF181824),
