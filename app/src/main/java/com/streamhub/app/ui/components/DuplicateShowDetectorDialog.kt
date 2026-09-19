@@ -19,6 +19,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -28,7 +30,6 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.repository.FirebaseRepository
-import com.streamhub.app.ui.theme.AccentGold
 import com.streamhub.app.ui.theme.CardBorderDark
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
@@ -39,8 +40,10 @@ import java.util.Locale
 data class DuplicateGroup(
     val normalizedKey: String,
     val displayTitle: String,
+    val matchReason: String,
     val isExactMatch: Boolean,
-    val items: List<MediaItem>
+    val items: List<MediaItem>,
+    val recommendedItemId: String = ""
 )
 
 @Composable
@@ -52,41 +55,132 @@ fun DuplicateShowDetectorDialog(
     val catalog by repository.mediaCatalog.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
-    var filterType by remember { mutableIntStateOf(0) } // 0 = All, 1 = Exact Only, 2 = Fuzzy Only
+    var filterType by remember { mutableIntStateOf(0) } // 0 = All, 1 = Exact Only, 2 = Similar Only
     var itemToDelete by remember { mutableStateOf<MediaItem?>(null) }
 
-    // Group items by exact title (lowercased) and normalized title (punctuation stripped)
+    // Intelligent Multi-Factor Duplicate Detection Algorithm
     val duplicateGroups = remember(catalog) {
-        val exactGroups = catalog
-            .groupBy { it.title.trim().lowercase(Locale.US) }
+        val groups = mutableListOf<DuplicateGroup>()
+        val processedIds = mutableSetOf<String>()
+
+        // Helper to extract a 4-digit release year
+        fun extractYear(item: MediaItem): String {
+            val yr = item.releaseYear.trim()
+            if (yr.length == 4 && yr.all { it.isDigit() }) return yr
+            val airedYr = Regex("""\b(19\d{2}|20\d{2})\b""").find(item.aired)?.value
+            if (!airedYr.isNullOrBlank()) return airedYr
+            val idYr = Regex("""_(19\d{2}|20\d{2})$""").find(item.id)?.groupValues?.getOrNull(1)
+            if (!idYr.isNullOrBlank()) return idYr
+            return ""
+        }
+
+        // Helper to clean title of rip/format noise without stripping sequel numbers, season markers, or punctuation like '?'
+        fun cleanTitle(raw: String): String {
+            var t = raw.trim()
+            // Strip bracketed rip info: [Dual Audio], (1080p), [Hindi-Eng], etc.
+            t = t.replace(Regex("""(?i)\s*\[(?:dual audio|hindi|eng|multi audio|clean audio|1080p|720p|480p|4k|2160p|web-?dl|bluray|hevc|x264|x265|dvdrip).*?\]"""), "")
+            t = t.replace(Regex("""(?i)\s*\((?:dual audio|hindi|eng|multi audio|clean audio|1080p|720p|480p|4k|2160p|web-?dl|bluray|hevc|x264|x265|dvdrip).*?\)"""), "")
+            // Strip standalone quality tokens
+            t = t.replace(Regex("""(?i)\b(?:1080p|720p|480p|4k|2160p|web-?dl|bluray|hevc|x264|x265|uncut|directors?\s*cut)\b"""), "")
+            return t.trim().replace(Regex("""\s+"""), " ")
+        }
+
+        // 1. EXACT DUPLICATES: Same TMDB ID (>0) in the same category
+        val tmdbGroups = catalog
+            .filter { it.tmdbId.isNotBlank() && it.tmdbId != "0" }
+            .groupBy { "${it.category.lowercase(Locale.US)}::tmdb::${it.tmdbId.trim()}" }
             .filter { it.value.size > 1 }
-            .map { (key, list) ->
+
+        for ((key, list) in tmdbGroups) {
+            val recId = list.maxByOrNull { it.episodes.size * 100 + it.description.length }?.id ?: list.first().id
+            groups.add(
                 DuplicateGroup(
                     normalizedKey = key,
-                    displayTitle = list.firstOrNull()?.title ?: key,
+                    displayTitle = list.first().title,
+                    matchReason = "Same TMDB ID (#${list.first().tmdbId})",
                     isExactMatch = true,
-                    items = list
+                    items = list,
+                    recommendedItemId = recId
                 )
+            )
+            processedIds.addAll(list.map { it.id })
+        }
+
+        // 2. EXACT DUPLICATES: Exact Title Match in Same Category with Matching Release Year
+        // If release years differ (e.g. 2019 vs 2020), they are separate seasons/remakes and NOT grouped!
+        val exactTitleGroups = catalog
+            .filter { it.id !in processedIds }
+            .groupBy { item ->
+                val yr = extractYear(item)
+                "${item.category.lowercase(Locale.US)}::${item.title.trim().lowercase(Locale.US)}::$yr"
             }
+            .filter { it.value.size > 1 }
 
-        val exactItemIds = exactGroups.flatMap { it.items.map { item -> item.id } }.toSet()
-
-        // Also check alphanumeric normalized key for titles with slight punctuation variations (e.g. "Bleach: Thousand-Year" vs "Bleach Thousand-Year")
-        val cleanRegex = Regex("[^a-z0-9]")
-        val fuzzyGroups = catalog
-            .filter { it.id !in exactItemIds }
-            .groupBy { cleanRegex.replace(it.title.lowercase(Locale.US), "") }
-            .filter { it.key.length >= 4 && it.value.size > 1 }
-            .map { (key, list) ->
+        for ((key, list) in exactTitleGroups) {
+            val recId = list.maxByOrNull { it.episodes.size * 100 + it.description.length }?.id ?: list.first().id
+            groups.add(
                 DuplicateGroup(
                     normalizedKey = key,
-                    displayTitle = list.firstOrNull()?.title ?: key,
-                    isExactMatch = false,
-                    items = list
+                    displayTitle = list.first().title,
+                    matchReason = "Exact Title Match",
+                    isExactMatch = true,
+                    items = list,
+                    recommendedItemId = recId
                 )
-            }
+            )
+            processedIds.addAll(list.map { it.id })
+        }
 
-        (exactGroups + fuzzyGroups).sortedByDescending { it.items.size }
+        // 3. SIMILAR TITLE / RIP NOISE DUPLICATES:
+        // Clean title matches, but MUST be in the same category AND must have the SAME release year (or one is blank).
+        // Preserves question marks ('?'), season suffixes, and sequel numbers so separate seasons are never confused.
+        val remaining = catalog.filter { it.id !in processedIds }
+        val similarCandidateGroups = remaining.groupBy { item ->
+            val cleaned = cleanTitle(item.title).lowercase(Locale.US)
+            val yr = extractYear(item)
+            "${item.category.lowercase(Locale.US)}::$cleaned::$yr"
+        }.filter { it.value.size > 1 }
+
+        for ((key, list) in similarCandidateGroups) {
+            val recId = list.maxByOrNull { it.episodes.size * 100 + it.description.length }?.id ?: list.first().id
+            groups.add(
+                DuplicateGroup(
+                    normalizedKey = key,
+                    displayTitle = list.first().title,
+                    matchReason = "Cleaned Title Match (Same Year)",
+                    isExactMatch = false,
+                    items = list,
+                    recommendedItemId = recId
+                )
+            )
+            processedIds.addAll(list.map { it.id })
+        }
+
+        // 4. DUPLICATE ID SUFFIXES: e.g. "my_show_2024" and "my_show_2024_copy" or "my_show_2024_1"
+        val remainingForIdCheck = catalog.filter { it.id !in processedIds }
+        val idCopyGroups = remainingForIdCheck.groupBy { item ->
+            val baseId = item.id.replace(Regex("""(_copy\d*|_duplicate\d*|_\d+)$"""), "")
+            "${item.category.lowercase(Locale.US)}::$baseId"
+        }.filter { it.value.size > 1 }
+
+        for ((key, list) in idCopyGroups) {
+            val recId = list.maxByOrNull { it.episodes.size * 100 + it.description.length }?.id ?: list.first().id
+            groups.add(
+                DuplicateGroup(
+                    normalizedKey = key,
+                    displayTitle = list.first().title,
+                    matchReason = "Duplicate ID Suffix",
+                    isExactMatch = true,
+                    items = list,
+                    recommendedItemId = recId
+                )
+            )
+        }
+
+        groups.sortedWith(
+            compareByDescending<DuplicateGroup> { it.isExactMatch }
+                .thenByDescending { it.items.size }
+        )
     }
 
     val filteredGroups = remember(duplicateGroups, searchQuery, filterType) {
@@ -323,7 +417,7 @@ fun DuplicateShowDetectorDialog(
                             shape = RoundedCornerShape(16.dp),
                             color = Color(0xFF10B981).copy(alpha = 0.1f),
                             border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.4f)),
-                            modifier = Modifier.fillMaxWidth(0.85f)
+                            modifier = Modifier.fillMaxWidth(0.88f)
                         ) {
                             Column(
                                 modifier = Modifier.padding(24.dp),
@@ -341,7 +435,7 @@ fun DuplicateShowDetectorDialog(
                                 }
                                 Text("Catalog Clean & Organized!", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                                 Text(
-                                    "Zero duplicate show titles detected across your ${catalog.size} live titles.",
+                                    "Zero redundant or duplicate shows detected across ${catalog.size} live titles.\nSeasons and installments are safely categorized.",
                                     color = TextSecondary,
                                     fontSize = 12.sp,
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -388,6 +482,8 @@ private fun DuplicateGroupCard(
     onEdit: (MediaItem) -> Unit,
     onDelete: (MediaItem) -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = Color(0xFF181824),
@@ -444,15 +540,31 @@ private fun DuplicateGroupCard(
                 }
             }
 
+            // Match Reason Sub-tag
+            if (group.matchReason.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Matched by: ${group.matchReason}",
+                    color = TextSecondary.copy(alpha = 0.8f),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
             Spacer(modifier = Modifier.height(10.dp))
 
             // Items in this group
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                group.items.forEachIndexed { index, item ->
+                group.items.forEach { item ->
+                    val isRecommended = item.id == group.recommendedItemId
+
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = Color(0xFF12121A),
-                        border = BorderStroke(0.8.dp, Color(0xFF222234)),
+                        color = if (isRecommended) Color(0xFF131F1B) else Color(0xFF12121A),
+                        border = BorderStroke(
+                            0.8.dp,
+                            if (isRecommended) Color(0xFF10B981).copy(alpha = 0.4f) else Color(0xFF222234)
+                        ),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -462,6 +574,7 @@ private fun DuplicateGroupCard(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
+                            // Media Info (Left)
                             Row(
                                 modifier = Modifier.weight(1f),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -490,14 +603,37 @@ private fun DuplicateGroupCard(
                                 }
 
                                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    Text(
-                                        text = item.title,
-                                        color = TextPrimary,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = item.title,
+                                            color = TextPrimary,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+
+                                        if (isRecommended) {
+                                            Surface(
+                                                color = Color(0xFF10B981).copy(alpha = 0.2f),
+                                                shape = RoundedCornerShape(4.dp),
+                                                border = BorderStroke(0.5.dp, Color(0xFF10B981).copy(alpha = 0.6f))
+                                            ) {
+                                                Text(
+                                                    text = "Keep ⭐",
+                                                    color = Color(0xFF34D399),
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
                                     Row(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                                         verticalAlignment = Alignment.CenterVertically
@@ -505,36 +641,63 @@ private fun DuplicateGroupCard(
                                         Text(item.category.uppercase(Locale.US), color = Color(0xFF38BDF8), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                         Text("•", color = TextSecondary, fontSize = 10.sp)
                                         Text("${item.episodes.size} eps", color = Color(0xFF34D399), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                        if (item.aired.isNotBlank()) {
+                                        val displayYear = item.releaseYear.takeIf { it.isNotBlank() } ?: item.aired.take(4).takeIf { it.isNotBlank() }
+                                        if (!displayYear.isNullOrBlank()) {
                                             Text("•", color = TextSecondary, fontSize = 10.sp)
-                                            Text(item.aired.take(4), color = TextSecondary, fontSize = 10.sp)
+                                            Text(displayYear, color = Color(0xFFE2E8F0), fontSize = 10.sp, fontWeight = FontWeight.Medium)
                                         }
                                     }
                                     Text("ID: ${item.id}", color = TextSecondary.copy(alpha = 0.7f), fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                             }
 
-                            // Quick Actions
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            // Non-Overlapping Tactile Action Buttons (Right)
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                IconButton(
-                                    onClick = { onEdit(item) },
+                                // Edit Button (36x36dp)
+                                Box(
                                     modifier = Modifier
-                                        .size(32.dp)
-                                        .background(Color(0xFF7C4DFF).copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF7C4DFF).copy(alpha = 0.18f))
+                                        .border(0.8.dp, Color(0xFF9D7BFF).copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            onEdit(item)
+                                        },
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(Icons.Default.Edit, contentDescription = "Edit Show", tint = Color(0xFFB388FF), modifier = Modifier.size(16.dp))
+                                    Icon(
+                                        Icons.Default.Edit,
+                                        contentDescription = "Edit Show",
+                                        tint = Color(0xFFC4B5FD),
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                 }
 
-                                IconButton(
-                                    onClick = { onDelete(item) },
+                                // Delete Button (36x36dp)
+                                Box(
                                     modifier = Modifier
-                                        .size(32.dp)
-                                        .background(PrimaryRed.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(PrimaryRed.copy(alpha = 0.18f))
+                                        .border(0.8.dp, PrimaryRed.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            onDelete(item)
+                                        },
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete Duplicate", tint = PrimaryRed, modifier = Modifier.size(16.dp))
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "Delete Show",
+                                        tint = Color(0xFFF87171),
+                                        modifier = Modifier.size(16.dp)
+                                    )
                                 }
                             }
                         }
