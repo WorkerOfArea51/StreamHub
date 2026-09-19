@@ -7,3 +7,4 @@
 - 🔍 **Smart Multi-Factor Duplicate Show Detector**: Overhauled duplicate detection with release-year and season awareness. Preserves season punctuation (e.g. *Kaguya-sama* 2019 vs 2020) and segregates distinct release years, eliminating false-positive duplicate alerts across multi-season series.
 - 🎯 **Tactile Non-Overlapping Action Buttons**: Replaced collapsing icon buttons with guaranteed 36×36dp tactile buttons with distinct purple (Edit) and red (Delete) glass styling and 8dp fixed spacing.
 - ⭐ **Recommended Copy Tagging**: Automatically scores duplicate copies by episode count and metadata completeness, tagging the primary version with `Keep ⭐` and redundant entries with `⚠️ Redundant Copy`.
+- 🛠️ **Streamlined Creator Studio Tools**: Purged the redundant Global Broadcast card from Studio Tools to adhere to Single Source of Truth architecture; global announcements remain cleanly managed from Live Audience Telemetry under Profile.

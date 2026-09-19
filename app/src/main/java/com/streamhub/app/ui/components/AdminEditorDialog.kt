@@ -39,7 +39,6 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.AutoFixHigh
-import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.FindInPage
 import java.util.Locale
 import com.streamhub.app.data.StreamBackendConfig
@@ -211,7 +210,6 @@ fun AdminEditorDialog(
     var showVoucherDialog by remember { mutableStateOf(false) }
     var showMetadataInspector by remember { mutableStateOf(false) }
     var showDuplicateDetector by remember { mutableStateOf(false) }
-    var showBroadcastDialog by remember { mutableStateOf(false) }
 
     val loadItemForEditing: (MediaItem) -> Unit = { itemToEdit ->
         activeEditItem = itemToEdit
@@ -327,12 +325,6 @@ fun AdminEditorDialog(
                 showDuplicateDetector = false
                 loadItemForEditing(itemToEdit)
             }
-        )
-    }
-
-    if (showBroadcastDialog) {
-        GlobalBroadcastDialog(
-            onDismiss = { showBroadcastDialog = false }
         )
     }
 
@@ -1828,52 +1820,7 @@ fun AdminEditorDialog(
                                 }
                             }
 
-                            // 3. Global Broadcast Announcements Card
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFF181824),
-                                border = BorderStroke(1.dp, Color(0xFF28283C)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        modifier = Modifier.weight(1f),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(36.dp)
-                                                .clip(CircleShape)
-                                                .background(PrimaryRed.copy(alpha = 0.15f))
-                                                .border(1.dp, PrimaryRed.copy(alpha = 0.4f), CircleShape),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(Icons.Default.Campaign, contentDescription = null, tint = Color(0xFFFF6E6E), modifier = Modifier.size(18.dp))
-                                        }
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column {
-                                            Text("Global Broadcast News 📢", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                            Text("Send instant real-time banners to all users", color = TextSecondary, fontSize = 11.sp)
-                                        }
-                                    }
-                                    Button(
-                                        onClick = { showBroadcastDialog = true },
-                                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                    ) {
-                                        Text("Broadcast", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-
-                            // 4. User Codes & Voucher Manager Card
+                            // 3. User Codes & Voucher Manager Card
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
                                 color = Color(0xFF181824),
@@ -1918,7 +1865,7 @@ fun AdminEditorDialog(
                                 }
                             }
 
-                            // 5. Backup / Restore Card
+                            // 4. Backup / Restore Card
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
                                 color = Color(0xFF181824),
@@ -1963,7 +1910,7 @@ fun AdminEditorDialog(
                                 }
                             }
 
-                            // 6. Server Migrate Card
+                            // 5. Server Migrate Card
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
                                 color = Color(0xFF181824),
