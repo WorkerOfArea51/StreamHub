@@ -102,13 +102,6 @@ fun CatalogBackupDialog(
     var restoreErrorMessage by remember { mutableStateOf<String?>(null) }
     var restoreSearchQuery by remember { mutableStateOf("") }
 
-    // 970 KB Smart Bundler state
-    var isBundling by remember { mutableStateOf(false) }
-    var bundleProgressCurrent by remember { mutableIntStateOf(0) }
-    var bundleProgressTotal by remember { mutableIntStateOf(0) }
-    var bundleProgressText by remember { mutableStateOf("") }
-    var bundleSuccessMessage by remember { mutableStateOf<String?>(null) }
-    var bundleErrorMessage by remember { mutableStateOf<String?>(null) }
 
     // System file picker for restore
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -277,22 +270,6 @@ fun CatalogBackupDialog(
                         )
                     }
 
-                    Surface(
-                        shape = RoundedCornerShape(9.dp),
-                        color = if (selectedTab == 2) Color(0xFF8B5CF6) else Color.Transparent,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable { selectedTab = 2 }
-                    ) {
-                        Text(
-                            "📦 970KB Bundler",
-                            color = if (selectedTab == 2) Color.White else TextSecondary,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(vertical = 8.dp),
-                            textAlign = TextAlign.Center
-                        )
-                    }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -625,7 +602,7 @@ fun CatalogBackupDialog(
 
                         Spacer(modifier = Modifier.height(16.dp))
                     }
-                } else {
+                } else if (selectedTab == 1) {
                     // ==========================================
                     // RESTORE TAB
                     // ==========================================
@@ -933,225 +910,6 @@ fun CatalogBackupDialog(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(err, color = PrimaryRed, fontSize = 11.sp, modifier = Modifier.padding(10.dp))
-                            }
-                        }
-                    }
-                }
-
-                if (selectedTab == 2) {
-                    // ==========================================
-                    // SMART BUNDLER TAB (970 KB Auto-Split)
-                    // ==========================================
-                    val isUsingBundles by repository.isUsingBundles.collectAsState()
-                    val totalEps = catalog.sumOf { it.episodes.size }
-                    val estimatedBundles = remember(catalog) {
-                        CatalogBundleManager.packEntireCatalog(catalog)
-                    }
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState())
-                    ) {
-                        // 1. Engine Active Mode Pill
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = if (isUsingBundles) Color(0x1A10B981) else Color(0x1AF59E0B),
-                            border = BorderStroke(1.dp, if (isUsingBundles) Color(0xFF10B981) else Color(0xFFF59E0B)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .background(if (isUsingBundles) Color(0xFF10B981).copy(alpha = 0.2f) else Color(0xFFF59E0B).copy(alpha = 0.2f), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        if (isUsingBundles) Icons.Default.Bolt else Icons.Default.Warning,
-                                        contentDescription = null,
-                                        tint = if (isUsingBundles) Color(0xFF34D399) else Color(0xFFFBBF24),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Column {
-                                    Text(
-                                        text = if (isUsingBundles) "Smart Bundler Active (99% Read Reduction)" else "Raw Collection Fallback Active",
-                                        color = if (isUsingBundles) Color(0xFF34D399) else Color(0xFFFBBF24),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = if (isUsingBundles)
-                                            "StreamHub is fetching catalog from ${estimatedBundles.size} bundle docs instead of ${catalog.size} reads."
-                                        else "Compile & upload bundles below to switch all devices to ~${estimatedBundles.size} reads!",
-                                        color = TextSecondary,
-                                        fontSize = 10.sp
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // 2. Blueprint Overview Card
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = SurfaceDark,
-                            border = BorderStroke(1.dp, CardBorderDark),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("📦 970 KB Partition Blueprint", color = Color(0xFF8B5CF6), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                    Surface(
-                                        color = Color(0xFF8B5CF6).copy(alpha = 0.2f),
-                                        shape = RoundedCornerShape(6.dp),
-                                        border = BorderStroke(0.5.dp, Color(0xFF8B5CF6).copy(alpha = 0.5f))
-                                    ) {
-                                        Text(
-                                            text = "${estimatedBundles.size} Total Bundles",
-                                            color = Color(0xFFA78BFA),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "Each category auto-splits at strict 970 KB threshold so documents never breach Firestore's 1 MB limit. All metadata + all $totalEps episodes remain 100% complete and unbroken.",
-                                    color = TextSecondary,
-                                    fontSize = 11.sp
-                                )
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                // Bundle Part Cards Preview
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    estimatedBundles.forEach { bundle ->
-                                        Surface(
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = Color(0xFF14141E),
-                                            border = BorderStroke(0.6.dp, Color(0xFF222234)),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                ) {
-                                                    Surface(
-                                                        shape = RoundedCornerShape(4.dp),
-                                                        color = Color(0xFF8B5CF6).copy(alpha = 0.2f)
-                                                    ) {
-                                                        Text(
-                                                            text = "Part ${bundle.partIndex}/${bundle.totalParts}",
-                                                            color = Color(0xFFA78BFA),
-                                                            fontSize = 9.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                        )
-                                                    }
-                                                    Column {
-                                                        Text(bundle.bundleId, color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                                        Text("${bundle.showsCount} shows • ${bundle.episodesCount} episodes", color = TextSecondary, fontSize = 10.sp)
-                                                    }
-                                                }
-                                                val kb = bundle.sizeBytes / 1024
-                                                Text(
-                                                    text = "$kb KB / 970 KB",
-                                                    color = if (kb > 900) AccentOrange else Color(0xFF34D399),
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // 3. Compile & Upload Button
-                        Button(
-                            onClick = {
-                                scope.launch(Dispatchers.IO) {
-                                    isBundling = true
-                                    bundleSuccessMessage = null
-                                    bundleErrorMessage = null
-                                    val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                                    val bundles = CatalogBundleManager.packEntireCatalog(catalog)
-                                    val result = CatalogBundleManager.uploadBundlesToFirestore(db, bundles) { curr, tot, name ->
-                                        bundleProgressCurrent = curr
-                                        bundleProgressTotal = tot
-                                        bundleProgressText = "Uploading $name ($curr/$tot)..."
-                                    }
-                                    isBundling = false
-                                    if (result.isSuccess) {
-                                        bundleSuccessMessage = "🎉 Successfully published ${bundles.size} bundles (${catalog.size} shows, $totalEps episodes)! App open reads are now ~${bundles.size} reads!"
-                                    } else {
-                                        bundleErrorMessage = "Failed to upload bundles: ${result.exceptionOrNull()?.message}"
-                                    }
-                                }
-                            },
-                            enabled = !isBundling && catalog.isNotEmpty(),
-                            modifier = Modifier.fillMaxWidth().height(48.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6))
-                        ) {
-                            if (isBundling) {
-                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(bundleProgressText.ifBlank { "Compiling Bundles..." }, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            } else {
-                                Icon(Icons.Default.Bolt, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    "⚡ Compile & Upload ${estimatedBundles.size} Bundles to Firestore",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                            }
-                        }
-
-                        bundleSuccessMessage?.let { msg ->
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = Color(0x2210B981),
-                                border = BorderStroke(1.dp, Color(0xFF10B981)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(msg, color = Color(0xFF34D399), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(12.dp))
-                            }
-                        }
-
-                        bundleErrorMessage?.let { err ->
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = Color(0x22EF4444),
-                                border = BorderStroke(1.dp, PrimaryRed),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(err, color = PrimaryRed, fontSize = 11.sp, modifier = Modifier.padding(12.dp))
                             }
                         }
                     }

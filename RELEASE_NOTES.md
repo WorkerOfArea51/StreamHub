@@ -1,3 +1,9 @@
+### What's New in StreamHub v4.8.352 🚀
+
+- 🧹 **Studio Tools Cleanup & Streamlining**:
+  - **Database Backup & Restore Restored to Clean 2-Tab Layout**: With the catalog successfully compiled and live across 5 bundles in Firestore (`catalog_bundles`), removed the temporary bundler UI tab. The background synchronization engine continues to keep all 5 bundles permanently up-to-date whenever shows are added or edited.
+  - **Metadata Health Inspector Streamlined**: Safely purged the temporary 1-tap specs standardizer banner now that the entire catalog has been 100% standardized with uniform codecs and resolution tags. Quick-pick chips in Creator Studio remain available for easy entry of future shows.
+
 ### What's New in StreamHub v4.8.351 🚀
 
 - 📦 **970 KB Smart Catalog Bundler with 99% Firebase Read Reduction**:

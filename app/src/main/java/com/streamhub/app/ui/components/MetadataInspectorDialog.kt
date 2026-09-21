@@ -275,16 +275,9 @@ fun MetadataInspectorDialog(
     var batchStatusText by remember { mutableStateOf("") }
     var batchJob by remember { mutableStateOf<Job?>(null) }
 
-    // Batch specs standardization states
-    var isBatchStandardizing by remember { mutableStateOf(false) }
-    var standardizeProgress by remember { mutableStateOf(0f) }
-    var standardizeStatusText by remember { mutableStateOf("") }
-    var standardizeJob by remember { mutableStateOf<Job?>(null) }
-
     DisposableEffect(Unit) {
         onDispose {
             batchJob?.cancel()
-            standardizeJob?.cancel()
         }
     }
 
@@ -679,127 +672,6 @@ fun MetadataInspectorDialog(
                                         .clip(RoundedCornerShape(2.dp)),
                                     color = Color(0xFFB388FF),
                                     trackColor = Color(0xFF32244C)
-                                )
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
-                }
-
-                // One-Click Codecs & Specs Standardizer Banner
-                if (unstandardizedSpecsCount > 0 || isBatchStandardizing) {
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFF132320),
-                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.5f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    modifier = Modifier.weight(1f),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ElectricBolt,
-                                        contentDescription = null,
-                                        tint = Color(0xFF10B981),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column {
-                                        Text(
-                                            text = if (isBatchStandardizing) "Standardizing Specs Across Catalog..." else "Standardize Codecs & Specs Across Catalog",
-                                            color = Color.White,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = if (isBatchStandardizing) standardizeStatusText else "$unstandardizedSpecsCount shows have non-standard codecs (x265, x264, 10-Bit) or raw audio tags",
-                                            color = Color(0xFFA7F3D0),
-                                            fontSize = 11.sp,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-
-                                if (isBatchStandardizing) {
-                                    Button(
-                                        onClick = {
-                                            standardizeJob?.cancel()
-                                            isBatchStandardizing = false
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                    ) {
-                                        Text("Stop", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                } else {
-                                    Button(
-                                        onClick = {
-                                            if (isBatchStandardizing || catalog.isEmpty()) return@Button
-                                            val snapshotItems = catalog.toList()
-                                            isBatchStandardizing = true
-                                            standardizeProgress = 0f
-                                            standardizeJob = scope.launch {
-                                                var updatedCount = 0
-                                                var failedCount = 0
-                                                val total = snapshotItems.size
-                                                for ((index, item) in snapshotItems.withIndex()) {
-                                                    val (normalizedInfo, changed) = MediaSpecsNormalizer.normalize(item.mediaInfo)
-                                                    standardizeStatusText = "Scanning (${index + 1}/$total): ${item.title}"
-                                                    standardizeProgress = (index + 1).toFloat() / total.toFloat()
-
-                                                    if (changed) {
-                                                        val updatedItem = item.copy(mediaInfo = normalizedInfo)
-                                                        val writeRes = repository.saveMediaItemSuspending(updatedItem)
-                                                        if (writeRes.isSuccess) {
-                                                            updatedCount++
-                                                        } else {
-                                                            failedCount++
-                                                        }
-                                                    }
-                                                    delay(100)
-                                                }
-                                                val summary = if (failedCount > 0) {
-                                                    "Standardized $updatedCount shows ($failedCount failed)!"
-                                                } else {
-                                                    "Standardized $updatedCount shows across catalog! ✨"
-                                                }
-                                                ToastManager.showToast(summary, if (failedCount > 0) Icons.Default.Warning else Icons.Default.CheckCircle)
-                                                isBatchStandardizing = false
-                                                standardizeProgress = 1f
-                                                standardizeStatusText = summary
-                                            }
-                                        },
-                                        enabled = !isBatchStandardizing && !isBatchRepairing && catalog.isNotEmpty(),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
-                                    ) {
-                                        Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color.Black, modifier = Modifier.size(15.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("🪄 1-Tap Standardize All", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-
-                            if (isBatchStandardizing) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                LinearProgressIndicator(
-                                    progress = { standardizeProgress },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(4.dp)
-                                        .clip(RoundedCornerShape(2.dp)),
-                                    color = Color(0xFF10B981),
-                                    trackColor = Color(0xFF1B3B34)
                                 )
                             }
                         }
