@@ -70,6 +70,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -336,140 +337,181 @@ fun HomeScreen(
 
         Pair(trending, shelves)
     }
-        val homeVerticalListState = rememberLazyListState()
+    val homeVerticalListState = rememberLazyListState()
+    val isScrolled by remember {
+        derivedStateOf {
+            homeVerticalListState.firstVisibleItemIndex > 0 || homeVerticalListState.firstVisibleItemScrollOffset > 0
+        }
+    }
+
+    LaunchedEffect(selectedCategoryFilter) {
+        if (homeVerticalListState.firstVisibleItemIndex > 0 || homeVerticalListState.firstVisibleItemScrollOffset > 0) {
+            homeVerticalListState.scrollToItem(0)
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize().background(BackgroundDark)) {
-        CompositionLocalProvider(LocalIsScrollInProgress provides homeVerticalListState.isScrollInProgress) {
-            LazyColumn(
-                state = homeVerticalListState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 24.dp)
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Pinned Top Header Rail (Always visible while scrolling)
+            Surface(
+                color = BackgroundDark,
+                modifier = Modifier.fillMaxWidth()
             ) {
-            // Category Filter Pills & Surprise Me Roulette Button
-            item {
-                LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp, bottom = 12.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    item {
-                        CategoryFilterChip("All", selectedCategoryFilter == "ALL") {
-                            com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("ALL")
-                        }
-                    }
-                    item {
-                        CategoryFilterChip("Anime", selectedCategoryFilter == "ANIME") {
-                            com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("ANIME")
-                        }
-                    }
-                    item {
-                        CategoryFilterChip("Movies", selectedCategoryFilter == "MOVIES") {
-                            com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("MOVIES")
-                        }
-                    }
-                    item {
-                        CategoryFilterChip("Series", selectedCategoryFilter == "SERIES") {
-                            com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("SERIES")
-                        }
-                    }
-                    item {
-                        // Surprise Roulette Button (Prominent gradient pill)
-                        Box(
-                            modifier = Modifier
-                                .bouncyClickable { showSurpriseMeDialog = true }
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(
-                                    androidx.compose.ui.graphics.Brush.horizontalGradient(
-                                        colors = listOf(
-                                            AccentOrange.copy(alpha = 0.25f),
-                                            Color(0xFFE11D48).copy(alpha = 0.25f)
-                                        )
-                                    )
-                                )
-                                .border(
-                                    width = 1.dp,
-                                    brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
-                                        colors = listOf(AccentOrange, Color(0xFFE11D48))
-                                    ),
-                                    shape = RoundedCornerShape(20.dp)
-                                )
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text("🎲", fontSize = 12.sp)
-                                Text(
-                                    text = "Surprise Me",
-                                    color = AccentOrange,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    LazyRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp, bottom = 8.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        item {
+                            CategoryFilterChip("All", selectedCategoryFilter == "ALL") {
+                                if (selectedCategoryFilter == "ALL") {
+                                    coroutineScope.launch { homeVerticalListState.animateScrollToItem(0) }
+                                } else {
+                                    com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("ALL")
+                                }
                             }
                         }
-                    }
-                    item {
-                        // Sort Mode Selector Pill
-                        Box {
+                        item {
+                            CategoryFilterChip("Anime", selectedCategoryFilter == "ANIME") {
+                                if (selectedCategoryFilter == "ANIME") {
+                                    coroutineScope.launch { homeVerticalListState.animateScrollToItem(0) }
+                                } else {
+                                    com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("ANIME")
+                                }
+                            }
+                        }
+                        item {
+                            CategoryFilterChip("Movies", selectedCategoryFilter == "MOVIES") {
+                                if (selectedCategoryFilter == "MOVIES") {
+                                    coroutineScope.launch { homeVerticalListState.animateScrollToItem(0) }
+                                } else {
+                                    com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("MOVIES")
+                                }
+                            }
+                        }
+                        item {
+                            CategoryFilterChip("Series", selectedCategoryFilter == "SERIES") {
+                                if (selectedCategoryFilter == "SERIES") {
+                                    coroutineScope.launch { homeVerticalListState.animateScrollToItem(0) }
+                                } else {
+                                    com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("SERIES")
+                                }
+                            }
+                        }
+                        item {
+                            // Surprise Roulette Button (Matches the mockup photo)
                             Box(
                                 modifier = Modifier
-                                    .bouncyClickable { showSortMenu = true }
+                                    .bouncyClickable { showSurpriseMeDialog = true }
                                     .clip(RoundedCornerShape(20.dp))
-                                    .background(Color(0xFF1E1E2C))
-                                    .border(1.dp, Color(0xFF38384E), RoundedCornerShape(20.dp))
-                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    .background(
+                                        androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                            colors = listOf(
+                                                Color(0xFFE11D48),
+                                                Color(0xFF8B5CF6)
+                                            )
+                                        )
+                                    )
+                                    .padding(horizontal = 14.dp, vertical = 8.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.Sort,
-                                        contentDescription = "Sort",
-                                        tint = AccentOrange,
-                                        modifier = Modifier.size(14.dp)
-                                    )
+                                    Text("🎲", fontSize = 12.sp)
                                     Text(
-                                        text = sortOrder.shortName,
-                                        color = TextPrimary,
+                                        text = "Surprise Me",
+                                        color = Color.White,
                                         fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-
-                            DropdownMenu(
-                                expanded = showSortMenu,
-                                onDismissRequest = { showSortMenu = false },
-                                modifier = Modifier.background(SurfaceDark).border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
-                            ) {
-                                com.streamhub.app.data.CatalogSortOrder.values().forEach { order ->
-                                    val isSelected = order == sortOrder
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                text = order.displayName,
-                                                color = if (isSelected) AccentOrange else TextPrimary,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                fontSize = 13.sp
-                                            )
-                                        },
-                                        onClick = {
-                                            com.streamhub.app.data.HomeScreenLayoutManager.setSortOrder(order)
-                                            showSortMenu = false
-                                        }
+                                        fontWeight = FontWeight.Bold
                                     )
                                 }
                             }
                         }
+                        item {
+                            // Sort Mode Selector Pill (Matches the mockup photo)
+                            Box {
+                                Box(
+                                    modifier = Modifier
+                                        .bouncyClickable { showSortMenu = true }
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(Color(0xFF1E1E2C))
+                                        .border(1.dp, Color(0xFF38384E), RoundedCornerShape(20.dp))
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = if (sortOrder == com.streamhub.app.data.CatalogSortOrder.NEWEST_FIRST) "Sort" else sortOrder.shortName,
+                                            color = TextPrimary,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        Text(
+                                            text = "▾",
+                                            color = TextSecondary,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
+                                DropdownMenu(
+                                    expanded = showSortMenu,
+                                    onDismissRequest = { showSortMenu = false },
+                                    modifier = Modifier.background(SurfaceDark).border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
+                                ) {
+                                    com.streamhub.app.data.CatalogSortOrder.values().forEach { order ->
+                                        val isSelected = order == sortOrder
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    text = order.displayName,
+                                                    color = if (isSelected) AccentOrange else TextPrimary,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                    fontSize = 13.sp
+                                                )
+                                            },
+                                            onClick = {
+                                                com.streamhub.app.data.HomeScreenLayoutManager.setSortOrder(order)
+                                                showSortMenu = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Subtle hairline divider when scrolled
+                    if (isScrolled) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(CardBorderDark.copy(alpha = 0.50f))
+                        )
                     }
                 }
             }
+
+            // Scrollable Content
+            CompositionLocalProvider(LocalIsScrollInProgress provides homeVerticalListState.isScrollInProgress) {
+                LazyColumn(
+                    state = homeVerticalListState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp)
+                ) {
 
 
             // Empty state — catalog is empty and Firestore has responded
@@ -709,6 +751,7 @@ fun HomeScreen(
                     }
                 }
             }
+        }
         }
         }
 
