@@ -1,3 +1,9 @@
+### What's New in StreamHub v4.8.350 🚀
+
+- 🎯 **Fixed Return-from-Playback Episode Glow Targeting**:
+  - **Eliminated 0-Based vs 1-Based Indexing Bug**: Resolved an issue where watching Episode 2 and returning to Details caused Episode 1 to glow due to ambiguous index matching (`glowingEpisodeIndex == episode.episodeNumber`).
+  - **Strict Unique Original Index Matching**: The 5-second glowing theme border and auto-scroll now strictly and accurately target only the single episode you were watching (`glowingEpisodeIndex == originalIndex`), backed by title-aware resolution.
+
 ### What's New in StreamHub v4.8.349 🚀
 
 - ⚙️ **Standardized Technical Media Specs & Creator Studio Quick-Picks**:

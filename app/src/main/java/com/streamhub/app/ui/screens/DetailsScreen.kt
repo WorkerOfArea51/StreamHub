@@ -413,9 +413,17 @@ fun DetailsScreen(
             if (targetEpNumber != null && mediaItem.episodes.isNotEmpty() && (!isMovie || mediaItem.episodes.size > 1)) {
                 val isNewTarget = lastScrolledEpisodeNumber != targetEpNumber || progressUpdated > lastScrolledTimestamp
                 if (isNewTarget) {
-                    val targetEp = mediaItem.episodes.getOrNull(targetEpNumber)
-                        ?: mediaItem.episodes.find { it.episodeNumber == targetEpNumber }
-                        ?: mediaItem.episodes.find { it.episodeNumber == targetEpNumber + 1 }
+                    val targetEp = when {
+                        progress != null && progress.episodeTitle.isNotBlank() -> {
+                            mediaItem.episodes.find { it.title.equals(progress.episodeTitle, ignoreCase = true) }
+                                ?: mediaItem.episodes.getOrNull(targetEpNumber)
+                                ?: mediaItem.episodes.find { it.episodeNumber == targetEpNumber }
+                        }
+                        else -> {
+                            mediaItem.episodes.getOrNull(targetEpNumber)
+                                ?: mediaItem.episodes.find { it.episodeNumber == targetEpNumber }
+                        }
+                    }
 
                     if (targetEp != null) {
                         selectedTabIndex = 0
@@ -440,7 +448,7 @@ fun DetailsScreen(
                         }
 
                         val filteredIndex = currentFiltered.indexOfFirst {
-                            it == targetEp || it.episodeNumber == targetEp.episodeNumber
+                            it == targetEp || (it.episodeNumber == targetEp.episodeNumber && it.seasonNumber == targetEp.seasonNumber)
                         }
                         if (filteredIndex >= 0) {
                             lastScrolledEpisodeNumber = targetEpNumber
@@ -450,7 +458,7 @@ fun DetailsScreen(
                                 index = 3 + filteredIndex,
                                 scrollOffset = -40
                             )
-                            val originalIdx = episodeIndexMap[targetEp] ?: targetEpNumber
+                            val originalIdx = episodeIndexMap[targetEp] ?: mediaItem.episodes.indexOf(targetEp)
                             glowingEpisodeIndex = originalIdx
                         }
                     }
@@ -1144,19 +1152,10 @@ fun DetailsScreen(
                         val originalIndex = episodeIndexMap[episode] ?: index
                         val downloadItem = downloads.firstOrNull { it.mediaId == mediaItem.id && it.episodeIndex == originalIndex && it.isCompleted }
                         val isDownloaded = downloadItem != null
-                        val isEpisodeGlowing = glowingEpisodeIndex != null && (
-                            glowingEpisodeIndex == originalIndex ||
-                            glowingEpisodeIndex == episode.episodeNumber ||
-                            glowingEpisodeIndex == episode.episodeNumber - 1 ||
-                            (mediaProgress != null && glowingEpisodeIndex == mediaProgress.episodeNumber && (
-                                mediaProgress.episodeNumber == originalIndex ||
-                                mediaProgress.episodeNumber == episode.episodeNumber - 1 ||
-                                (mediaProgress.episodeTitle.isNotBlank() && mediaProgress.episodeTitle.equals(episode.title, ignoreCase = true))
-                            ))
-                        )
+                        val isEpisodeGlowing = glowingEpisodeIndex != null && glowingEpisodeIndex == originalIndex
                         EpisodeRowItem(
                             episode = episode,
-                            index = index,
+                            index = originalIndex,
                             mediaItem = mediaItem,
                             isDownloaded = isDownloaded,
                             isOnline = isOnline,
