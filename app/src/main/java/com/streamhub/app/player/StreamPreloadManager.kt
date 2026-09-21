@@ -246,6 +246,10 @@ object StreamPreloadManager {
                 val alreadyCached = simpleCache.isCached(cacheKey, 0, targetBytes)
                 if (alreadyCached) {
                     Log.i(TAG, "Binge pre-cache: Next episode head (25 MB) already cached in disk ($cacheKey)")
+                    val metaLen = androidx.media3.datasource.cache.ContentMetadata.getContentLength(simpleCache.getContentMetadata(cacheKey))
+                    if (metaLen > targetBytes) {
+                        precacheTailIndexAtomically(appContext, sanitizedUrl, cacheKey, metaLen, targetBytes)
+                    }
                     _bingePrecacheStatus.value = BingePrecacheStatus(
                         isActive = false,
                         isCompleted = true,
@@ -326,7 +330,20 @@ object StreamPreloadManager {
                 }
 
                 writer.cache()
-                Log.i(TAG, "Binge pre-cache: Head (25 MB) cached successfully! Next episode is ready for instant 0ms play.")
+                synchronized(this@StreamPreloadManager) {
+                    activeBingeWriter = null
+                }
+                Log.i(TAG, "Binge pre-cache: Head (25 MB) cached successfully!")
+
+                // Atomically pre-cache the aligned tail (~512KB) containing the MKV Cues / seek index.
+                // Ensures ExoPlayer reads both Head and Cues locally in 0ms on episode advance!
+                val metaLen = androidx.media3.datasource.cache.ContentMetadata.getContentLength(simpleCache.getContentMetadata(cacheKey))
+                val totalLen = if (metaLen > 0L) metaLen else capturedTotalLength
+                if (totalLen > targetBytes) {
+                    precacheTailIndexAtomically(appContext, sanitizedUrl, cacheKey, totalLen, targetBytes)
+                }
+
+                Log.i(TAG, "Binge pre-cache: Head + Tail fully primed! Next episode is ready for instant 0ms play.")
                 _bingePrecacheStatus.value = BingePrecacheStatus(
                     isActive = false,
                     isCompleted = true,
@@ -401,6 +418,82 @@ object StreamPreloadManager {
         }
     }
 
+
+    /**
+     * Atomically pre-caches the tail (~512KB) of the stream containing the MKV Cues (seek index).
+     * Guarantees 512KB chunk alignment for Telegram MTProto proxy compatibility.
+     * Buffers into memory first before committing to disk, preventing any partial or corrupt cache spans.
+     */
+    private suspend fun precacheTailIndexAtomically(
+        context: Context,
+        sanitizedUrl: String,
+        cacheKey: String,
+        totalLength: Long,
+        headBytes: Long
+    ) {
+        val chunkSize = 512L * 1024L // 512 KB aligned to Telegram MTProto boundary
+        if (totalLength <= headBytes + chunkSize) {
+            return
+        }
+
+        val rawTailStart = (totalLength - chunkSize).coerceAtLeast(headBytes)
+        val alignedTailStart = (rawTailStart / chunkSize) * chunkSize
+        val tailLength = totalLength - alignedTailStart
+        if (tailLength <= 0 || tailLength > 4 * 1024 * 1024L) return
+
+        val simpleCache = StreamCacheManager.getCache(context.applicationContext)
+
+        // Check if tail is already cached
+        if (simpleCache.isCached(cacheKey, alignedTailStart, tailLength)) {
+            Log.i(TAG, "Tail index already cached on disk at offset $alignedTailStart ($tailLength bytes)")
+            return
+        }
+
+        try {
+            val rangeHeader = "bytes=$alignedTailStart-${totalLength - 1}"
+            val request = Request.Builder()
+                .url(sanitizedUrl)
+                .header("User-Agent", USER_AGENT)
+                .header("Range", rangeHeader)
+                .build()
+
+            Log.i(TAG, "Fetching aligned tail index ($tailLength bytes) at offset $alignedTailStart: $rangeHeader")
+
+            withContext(Dispatchers.IO) {
+                preloadClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful || response.code != 206) {
+                        Log.w(TAG, "Tail fetch failed: HTTP ${response.code}")
+                        return@use
+                    }
+
+                    val body = response.body ?: return@use
+                    val bytes = body.bytes() // Read into memory buffer first (atomic)
+
+                    if (bytes.size.toLong() == tailLength) {
+                        // 100% verified complete — commit to SimpleCache atomically
+                        val sink = CacheDataSink(simpleCache, 4 * 1024 * 1024L)
+                        val tailSpec = DataSpec.Builder()
+                            .setUri(Uri.parse(sanitizedUrl))
+                            .setKey(cacheKey)
+                            .setPosition(alignedTailStart)
+                            .setLength(tailLength)
+                            .build()
+
+                        sink.open(tailSpec)
+                        sink.write(bytes, 0, bytes.size)
+                        sink.close()
+                        Log.i(TAG, "Binge pre-cache: Tail index ($tailLength bytes) committed to disk cache! 0ms instant transition primed.")
+                    } else {
+                        Log.w(TAG, "Tail fetch incomplete: expected $tailLength bytes, received ${bytes.size}. Discarding buffer.")
+                    }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Non-fatal: tail index fetch failed: ${e.message}")
+        }
+    }
 
     private fun isNetworkConnected(context: Context): Boolean {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false

@@ -413,9 +413,13 @@ fun PlayerScreen(
     var showBufferingHud by remember { mutableStateOf(false) }
     LaunchedEffect(uiState.isBuffering, uiState.isFirstFrameRendered) {
         if (uiState.isBuffering && !uiState.isFirstFrameRendered) {
-            // Debounce initial episode startup/transition: give local cache / warm stream 350ms to decode
-            // before showing the buffering spinner. Eliminates the flash of "Buffer: 0s" for pre-cached episodes.
-            delay(350L)
+            // Debounce initial episode startup/transition:
+            // If stream head is already pre-cached on disk, grant a 1,200ms grace window for decoders
+            // to prime, completely eliminating the jarring flash of "Buffer: 0s" spinner.
+            val isPrecached = uiState.resolvedStreamUrl.isNotBlank() &&
+                com.streamhub.app.player.StreamPreloadManager.isStreamPrecached(context, uiState.resolvedStreamUrl, 2 * 1024 * 1024L)
+            val startupGraceMs = if (isPrecached) 1200L else 350L
+            delay(startupGraceMs)
             showBufferingHud = true
         } else if (uiState.isBuffering) {
             // Mid-stream buffering stall
