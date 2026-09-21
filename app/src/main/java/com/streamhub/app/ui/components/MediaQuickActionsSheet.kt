@@ -318,8 +318,10 @@ fun MediaQuickActionsSheet(
                 onClick = onViewDetails
             )
 
-            // ── Remove from Continue Watching / History ──
-            if (onRemoveFromHistory != null && (isWatchingInProgress || progress != null)) {
+            // ── Remove from Continue Watching ──
+            // Only shown when the title is actively in progress on the watch rail.
+            // Completed titles instead display "Remove Completed Mark" above.
+            if (onRemoveFromHistory != null && isWatchingInProgress && !isCompleted) {
                 Spacer(modifier = Modifier.height(8.dp))
                 QuickActionRowItem(
                     icon = Icons.Default.DeleteOutline,

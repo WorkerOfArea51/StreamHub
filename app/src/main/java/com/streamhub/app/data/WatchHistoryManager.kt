@@ -86,7 +86,8 @@ object WatchHistoryManager {
         backdropUrl: String = "",
         mediaType: String = "",
         episodeTitle: String = "",
-        seasonNumber: Int = 0
+        seasonNumber: Int = 0,
+        isLastEpisode: Boolean = true
     ) {
         if (!::appContext.isInitialized) {
             Log.w(TAG, "saveProgress called before init — no-op")
@@ -98,10 +99,13 @@ object WatchHistoryManager {
         val effectiveDuration = when {
             durationMs > 0L -> durationMs
             (existing?.durationMs ?: 0L) > 0L -> existing!!.durationMs
-            positionMs > 0L -> positionMs
-            else -> 1L
+            else -> 0L
         }
-        val isCompleted = if (effectiveDuration > 0) (positionMs.toFloat() / effectiveDuration.toFloat()) >= 0.92f else false
+
+        // Auto-complete ONLY if valid duration is known (>= 30s) and reached >= 92%.
+        // For episodic series, early episodes NEVER mark the entire series completed.
+        val isAtEndOfMedia = effectiveDuration >= 30_000L && (positionMs.toFloat() / effectiveDuration.toFloat()) >= 0.92f
+        val isCompleted = if (isLastEpisode) isAtEndOfMedia else false
 
         val progress = PlaybackProgress(
             mediaId = mediaId,
@@ -115,7 +119,7 @@ object WatchHistoryManager {
             mediaType = mediaType.ifEmpty { existing?.mediaType ?: "" },
             episodeTitle = episodeTitle.ifEmpty { existing?.episodeTitle ?: "" },
             seasonNumber = if (seasonNumber >= 0) seasonNumber else (existing?.seasonNumber ?: 0),
-            isCompleted = isCompleted || (existing?.isCompleted == true && positionMs < 10_000L)
+            isCompleted = isCompleted
         )
 
         val updatedMap = _historyFlow.value.toMutableMap()
@@ -343,18 +347,30 @@ object WatchHistoryManager {
 
     @Synchronized
     fun restoreMediaProgress(progress: PlaybackProgress) {
-        saveProgress(
-            mediaId = progress.mediaId,
-            episodeNumber = progress.episodeNumber,
-            positionMs = progress.positionMs,
-            durationMs = progress.durationMs,
-            title = progress.title,
-            posterUrl = progress.posterUrl,
-            backdropUrl = progress.backdropUrl,
-            mediaType = progress.mediaType,
-            episodeTitle = progress.episodeTitle,
-            seasonNumber = progress.seasonNumber
-        )
+        if (progress.isCompleted) {
+            markAsCompleted(
+                mediaId = progress.mediaId,
+                title = progress.title,
+                posterUrl = progress.posterUrl,
+                backdropUrl = progress.backdropUrl,
+                mediaType = progress.mediaType,
+                episodeNumber = progress.episodeNumber,
+                seasonNumber = progress.seasonNumber
+            )
+        } else {
+            saveProgress(
+                mediaId = progress.mediaId,
+                episodeNumber = progress.episodeNumber,
+                positionMs = progress.positionMs,
+                durationMs = progress.durationMs,
+                title = progress.title,
+                posterUrl = progress.posterUrl,
+                backdropUrl = progress.backdropUrl,
+                mediaType = progress.mediaType,
+                episodeTitle = progress.episodeTitle,
+                seasonNumber = progress.seasonNumber
+            )
+        }
     }
 
     @Synchronized

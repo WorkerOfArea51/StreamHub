@@ -944,7 +944,7 @@ fun SearchScreen(
                 selectedQuickActionMedia = null
                 onMediaClick(media)
             },
-            onRemoveFromHistory = if (progress != null) {
+            onRemoveFromHistory = if (progress != null && !progress.isCompleted) {
                 {
                     selectedQuickActionMedia = null
                     val previousProgress = progress
@@ -952,11 +952,11 @@ fun SearchScreen(
                     coroutineScope.launch {
                         snackbarHostState.currentSnackbarData?.dismiss()
                         val result = snackbarHostState.showSnackbar(
-                            message = "Removed \"${media.title}\"",
+                            message = "Removed \"${media.title}\" from continue watching",
                             actionLabel = "Undo",
                             duration = SnackbarDuration.Short
                         )
-                        if (result == SnackbarResult.ActionPerformed && previousProgress != null) {
+                        if (result == SnackbarResult.ActionPerformed) {
                             WatchHistoryManager.restoreMediaProgress(previousProgress)
                         }
                     }

@@ -209,7 +209,7 @@ fun HomeScreen(
                 val media = catalogMap[progress.mediaId] ?: return@mapNotNull null
                 val isMatchingCategory = media.matchesCategory(selectedCategoryFilter)
                 if (!isMatchingCategory) return@mapNotNull null
-                val completed = progress.durationMs > 0 && progress.positionMs >= (progress.durationMs * 0.95)
+                val completed = progress.isCompleted || (progress.durationMs > 0 && progress.positionMs >= (progress.durationMs * 0.95))
                 if (completed) null else Pair(media, progress)
             }
             .sortedByDescending { it.second.lastUpdated }
@@ -883,7 +883,7 @@ fun HomeScreen(
                 selectedQuickActionMedia = null
                 onMediaClick(media)
             },
-            onRemoveFromHistory = if (progress != null) {
+            onRemoveFromHistory = if (progress != null && !progress.isCompleted) {
                 {
                     selectedQuickActionMedia = null
                     val previousProgress = progress
@@ -891,11 +891,11 @@ fun HomeScreen(
                     coroutineScope.launch {
                         snackbarHostState.currentSnackbarData?.dismiss()
                         val result = snackbarHostState.showSnackbar(
-                            message = "Removed \"${media.title}\"",
+                            message = "Removed \"${media.title}\" from continue watching",
                             actionLabel = "Undo",
                             duration = SnackbarDuration.Short
                         )
-                        if (result == SnackbarResult.ActionPerformed && previousProgress != null) {
+                        if (result == SnackbarResult.ActionPerformed) {
                             WatchHistoryManager.restoreMediaProgress(previousProgress)
                         }
                     }

@@ -1670,6 +1670,7 @@ class StreamPlayerViewModel : ViewModel() {
                                 val epIdx = _uiState.value.currentEpisodeIndex
                                 val ep = episodesList.getOrNull(epIdx)
                                 val effectiveDur = if (totalDuration > 0L) totalDuration else _uiState.value.durationMs
+                                val isLastEp = isMovie || epIdx >= (episodesList.size - 1)
                                 viewModelScope.launch(Dispatchers.IO) {
                                     WatchHistoryManager.saveProgress(
                                         mediaId = media.id,
@@ -1681,7 +1682,8 @@ class StreamPlayerViewModel : ViewModel() {
                                         backdropUrl = media.bannerUrl,
                                         mediaType = if (isMovie) "Movie" else media.category,
                                         episodeTitle = if (isMovie) "" else (ep?.title ?: ""),
-                                        seasonNumber = if (isMovie) 0 else (ep?.seasonNumber ?: 1)
+                                        seasonNumber = if (isMovie) 0 else (ep?.seasonNumber ?: 1),
+                                        isLastEpisode = isLastEp
                                     )
                                 }
                             }
@@ -1947,6 +1949,7 @@ class StreamPlayerViewModel : ViewModel() {
                 val epIdx = _uiState.value.currentEpisodeIndex
                 val ep = episodesList.getOrNull(epIdx)
                 val effectiveDur = if (player.duration > 0L) player.duration else _uiState.value.durationMs
+                val isLastEp = isMovie || epIdx >= (episodesList.size - 1)
                 WatchHistoryManager.saveProgress(
                     mediaId = media.id,
                     episodeNumber = if (isMovie) 0 else epIdx,
@@ -1957,7 +1960,8 @@ class StreamPlayerViewModel : ViewModel() {
                     backdropUrl = media.bannerUrl,
                     mediaType = if (isMovie) "Movie" else media.category,
                     episodeTitle = if (isMovie) "" else (ep?.title ?: ""),
-                    seasonNumber = if (isMovie) 0 else (ep?.seasonNumber ?: 1)
+                    seasonNumber = if (isMovie) 0 else (ep?.seasonNumber ?: 1),
+                    isLastEpisode = isLastEp
                 )
             }
             // FIX: Only release reader if THIS ViewModel acquired it. Prevents double-release.
