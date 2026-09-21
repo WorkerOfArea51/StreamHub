@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
@@ -32,7 +33,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
+import com.streamhub.app.data.WatchHistoryManager
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -157,6 +161,8 @@ fun SeasonArcSelectorSheet(
             Spacer(modifier = Modifier.height(18.dp))
 
             // Options List
+            val watchHistory by WatchHistoryManager.historyFlow.collectAsState()
+
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -174,6 +180,9 @@ fun SeasonArcSelectorSheet(
                     val optTag = if (!isArcMode && opt.targetMediaItem != null && currentMediaItem != null) {
                         com.streamhub.app.data.FranchiseManager.getFranchiseTag(opt.targetMediaItem, currentMediaItem)
                     } else ""
+
+                    val optMediaId = opt.targetMediaItem?.id ?: currentMediaItem?.id
+                    val isOptCompleted = !isArcMode && optMediaId != null && watchHistory[optMediaId]?.isCompleted == true
 
                     Surface(
                         shape = RoundedCornerShape(14.dp),
@@ -267,6 +276,26 @@ fun SeasonArcSelectorSheet(
                                     )
                                 }
                                 Spacer(modifier = Modifier.width(4.dp))
+                            }
+
+                            // Completed emerald tick badge
+                            if (isOptCompleted) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color(0x264CAF50),
+                                    border = BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.8f)),
+                                    modifier = Modifier.size(20.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Completed",
+                                            tint = Color(0xFF4CAF50),
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
                             }
 
                             // Checkmark or chevron

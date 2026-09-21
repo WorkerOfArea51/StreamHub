@@ -1767,6 +1767,14 @@ private fun FranchiseCard(
         com.streamhub.app.data.FranchiseManager.getSeasonCardSubtitle(fItem, includeDuration = false)
     }
 
+    val watchHistoryMap by WatchHistoryManager.historyFlow.collectAsState()
+    val fProgress = watchHistoryMap[fItem.id] ?: remember(fItem.id) { WatchHistoryManager.getProgress(fItem.id) }
+    val isCompleted = fProgress?.isCompleted == true
+    val isWatchingInProgress = fProgress != null && fProgress.positionMs > 5000L && fProgress.durationMs > 0L && !isCompleted
+    val progressFraction = if (isWatchingInProgress) {
+        (fProgress!!.positionMs.toFloat() / fProgress.durationMs.toFloat()).coerceIn(0.04f, 1f)
+    } else 0f
+
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = if (isCurrent) Color(0xFF16151E) else Color(0xFF13121A),
@@ -1816,6 +1824,28 @@ private fun FranchiseCard(
                     }
                 }
 
+                // Completed Badge Top Right of Poster (Emerald Tick Mark ✓)
+                if (isCompleted) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xD90A0A0F),
+                        border = BorderStroke(1.2.dp, Color(0xFF4CAF50)),
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(5.dp)
+                            .size(20.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Completed",
+                                tint = Color(0xFF4CAF50),
+                                modifier = Modifier.size(13.dp)
+                            )
+                        }
+                    }
+                }
+
                 // Active Playback indicator (Centered if current)
                 if (isCurrent) {
                     Surface(
@@ -1833,6 +1863,32 @@ private fun FranchiseCard(
                         )
                     }
                 }
+
+                // Netflix-Style Resume Progress Bar or Completed Green Line along bottom edge
+                if (isWatchingInProgress) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(3.5.dp)
+                            .background(Color(0x99000000))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(progressFraction)
+                                .background(PrimaryRed)
+                        )
+                    }
+                } else if (isCompleted) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .background(Color(0xFF4CAF50))
+                    )
+                }
             }
 
             // Details Column beside the poster (Option 1: Cinema Slate)
@@ -1843,12 +1899,32 @@ private fun FranchiseCard(
                 verticalArrangement = Arrangement.Center
             ) {
                 // Micro-Capsule Relation Pills (Option 1 Concept A Glow Pills)
-                if (tags.isNotEmpty()) {
+                if (tags.isNotEmpty() || isCompleted) {
                     androidx.compose.foundation.layout.FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(5.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
+                        if (isCompleted) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0x264CAF50),
+                                border = BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.8f))
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Completed",
+                                        tint = Color(0xFF4CAF50),
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                }
+                            }
+                        }
+
                         tags.forEach { tag ->
                             val tagColor = when (tag.type) {
                                 FranchiseTagType.CURRENT -> AccentGold
