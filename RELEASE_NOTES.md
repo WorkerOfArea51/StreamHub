@@ -1,3 +1,18 @@
+### What's New in StreamHub v4.8.349 🚀
+
+- ⚙️ **Standardized Technical Media Specs & Creator Studio Quick-Picks**:
+  - **Quick-Pick Chips in Creator Studio**: Added 1-tap interactive pill chips to the *Specs* tab in Creator Studio for instant population without repetitive manual typing:
+    - **Resolution**: `[1080p]`, `[720p]`, `[4K]`, `[480p]`
+    - **Codecs (Standardized)**: `[HEVC/x265 (10-Bit)]`, `[HEVC/x265]`, `[x264]`, `[AV1]`
+    - **Audio Tracks (Multi-Select)**: Interactive toggle chips for 12 languages (`English`, `Spanish`, `Japanese`, `Korean`, `Chinese`, `Bengali`, `Hindi`, `Urdu`, `Tamil`, `Telugu`, `Malayalam`, `Kannada`) that immediately toggle into/out of the comma-separated field.
+    - **Subtitle Tracks**: `[English]`, `[English, Bengali]`, `[Multi Subs]`, `[None]`
+    - Preserves full manual text editing capabilities for custom entries.
+- ⚡ **1-Tap Catalog Specs & Codec Standardizer in Metadata Health Inspector**:
+  - Integrated a dedicated **"⚡ Standardize Codecs & Specs Across Catalog"** banner directly into `MetadataInspectorDialog`.
+  - **1-Tap Fix**: Audits every title in Firestore, extracts and separates accidental resolutions from codecs (e.g. `1080p x265` ➔ Resolution: `1080p`, Codec: `HEVC/x265`), standardizes 10-bit HEVC notations (`HEVC/x265 (10-Bit)`), capitalizes language names (`korean, english` ➔ `Korean, English`), strips trailing `(with subs)`, and fixes quality badges across the entire Firebase database.
+  - Displays real-time scan progress (`Standardizing (X/Total): [Title]...`) with responsive UI and non-blocking background saves.
+  - Added new `⚡ Unstandardized Specs` filter chip to the Health Inspector for instant diagnosis.
+
 ### What's New in StreamHub v4.8.348 🚀
 
 - 🔔 **Franchise Universe Release Alerts & Jetpack WorkManager Sync**:

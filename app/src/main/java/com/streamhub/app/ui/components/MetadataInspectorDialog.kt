@@ -29,6 +29,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.streamhub.app.data.api.MetadataFetchManager
+import com.streamhub.app.data.models.MediaInfo
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.components.ToastManager
@@ -85,6 +86,7 @@ fun getMediaItemIssues(item: MediaItem): List<MetadataIssueType> {
 
 enum class InspectorFilter(val label: String) {
     ALL_ISSUES("All Issues"),
+    UNSTANDARDIZED_SPECS("Unstandardized Specs"),
     NO_TRAILER("No Trailer"),
     BROKEN_GENRES("Broken Genres"),
     NO_CAST("No Cast"),
@@ -93,6 +95,161 @@ enum class InspectorFilter(val label: String) {
     NO_SPECS("No Specs"),
     ALL("All Shows"),
     HEALTHY("100% Healthy")
+}
+
+object MediaSpecsNormalizer {
+    /**
+     * Standardizes resolution, videoCodec, audioTracks, and subtitleTracks for a MediaInfo object.
+     * Returns the cleaned MediaInfo and a boolean flag indicating if any field was modified.
+     */
+    fun normalize(mediaInfo: MediaInfo): Pair<MediaInfo, Boolean> {
+        var changed = false
+        var currentRes = mediaInfo.resolution.trim()
+        var currentCodec = mediaInfo.videoCodec.trim()
+        val currentAudios = mediaInfo.audioTracks.toMutableList()
+        val currentSubs = mediaInfo.subtitleTracks.toMutableList()
+
+        // 1. Detect and extract resolution embedded inside codec or resolution field
+        val fullSpecText = "$currentRes $currentCodec"
+        val resMatch = Regex("(?i)\\b(4k|2160p|1080p|720p|480p)\\b").find(fullSpecText)
+        val extractedRes = resMatch?.value?.lowercase()?.let {
+            when (it) {
+                "4k", "2160p" -> "4K"
+                "1080p" -> "1080p"
+                "720p" -> "720p"
+                "480p" -> "480p"
+                else -> it
+            }
+        }
+
+        if (currentRes.isBlank() && extractedRes != null) {
+            currentRes = extractedRes
+            changed = true
+        } else if (currentRes.isNotBlank()) {
+            val stdRes = when (currentRes.lowercase().trim()) {
+                "4k", "2160p" -> "4K"
+                "1080p", "1080" -> "1080p"
+                "720p", "720" -> "720p"
+                "480p", "480" -> "480p"
+                else -> currentRes
+            }
+            if (stdRes != currentRes) {
+                currentRes = stdRes
+                changed = true
+            }
+        }
+
+        // If codec field contained the resolution, strip it out cleanly
+        if (extractedRes != null && currentCodec.contains(extractedRes, ignoreCase = true)) {
+            val stripped = currentCodec.replace(Regex("(?i)\\b" + Regex.escape(extractedRes) + "\\b"), "").trim()
+            if (stripped.isNotBlank() && stripped != currentCodec) {
+                currentCodec = stripped
+                changed = true
+            }
+        }
+
+        // 2. Standardize Video Codec
+        val codecLower = currentCodec.lowercase()
+        val is10Bit = codecLower.contains("10-bit") || codecLower.contains("10bit") || codecLower.contains("10 bit")
+        val isHevc = codecLower.contains("x265") || codecLower.contains("hevc") || codecLower.contains("h.265") || codecLower.contains("h265")
+        val isAvc = codecLower.contains("x264") || codecLower.contains("h.264") || codecLower.contains("h264") || codecLower.contains("avc")
+        val isAv1 = codecLower.contains("av1") || codecLower.contains("av01")
+
+        val standardCodec = when {
+            isHevc && is10Bit -> "HEVC/x265 (10-Bit)"
+            isHevc -> "HEVC/x265"
+            isAvc -> "x264"
+            isAv1 -> "AV1"
+            else -> currentCodec
+        }
+
+        if (standardCodec.isNotBlank() && standardCodec != currentCodec) {
+            currentCodec = standardCodec
+            changed = true
+        }
+
+        // 3. Clean and Standardize Audio Tracks
+        val languageMapping = mapOf(
+            "english" to "English", "eng" to "English",
+            "hindi" to "Hindi", "hin" to "Hindi",
+            "bengali" to "Bengali", "ben" to "Bengali", "bangla" to "Bengali",
+            "korean" to "Korean", "kor" to "Korean",
+            "japanese" to "Japanese", "jap" to "Japanese", "jpn" to "Japanese",
+            "spanish" to "Spanish", "spa" to "Spanish",
+            "chinese" to "Chinese", "chi" to "Chinese", "zho" to "Chinese",
+            "urdu" to "Urdu", "urd" to "Urdu",
+            "tamil" to "Tamil", "tam" to "Tamil",
+            "telugu" to "Telugu", "tel" to "Telugu",
+            "malayalam" to "Malayalam", "mal" to "Malayalam",
+            "kannada" to "Kannada", "kan" to "Kannada"
+        )
+
+        var hasWithSubs = false
+        val cleanedAudios = mutableListOf<String>()
+
+        for (rawAudio in currentAudios) {
+            var a = rawAudio.trim()
+            if (a.contains("(with subs)", ignoreCase = true) || a.contains("(subs)", ignoreCase = true) || a.contains("with sub", ignoreCase = true)) {
+                hasWithSubs = true
+                a = a.replace(Regex("(?i)\\s*\\(with\\s+subs?\\)"), "")
+                     .replace(Regex("(?i)\\s*\\(subs?\\)"), "")
+                     .trim()
+            }
+            val parts = a.split(",").map { it.trim() }.filter { it.isNotBlank() }
+            for (p in parts) {
+                val pClean = p.removePrefix("🔊").removePrefix("🎧").trim()
+                val mapped = languageMapping[pClean.lowercase()] ?: pClean.replaceFirstChar { it.uppercase() }
+                if (mapped.isNotBlank() && !cleanedAudios.contains(mapped)) {
+                    cleanedAudios.add(mapped)
+                }
+            }
+        }
+
+        if (cleanedAudios != currentAudios) {
+            changed = true
+        }
+
+        // 4. Clean Subtitle Tracks
+        val cleanedSubs = mutableListOf<String>()
+        for (rawSub in currentSubs) {
+            val parts = rawSub.split(",").map { it.trim() }.filter { it.isNotBlank() }
+            for (p in parts) {
+                val pClean = p.removePrefix("💬").removePrefix("📝").removePrefix("CC").trim()
+                val mapped = languageMapping[pClean.lowercase()] ?: pClean.replaceFirstChar { it.uppercase() }
+                if (mapped.isNotBlank() && !cleanedSubs.contains(mapped)) {
+                    cleanedSubs.add(mapped)
+                }
+            }
+        }
+
+        if (hasWithSubs && cleanedSubs.isEmpty()) {
+            cleanedSubs.add("English")
+            changed = true
+        }
+
+        if (cleanedSubs != currentSubs) {
+            changed = true
+        }
+
+        // 5. Update Quality Badges
+        val newBadges = listOfNotNull(
+            currentRes.takeIf { it.isNotBlank() },
+            currentCodec.takeIf { it.isNotBlank() }
+        )
+        if (newBadges != mediaInfo.qualityBadges) {
+            changed = true
+        }
+
+        val updatedMediaInfo = mediaInfo.copy(
+            resolution = currentRes,
+            videoCodec = currentCodec,
+            audioTracks = cleanedAudios,
+            subtitleTracks = cleanedSubs,
+            qualityBadges = newBadges
+        )
+
+        return Pair(updatedMediaInfo, changed)
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -118,9 +275,16 @@ fun MetadataInspectorDialog(
     var batchStatusText by remember { mutableStateOf("") }
     var batchJob by remember { mutableStateOf<Job?>(null) }
 
+    // Batch specs standardization states
+    var isBatchStandardizing by remember { mutableStateOf(false) }
+    var standardizeProgress by remember { mutableStateOf(0f) }
+    var standardizeStatusText by remember { mutableStateOf("") }
+    var standardizeJob by remember { mutableStateOf<Job?>(null) }
+
     DisposableEffect(Unit) {
         onDispose {
             batchJob?.cancel()
+            standardizeJob?.cancel()
         }
     }
 
@@ -147,9 +311,15 @@ fun MetadataInspectorDialog(
     val noBackdropCount = remember(catalog) { catalog.count { it.bannerUrl.isBlank() || it.bannerUrl == it.posterUrl } }
     val noSpecsCount = remember(catalog) { catalog.count { it.studio.isBlank() || it.duration.isBlank() || it.rating.isBlank() } }
 
-    val filteredList: List<MediaItem> = remember(catalog, issuesMap, selectedFilter, searchQuery) {
+    val unstandardizedItems: List<MediaItem> = remember(catalog) {
+        catalog.filter { MediaSpecsNormalizer.normalize(it.mediaInfo).second }
+    }
+    val unstandardizedSpecsCount = unstandardizedItems.size
+
+    val filteredList: List<MediaItem> = remember(catalog, issuesMap, selectedFilter, searchQuery, unstandardizedItems) {
         val baseList = when (selectedFilter) {
             InspectorFilter.ALL_ISSUES -> needsRepairItems
+            InspectorFilter.UNSTANDARDIZED_SPECS -> unstandardizedItems
             InspectorFilter.NO_TRAILER -> catalog.filter { it.trailerId.isBlank() || it.trailerId.equals("null", ignoreCase = true) }
             InspectorFilter.BROKEN_GENRES -> catalog.filter { isGenreBroken(it.genres) }
             InspectorFilter.NO_CAST -> catalog.filter { it.castList.isEmpty() }
@@ -423,7 +593,9 @@ fun MetadataInspectorDialog(
                                                     val res = MetadataFetchManager.repairMediaItem(item, deepSync = deepSyncMode)
                                                     res.fold(
                                                         onSuccess = { updated ->
-                                                            val writeRes = repository.saveMediaItemSuspending(updated)
+                                                            val (normalizedMediaInfo, _) = MediaSpecsNormalizer.normalize(updated.mediaInfo)
+                                                            val fullyUpdated = updated.copy(mediaInfo = normalizedMediaInfo)
+                                                            val writeRes = repository.saveMediaItemSuspending(fullyUpdated)
                                                             if (writeRes.isSuccess) {
                                                                 repaired++
                                                             } else {
@@ -514,6 +686,127 @@ fun MetadataInspectorDialog(
                     Spacer(modifier = Modifier.height(10.dp))
                 }
 
+                // One-Click Codecs & Specs Standardizer Banner
+                if (unstandardizedSpecsCount > 0 || isBatchStandardizing) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFF132320),
+                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.5f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ElectricBolt,
+                                        contentDescription = null,
+                                        tint = Color(0xFF10B981),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            text = if (isBatchStandardizing) "Standardizing Specs Across Catalog..." else "Standardize Codecs & Specs Across Catalog",
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = if (isBatchStandardizing) standardizeStatusText else "$unstandardizedSpecsCount shows have non-standard codecs (x265, x264, 10-Bit) or raw audio tags",
+                                            color = Color(0xFFA7F3D0),
+                                            fontSize = 11.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+
+                                if (isBatchStandardizing) {
+                                    Button(
+                                        onClick = {
+                                            standardizeJob?.cancel()
+                                            isBatchStandardizing = false
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Text("Stop", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = {
+                                            if (isBatchStandardizing || catalog.isEmpty()) return@Button
+                                            val snapshotItems = catalog.toList()
+                                            isBatchStandardizing = true
+                                            standardizeProgress = 0f
+                                            standardizeJob = scope.launch {
+                                                var updatedCount = 0
+                                                var failedCount = 0
+                                                val total = snapshotItems.size
+                                                for ((index, item) in snapshotItems.withIndex()) {
+                                                    val (normalizedInfo, changed) = MediaSpecsNormalizer.normalize(item.mediaInfo)
+                                                    standardizeStatusText = "Scanning (${index + 1}/$total): ${item.title}"
+                                                    standardizeProgress = (index + 1).toFloat() / total.toFloat()
+
+                                                    if (changed) {
+                                                        val updatedItem = item.copy(mediaInfo = normalizedInfo)
+                                                        val writeRes = repository.saveMediaItemSuspending(updatedItem)
+                                                        if (writeRes.isSuccess) {
+                                                            updatedCount++
+                                                        } else {
+                                                            failedCount++
+                                                        }
+                                                    }
+                                                    delay(100)
+                                                }
+                                                val summary = if (failedCount > 0) {
+                                                    "Standardized $updatedCount shows ($failedCount failed)!"
+                                                } else {
+                                                    "Standardized $updatedCount shows across catalog! ✨"
+                                                }
+                                                ToastManager.showToast(summary, if (failedCount > 0) Icons.Default.Warning else Icons.Default.CheckCircle)
+                                                isBatchStandardizing = false
+                                                standardizeProgress = 1f
+                                                standardizeStatusText = summary
+                                            }
+                                        },
+                                        enabled = !isBatchStandardizing && !isBatchRepairing && catalog.isNotEmpty(),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                                    ) {
+                                        Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color.Black, modifier = Modifier.size(15.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("🪄 1-Tap Standardize All", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            if (isBatchStandardizing) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                LinearProgressIndicator(
+                                    progress = { standardizeProgress },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp)),
+                                    color = Color(0xFF10B981),
+                                    trackColor = Color(0xFF1B3B34)
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
                 // Search Bar and Filter Segment
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -558,6 +851,9 @@ fun MetadataInspectorDialog(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     FilterPill("All Issues (${needsRepairItems.size})", isSelected = selectedFilter == InspectorFilter.ALL_ISSUES) { selectedFilter = InspectorFilter.ALL_ISSUES }
+                    if (unstandardizedSpecsCount > 0) {
+                        FilterPill("⚡ Unstandardized Specs ($unstandardizedSpecsCount)", isSelected = selectedFilter == InspectorFilter.UNSTANDARDIZED_SPECS) { selectedFilter = InspectorFilter.UNSTANDARDIZED_SPECS }
+                    }
                     FilterPill("No Trailer ($noTrailerCount)", isSelected = selectedFilter == InspectorFilter.NO_TRAILER) { selectedFilter = InspectorFilter.NO_TRAILER }
                     FilterPill("Broken Genres ($brokenGenresCount)", isSelected = selectedFilter == InspectorFilter.BROKEN_GENRES) { selectedFilter = InspectorFilter.BROKEN_GENRES }
                     FilterPill("No Cast ($noCastCount)", isSelected = selectedFilter == InspectorFilter.NO_CAST) { selectedFilter = InspectorFilter.NO_CAST }
@@ -609,9 +905,11 @@ fun MetadataInspectorDialog(
                                         val result = MetadataFetchManager.repairMediaItem(item, deepSync = deepSyncMode)
                                         result.fold(
                                             onSuccess = { repaired ->
-                                                val writeRes = repository.saveMediaItemSuspending(repaired)
+                                                val (normalizedMediaInfo, _) = MediaSpecsNormalizer.normalize(repaired.mediaInfo)
+                                                val fullyUpdated = repaired.copy(mediaInfo = normalizedMediaInfo)
+                                                val writeRes = repository.saveMediaItemSuspending(fullyUpdated)
                                                 if (writeRes.isSuccess) {
-                                                    ToastManager.showToast("Repaired \"${item.title}\"!", Icons.Default.CheckCircle)
+                                                    ToastManager.showToast("Repaired & Standardized \"${item.title}\"!", Icons.Default.CheckCircle)
                                                 } else {
                                                     ToastManager.showToast("Save failed: ${writeRes.exceptionOrNull()?.message}", Icons.Default.Warning)
                                                 }

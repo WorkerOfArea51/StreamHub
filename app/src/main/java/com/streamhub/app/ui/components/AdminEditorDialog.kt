@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -83,6 +85,8 @@ import com.streamhub.app.data.api.MetadataFetchManager
 import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.models.MediaInfo
 import com.streamhub.app.data.models.MediaItem
+import com.streamhub.app.ui.theme.AccentGold
+import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
@@ -94,6 +98,7 @@ import kotlinx.coroutines.launch
  * Expands horizontally (usePlatformDefaultWidth = false) for maximum viewing area.
  * Dynamically switches Telegram link mode based on Movie vs Series format!
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AdminEditorDialog(
     initialItem: MediaItem? = null,
@@ -1503,7 +1508,90 @@ fun AdminEditorDialog(
                         Text("Technical Specs & Quality Badges", color = Color(0xFFFFD700), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(6.dp))
 
-                        MetadataRow(resolution, { resolution = it }, "Resolution (e.g. 1080p)", videoCodec, { videoCodec = it }, "Codec (e.g. x265)")
+                        // Resolution & Codec with Quick-Pick Chips
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Resolution Column
+                            Column(modifier = Modifier.weight(1f)) {
+                                OutlinedTextField(
+                                    value = resolution,
+                                    onValueChange = { resolution = it },
+                                    label = { Text("Resolution (e.g. 1080p)", color = TextSecondary) },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    val resPills = listOf("1080p", "720p", "4K", "480p")
+                                    resPills.forEach { res ->
+                                        val isSelected = resolution.equals(res, ignoreCase = true)
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = if (isSelected) AccentGold.copy(alpha = 0.25f) else Color(0xFF1E1E2C),
+                                            border = BorderStroke(1.dp, if (isSelected) AccentGold else Color(0x33FFFFFF)),
+                                            modifier = Modifier.clickable {
+                                                resolution = if (isSelected) "" else res
+                                            }
+                                        ) {
+                                            Text(
+                                                text = res,
+                                                color = if (isSelected) AccentGold else TextSecondary,
+                                                fontSize = 10.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Codec Column
+                            Column(modifier = Modifier.weight(1f)) {
+                                OutlinedTextField(
+                                    value = videoCodec,
+                                    onValueChange = { videoCodec = it },
+                                    label = { Text("Codec (e.g. HEVC/x265)", color = TextSecondary) },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    val codecPills = listOf("HEVC/x265 (10-Bit)", "HEVC/x265", "x264", "AV1")
+                                    codecPills.forEach { c ->
+                                        val isSelected = videoCodec.equals(c, ignoreCase = true)
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = if (isSelected) AccentOrange.copy(alpha = 0.25f) else Color(0xFF1E1E2C),
+                                            border = BorderStroke(1.dp, if (isSelected) AccentOrange else Color(0x33FFFFFF)),
+                                            modifier = Modifier.clickable {
+                                                videoCodec = if (isSelected) "" else c
+                                            }
+                                        ) {
+                                            Text(
+                                                text = c,
+                                                color = if (isSelected) AccentOrange else TextSecondary,
+                                                fontSize = 10.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         Spacer(modifier = Modifier.height(8.dp))
 
                         OutlinedTextField(
@@ -1515,6 +1603,7 @@ fun AdminEditorDialog(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
 
+                        // Audio Tracks with Multi-Select Language Chips
                         OutlinedTextField(
                             value = audioTracksText,
                             onValueChange = { audioTracksText = it },
@@ -1522,9 +1611,48 @@ fun AdminEditorDialog(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            val audioLanguages = listOf(
+                                "English", "Spanish", "Japanese", "Korean", "Chinese",
+                                "Bengali", "Hindi", "Urdu", "Tamil", "Telugu", "Malayalam", "Kannada"
+                            )
+                            val currentTokens = audioTracksText.split(",").map { it.trim() }.filter { it.isNotBlank() }
+
+                            audioLanguages.forEach { lang ->
+                                val isSelected = currentTokens.any { it.equals(lang, ignoreCase = true) }
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (isSelected) Color(0xFF10B981).copy(alpha = 0.25f) else Color(0xFF1E1E2C),
+                                    border = BorderStroke(1.dp, if (isSelected) Color(0xFF10B981) else Color(0x33FFFFFF)),
+                                    modifier = Modifier.clickable {
+                                        val list = audioTracksText.split(",").map { it.trim() }.filter { it.isNotBlank() }.toMutableList()
+                                        if (isSelected) {
+                                            list.removeAll { it.equals(lang, ignoreCase = true) }
+                                        } else {
+                                            list.add(lang)
+                                        }
+                                        audioTracksText = list.joinToString(", ")
+                                    }
+                                ) {
+                                    Text(
+                                        text = if (isSelected) "✓ $lang" else lang,
+                                        color = if (isSelected) Color(0xFF10B981) else TextSecondary,
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+                        }
 
                         Spacer(modifier = Modifier.height(8.dp))
 
+                        // Subtitle Tracks with Quick-Pick Chips
                         OutlinedTextField(
                             value = subtitleTracksText,
                             onValueChange = { subtitleTracksText = it },
@@ -1532,6 +1660,37 @@ fun AdminEditorDialog(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            val subtitleOptions = listOf("English", "English, Bengali", "Multi Subs", "None")
+                            subtitleOptions.forEach { opt ->
+                                val isSelected = when (opt) {
+                                    "None" -> subtitleTracksText.isBlank()
+                                    else -> subtitleTracksText.equals(opt, ignoreCase = true)
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (isSelected) Color(0xFF8B5CF6).copy(alpha = 0.25f) else Color(0xFF1E1E2C),
+                                    border = BorderStroke(1.dp, if (isSelected) Color(0xFF8B5CF6) else Color(0x33FFFFFF)),
+                                    modifier = Modifier.clickable {
+                                        subtitleTracksText = if (opt == "None") "" else opt
+                                    }
+                                ) {
+                                    Text(
+                                        text = opt,
+                                        color = if (isSelected) Color(0xFFD0BCFF) else TextSecondary,
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+                        }
 
                         Spacer(modifier = Modifier.height(14.dp))
                         Text("Franchise Universe & Sequel Grouping", color = Color(0xFFFFD700), fontSize = 12.sp, fontWeight = FontWeight.Bold)
