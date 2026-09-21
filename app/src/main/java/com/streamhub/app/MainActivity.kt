@@ -526,6 +526,12 @@ fun StreamHubApp(
         navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
     }
 
+    val playViaDetails: (com.streamhub.app.data.models.MediaItem, Int) -> Unit = { media, episodeIndex ->
+        com.streamhub.app.player.StreamPreloadManager.cancelDetailsPrewarm()
+        navController.navigate(Screen.Details.createRoute(media.id, episodeIndex))
+        navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         AdaptiveNavShell(
             windowSizeClass = windowSizeClass,
@@ -606,10 +612,7 @@ fun StreamHubApp(
                     onMediaClick = { media ->
                         navController.navigate(Screen.Details.createRoute(media.id)) { launchSingleTop = true }
                     },
-                    onPlayEpisode = { media, episodeIndex ->
-                        com.streamhub.app.player.StreamPreloadManager.cancelDetailsPrewarm()
-                        navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
-                    },
+                    onPlayEpisode = playViaDetails,
                     onNavigateToHistory = {
                         navController.navigate(Screen.History.route)
                     },
@@ -625,7 +628,7 @@ fun StreamHubApp(
                     onMediaClick = { media ->
                         navController.navigate(Screen.Details.createRoute(media.id)) { launchSingleTop = true }
                     },
-                    onPlayEpisode = safePlayEpisode
+                    onPlayEpisode = playViaDetails
                 )
             }
 
@@ -677,10 +680,7 @@ fun StreamHubApp(
                     onMediaClick = { media ->
                         navController.navigate(Screen.Details.createRoute(media.id)) { launchSingleTop = true }
                     },
-                    onPlayEpisode = { media, episodeIndex ->
-                        com.streamhub.app.player.StreamPreloadManager.cancelDetailsPrewarm()
-                        navController.navigate(Screen.Player.createRoute(media.id, episodeIndex))
-                    }
+                    onPlayEpisode = playViaDetails
                 )
             }
 
@@ -753,12 +753,20 @@ fun StreamHubApp(
 
             composable(
                 route = Screen.Details.route,
-                arguments = listOf(navArgument("mediaId") { type = NavType.StringType })
+                arguments = listOf(
+                    navArgument("mediaId") { type = NavType.StringType },
+                    navArgument("episodeIndex") {
+                        type = NavType.IntType
+                        defaultValue = -1
+                    }
+                )
             ) { backStackEntry ->
                 val rawMediaId = backStackEntry.arguments?.getString("mediaId") ?: ""
                 val mediaId = runCatching { java.net.URLDecoder.decode(rawMediaId, "UTF-8") }.getOrDefault(rawMediaId)
+                val initialEpisodeIndex = backStackEntry.arguments?.getInt("episodeIndex") ?: -1
                 DetailsScreen(
                     mediaId = mediaId,
+                    initialEpisodeIndex = initialEpisodeIndex,
                     repository = repository,
                     onBackClick = { navController.popBackStack() },
                     onPlayEpisode = safePlayEpisode,

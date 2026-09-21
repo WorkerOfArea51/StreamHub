@@ -40,6 +40,12 @@ import com.streamhub.app.ui.components.LocalIsScrollInProgress
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import kotlinx.coroutines.delay
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.zIndex
 import androidx.compose.material.icons.Icons
@@ -142,6 +148,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 @Composable
 fun DetailsScreen(
     mediaId: String,
+    initialEpisodeIndex: Int = -1,
     repository: FirebaseRepository,
     onBackClick: () -> Unit,
     onPlayEpisode: (MediaItem, Int) -> Unit,
@@ -378,22 +385,37 @@ fun DetailsScreen(
         // Auto-scroll to exact episode in list (when opening from Continue Watching or returning from playback)
         var lastScrolledEpisodeNumber by remember(mediaItem.id) { mutableIntStateOf(-1) }
         var lastScrolledTimestamp by remember(mediaItem.id) { mutableStateOf(0L) }
+        var glowingEpisodeIndex by remember(mediaItem.id) { mutableStateOf<Int?>(null) }
+
+        // 5-second glowing border timer in app theme
+        LaunchedEffect(glowingEpisodeIndex) {
+            if (glowingEpisodeIndex != null) {
+                delay(5000L)
+                glowingEpisodeIndex = null
+            }
+        }
 
         LaunchedEffect(
             mediaItem.id,
             mediaProgress?.episodeNumber,
             mediaProgress?.lastUpdated,
+            initialEpisodeIndex,
             seasonFilteredEpisodes.size
         ) {
             val progress = mediaProgress ?: WatchHistoryManager.getProgress(mediaItem.id)
-            if (progress != null && !isMovie && mediaItem.episodes.isNotEmpty()) {
-                val targetEpNumber = progress.episodeNumber
-                val progressUpdated = progress.lastUpdated
+            val targetEpNumber = when {
+                progress != null -> progress.episodeNumber
+                initialEpisodeIndex >= 0 -> initialEpisodeIndex
+                else -> null
+            }
+            val progressUpdated = progress?.lastUpdated ?: System.currentTimeMillis()
 
+            if (targetEpNumber != null && mediaItem.episodes.isNotEmpty() && (!isMovie || mediaItem.episodes.size > 1)) {
                 val isNewTarget = lastScrolledEpisodeNumber != targetEpNumber || progressUpdated > lastScrolledTimestamp
                 if (isNewTarget) {
-                    val targetEp = mediaItem.episodes.find { it.episodeNumber == targetEpNumber }
-                        ?: mediaItem.episodes.getOrNull(targetEpNumber)
+                    val targetEp = mediaItem.episodes.getOrNull(targetEpNumber)
+                        ?: mediaItem.episodes.find { it.episodeNumber == targetEpNumber }
+                        ?: mediaItem.episodes.find { it.episodeNumber == targetEpNumber + 1 }
 
                     if (targetEp != null) {
                         selectedTabIndex = 0
@@ -405,19 +427,31 @@ fun DetailsScreen(
                         }
 
                         // Give Compose a brief delay to apply season/arc filter updates to the list
-                        kotlinx.coroutines.delay(120)
+                        delay(150)
 
-                        val filteredIndex = seasonFilteredEpisodes.indexOfFirst {
+                        val currentFiltered = when {
+                            isMovie -> mediaItem.episodes
+                            targetEp.arcName.isNotBlank() -> mediaItem.episodes.filter { it.arcName.equals(targetEp.arcName, ignoreCase = true) }
+                            targetEp.seasonNumber > 0 -> {
+                                val filtered = mediaItem.episodes.filter { it.seasonNumber == targetEp.seasonNumber }
+                                if (filtered.isEmpty()) mediaItem.episodes else filtered
+                            }
+                            else -> mediaItem.episodes
+                        }
+
+                        val filteredIndex = currentFiltered.indexOfFirst {
                             it == targetEp || it.episodeNumber == targetEp.episodeNumber
                         }
                         if (filteredIndex >= 0) {
                             lastScrolledEpisodeNumber = targetEpNumber
                             lastScrolledTimestamp = progressUpdated
-                            // Item 0 is Hero/Details/TabRow, Item 1 is Season/Arc capsule row, Item 2+ are episodes
+                            // Item 0 is Hero/Details/TabRow, Item 1 is Main Info/Tabs, Item 2 is Season/Arc capsule row, Item 3+ are episodes
                             detailsListState.animateScrollToItem(
-                                index = 2 + filteredIndex,
+                                index = 3 + filteredIndex,
                                 scrollOffset = -40
                             )
+                            val originalIdx = episodeIndexMap[targetEp] ?: targetEpNumber
+                            glowingEpisodeIndex = originalIdx
                         }
                     }
                 }
@@ -1110,12 +1144,23 @@ fun DetailsScreen(
                         val originalIndex = episodeIndexMap[episode] ?: index
                         val downloadItem = downloads.firstOrNull { it.mediaId == mediaItem.id && it.episodeIndex == originalIndex && it.isCompleted }
                         val isDownloaded = downloadItem != null
+                        val isEpisodeGlowing = glowingEpisodeIndex != null && (
+                            glowingEpisodeIndex == originalIndex ||
+                            glowingEpisodeIndex == episode.episodeNumber ||
+                            glowingEpisodeIndex == episode.episodeNumber - 1 ||
+                            (mediaProgress != null && glowingEpisodeIndex == mediaProgress.episodeNumber && (
+                                mediaProgress.episodeNumber == originalIndex ||
+                                mediaProgress.episodeNumber == episode.episodeNumber - 1 ||
+                                (mediaProgress.episodeTitle.isNotBlank() && mediaProgress.episodeTitle.equals(episode.title, ignoreCase = true))
+                            ))
+                        )
                         EpisodeRowItem(
                             episode = episode,
                             index = index,
                             mediaItem = mediaItem,
                             isDownloaded = isDownloaded,
                             isOnline = isOnline,
+                            isGlowing = isEpisodeGlowing,
                             onPlay = {
                                 com.streamhub.app.player.StreamPreloadManager.cancelDetailsPrewarm()
                                 if (isDownloaded && downloadItem != null) {
@@ -1374,6 +1419,7 @@ fun EpisodeRowItem(
     mediaItem: MediaItem,
     isDownloaded: Boolean,
     isOnline: Boolean = true,
+    isGlowing: Boolean = false,
     onPlay: () -> Unit,
     onDownload: () -> Unit
 ) {
@@ -1424,10 +1470,42 @@ fun EpisodeRowItem(
         (mediaProgress.positionMs.toFloat() / mediaProgress.durationMs.toFloat()).coerceIn(0.04f, 1f)
     } else 0f
 
+    val infiniteTransition = rememberInfiniteTransition(label = "EpisodeGlowBorder")
+    val glowPulse by infiniteTransition.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glowPulse"
+    )
+
+    val activeBorder = when {
+        isGlowing -> BorderStroke(
+            2.dp,
+            Brush.horizontalGradient(
+                listOf(
+                    PrimaryRed.copy(alpha = glowPulse),
+                    AccentOrange.copy(alpha = glowPulse),
+                    PrimaryRed.copy(alpha = glowPulse)
+                )
+            )
+        )
+        hasEpProgress && !mediaProgress!!.isCompleted -> BorderStroke(1.dp, AccentOrange.copy(alpha = 0.5f))
+        else -> BorderStroke(1.dp, CardBorderDark)
+    }
+
+    val surfaceColor = when {
+        isGlowing -> PrimaryRed.copy(alpha = 0.12f * glowPulse)
+        hasEpProgress && !mediaProgress!!.isCompleted -> Color(0x18FF9800)
+        else -> SurfaceDark
+    }
+
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = if (hasEpProgress && !mediaProgress!!.isCompleted) Color(0x18FF9800) else SurfaceDark,
-        border = BorderStroke(1.dp, if (hasEpProgress && !mediaProgress!!.isCompleted) AccentOrange.copy(alpha = 0.5f) else CardBorderDark),
+        color = surfaceColor,
+        border = activeBorder,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
@@ -1577,7 +1655,7 @@ fun EpisodeRowItem(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = displayTitle,
-                        color = if (hasEpProgress && !mediaProgress!!.isCompleted) AccentOrange else TextPrimary,
+                        color = if (isGlowing) PrimaryRed else if (hasEpProgress && !mediaProgress!!.isCompleted) AccentOrange else TextPrimary,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,

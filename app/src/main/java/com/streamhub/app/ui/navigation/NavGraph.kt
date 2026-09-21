@@ -26,8 +26,11 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     object Admin : Screen("admin", "Admin Panel")
     object About : Screen("about", "About StreamHub")
     
-    object Details : Screen("details/{mediaId}", "Details") {
-        fun createRoute(mediaId: String) = "details/${android.net.Uri.encode(mediaId)}"
+    object Details : Screen("details/{mediaId}?episodeIndex={episodeIndex}", "Details") {
+        fun createRoute(mediaId: String, episodeIndex: Int = -1): String {
+            val encoded = android.net.Uri.encode(mediaId)
+            return if (episodeIndex >= 0) "details/$encoded?episodeIndex=$episodeIndex" else "details/$encoded"
+        }
     }
     
     object Player : Screen("player/{mediaId}/{episodeIndex}", "Player") {
