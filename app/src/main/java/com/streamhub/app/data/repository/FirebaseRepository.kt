@@ -142,7 +142,7 @@ class FirebaseRepository private constructor() {
     @Volatile
     private var firestoreResolved = false
 
-    private val firestore: FirebaseFirestore?
+    val firestore: FirebaseFirestore?
         get() {
             if (firestoreResolved) return firestoreCache
             firestoreCache = runCatching {

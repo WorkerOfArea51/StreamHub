@@ -110,4 +110,66 @@ class CatalogBackupManagerTest {
         assertEquals("Naruto", payload.mediaCatalog[0].title)
         assertEquals(1, payload.header.totalEpisodeCount)
     }
+
+    @Test
+    fun testParseWithUtf8Bom() {
+        val jsonWithBom = "\uFEFF[{\"id\":\"bleach_2004\",\"title\":\"Bleach\",\"category\":\"ANIME\",\"episodes\":[]}]"
+        val parseResult = CatalogBackupManager.parseBackupJson(jsonWithBom)
+        assertTrue(parseResult.isSuccess)
+        val payload = parseResult.getOrNull()
+        assertNotNull(payload)
+        assertEquals(1, payload!!.mediaCatalog.size)
+        assertEquals("Bleach", payload.mediaCatalog[0].title)
+    }
+
+    @Test
+    fun testParseMultiCollectionExport() {
+        val multiCollectionJson = """
+            {
+              "animes": [
+                {"id": "a1", "title": "Attack on Titan", "category": "ANIME", "episodes": []}
+              ],
+              "movies": [
+                {"id": "m1", "title": "Inception", "category": "MOVIE", "episodes": []}
+              ],
+              "web_series": [
+                {"id": "s1", "title": "Breaking Bad", "category": "SERIES", "episodes": []}
+              ]
+            }
+        """.trimIndent()
+
+        val parseResult = CatalogBackupManager.parseBackupJson(multiCollectionJson)
+        assertTrue(parseResult.isSuccess)
+        val payload = parseResult.getOrNull()
+        assertNotNull(payload)
+        assertEquals(3, payload!!.mediaCatalog.size)
+        assertTrue(payload.mediaCatalog.any { it.title == "Attack on Titan" })
+        assertTrue(payload.mediaCatalog.any { it.title == "Inception" })
+        assertTrue(payload.mediaCatalog.any { it.title == "Breaking Bad" })
+    }
+
+    @Test
+    fun testParseWithAlternateKeyShows() {
+        val showsJson = """
+            {
+              "shows": [
+                {"id": "s1", "title": "Demon Slayer", "category": "ANIME", "episodes": []}
+              ]
+            }
+        """.trimIndent()
+
+        val parseResult = CatalogBackupManager.parseBackupJson(showsJson)
+        assertTrue(parseResult.isSuccess)
+        val payload = parseResult.getOrNull()
+        assertNotNull(payload)
+        assertEquals(1, payload!!.mediaCatalog.size)
+        assertEquals("Demon Slayer", payload.mediaCatalog[0].title)
+    }
+
+    @Test
+    fun testEmptyBackupReturnsExplicitError() {
+        val emptyResult = CatalogBackupManager.parseBackupJson("")
+        assertTrue(emptyResult.isFailure)
+        assertTrue(emptyResult.exceptionOrNull()?.message?.contains("empty") == true)
+    }
 }

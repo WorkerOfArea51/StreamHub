@@ -47,10 +47,12 @@ import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.CardBorderDark
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
+import android.provider.OpenableColumns
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
 
@@ -94,6 +96,8 @@ fun CatalogBackupDialog(
     // Restore state
     var restoreInputJson by remember { mutableStateOf("") }
     var parsedPayload by remember { mutableStateOf<CatalogBackupPayload?>(null) }
+    var loadedBackupFileName by remember { mutableStateOf<String?>(null) }
+    var isLoadingRestoreFile by remember { mutableStateOf(false) }
     var isRestoring by remember { mutableStateOf(false) }
     var restoreProgress by remember { mutableIntStateOf(0) }
     var restoreTotal by remember { mutableIntStateOf(0) }
@@ -102,26 +106,53 @@ fun CatalogBackupDialog(
     var restoreErrorMessage by remember { mutableStateOf<String?>(null) }
     var restoreSearchQuery by remember { mutableStateOf("") }
 
-
     // System file picker for restore
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-            try {
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    val text = stream.bufferedReader().readText()
-                    restoreInputJson = text
-                    val result = CatalogBackupManager.parseBackupJson(text)
-                    if (result.isSuccess) {
-                        parsedPayload = result.getOrNull()
-                        restoreErrorMessage = null
-                    } else {
-                        restoreErrorMessage = result.exceptionOrNull()?.message ?: "Invalid backup file"
+            isLoadingRestoreFile = true
+            restoreErrorMessage = null
+            scope.launch(Dispatchers.IO) {
+                try {
+                    val displayName = runCatching {
+                        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                            if (cursor.moveToFirst()) {
+                                cursor.getString(cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME))
+                            } else null
+                        }
+                    }.getOrNull() ?: "Selected Backup File"
+
+                    val stream = context.contentResolver.openInputStream(uri)
+                    if (stream == null) {
+                        withContext(Dispatchers.Main) {
+                            isLoadingRestoreFile = false
+                            restoreErrorMessage = "Cannot open selected file stream"
+                        }
+                        return@launch
+                    }
+
+                    stream.use { s ->
+                        val result = CatalogBackupManager.parseBackupStream(s)
+                        withContext(Dispatchers.Main) {
+                            isLoadingRestoreFile = false
+                            if (result.isSuccess) {
+                                parsedPayload = result.getOrNull()
+                                loadedBackupFileName = displayName
+                                restoreInputJson = "" // Guarantee 0 MB in Compose text state
+                                restoreErrorMessage = null
+                                selectedTab = 1 // Switch to Restore tab
+                            } else {
+                                restoreErrorMessage = result.exceptionOrNull()?.message ?: "Invalid backup file format"
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        isLoadingRestoreFile = false
+                        restoreErrorMessage = "Failed to read file: ${e.message}"
                     }
                 }
-            } catch (e: Exception) {
-                restoreErrorMessage = "Failed to read file: ${e.message}"
             }
         }
     }
@@ -574,21 +605,23 @@ fun CatalogBackupDialog(
                                                 backup = backup,
                                                 onShare = { CatalogBackupManager.shareBackupFile(context, backup.file) },
                                                 onLoadToRestore = {
-                                                    scope.launch {
-                                                        try {
-                                                            val text = backup.file.readText(Charsets.UTF_8)
-                                                            restoreInputJson = text
-                                                            val res = CatalogBackupManager.parseBackupJson(text)
+                                                    isLoadingRestoreFile = true
+                                                    restoreErrorMessage = null
+                                                    scope.launch(Dispatchers.IO) {
+                                                        val res = CatalogBackupManager.parseBackupFile(context, backup.file)
+                                                        withContext(Dispatchers.Main) {
+                                                            isLoadingRestoreFile = false
                                                             if (res.isSuccess) {
                                                                 parsedPayload = res.getOrNull()
+                                                                loadedBackupFileName = backup.fileName
+                                                                restoreInputJson = "" // NEVER put 4.2 MB text into Compose text field!
                                                                 restoreErrorMessage = null
                                                                 selectedTab = 1 // Switch to Restore tab!
-                                                                Toast.makeText(context, "Loaded ${backup.fileName} into Restore!", Toast.LENGTH_SHORT).show()
+                                                                Toast.makeText(context, "Loaded ${backup.fileName} (${res.getOrNull()?.mediaCatalog?.size ?: 0} shows)", Toast.LENGTH_SHORT).show()
                                                             } else {
-                                                                Toast.makeText(context, "Failed to parse: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                                                val errorMsg = res.exceptionOrNull()?.message ?: "Failed to parse backup"
+                                                                Toast.makeText(context, "Failed to parse: $errorMsg", Toast.LENGTH_LONG).show()
                                                             }
-                                                        } catch (e: Exception) {
-                                                            Toast.makeText(context, "Error reading file: ${e.message}", Toast.LENGTH_LONG).show()
                                                         }
                                                     }
                                                 },
@@ -628,6 +661,7 @@ fun CatalogBackupDialog(
 
                                     OutlinedButton(
                                         onClick = { filePickerLauncher.launch("application/json") },
+                                        enabled = !isLoadingRestoreFile && !isRestoring,
                                         shape = RoundedCornerShape(8.dp),
                                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF38BDF8)),
                                         border = BorderStroke(1.dp, Color(0xFF38BDF8)),
@@ -639,33 +673,132 @@ fun CatalogBackupDialog(
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(8.dp))
+                                if (isLoadingRestoreFile) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color(0xFF10B981), strokeWidth = 2.dp)
+                                        Text("Reading and parsing backup file...", color = Color(0xFF34D399), fontSize = 11.sp)
+                                    }
+                                } else if (loadedBackupFileName != null && parsedPayload != null) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color(0xFF10B981).copy(alpha = 0.12f),
+                                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.4f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.weight(1f),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(34.dp)
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .background(Color(0xFF10B981).copy(alpha = 0.2f)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF34D399), modifier = Modifier.size(18.dp))
+                                                }
+                                                Column(modifier = Modifier.weight(1f, fill = false)) {
+                                                    Text(
+                                                        text = loadedBackupFileName ?: "Loaded Backup",
+                                                        color = Color.White,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    Text(
+                                                        text = "${parsedPayload?.mediaCatalog?.size ?: 0} Shows ready • ${parsedPayload?.header?.totalEpisodeCount ?: 0} Episodes",
+                                                        color = Color(0xFF34D399),
+                                                        fontSize = 10.sp
+                                                    )
+                                                }
+                                            }
 
-                                OutlinedTextField(
-                                    value = restoreInputJson,
-                                    onValueChange = {
-                                        restoreInputJson = it
-                                        val res = CatalogBackupManager.parseBackupJson(it)
-                                        if (res.isSuccess) {
-                                            parsedPayload = res.getOrNull()
-                                            restoreErrorMessage = null
-                                        } else if (it.isNotBlank()) {
-                                            parsedPayload = null
-                                            restoreErrorMessage = res.exceptionOrNull()?.message
+                                            Spacer(modifier = Modifier.width(8.dp))
+
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(28.dp)
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(Color(0xFF1E1E2E))
+                                                    .clickable {
+                                                        loadedBackupFileName = null
+                                                        parsedPayload = null
+                                                        restoreInputJson = ""
+                                                        restoreErrorMessage = null
+                                                    },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(Icons.Default.Close, contentDescription = "Clear", tint = TextSecondary, modifier = Modifier.size(14.dp))
+                                            }
                                         }
-                                    },
-                                    placeholder = { Text("Or paste full backup JSON payload here...", color = TextSecondary, fontSize = 11.sp) },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(80.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = Color(0xFF10B981),
-                                        unfocusedBorderColor = CardBorderDark,
-                                        focusedTextColor = TextPrimary,
-                                        unfocusedTextColor = TextPrimary
-                                    ),
-                                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-                                )
+                                    }
+                                } else {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    OutlinedTextField(
+                                        value = restoreInputJson,
+                                        onValueChange = { input ->
+                                            if (input.length > 50_000) {
+                                                // Large JSON detected: parse immediately on IO to avoid Compose text layout freeze!
+                                                isLoadingRestoreFile = true
+                                                scope.launch(Dispatchers.IO) {
+                                                    val res = CatalogBackupManager.parseBackupJson(input)
+                                                    withContext(Dispatchers.Main) {
+                                                        isLoadingRestoreFile = false
+                                                        if (res.isSuccess) {
+                                                            parsedPayload = res.getOrNull()
+                                                            loadedBackupFileName = "Pasted JSON (${res.getOrNull()?.mediaCatalog?.size ?: 0} shows)"
+                                                            restoreInputJson = "" // Clear the field to eliminate UI freeze!
+                                                            restoreErrorMessage = null
+                                                        } else {
+                                                            restoreErrorMessage = res.exceptionOrNull()?.message ?: "Invalid JSON format"
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                restoreInputJson = input
+                                                if (input.isNotBlank()) {
+                                                    val res = CatalogBackupManager.parseBackupJson(input)
+                                                    if (res.isSuccess) {
+                                                        parsedPayload = res.getOrNull()
+                                                        restoreErrorMessage = null
+                                                    } else {
+                                                        parsedPayload = null
+                                                        restoreErrorMessage = res.exceptionOrNull()?.message
+                                                    }
+                                                } else {
+                                                    parsedPayload = null
+                                                    restoreErrorMessage = null
+                                                }
+                                            }
+                                        },
+                                        placeholder = { Text("Or paste full backup JSON payload here...", color = TextSecondary, fontSize = 11.sp) },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(80.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = Color(0xFF10B981),
+                                            unfocusedBorderColor = CardBorderDark,
+                                            focusedTextColor = TextPrimary,
+                                            unfocusedTextColor = TextPrimary
+                                        ),
+                                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                                    )
+                                }
                             }
                         }
 
@@ -953,7 +1086,10 @@ private fun LocalBackupCard(
                 ) {
                     Icon(Icons.Default.Description, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Column(
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
                     Text(
                         text = backup.fileName,
                         color = TextPrimary,
@@ -973,36 +1109,47 @@ private fun LocalBackupCard(
                 }
             }
 
-            // Action buttons: Share, Restore, Delete
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Action buttons: Share, Restore, Delete with dedicated Box containers (Zero M3 touch-target overlap)
             Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(
-                    onClick = onShare,
+                // Share
+                Box(
                     modifier = Modifier
-                        .size(30.dp)
-                        .background(AccentOrange.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(AccentOrange.copy(alpha = 0.15f))
+                        .clickable(onClick = onShare),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Share, contentDescription = "Share", tint = AccentOrange, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Share, contentDescription = "Share", tint = AccentOrange, modifier = Modifier.size(15.dp))
                 }
 
-                IconButton(
-                    onClick = onLoadToRestore,
+                // Restore
+                Box(
                     modifier = Modifier
-                        .size(30.dp)
-                        .background(Color(0xFF10B981).copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF10B981).copy(alpha = 0.15f))
+                        .clickable(onClick = onLoadToRestore),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Sync, contentDescription = "Load to Restore", tint = Color(0xFF34D399), modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Sync, contentDescription = "Load to Restore", tint = Color(0xFF34D399), modifier = Modifier.size(15.dp))
                 }
 
-                IconButton(
-                    onClick = onDelete,
+                // Delete
+                Box(
                     modifier = Modifier
-                        .size(30.dp)
-                        .background(PrimaryRed.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(PrimaryRed.copy(alpha = 0.15f))
+                        .clickable(onClick = onDelete),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = PrimaryRed, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = PrimaryRed, modifier = Modifier.size(15.dp))
                 }
             }
         }

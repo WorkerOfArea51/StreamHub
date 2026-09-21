@@ -1,5 +1,6 @@
 package com.streamhub.app.data.importer
 
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -10,16 +11,19 @@ import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
 import androidx.core.content.FileProvider
+import com.google.android.gms.tasks.Tasks
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonParser
+import com.google.gson.reflect.TypeToken
 import com.streamhub.app.BuildConfig
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.repository.FirebaseRepository
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -114,6 +118,20 @@ object CatalogBackupManager {
             val catTag = if (categoryFilter.equals("ALL", ignoreCase = true)) "All" else categoryFilter.uppercase(Locale.US)
             val fileName = "StreamHub_${catTag}_Backup_$timeStamp.json"
 
+            // 1. ALWAYS save a copy in the app's safe internal storage directory (filesDir/backups)
+            // This guarantees 100% read/write access without Scoped Storage or OS permission blocks on any Android version.
+            val internalBackupsDir = File(context.filesDir, "backups")
+            if (!internalBackupsDir.exists()) internalBackupsDir.mkdirs()
+            val internalFile = File(internalBackupsDir, fileName)
+            FileOutputStream(internalFile).use { fos ->
+                fos.write(json.toByteArray(Charsets.UTF_8))
+                fos.flush()
+            }
+
+            // 2. Also export to public Downloads so user can access it in their File Manager
+            var publicUri: Uri? = null
+            var publicPath: String? = null
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val values = ContentValues().apply {
                     put(MediaStore.Downloads.DISPLAY_NAME, fileName)
@@ -122,13 +140,14 @@ object CatalogBackupManager {
                 }
                 val resolver = context.contentResolver
                 val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                    ?: return@withContext BackupExportResult(false, json, errorMessage = "Failed to create MediaStore entry")
-
-                resolver.openOutputStream(uri)?.use { os ->
-                    os.write(json.toByteArray(Charsets.UTF_8))
-                    os.flush()
+                if (uri != null) {
+                    resolver.openOutputStream(uri)?.use { os ->
+                        os.write(json.toByteArray(Charsets.UTF_8))
+                        os.flush()
+                    }
+                    publicUri = uri
+                    publicPath = "Downloads/StreamHub/$fileName"
                 }
-                BackupExportResult(true, json, fileUri = uri, filePath = "Downloads/StreamHub/$fileName")
             } else {
                 val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "StreamHub")
                 if (!dir.exists()) dir.mkdirs()
@@ -137,9 +156,16 @@ object CatalogBackupManager {
                     fos.write(json.toByteArray(Charsets.UTF_8))
                     fos.flush()
                 }
-                val uri = Uri.fromFile(file)
-                BackupExportResult(true, json, fileUri = uri, filePath = file.absolutePath)
+                publicUri = Uri.fromFile(file)
+                publicPath = file.absolutePath
             }
+
+            BackupExportResult(
+                isSuccess = true,
+                jsonString = json,
+                fileUri = publicUri,
+                filePath = publicPath ?: "Downloads/StreamHub/$fileName"
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save backup to downloads", e)
             BackupExportResult(false, "", errorMessage = e.message ?: "Failed to save file")
@@ -153,7 +179,7 @@ object CatalogBackupManager {
     ): Result<File> = withContext(Dispatchers.IO) {
         try {
             val json = generateBackupJson(catalog, categoryFilter)
-            val backupDir = File(context.cacheDir, "backups")
+            val backupDir = File(context.filesDir, "backups")
             if (!backupDir.exists()) backupDir.mkdirs()
 
             val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
@@ -196,13 +222,14 @@ object CatalogBackupManager {
 
     suspend fun getLocalBackups(context: Context): List<LocalBackupInfo> = withContext(Dispatchers.IO) {
         val backupList = mutableListOf<LocalBackupInfo>()
-        val seenPaths = mutableSetOf<String>()
+        val seenFileNames = mutableSetOf<String>()
 
         fun scanDirectory(dir: File?) {
             if (dir == null || !dir.exists() || !dir.isDirectory) return
             val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".json", ignoreCase = true) } ?: return
             for (file in files) {
-                if (seenPaths.add(file.absolutePath)) {
+                // Deduplicate by filename: internal safe directory is scanned first and takes priority
+                if (seenFileNames.add(file.name)) {
                     val sizeBytes = file.length()
                     val formattedSize = formatFileSize(sizeBytes)
                     val lastModified = file.lastModified()
@@ -221,10 +248,13 @@ object CatalogBackupManager {
             }
         }
 
-        // 1. App internal cache backup directory
+        // 1. App internal safe backups directory (PRIMARY & 100% ACCESSIBLE)
+        scanDirectory(File(context.filesDir, "backups"))
+
+        // 2. App internal cache backup directory (legacy/shareable)
         scanDirectory(File(context.cacheDir, "backups"))
 
-        // 2. Public Downloads/StreamHub directory
+        // 3. Public Downloads/StreamHub directory
         val downloadsDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "StreamHub")
         scanDirectory(downloadsDir)
 
@@ -250,15 +280,85 @@ object CatalogBackupManager {
         return String.format(Locale.US, "%.1f %s", num, units[group])
     }
 
-    fun parseBackupJson(rawJson: String): Result<CatalogBackupPayload> {
+    /**
+     * Parses a backup payload directly from an input stream using streaming JSON parsing.
+     * Supports BOM, custom object layouts, root arrays, and varied root keys without loading
+     * multi-megabyte strings into UI memory.
+     */
+    fun parseBackupStream(inputStream: InputStream): Result<CatalogBackupPayload> {
         return try {
-            val trimmed = rawJson.trim()
-            if (trimmed.startsWith("{") && trimmed.contains("\"mediaCatalog\"")) {
-                val payload = gson.fromJson(trimmed, CatalogBackupPayload::class.java)
-                Result.success(payload)
-            } else if (trimmed.startsWith("[")) {
-                val itemType = object : com.google.gson.reflect.TypeToken<List<MediaItem>>() {}.type
-                val items: List<MediaItem> = gson.fromJson(trimmed, itemType)
+            val reader = inputStream.bufferedReader(Charsets.UTF_8)
+            val jsonElement = JsonParser.parseReader(reader)
+
+            if (jsonElement == null || jsonElement.isJsonNull) {
+                return Result.failure(IllegalArgumentException("Backup file is empty (0 bytes)"))
+            }
+
+            if (jsonElement.isJsonObject) {
+                val obj = jsonElement.asJsonObject
+
+                // Extract MediaCatalog list supporting various field namings
+                val itemType = object : TypeToken<List<MediaItem>>() {}.type
+                val items: List<MediaItem> = when {
+                    obj.has("mediaCatalog") && obj.get("mediaCatalog").isJsonArray -> {
+                        gson.fromJson(obj.get("mediaCatalog"), itemType)
+                    }
+                    obj.has("items") && obj.get("items").isJsonArray -> {
+                        gson.fromJson(obj.get("items"), itemType)
+                    }
+                    obj.has("shows") && obj.get("shows").isJsonArray -> {
+                        gson.fromJson(obj.get("shows"), itemType)
+                    }
+                    obj.has("catalog") && obj.get("catalog").isJsonArray -> {
+                        gson.fromJson(obj.get("catalog"), itemType)
+                    }
+                    // Multi-collection export: animes, movies, web_series
+                    obj.has("animes") || obj.has("movies") || obj.has("web_series") -> {
+                        val list = mutableListOf<MediaItem>()
+                        if (obj.has("animes") && obj.get("animes").isJsonArray) {
+                            list.addAll(gson.fromJson(obj.get("animes"), itemType))
+                        }
+                        if (obj.has("movies") && obj.get("movies").isJsonArray) {
+                            list.addAll(gson.fromJson(obj.get("movies"), itemType))
+                        }
+                        if (obj.has("web_series") && obj.get("web_series").isJsonArray) {
+                            list.addAll(gson.fromJson(obj.get("web_series"), itemType))
+                        }
+                        list
+                    }
+                    // Single show object
+                    obj.has("id") && obj.has("title") -> {
+                        val singleItem = gson.fromJson(obj, MediaItem::class.java)
+                        listOf(singleItem)
+                    }
+                    else -> {
+                        return Result.failure(IllegalArgumentException("Unrecognized backup format: Missing 'mediaCatalog' or show list"))
+                    }
+                }
+
+                // Extract or synthesize Header
+                val header: CatalogBackupHeader = if (obj.has("header") && obj.get("header").isJsonObject) {
+                    try {
+                        gson.fromJson(obj.get("header"), CatalogBackupHeader::class.java)
+                    } catch (e: Exception) {
+                        CatalogBackupHeader(
+                            formatVersion = 1,
+                            totalMediaCount = items.size,
+                            totalEpisodeCount = items.sumOf { it.episodes.size }
+                        )
+                    }
+                } else {
+                    CatalogBackupHeader(
+                        formatVersion = 1,
+                        totalMediaCount = items.size,
+                        totalEpisodeCount = items.sumOf { it.episodes.size }
+                    )
+                }
+
+                Result.success(CatalogBackupPayload(header, items))
+            } else if (jsonElement.isJsonArray) {
+                val itemType = object : TypeToken<List<MediaItem>>() {}.type
+                val items: List<MediaItem> = gson.fromJson(jsonElement.asJsonArray, itemType)
                 val totalEps = items.sumOf { it.episodes.size }
                 val header = CatalogBackupHeader(
                     formatVersion = 1,
@@ -267,14 +367,77 @@ object CatalogBackupManager {
                 )
                 Result.success(CatalogBackupPayload(header, items))
             } else {
-                Result.failure(IllegalArgumentException("Unrecognized backup JSON format"))
+                Result.failure(IllegalArgumentException("Unrecognized backup JSON: Expected JSON Object or Array"))
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse backup JSON", e)
+            Log.e(TAG, "Failed to parse backup stream", e)
             Result.failure(e)
         }
     }
 
+    /**
+     * Parses a backup file on Dispatchers.IO.
+     * Automatically attempts direct FileInputStream first, and if blocked by Scoped Storage on Android 11+,
+     * falls back to ContentResolver MediaStore stream.
+     */
+    suspend fun parseBackupFile(context: Context, file: File): Result<CatalogBackupPayload> = withContext(Dispatchers.IO) {
+        if (!file.exists() || file.length() == 0L) {
+            return@withContext Result.failure(IllegalArgumentException("Backup file is empty (0 bytes)"))
+        }
+
+        try {
+            file.inputStream().use { stream ->
+                parseBackupStream(stream)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Direct FileInputStream failed for ${file.absolutePath}, attempting MediaStore fallback: ${e.message}")
+            try {
+                val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val projection = arrayOf(MediaStore.Downloads._ID)
+                    val selection = "${MediaStore.Downloads.DISPLAY_NAME} = ?"
+                    val selectionArgs = arrayOf(file.name)
+                    context.contentResolver.query(
+                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        projection,
+                        selection,
+                        selectionArgs,
+                        null
+                    )?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID))
+                            ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id)
+                        } else null
+                    }
+                } else null
+
+                if (uri != null) {
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        parseBackupStream(stream)
+                    } ?: Result.failure(e)
+                } else {
+                    Result.failure(e)
+                }
+            } catch (fallbackEx: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    fun parseBackupJson(rawJson: String): Result<CatalogBackupPayload> {
+        val clean = rawJson.trim().removePrefix("\uFEFF")
+        if (clean.isBlank()) {
+            return Result.failure(IllegalArgumentException("Backup JSON is empty"))
+        }
+        return clean.byteInputStream(Charsets.UTF_8).use { stream ->
+            parseBackupStream(stream)
+        }
+    }
+
+    /**
+     * Efficiently restores the backup payload into Firestore.
+     * 1. Writes all shows to their individual collections as standalone documents using atomic batches (50 items/batch).
+     * 2. After all items are committed, packages and uploads the 970 KB bundles to `catalog_bundles` ONCE.
+     */
     suspend fun restoreToFirestore(
         payload: CatalogBackupPayload,
         repository: FirebaseRepository,
@@ -286,13 +449,38 @@ object CatalogBackupManager {
                 return@withContext BackupRestoreResult(false, 0, 0, "No media items found in backup")
             }
 
-            var totalEps = 0
-            items.forEachIndexed { idx, item ->
-                repository.saveMediaItem(item)
-                totalEps += item.episodes.size
-                onProgress(idx + 1, items.size, item.title)
-                delay(40L)
+            val db = repository.firestore
+            if (db == null) {
+                return@withContext BackupRestoreResult(false, 0, 0, "Firebase database not initialized")
             }
+
+            var totalEps = 0
+            val batchSize = 50
+            val chunks = items.chunked(batchSize)
+
+            var processedCount = 0
+            for (chunk in chunks) {
+                val batch = db.batch()
+                for (item in chunk) {
+                    val targetCollection = FirebaseRepository.getCollectionForCategory(item.category, item.type)
+                    val docMap = FirebaseRepository.mediaItemToMap(item)
+                    val docRef = db.collection(targetCollection).document(item.id)
+                    batch.set(docRef, docMap)
+                    totalEps += item.episodes.size
+                }
+                Tasks.await(batch.commit())
+                processedCount += chunk.size
+                val lastItemTitle = chunk.lastOrNull()?.title ?: ""
+                onProgress(processedCount, items.size, lastItemTitle)
+            }
+
+            // Sync bundles ONCE for the entire restored catalog
+            onProgress(items.size, items.size, "Packaging 970KB Bundles...")
+            val allBundles = CatalogBundleManager.packEntireCatalog(items)
+            CatalogBundleManager.uploadBundlesToFirestore(db, allBundles)
+
+            // Refresh repository state
+            repository.refreshCatalog()
 
             BackupRestoreResult(
                 isSuccess = true,
