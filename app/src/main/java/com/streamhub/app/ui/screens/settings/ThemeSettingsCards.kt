@@ -124,8 +124,8 @@ fun NotificationAlertPreferenceItem(currentAccent: AppThemeAccent) {
     }
 
     com.streamhub.app.ui.screens.settings.components.PreferenceSwitchItem(
-        title = "New Episode Alerts",
-        subtitle = "Notify when My List shows get new episodes",
+        title = "New Episode & Franchise Alerts",
+        subtitle = "Notify when My List shows get new episodes or franchise releases",
         checked = alertsEnabled,
         onCheckedChange = { isChecked ->
             if (isChecked && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {

@@ -45,8 +45,8 @@ android {
         minSdk = 24
         targetSdk = 35
         val envVersionName = System.getenv("VERSION_NAME")?.removePrefix("v")?.removePrefix("V")
-        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 347
-        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.347"
+        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 348
+        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.348"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -196,6 +196,7 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.work.runtime.ktx)
     implementation("androidx.lifecycle:lifecycle-process:2.8.7")
     // NOTE: Using 1.1.0-alpha06 for KeyScheme.AES256_GCM support (not available in 1.0.0 stable)
     implementation("androidx.security:security-crypto:1.1.0-alpha06")

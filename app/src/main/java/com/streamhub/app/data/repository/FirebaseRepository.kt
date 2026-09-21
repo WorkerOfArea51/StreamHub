@@ -216,6 +216,19 @@ class FirebaseRepository private constructor() {
                     _mediaCatalog.value = merged
                     _catalogState.value = CatalogState.Ready
                     Log.d(TAG, "Firestore synced collection '$col' (${items.size} items), total merged = ${merged.size}")
+
+                    // Reactive notification alert check for new episodes and franchise releases
+                    if (merged.isNotEmpty()) {
+                        scope.launch {
+                            runCatching {
+                                val context = com.streamhub.app.StreamHubApplication.getInstance()
+                                val myListIds = com.streamhub.app.data.MyListManager.myListFlow.value
+                                if (myListIds.isNotEmpty()) {
+                                    com.streamhub.app.data.NotificationAlertManager.checkAndNotifyUpdates(context, merged, myListIds)
+                                }
+                            }
+                        }
+                    }
                 }
                 activeListeners.add(reg)
             }

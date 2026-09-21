@@ -152,7 +152,7 @@ fun HomeScreen(
         if (catalog.isNotEmpty()) {
             com.streamhub.app.data.ThumbnailPrefetchManager.prefetchCatalog(appContext, catalog, limit = 30)
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                com.streamhub.app.data.NotificationAlertManager.checkAndNotifyNewEpisodes(appContext, catalog, myListIds)
+                com.streamhub.app.data.NotificationAlertManager.checkAndNotifyUpdates(appContext, catalog, myListIds)
             }
         }
     }

@@ -30,6 +30,10 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
 
     companion object {
         private const val TAG = "StreamHubApplication"
+        @Volatile
+        private var instance: StreamHubApplication? = null
+
+        fun getInstance(): StreamHubApplication = instance ?: error("StreamHubApplication not yet initialized")
     }
 
     override fun newImageLoader(): coil.ImageLoader {
@@ -58,6 +62,7 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         runCatching {
             com.google.firebase.FirebaseApp.initializeApp(this)
             Log.d(TAG, "FirebaseApp successfully initialized")
