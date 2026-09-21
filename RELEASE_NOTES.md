@@ -1,3 +1,13 @@
+### What's New in StreamHub v4.8.351 🚀
+
+- 📦 **970 KB Smart Catalog Bundler with 99% Firebase Read Reduction**:
+  - **Dynamic Multi-Part Auto-Splitting**: Bundles full show data with all metadata, synopses, cast, specs, and **all 5,029 video/episode streaming links** into category documents in Firestore (`catalog_bundles`). A strict **970 KB threshold** guarantees documents never breach Firestore's 1.0 MB limit.
+  - **99% Cloud Read Quota Reduction**: StreamHub cold launches drop from **486 reads down to ~5-6 reads total**, protecting Google's 50,000 daily read free tier from exhaustion.
+  - **Instant Zero-Read Playback**: All episode links are pre-loaded in memory, meaning tapping any show or episode costs **0 extra reads**.
+  - **100% Data Safety & Automatic Raw Fallback**: Master collections (`animes`, `movies`, `web_series`) remain untouched as permanent master backups. If bundles are missing, the app instantly and seamlessly falls back to reading raw collections.
+  - **1-Tap Bundler Tab in Database Backup & Restore**: Added a dedicated **"📦 970KB Bundler"** tab with a live partition blueprint, active engine status indicator, and a 1-tap compile & upload tool.
+  - **Automatic Incremental Background Sync**: Adding, editing, or deleting shows in Creator Studio automatically updates the affected bundle part in the background without manual user effort.
+
 ### What's New in StreamHub v4.8.350 🚀
 
 - 🎯 **Fixed Return-from-Playback Episode Glow Targeting**:
