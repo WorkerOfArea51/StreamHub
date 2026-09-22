@@ -46,6 +46,7 @@ class StreamBandwidthTracker(context: Context) : TransferListener {
         bandwidthMeter.onBytesTransferred(source, dataSpec, isNetwork, bytesTransferred)
         if (isNetwork && bytesTransferred > 0) {
             bytesInWindow.addAndGet(bytesTransferred.toLong())
+            lastTransferTimeMs = System.currentTimeMillis()
         }
     }
 
@@ -53,7 +54,13 @@ class StreamBandwidthTracker(context: Context) : TransferListener {
         bandwidthMeter.onTransferEnd(source, dataSpec, isNetwork)
     }
 
-    private var lastTransferTimeMs = 0L
+    @Volatile
+    var lastTransferTimeMs: Long = 0L
+        private set
+
+    val timeSinceLastTransferMs: Long
+        get() = if (lastTransferTimeMs > 0L) System.currentTimeMillis() - lastTransferTimeMs else Long.MAX_VALUE
+
     private var smoothedSpeedKBps = 0L
 
     /**

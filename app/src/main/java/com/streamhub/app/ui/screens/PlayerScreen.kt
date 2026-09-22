@@ -411,19 +411,18 @@ fun PlayerScreen(
     var audioDelayMs by remember(playerSettings.defaultAudioDelayMs) { mutableLongStateOf(playerSettings.defaultAudioDelayMs.toLong()) }
 
     var showBufferingHud by remember { mutableStateOf(false) }
-    LaunchedEffect(uiState.isBuffering, uiState.isFirstFrameRendered) {
+    LaunchedEffect(uiState.isBuffering, uiState.isFirstFrameRendered, uiState.isStreamPrecached) {
         if (uiState.isBuffering && !uiState.isFirstFrameRendered) {
             // Debounce initial episode startup/transition:
-            // If stream head is already pre-cached on disk, grant a 1,200ms grace window for decoders
-            // to prime, completely eliminating the jarring flash of "Buffer: 0s" spinner.
-            val isPrecached = uiState.resolvedStreamUrl.isNotBlank() &&
-                com.streamhub.app.player.StreamPreloadManager.isStreamPrecached(context, uiState.resolvedStreamUrl, 2 * 1024 * 1024L)
-            val startupGraceMs = if (isPrecached) 1200L else 350L
+            // If stream head is already pre-cached on disk, grant 3,500ms grace window for decoders.
+            // If not pre-cached, grant a smooth 1,200ms grace window for remote server handshake and container demuxing,
+            // completely eliminating the jarring flash of "Buffer: 0s" spinner.
+            val startupGraceMs = if (uiState.isStreamPrecached) 3500L else 1200L
             delay(startupGraceMs)
             showBufferingHud = true
         } else if (uiState.isBuffering) {
-            // Mid-stream buffering stall
-            delay(200L)
+            // Mid-stream buffering stall: 350ms debounce
+            delay(350L)
             showBufferingHud = true
         } else {
             showBufferingHud = false

@@ -81,7 +81,8 @@ data class PlayerUiState(
     val isReconnecting: Boolean = false,
     val reconnectAttempt: Int = 0,
     val streamRestoredToast: Boolean = false,
-    val isFirstFrameRendered: Boolean = false
+    val isFirstFrameRendered: Boolean = false,
+    val isStreamPrecached: Boolean = false
 )
 
 data class PlaybackProgress(
@@ -136,6 +137,7 @@ class StreamPlayerViewModel : ViewModel() {
 
     private var bandwidthTracker: StreamBandwidthTracker? = null
     private var prepareStartTimeMs: Long = 0L
+    private var isStartupPerfLogged: Boolean = false
     private var lastBackgroundTimestampMs: Long = 0L
     private var lastPauseTimestampMs: Long = 0L
     private var stallAccumulatorMs: Long = 0L
@@ -263,10 +265,10 @@ class StreamPlayerViewModel : ViewModel() {
                 }
 
                 if (playbackState == Player.STATE_READY) {
-                    if (prepareStartTimeMs > 0L) {
+                    if (!isStartupPerfLogged && prepareStartTimeMs > 0L) {
                         val elapsed = System.currentTimeMillis() - prepareStartTimeMs
                         Log.i("StreamPlayerViewModel", "[StartupPerf] Video ready for playback in ${elapsed}ms")
-                        prepareStartTimeMs = 0L
+                        isStartupPerfLogged = true
                     }
                     exoPlayer?.let { updateAvailableTracks(it.currentTracks) }
                     resetRetryCounter()  // NEW: clear retry counter on successful playback
@@ -462,24 +464,25 @@ class StreamPlayerViewModel : ViewModel() {
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)
                     .build()
 
-                // Cinema-grade progressive streaming with safe floor & continuous 5-minute buffer:
-                // - minBufferMs = 120_000: 2 full minutes safe buffer floor. Sockets stay active so F2L bots never drop connection.
-                // - maxBufferMs = 300_000: Up to 5 full minutes forward buffer ahead.
-                // - bufferForPlaybackMs = 250: Instant playback start in ~250ms on first keyframes and seeks.
-                // - bufferForPlaybackAfterRebufferMs = 250: Fast 250ms recovery after seek or network hiccup.
-                // - setPrioritizeTimeOverSizeThresholds(true): Ensures aggressive peak-speed downloading to target time.
-                // - setTargetBufferBytes(C.LENGTH_UNSET): Uncaps byte limit so it doesn't stop buffering at 50s.
+                // Cinema-grade progressive streaming with 4-minute floor & continuous 5-minute buffer:
+                // Native DefaultLoadControl dual-mode buffering:
+                // - bufferForPlaybackMs = 250: 250ms instant cold-start threshold (loads in ~25ms on fast net)
+                // - bufferForPlaybackAfterRebufferMs = 2_000: 2.0s safe buffer pad after seek or rebuffer (prevents 1s stall trap)
+                // - minBufferMs = 240_000: 4-minute safe buffer floor (wakes network loaders up to refill buffer)
+                // - maxBufferMs = 300_000: 5-minute aggressive buffer ceiling (downloads at full line speed)
+                // - setPrioritizeTimeOverSizeThresholds(true): Ensures aggressive peak-speed downloading
+                // - setTargetBufferBytes(128 * 1024 * 1024): 128 MB RAM ceiling uncaps memory so network spikes full to 5 minutes!
                 // - backBuffer = 15_000: Purges watched frames from RAM; disk cache handles persistence.
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        120_000,        // minBufferMs (2-minute safe buffer floor)
+                        240_000,        // minBufferMs (4-minute safe buffer floor)
                         300_000,        // maxBufferMs (up to 5 minutes forward buffer ahead)
-                        250,            // bufferForPlaybackMs (instant startup in ~250ms)
-                        250             // bufferForPlaybackAfterRebufferMs (instant 250ms recovery / YouTube parity)
+                        250,            // bufferForPlaybackMs (250ms instant cold-start pad)
+                        2_000           // bufferForPlaybackAfterRebufferMs (2.0s seek & recovery pad)
                     )
                     .setBackBuffer(15_000, false)
                     .setPrioritizeTimeOverSizeThresholds(true)
-                    .setTargetBufferBytes(androidx.media3.common.C.LENGTH_UNSET)
+                    .setTargetBufferBytes(128 * 1024 * 1024)
                     .build()
 
                 // CRITICAL: DO NOT ADD FLAG_DISABLE_SEEK_FOR_CUES.
@@ -872,15 +875,18 @@ class StreamPlayerViewModel : ViewModel() {
         debouncedSeekJob = null
         if (episodesList.isEmpty() || index !in episodesList.indices) return
 
-        // 1. Immediately halt previous playback and unload old media decoders/streams
+        // 1. Immediately pause previous playback and clear old media items without destroying decoders
         exoPlayer?.apply {
-            stop()
+            pause()
             clearMediaItems()
         }
         // NOTE: Keep warm TCP/TLS sockets in connectionPool alive across episode boundaries for 0ms transitions.
 
         val episode = episodesList[index]
         val rawUrl = episode.streamUrl.ifEmpty { episode.mirrorStreamUrl }
+        val isInitiallyPrecached = appContext?.let { ctx ->
+            StreamPreloadManager.isStreamPrecached(ctx, rawUrl)
+        } ?: false
         val savedDuration = WatchHistoryManager.getProgress(currentMediaItem?.id ?: "")?.durationMs ?: 0L
         val fallbackDurationMs = when {
             episode.durationMs > 0L -> episode.durationMs
@@ -895,6 +901,8 @@ class StreamPlayerViewModel : ViewModel() {
                 playerErrorInfo = null,
                 isFirstFrameRendered = false,
                 isBuffering = true,
+                isStreamPrecached = isInitiallyPrecached,
+                resolvedStreamUrl = rawUrl,
                 durationMs = if (fallbackDurationMs > 0) fallbackDurationMs else it.durationMs
             )
         }
@@ -968,10 +976,14 @@ class StreamPlayerViewModel : ViewModel() {
                 }
                 return@launch
             }
+            val isPrecached = isInitiallyPrecached || (appContext?.let { ctx ->
+                StreamPreloadManager.isStreamPrecached(ctx, resolvedUrl)
+            } ?: false)
             _uiState.update {
                 it.copy(
                     resolvedStreamUrl = resolvedUrl,
-                    posterUrl = currentMediaItem?.posterUrl ?: ""
+                    posterUrl = currentMediaItem?.posterUrl ?: "",
+                    isStreamPrecached = isPrecached
                 )
             }
             val uri = if (resolvedUrl.startsWith("/")) android.net.Uri.fromFile(java.io.File(resolvedUrl)) else android.net.Uri.parse(resolvedUrl)
@@ -1000,6 +1012,7 @@ class StreamPlayerViewModel : ViewModel() {
             PlayerHolder.currentEpisodeIndex = index
 
             prepareStartTimeMs = System.currentTimeMillis()
+            isStartupPerfLogged = false
             exoPlayer?.apply {
                 setMediaItem(mediaItem, startPositionMs)
                 prepare()
@@ -1053,12 +1066,15 @@ class StreamPlayerViewModel : ViewModel() {
     private fun playEpisodeWithExplicitUrl(index: Int, rawUrl: String, startPositionMs: Long = 0L) {
         if (episodesList.isEmpty() || index !in episodesList.indices) return
         exoPlayer?.apply {
-            stop()
+            pause()
             clearMediaItems()
         }
         try {
             com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
         } catch (_: Exception) {}
+        val isPrecached = appContext?.let { ctx ->
+            StreamPreloadManager.isStreamPrecached(ctx, rawUrl)
+        } ?: false
         StreamPreloadManager.cancelDetailsPrewarm()
         StreamPreloadManager.cancelBingePrecache(resetCompleted = true)
         nextEpisodePreloadJob?.cancel()
@@ -1084,6 +1100,7 @@ class StreamPlayerViewModel : ViewModel() {
                 resolvedStreamUrl = rawUrl,
                 isFirstFrameRendered = false,
                 isBuffering = true,
+                isStreamPrecached = isPrecached,
                 durationMs = if (fallbackDurationMs > 0) fallbackDurationMs else it.durationMs
             )
         }
@@ -1105,6 +1122,7 @@ class StreamPlayerViewModel : ViewModel() {
         PlayerHolder.currentEpisodeIndex = index
 
         prepareStartTimeMs = System.currentTimeMillis()
+        isStartupPerfLogged = false
         exoPlayer?.apply {
             setMediaItem(mediaItem, startPositionMs)
             prepare()
@@ -1577,22 +1595,29 @@ class StreamPlayerViewModel : ViewModel() {
                     // Active Stream Stall Watchdog:
                     // Detects if the player is buffering with 0s buffer while trying to play (playWhenReady == true),
                     // not actively seeking, not already reconnecting, and past the startup grace period.
-                    // When cold-starting before the first frame renders, allow 20s for remote Telegram MTProto demuxing.
-                    // Once playing (first frame rendered), maintain rapid 5s stall detection.
-                    val timeSincePrepare = System.currentTimeMillis() - prepareStartTimeMs
+                    // Active Stream Stall Watchdog:
+                    // Detects if the player is buffering with 0s buffer while trying to play (playWhenReady == true),
+                    // not actively seeking, not already reconnecting, and past the startup grace period.
+                    // Startup grace: 25s before first frame renders, 15s after first frame renders.
+                    // Active transfer protection: if bytes were received in the last 3.5s or speed > 15 KB/s,
+                    // the connection is alive and actively transferring.
+                    val timeSincePrepare = if (prepareStartTimeMs > 0L) System.currentTimeMillis() - prepareStartTimeMs else Long.MAX_VALUE
                     val isFirstFrameDone = _uiState.value.isFirstFrameRendered
-                    val isPastStartupGrace = if (isFirstFrameDone) timeSincePrepare >= 5_000L else timeSincePrepare >= 20_000L
+                    val isPastStartupGrace = if (isFirstFrameDone) timeSincePrepare >= 15_000L else timeSincePrepare >= 25_000L
+                    val timeSinceLastByteMs = bandwidthTracker?.timeSinceLastTransferMs ?: Long.MAX_VALUE
+                    val isActivelyTransferring = speedKbps > 15L || timeSinceLastByteMs < 3_500L
                     val isStalled = isBuffering && bufferHealthSec == 0L && player.playWhenReady &&
+                        !isActivelyTransferring &&
                         pendingSeekTargetMs == null && !_uiState.value.isReconnecting && isPastStartupGrace
 
                     if (isStalled) {
                         stallAccumulatorMs += 200L
-                        // 5.0s threshold accommodates Wi-Fi 5GHz <-> 2.4GHz handoffs while recovering quickly from dead sockets
-                        if (stallAccumulatorMs >= 5000L) {
+                        // 6.0s threshold accommodates Wi-Fi 5GHz <-> 2.4GHz handoffs while recovering quickly from dead sockets
+                        if (stallAccumulatorMs >= 6000L) {
                             stallAccumulatorMs = 0L
                             handleStreamStall(playerPos)
                         }
-                    } else if (!isBuffering || bufferHealthSec > 1L) {
+                    } else if (!isBuffering || bufferHealthSec > 1L || isActivelyTransferring) {
                         stallAccumulatorMs = 0L
                     }
 
@@ -1603,20 +1628,22 @@ class StreamPlayerViewModel : ViewModel() {
                         val remainingMs = totalDuration - currentPos
 
                         // Bandwidth Protection: If active episode buffer is thin, prioritize current playback
-                        if (bufferSec < 12 && nextEpisodePreloadJob?.isActive == true) {
+                        if (bufferSec < 15 && nextEpisodePreloadJob?.isActive == true) {
                             StreamPreloadManager.cancelBingePrecache(resetCompleted = false)
                             nextEpisodePreloadJob = null
                         }
 
                         // Intelligent Binge Pre-Caching for Episode N+1:
                         // Triggers when:
-                        // 1. Current episode is 100% fully cached on disk (ExoPlayer idle, network free), OR
-                        // 2. Playback enters closing stretch (progress >= 75% OR remaining <= 8m with progress >= 65%)
+                        // 1. Current playback is active and forward buffer is healthy (>= 35s, network idle), OR
+                        // 2. Current episode is 100% fully cached on disk (ExoPlayer idle, network free), OR
+                        // 3. Playback enters closing stretch (progress >= 75% OR remaining <= 8m with progress >= 65%)
                         //    AND active forward buffer is healthy (>= 25s) so current playback is never starved.
                         val progressFraction = if (totalDuration > 0L) currentPos.toFloat() / totalDuration.toFloat() else 0f
                         val isFullyBuffered = totalDuration > 10_000L && buffered >= (totalDuration - 3_000L)
                         val isInClosingPhase = (progressFraction >= 0.75f || (remainingMs in 1..480_000L && progressFraction >= 0.65f))
-                        val isEligibleForNextEpPrecache = isFullyBuffered || (isInClosingPhase && bufferSec >= 25)
+                        val isBufferHealthyForPreload = bufferSec >= 35L
+                        val isEligibleForNextEpPrecache = isBufferHealthyForPreload || isFullyBuffered || (isInClosingPhase && bufferSec >= 25)
 
                         val isPrecacheFinished = StreamPreloadManager.bingePrecacheStatus.value.isCompleted
                         val isPrecacheRunning = nextEpisodePreloadJob?.isActive == true
@@ -1733,12 +1760,15 @@ class StreamPlayerViewModel : ViewModel() {
             autoRetryCount++
             Log.w(
                 "StreamPlayerViewModel",
-                "Stream stall watchdog triggered at ${stalledPositionMs}ms (buffer 0s for >= 4s). Auto-reconnecting attempt #$autoRetryCount/$maxAutoRetries..."
+                "Stream stall watchdog triggered at ${stalledPositionMs}ms (buffer 0s for >= 6s). Auto-reconnecting attempt #$autoRetryCount/$maxAutoRetries..."
             )
-            try {
-                com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
-            } catch (e: Exception) {
-                Log.w("StreamPlayerViewModel", "Failed to evict streaming connection pool on stall", e)
+            // On attempt 1, do NOT evict the OkHttp pool so healthy in-flight sockets can recover cleanly
+            if (autoRetryCount >= 2) {
+                try {
+                    com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+                } catch (e: Exception) {
+                    Log.w("StreamPlayerViewModel", "Failed to evict streaming connection pool on stall", e)
+                }
             }
             StreamPreloadManager.cancelDetailsPrewarm()
             StreamPreloadManager.cancelBingePrecache()
@@ -1816,10 +1846,12 @@ class StreamPlayerViewModel : ViewModel() {
 
             _uiState.update { it.copy(isBuffering = true, playerError = null, playerErrorInfo = null) }
 
-            // Ensure stale/hung TCP sockets are evicted from OkHttp pool before re-opening stream
-            try {
-                com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
-            } catch (_: Exception) {}
+            // Ensure stale/hung TCP sockets are evicted from OkHttp pool from attempt 2 onward
+            if (autoRetryCount >= 2) {
+                try {
+                    com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+                } catch (_: Exception) {}
+            }
 
             // Attempt 1: In-place seamless reconnection without tearing down decoders or screen blacking
             if (autoRetryCount == 1 && exoPlayer != null && (exoPlayer?.mediaItemCount ?: 0) > 0) {
