@@ -1,3 +1,9 @@
+### What's New in StreamHub v4.8.358 🚀
+
+- ⚡ **Optimized 65% Next-Episode Binge Pre-Caching**:
+  - **Earlier 65% Pre-Cache Window**: Tuned next-episode pre-caching to initiate at **65% watch progress** (down from 75%) provided the active video's forward buffer is healthy ($\ge 30\text{s}$). Gives ample runway (~8+ minutes on standard anime episodes) to completely download both the MKV Cues tail and 25 MB head before the episode concludes.
+  - **Active Playback Bandwidth Guard**: The active video retains 100% network priority through 0% to 65% of playback, ensuring the 4-to-5 minute forward buffer is fully filled and secured before background preloading starts.
+
 ### What's New in StreamHub v4.8.357 🚀
 
 - ⚡ **Aggressive 5-Minute Buffering, 4-Minute Safe Floor & Lean RAM Parity**:

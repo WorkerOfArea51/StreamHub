@@ -1639,11 +1639,11 @@ class StreamPlayerViewModel : ViewModel() {
                         // Bandwidth Priority: Running video has 100% network exclusivity until closing phase.
                         // Pre-caching ONLY triggers when:
                         // 1. Current episode is 100% fully cached on disk (ExoPlayer idle, network free), OR
-                        // 2. Playback enters closing stretch (progress >= 75% OR remaining <= 8m with progress >= 65%)
+                        // 2. Playback reaches closing stretch (progress >= 65% OR remaining <= 8m with progress >= 55%)
                         //    AND active forward buffer is healthy (>= 30s) so current playback is NEVER starved.
                         val progressFraction = if (totalDuration > 0L) currentPos.toFloat() / totalDuration.toFloat() else 0f
                         val isFullyBuffered = totalDuration > 10_000L && buffered >= (totalDuration - 3_000L)
-                        val isInClosingPhase = (progressFraction >= 0.75f || (remainingMs in 1..480_000L && progressFraction >= 0.65f))
+                        val isInClosingPhase = (progressFraction >= 0.65f || (remainingMs in 1..480_000L && progressFraction >= 0.55f))
                         val isEligibleForNextEpPrecache = isFullyBuffered || (isInClosingPhase && bufferSec >= 30L)
 
                         val isPrecacheFinished = StreamPreloadManager.bingePrecacheStatus.value.isCompleted
