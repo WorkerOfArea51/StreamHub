@@ -464,20 +464,20 @@ class StreamPlayerViewModel : ViewModel() {
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)
                     .build()
 
-                // Cinema-grade progressive streaming with 60s safe floor & dynamic buffer allocation:
-                // - minBufferMs = 60_000: 60-second minimum safe buffer floor. If buffer drains below 60s, wakes loaders.
-                // - maxBufferMs = 180_000: Up to 3 full minutes forward buffer ahead.
-                // - bufferForPlaybackMs = 500: Instant, smooth playback start in 500ms on first keyframes and seeks.
-                // - bufferForPlaybackAfterRebufferMs = 1_500: 1.5s safe buffer runway after seek or rebuffer (prevents 1s stall trap).
-                // - setPrioritizeTimeOverSizeThresholds(true): Ensures aggressive downloading to target duration.
-                // - setTargetBufferBytes(C.LENGTH_UNSET): Proportional to actual track bitrate, keeping RAM lean at 80-100 MB heap.
+                // Cinema-grade progressive streaming with 4-minute safe floor & 5-minute continuous buffer:
+                // - minBufferMs = 240_000: 4-minute safe buffer floor (wakes network loaders up to refill buffer)
+                // - maxBufferMs = 300_000: Up to 5 full minutes aggressive forward buffer ahead (downloads at full line speed)
+                // - bufferForPlaybackMs = 250: Instant 250ms cold-start pad
+                // - bufferForPlaybackAfterRebufferMs = 2_000: 2.0s safe buffer pad after seek or rebuffer (prevents 1s stall trap)
+                // - setPrioritizeTimeOverSizeThresholds(true): Ensures aggressive peak-speed downloading to target duration
+                // - setTargetBufferBytes(C.LENGTH_UNSET): Proportional to actual track bitrate, keeping RAM lean at 80-100 MB heap
                 // - backBuffer = 15_000: Purges watched frames from RAM; disk cache handles persistence.
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        60_000,         // minBufferMs (60s safe buffer floor)
-                        180_000,        // maxBufferMs (up to 3 minutes forward buffer ahead)
-                        500,            // bufferForPlaybackMs (500ms smooth startup pad)
-                        1_500           // bufferForPlaybackAfterRebufferMs (1.5s seek & recovery pad)
+                        240_000,        // minBufferMs (4-minute safe buffer floor)
+                        300_000,        // maxBufferMs (up to 5 minutes forward buffer ahead)
+                        250,            // bufferForPlaybackMs (instant 250ms cold-start pad)
+                        2_000           // bufferForPlaybackAfterRebufferMs (2.0s seek & recovery pad)
                     )
                     .setBackBuffer(15_000, false)
                     .setPrioritizeTimeOverSizeThresholds(true)

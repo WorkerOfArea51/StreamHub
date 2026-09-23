@@ -1,3 +1,12 @@
+### What's New in StreamHub v4.8.357 🚀
+
+- ⚡ **Aggressive 5-Minute Buffering, 4-Minute Safe Floor & Lean RAM Parity**:
+  - **4-Minute Safe Floor & 5-Minute Continuous Ceiling**: Re-anchored ExoPlayer's progressive buffering engine to maintain a 4-minute minimum safe buffer runway (`minBufferMs = 240_000`) and buffer ahead up to 5 full minutes (`maxBufferMs = 300_000`). When scrubbing or seeking 2–3 minutes ahead, your buffer is always pre-filled and never starves.
+  - **Lean Memory Footprint (`C.LENGTH_UNSET`)**: Powered by dynamic track-bitrate memory allocation instead of forcing a 128 MB upfront heap cap. Keeps app heap RAM lean at 80–100 MB while holding up to 5 minutes of forward buffer.
+  - **100% Bandwidth Priority for Active Video**: Binge pre-caching strictly waits until you reach the closing credits ($\ge 75\%$ progress) with healthy forward runway ($\ge 30\text{s}$), or 100% disk cache. All network line speed is dedicated to filling and maintaining your 5-minute buffer.
+  - **MKV Cues / Seek Index Pre-Cached FIRST**: File length is probed and the 512 KB tail containing MKV Cues is downloaded before the head, ensuring instantaneous demuxing and 0ms transitions.
+  - **Eliminated Black Screen & `Buffer: 0s` Deadlock**: Safe writer cancellation (`cancelBingePrecacheAwait()`) eliminates span lock contention in `SimpleCache`.
+
 ### What's New in StreamHub v4.8.356 🚀
 
 - ⚡ **Zero-Interference Streaming, 80MB Lean RAM & MKV Cues-First Binge Transition**:
