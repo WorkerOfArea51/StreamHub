@@ -242,14 +242,22 @@ object StreamPreloadManager {
                 val parsedUri = Uri.parse(sanitizedUrl)
                 val cacheKey = StreamDataSourceFactory.sanitizeCacheKey(parsedUri)
 
-                // Check if already cached in disk using unified cache key
+                // 1. Probe total length to pre-cache the MKV Cues / seek index (tail) FIRST!
+                // In Matroska files, ExoPlayer cannot begin presentation without the Cues table.
+                // Pre-caching the tail first guarantees that even if the user skips ahead early
+                // (e.g. at 10% or 64% of head preload), the seek index is already on disk.
+                var metaLen = androidx.media3.datasource.cache.ContentMetadata.getContentLength(simpleCache.getContentMetadata(cacheKey))
+                if (metaLen <= 0L) {
+                    metaLen = probeContentLength(sanitizedUrl)
+                }
+                if (metaLen > targetBytes) {
+                    precacheTailIndexAtomically(appContext, sanitizedUrl, cacheKey, metaLen, targetBytes)
+                }
+
+                // 2. Check if already cached in disk using unified cache key
                 val alreadyCached = simpleCache.isCached(cacheKey, 0, targetBytes)
                 if (alreadyCached) {
                     Log.i(TAG, "Binge pre-cache: Next episode head (25 MB) already cached in disk ($cacheKey)")
-                    val metaLen = androidx.media3.datasource.cache.ContentMetadata.getContentLength(simpleCache.getContentMetadata(cacheKey))
-                    if (metaLen > targetBytes) {
-                        precacheTailIndexAtomically(appContext, sanitizedUrl, cacheKey, metaLen, targetBytes)
-                    }
                     _bingePrecacheStatus.value = BingePrecacheStatus(
                         isActive = false,
                         isCompleted = true,
@@ -296,12 +304,8 @@ object StreamPreloadManager {
 
                 var lastCalcTimeMs = System.currentTimeMillis()
                 var lastBytesAtCalc = 0L
-                var capturedTotalLength = -1L
 
                 val writer = CacheWriter(cacheDataSource, dataSpec, null) { totalLength, bytesCached, _ ->
-                    if (totalLength > 0L) {
-                        capturedTotalLength = totalLength
-                    }
                     val now = System.currentTimeMillis()
                     val elapsed = now - lastCalcTimeMs
                     if (elapsed >= 400L) {
@@ -333,16 +337,6 @@ object StreamPreloadManager {
                 synchronized(this@StreamPreloadManager) {
                     activeBingeWriter = null
                 }
-                Log.i(TAG, "Binge pre-cache: Head (25 MB) cached successfully!")
-
-                // Atomically pre-cache the aligned tail (~512KB) containing the MKV Cues / seek index.
-                // Ensures ExoPlayer reads both Head and Cues locally in 0ms on episode advance!
-                val metaLen = androidx.media3.datasource.cache.ContentMetadata.getContentLength(simpleCache.getContentMetadata(cacheKey))
-                val totalLen = if (metaLen > 0L) metaLen else capturedTotalLength
-                if (totalLen > targetBytes) {
-                    precacheTailIndexAtomically(appContext, sanitizedUrl, cacheKey, totalLen, targetBytes)
-                }
-
                 Log.i(TAG, "Binge pre-cache: Head + Tail fully primed! Next episode is ready for instant 0ms play.")
                 _bingePrecacheStatus.value = BingePrecacheStatus(
                     isActive = false,
@@ -379,15 +373,63 @@ object StreamPreloadManager {
     }
 
     /**
-     * Cancels any ongoing binge pre-cache job.
+     * Probes the remote media URL with Range: bytes=0-0 to read total length from Content-Range header.
+     */
+    private fun probeContentLength(sanitizedUrl: String): Long {
+        return try {
+            val req = Request.Builder()
+                .url(sanitizedUrl)
+                .header("User-Agent", USER_AGENT)
+                .header("Range", "bytes=0-0")
+                .build()
+            preloadClient.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val cr = resp.header("Content-Range")
+                    if (cr != null && cr.contains("/")) {
+                        val lenStr = cr.substringAfterLast("/").trim()
+                        val len = lenStr.toLongOrNull()
+                        if (len != null && len > 0L) return len
+                    }
+                    val cl = resp.header("Content-Length")?.toLongOrNull()
+                    if (cl != null && cl > 1L) return cl
+                }
+            }
+            -1L
+        } catch (_: Exception) {
+            -1L
+        }
+    }
+
+    /**
+     * Gracefully cancels binge pre-cache and awaits background writer to release SimpleCache locks.
+     */
+    suspend fun cancelBingePrecacheAwait() {
+        val jobToJoin = synchronized(this) {
+            val job = activeBingeJob
+            activeBingeWriter?.cancel()
+            try {
+                preloadClient.dispatcher.cancelAll()
+            } catch (_: Exception) {}
+            job?.cancel()
+            activeBingeWriter = null
+            activeBingeDataSource = null
+            activeBingeJob = null
+            _bingePrecacheStatus.value = BingePrecacheStatus()
+            job
+        }
+        try {
+            jobToJoin?.join()
+        } catch (_: Exception) {}
+    }
+
+    /**
+     * Cancels any ongoing binge pre-cache job without blocking.
      */
     fun cancelBingePrecache(resetCompleted: Boolean = true) {
         synchronized(this) {
             try {
                 activeBingeWriter?.cancel()
-                activeBingeDataSource?.close()
                 preloadClient.dispatcher.cancelAll()
-                preloadClient.connectionPool.evictAll()
             } catch (_: Exception) {}
             activeBingeWriter = null
             activeBingeDataSource = null

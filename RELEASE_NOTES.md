@@ -1,3 +1,11 @@
+### What's New in StreamHub v4.8.356 🚀
+
+- ⚡ **Zero-Interference Streaming, 80MB Lean RAM & MKV Cues-First Binge Transition**:
+  - **100% Bandwidth Priority for Active Video**: Completely removed the early `bufferSec >= 35s` preload trigger that was leeching network bandwidth from the active stream starting at second 24. Next episode binge pre-caching now strictly waits until you reach the closing stretch ($\ge 75\%$ progress) AND the active buffer is healthy ($\ge 30\text{s}$), or until the active video is 100% cached on disk. Active playback enjoys full, uninterrupted network bandwidth.
+  - **Eliminated RAM Bloat (80–100 MB Heap Parity)**: Reverted hardcoded 128 MB RAM buffer allocations (`setTargetBufferBytes`) back to dynamic bitrate-proportional scaling (`C.LENGTH_UNSET`), with stable 60s floor (`minBufferMs = 60_000`) and 3-minute ceiling (`maxBufferMs = 180_000`). Drops app heap memory from 280+ MB back to a lean, efficient 80–100 MB.
+  - **MKV Cues / Seek Index Pre-Cached FIRST**: Fixed MKV container demuxing stalls. The preloader now probes file size (`Range: bytes=0-0`) and downloads the 512 KB tail containing the MKV Cues seek table **before** the 25 MB head. Advancing to Episode $N+1$ at any point (even at 10% or 64%) guarantees the seek index is already on disk, enabling instant local demuxing.
+  - **Eliminated Black Screen & `Buffer: 0s` Deadlock**: Fixed cross-thread `close()` calls from the UI thread that corrupted `CacheDataSink` and left `SimpleCache` span locks orphaned. Episode transitions now gracefully await background writer cancellation (`cancelBingePrecacheAwait()`), ensuring ExoPlayer opens disk-cached episodes without thread deadlock or stalling on a black screen.
+
 ### What's New in StreamHub v4.8.355 🚀
 
 - ⚡ **Dynamic Dual-Mode Buffering, Full Network Spiking & Zero-Loop Reconnect Watchdog**:

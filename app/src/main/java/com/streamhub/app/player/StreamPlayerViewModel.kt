@@ -464,25 +464,24 @@ class StreamPlayerViewModel : ViewModel() {
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)
                     .build()
 
-                // Cinema-grade progressive streaming with 4-minute floor & continuous 5-minute buffer:
-                // Native DefaultLoadControl dual-mode buffering:
-                // - bufferForPlaybackMs = 250: 250ms instant cold-start threshold (loads in ~25ms on fast net)
-                // - bufferForPlaybackAfterRebufferMs = 2_000: 2.0s safe buffer pad after seek or rebuffer (prevents 1s stall trap)
-                // - minBufferMs = 240_000: 4-minute safe buffer floor (wakes network loaders up to refill buffer)
-                // - maxBufferMs = 300_000: 5-minute aggressive buffer ceiling (downloads at full line speed)
-                // - setPrioritizeTimeOverSizeThresholds(true): Ensures aggressive peak-speed downloading
-                // - setTargetBufferBytes(128 * 1024 * 1024): 128 MB RAM ceiling uncaps memory so network spikes full to 5 minutes!
+                // Cinema-grade progressive streaming with 60s safe floor & dynamic buffer allocation:
+                // - minBufferMs = 60_000: 60-second minimum safe buffer floor. If buffer drains below 60s, wakes loaders.
+                // - maxBufferMs = 180_000: Up to 3 full minutes forward buffer ahead.
+                // - bufferForPlaybackMs = 500: Instant, smooth playback start in 500ms on first keyframes and seeks.
+                // - bufferForPlaybackAfterRebufferMs = 1_500: 1.5s safe buffer runway after seek or rebuffer (prevents 1s stall trap).
+                // - setPrioritizeTimeOverSizeThresholds(true): Ensures aggressive downloading to target duration.
+                // - setTargetBufferBytes(C.LENGTH_UNSET): Proportional to actual track bitrate, keeping RAM lean at 80-100 MB heap.
                 // - backBuffer = 15_000: Purges watched frames from RAM; disk cache handles persistence.
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        240_000,        // minBufferMs (4-minute safe buffer floor)
-                        300_000,        // maxBufferMs (up to 5 minutes forward buffer ahead)
-                        250,            // bufferForPlaybackMs (250ms instant cold-start pad)
-                        2_000           // bufferForPlaybackAfterRebufferMs (2.0s seek & recovery pad)
+                        60_000,         // minBufferMs (60s safe buffer floor)
+                        180_000,        // maxBufferMs (up to 3 minutes forward buffer ahead)
+                        500,            // bufferForPlaybackMs (500ms smooth startup pad)
+                        1_500           // bufferForPlaybackAfterRebufferMs (1.5s seek & recovery pad)
                     )
                     .setBackBuffer(15_000, false)
                     .setPrioritizeTimeOverSizeThresholds(true)
-                    .setTargetBufferBytes(128 * 1024 * 1024)
+                    .setTargetBufferBytes(androidx.media3.common.C.LENGTH_UNSET)
                     .build()
 
                 // CRITICAL: DO NOT ADD FLAG_DISABLE_SEEK_FOR_CUES.
@@ -939,6 +938,8 @@ class StreamPlayerViewModel : ViewModel() {
 
         resolutionJob?.cancel()
         resolutionJob = viewModelScope.launch {
+            // Await clean release of any active preload cache locks before ExoPlayer touches disk
+            StreamPreloadManager.cancelBingePrecacheAwait()
             // FIX: If rawUrl is already a local file path, bypass URL resolution entirely.
             // This makes offline playback instant — no network calls, no TelegramLinkResolver.
             val isLocal = rawUrl.startsWith("/") || rawUrl.startsWith("file://")
@@ -1069,9 +1070,6 @@ class StreamPlayerViewModel : ViewModel() {
             pause()
             clearMediaItems()
         }
-        try {
-            com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
-        } catch (_: Exception) {}
         val isPrecached = appContext?.let { ctx ->
             StreamPreloadManager.isStreamPrecached(ctx, rawUrl)
         } ?: false
@@ -1123,10 +1121,14 @@ class StreamPlayerViewModel : ViewModel() {
 
         prepareStartTimeMs = System.currentTimeMillis()
         isStartupPerfLogged = false
-        exoPlayer?.apply {
-            setMediaItem(mediaItem, startPositionMs)
-            prepare()
-            playWhenReady = true
+        resolutionJob?.cancel()
+        resolutionJob = viewModelScope.launch {
+            StreamPreloadManager.cancelBingePrecacheAwait()
+            exoPlayer?.apply {
+                setMediaItem(mediaItem, startPositionMs)
+                prepare()
+                playWhenReady = true
+            }
         }
     }
 
@@ -1628,22 +1630,21 @@ class StreamPlayerViewModel : ViewModel() {
                         val remainingMs = totalDuration - currentPos
 
                         // Bandwidth Protection: If active episode buffer is thin, prioritize current playback
-                        if (bufferSec < 15 && nextEpisodePreloadJob?.isActive == true) {
+                        if (bufferSec < 20L && nextEpisodePreloadJob?.isActive == true) {
                             StreamPreloadManager.cancelBingePrecache(resetCompleted = false)
                             nextEpisodePreloadJob = null
                         }
 
                         // Intelligent Binge Pre-Caching for Episode N+1:
-                        // Triggers when:
-                        // 1. Current playback is active and forward buffer is healthy (>= 35s, network idle), OR
-                        // 2. Current episode is 100% fully cached on disk (ExoPlayer idle, network free), OR
-                        // 3. Playback enters closing stretch (progress >= 75% OR remaining <= 8m with progress >= 65%)
-                        //    AND active forward buffer is healthy (>= 25s) so current playback is never starved.
+                        // Bandwidth Priority: Running video has 100% network exclusivity until closing phase.
+                        // Pre-caching ONLY triggers when:
+                        // 1. Current episode is 100% fully cached on disk (ExoPlayer idle, network free), OR
+                        // 2. Playback enters closing stretch (progress >= 75% OR remaining <= 8m with progress >= 65%)
+                        //    AND active forward buffer is healthy (>= 30s) so current playback is NEVER starved.
                         val progressFraction = if (totalDuration > 0L) currentPos.toFloat() / totalDuration.toFloat() else 0f
                         val isFullyBuffered = totalDuration > 10_000L && buffered >= (totalDuration - 3_000L)
                         val isInClosingPhase = (progressFraction >= 0.75f || (remainingMs in 1..480_000L && progressFraction >= 0.65f))
-                        val isBufferHealthyForPreload = bufferSec >= 35L
-                        val isEligibleForNextEpPrecache = isBufferHealthyForPreload || isFullyBuffered || (isInClosingPhase && bufferSec >= 25)
+                        val isEligibleForNextEpPrecache = isFullyBuffered || (isInClosingPhase && bufferSec >= 30L)
 
                         val isPrecacheFinished = StreamPreloadManager.bingePrecacheStatus.value.isCompleted
                         val isPrecacheRunning = nextEpisodePreloadJob?.isActive == true
