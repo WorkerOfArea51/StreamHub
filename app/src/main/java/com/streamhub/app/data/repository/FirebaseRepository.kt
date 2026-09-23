@@ -708,6 +708,15 @@ class FirebaseRepository private constructor() {
                 _adminOperationState.value = AdminOperationState.Success()
                 Log.d(TAG, "Successfully deleted media item $itemId across all collections")
 
+                // Cascade cleanup: purge local bookmarks, watch progress, and downloaded files
+                scope.launch(Dispatchers.IO) {
+                    runCatching {
+                        com.streamhub.app.data.MyListManager.removeFromList(itemId)
+                        com.streamhub.app.data.WatchHistoryManager.removeMediaProgress(itemId)
+                        com.streamhub.app.data.DownloadManager.deleteDownloadsForMedia(itemId)
+                    }.onFailure { Log.w(TAG, "Non-fatal cascade cleanup error after delete: ${it.message}") }
+                }
+
                 // Background sync: update the affected category bundle in catalog_bundles
                 scope.launch(Dispatchers.IO) {
                     runCatching {

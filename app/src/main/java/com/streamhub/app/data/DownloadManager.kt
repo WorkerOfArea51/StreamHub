@@ -439,14 +439,15 @@ object DownloadManager {
                     val msg = "⚠️ Low Storage: Only ${storageCheck.freeMb.toInt()} MB free. At least ${storageCheck.requiredMb.toInt()} MB required."
                     Log.e(TAG, msg)
                     withContext(Dispatchers.Main) {
-                        com.streamhub.app.ui.components.ToastManager.showToast(msg)
+                        android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
                     }
                     return@launch
                 }
                 is StorageCheckResult.Error -> {
-                    Log.e(TAG, "Storage validation error: ${storageCheck.message}")
+                    val msg = "Storage Error: ${storageCheck.message}"
+                    Log.e(TAG, msg)
                     withContext(Dispatchers.Main) {
-                        com.streamhub.app.ui.components.ToastManager.showToast("Storage Error: ${storageCheck.message}")
+                        android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
                     }
                     return@launch
                 }
@@ -461,10 +462,13 @@ object DownloadManager {
                 .removeSuffix(".mkv").removeSuffix(".mp4").removeSuffix(".webm").removeSuffix(".avi")
                 .removeSuffix(".MKV").removeSuffix(".MP4").removeSuffix(".WEBM").removeSuffix(".AVI")
                 .replace(FILENAME_SANITIZE_REGEX, "_")
+                .trim('_')
+                .ifBlank { "Media" }
+            val idSuffix = if (mediaItem.id.isNotBlank()) "_${mediaItem.id.takeLast(6)}" else ""
             val fileName = if (isMovie) {
-                "$cleanTitle.$fileExt"
+                "${cleanTitle}${idSuffix}.$fileExt"
             } else {
-                "${cleanTitle}_Ep${episodeIndex + 1}.$fileExt"
+                "${cleanTitle}${idSuffix}_Ep${episodeIndex + 1}.$fileExt"
             }
             val targetFile = File(downloadsDir, fileName)
             val epTitle = if (isMovie) mediaItem.title else (episode.title.ifEmpty { "Episode ${episodeIndex + 1}" })
@@ -474,7 +478,7 @@ object DownloadManager {
                 val sourceFile = File(resolvedUrl)
                 if (sourceFile.exists() && sourceFile.length() > 0L) {
                     val actualExt = sourceFile.extension.ifBlank { fileExt }
-                    val finalTargetName = if (isMovie) "$cleanTitle.$actualExt" else "${cleanTitle}_Ep${episodeIndex + 1}.$actualExt"
+                    val finalTargetName = if (isMovie) "${cleanTitle}${idSuffix}.$actualExt" else "${cleanTitle}${idSuffix}_Ep${episodeIndex + 1}.$actualExt"
                     val finalTarget = File(downloadsDir, finalTargetName)
                     try {
                         if (sourceFile.absolutePath != finalTarget.absolutePath) {
@@ -648,7 +652,7 @@ object DownloadManager {
         if (storageCheck is StorageCheckResult.Insufficient) {
             val msg = "⚠️ Low Storage: Only ${storageCheck.freeMb.toInt()} MB free to resume ${item.mediaTitle}."
             Log.w(TAG, msg)
-            com.streamhub.app.ui.components.ToastManager.showToast(msg)
+            android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_LONG).show()
             markAsPaused(item)
             return
         }
@@ -868,6 +872,14 @@ object DownloadManager {
             mutableList
         }
         saveToDisk()
+    }
+
+    /**
+     * Cascade cleanup: Purges all downloaded episodes and files for a specific media item.
+     */
+    fun deleteDownloadsForMedia(mediaId: String) {
+        val targets = _downloads.value.filter { it.mediaId == mediaId }
+        targets.forEach { deleteDownload(it) }
     }
 
     fun pauseDownloadByKeys(mediaId: String, episodeIndex: Int) {

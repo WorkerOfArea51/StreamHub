@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -34,10 +35,14 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.streamhub.app.ui.components.EmptyStateCard
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,6 +73,8 @@ fun DownloadsScreen(
     val downloadSettings by com.streamhub.app.data.DownloadSettingsManager.settingsFlow.collectAsState()
     val totalMbUsed = downloadsList.filter { it.isCompleted }.sumOf { it.fileSizeMb }
     val primaryColor = MaterialTheme.colorScheme.primary
+
+    var itemToDelete by remember { mutableStateOf<DownloadedItem?>(null) }
 
     // Real Device Storage Calculation
     val storageInfo = remember(downloadsList) {
@@ -331,10 +338,49 @@ fun DownloadsScreen(
                             )
                             onPlayEpisode(offlineMedia, 0)
                         },
-                        onDelete = { DownloadManager.deleteDownload(downloadItem) }
+                        onDelete = { itemToDelete = downloadItem }
                     )
                 }
             }
+        }
+
+        // Delete Download Confirmation Dialog
+        itemToDelete?.let { target ->
+            AlertDialog(
+                onDismissRequest = { itemToDelete = null },
+                title = {
+                    Text(
+                        text = "Delete Download?",
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Text(
+                        text = "Are you sure you want to delete \"${target.episodeTitle}\"? This offline file will be removed from your device storage.",
+                        color = TextSecondary,
+                        fontSize = 13.sp
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val toDelete = target
+                            itemToDelete = null
+                            DownloadManager.deleteDownload(toDelete)
+                        }
+                    ) {
+                        Text("Delete", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { itemToDelete = null }) {
+                        Text("Cancel", color = TextSecondary)
+                    }
+                },
+                containerColor = SurfaceDark,
+                shape = RoundedCornerShape(16.dp)
+            )
         }
     }
 }

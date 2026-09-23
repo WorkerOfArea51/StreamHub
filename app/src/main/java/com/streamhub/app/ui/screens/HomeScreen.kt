@@ -522,6 +522,8 @@ fun HomeScreen(
                         title = if (isAdminMode) "No shows yet" else "No content available",
                         subtitle = if (isAdminMode) "Tap the + button to add your first show"
                                    else "Ask the admin to add content",
+                        ctaLabel = if (isAdminMode) "Add First Show" else null,
+                        onCtaClick = if (isAdminMode) { { showAdminAddDialog = true } } else null,
                         modifier = Modifier.height(400.dp)
                     )
                 }
@@ -534,7 +536,15 @@ fun HomeScreen(
                         icon = Icons.Default.Movie,
                         title = "No $selectedCategoryDisplayName Yet",
                         subtitle = if (isAdminMode) "Tap the + button below to add your first $selectedCategoryDisplayName"
-                                   else "Check back later or switch to 'All' / 'Movies' to explore",
+                                   else "Check back later or switch to 'All' to explore",
+                        ctaLabel = if (isAdminMode) "Add $selectedCategoryDisplayName" else "Show All Content",
+                        onCtaClick = {
+                            if (isAdminMode) {
+                                showAdminAddDialog = true
+                            } else {
+                                com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("ALL")
+                            }
+                        },
                         modifier = Modifier.height(350.dp)
                     )
                 }

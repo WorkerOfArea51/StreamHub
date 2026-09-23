@@ -198,7 +198,6 @@ object StreamPreloadManager {
         synchronized(this) {
             try {
                 activeDetailsWriter?.cancel()
-                activeDetailsDataSource?.close()
                 preloadClient.dispatcher.cancelAll()
                 preloadClient.connectionPool.evictAll()
             } catch (_: Exception) {}

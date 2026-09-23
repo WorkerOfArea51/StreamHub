@@ -10,6 +10,7 @@ import androidx.media3.datasource.cache.SimpleCache
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
@@ -118,10 +119,15 @@ object StreamCacheManager {
                 simpleCache = null
                 databaseProvider = null
                 try { cache?.release() } catch (e: Exception) { Log.e(TAG, "Failed to release cache", e) }
-                try {
-                    getEffectiveCacheDir()?.deleteRecursively()
-                } catch (e: Exception) { Log.e(TAG, "Failed to delete cache dir", e) }
+                val dirToDelete = getEffectiveCacheDir()
                 cacheDir = null
+                if (dirToDelete != null) {
+                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                        try {
+                            dirToDelete.deleteRecursively()
+                        } catch (e: Exception) { Log.e(TAG, "Failed to delete cache dir", e) }
+                    }
+                }
             } else if (activeReaderCount == 0) {
                 _cacheStateFlow.value = CacheState.IDLE
             }

@@ -290,13 +290,15 @@ class StreamMediaService : MediaSessionService() {
         mediaSession?.run {
             val sharedPlayer = StreamPlayerViewModel.currentPlayer
             val sessionPlayer = player
-            // FIX: Release the fallback player (owned by this service).
-            // Never release the shared player here — the ViewModel owns its lifecycle.
             if (sessionPlayer !== sharedPlayer) {
                 sessionPlayer.release()
+            } else {
+                sessionPlayer.release()
+                StreamPlayerViewModel.currentPlayer = null
             }
             release()
         }
+        PlayerHolder.clear()
         mediaSession = null
         fallbackPlayer = null
         super.onDestroy()

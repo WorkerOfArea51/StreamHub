@@ -1,3 +1,13 @@
+### What's New in StreamHub v4.8.359 🚀
+
+- 🛡️ **Master Project Health & Lifecycle Hardening (Sprints 1, 2, & 3)**:
+  - **ExoPlayer Hardware Codec Leak Eliminated**: Resolved the lifecycle ownership deadlock between `StreamMediaService` and `StreamPlayerViewModel`. Stopping playback from notifications or closing background audio now cleanly and unconditionally releases hardware decoders (`MediaCodec`) and audio sessions.
+  - **Safe Cache Teardown & Main-Thread ANR Protection**: Purged unsafe cross-thread `dataSource.close()` calls during preload cancellations and offloaded deferred cache directory deletion (`deleteRecursively()`) to background IO threads, permanently preventing Main-Thread ANRs.
+  - **Creator Studio Duplicate Show Bug Fixed**: Selecting and modifying an existing catalog show in Creator Studio now cleanly updates the existing document ID instead of generating accidental duplicate records in Firestore.
+  - **Collision-Proof Offline Storage**: Download file paths are now disambiguated with media ID suffixes, preventing shows with identical or sanitized names from overwriting each other.
+  - **Cascade Deletion Cleanup**: Deleting any title in Creator Studio now automatically purges local bookmarks (`MyListManager`), watch progress records (`WatchHistoryManager`), and downloaded offline files (`DownloadManager`).
+  - **Destructive Safety Dialogs & Recovery Actions**: Added an explicit confirmation modal before deleting offline downloads, added an interactive **[Undo]** snackbar when removing watch history items, wired actionable CTAs into empty states, and resolved the 1.5s offline cold-start flap.
+
 ### What's New in StreamHub v4.8.358 🚀
 
 - ⚡ **Optimized 65% Next-Episode Binge Pre-Caching**:

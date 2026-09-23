@@ -263,16 +263,23 @@ fun AdminEditorDialog(
         selectedTab = 0
     }
 
-    if (showDeleteConfirmDialog && initialItem != null && onDelete != null) {
+    val itemForDeletion = activeEditItem ?: initialItem
+    if (showDeleteConfirmDialog && itemForDeletion != null) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirmDialog = false },
             title = { Text("Delete Media?", color = Color.White, fontWeight = FontWeight.Bold) },
-            text = { Text("Are you sure you want to permanently delete \"${initialItem.title}\"? This action cannot be undone.", color = TextSecondary) },
+            text = { Text("Are you sure you want to permanently delete \"${itemForDeletion.title}\"? This action cannot be undone.", color = TextSecondary) },
             confirmButton = {
                 Button(
                     onClick = {
                         showDeleteConfirmDialog = false
-                        onDelete(initialItem.id)
+                        if (onDelete != null) {
+                            onDelete(itemForDeletion.id)
+                        } else {
+                            scope.launch {
+                                FirebaseRepository.getInstance().deleteMediaItem(itemForDeletion.id)
+                            }
+                        }
                         onDismiss()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed)
@@ -2072,7 +2079,7 @@ fun AdminEditorDialog(
                         Text("Cancel", color = TextSecondary, fontSize = 12.sp, maxLines = 1)
                     }
 
-                    if (initialItem != null && onDelete != null) {
+                    if (activeEditItem != null || initialItem != null) {
                         Button(
                             onClick = {
                                 showDeleteConfirmDialog = true
@@ -2148,8 +2155,9 @@ fun AdminEditorDialog(
                                         partNumber = partNumberText.toIntOrNull() ?: 0
                                     )
 
-                                    val finalId = if (initialItem != null && initialItem.id.isNotBlank()) {
-                                        initialItem.id
+                                    val editTarget = activeEditItem ?: initialItem
+                                    val finalId = if (editTarget != null && editTarget.id.isNotBlank()) {
+                                        editTarget.id
                                     } else {
                                         var uniqueId = generatedId
                                         var suffix = 2
@@ -2160,17 +2168,18 @@ fun AdminEditorDialog(
                                         uniqueId
                                     }
 
+                                    val cleanTitle = title.trim()
                                     val finalFranchiseId = franchiseId.ifBlank {
-                                        com.streamhub.app.data.FranchiseManager.getFranchiseId(MediaItem(title = title))
+                                        com.streamhub.app.data.FranchiseManager.getFranchiseId(MediaItem(title = cleanTitle))
                                     }
                                     val finalFranchiseTitle = franchiseTitle.ifBlank {
-                                        com.streamhub.app.data.FranchiseManager.getFranchiseTitle(MediaItem(title = title))
+                                        com.streamhub.app.data.FranchiseManager.getFranchiseTitle(MediaItem(title = cleanTitle))
                                     }
 
                                     val baseItem = activeEditItem ?: initialItem ?: MediaItem(id = finalId)
                                     val mediaItem = baseItem.copy(
                                         id = finalId,
-                                        title = title,
+                                        title = cleanTitle,
                                         type = type,
                                         category = category,
                                         genres = genresText.split(",").map { it.trim() }.filter { it.isNotBlank() },

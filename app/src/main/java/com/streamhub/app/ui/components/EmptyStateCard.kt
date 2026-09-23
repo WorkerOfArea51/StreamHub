@@ -8,7 +8,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -25,11 +29,14 @@ import com.streamhub.app.ui.theme.TextSecondary
  * Reusable empty-state component.
  *
  * Used by HomeScreen, SearchScreen, MyListScreen, DownloadsScreen when there
- * is no content to display. Shows a centered icon + title + optional subtitle.
+ * is no content to display. Shows a centered icon + title + optional subtitle
+ * and an optional actionable CTA button.
  *
  * @param icon The Material icon to display (e.g. Icons.Default.Movie)
  * @param title Bold primary text (e.g. "No shows yet")
  * @param subtitle Optional secondary text (e.g. "Admin can add content via the + button")
+ * @param ctaLabel Optional label for call-to-action button (e.g. "Explore Catalog")
+ * @param onCtaClick Optional callback invoked when CTA button is tapped
  * @param modifier Standard Compose modifier
  */
 @Composable
@@ -37,6 +44,8 @@ fun EmptyStateCard(
     icon: ImageVector,
     title: String,
     subtitle: String? = null,
+    ctaLabel: String? = null,
+    onCtaClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -70,6 +79,23 @@ fun EmptyStateCard(
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center
                 )
+            }
+            if (ctaLabel != null && onCtaClick != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = onCtaClick,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    )
+                ) {
+                    Text(
+                        text = ctaLabel,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                }
             }
         }
     }

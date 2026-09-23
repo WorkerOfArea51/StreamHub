@@ -21,8 +21,11 @@ object PlayerHolder {
             _currentPlayerFlow.value = value
         }
 
+    @Volatile
     var currentBandwidthTracker: StreamBandwidthTracker? = null
+    @Volatile
     var currentMediaId: String? = null
+    @Volatile
     var currentEpisodeIndex: Int = 0
 
     var onPlayNextAction: (() -> Unit)? = null

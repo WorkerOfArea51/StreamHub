@@ -64,22 +64,22 @@ object NetworkMonitor {
     private val internetNetworkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             activeNetworks.add(network)
-            evaluateNetwork(isImmediateOnline = true)
+            evaluateNetwork()
         }
 
         override fun onLost(network: Network) {
             activeNetworks.remove(network)
-            evaluateNetwork(isImmediateOnline = false)
+            evaluateNetwork()
         }
 
         override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
             val hasInternet = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             if (hasInternet) {
                 activeNetworks.add(network)
-                evaluateNetwork(isImmediateOnline = true)
+                evaluateNetwork()
             } else {
                 activeNetworks.remove(network)
-                evaluateNetwork(isImmediateOnline = false)
+                evaluateNetwork()
             }
         }
     }
@@ -87,22 +87,22 @@ object NetworkMonitor {
     private val defaultNetworkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             activeNetworks.add(network)
-            evaluateNetwork(isImmediateOnline = true)
+            evaluateNetwork()
         }
 
         override fun onLost(network: Network) {
             activeNetworks.remove(network)
-            evaluateNetwork(isImmediateOnline = false)
+            evaluateNetwork()
         }
 
         override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
             val hasInternet = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             if (hasInternet) {
                 activeNetworks.add(network)
-                evaluateNetwork(isImmediateOnline = true)
+                evaluateNetwork()
             } else {
                 activeNetworks.remove(network)
-                evaluateNetwork(isImmediateOnline = false)
+                evaluateNetwork()
             }
         }
     }
@@ -131,8 +131,8 @@ object NetworkMonitor {
                 }
             }
 
-            // Initial immediate evaluation
-            evaluateNetwork(isImmediateOnline = true)
+            // Initial immediate evaluation (0ms for both online and offline on startup)
+            evaluateNetwork(isImmediate = true)
 
             // 1. Register for ANY network with internet capability (catches Wi-Fi + Cellular simultaneous readiness)
             val request = NetworkRequest.Builder()
@@ -152,10 +152,11 @@ object NetworkMonitor {
     /**
      * Re-evaluates network state with hysteresis.
      * If transitioning to online: applied immediately (0ms).
-     * If transitioning to offline: debounced by [OFFLINE_DEBOUNCE_MS] to absorb carrier/cell-tower handoffs.
+     * If transitioning to offline: debounced by [OFFLINE_DEBOUNCE_MS] to absorb carrier/cell-tower handoffs,
+     * unless [isImmediate] is true (e.g. cold startup or explicit flush).
      */
     @Synchronized
-    private fun evaluateNetwork(isImmediateOnline: Boolean = false) {
+    private fun evaluateNetwork(isImmediate: Boolean = false) {
         val cm = connectivityManager ?: return
 
         try {
@@ -200,8 +201,14 @@ object NetworkMonitor {
                     _lastReconnectedAt.value = System.currentTimeMillis()
                 }
             } else {
-                // Transitioning toward Offline: apply debounced hysteresis
-                if (_isOnline.value && pendingOfflineJob == null) {
+                // Transitioning toward Offline: apply debounced hysteresis unless immediate evaluation requested
+                if (isImmediate) {
+                    pendingOfflineJob?.cancel()
+                    pendingOfflineJob = null
+                    _isOnline.value = false
+                    _networkType.value = NetworkType.OFFLINE
+                    Log.i(TAG, "Immediate offline evaluation: Device is OFFLINE")
+                } else if (_isOnline.value && pendingOfflineJob == null) {
                     pendingOfflineJob = monitorScope.launch {
                         delay(OFFLINE_DEBOUNCE_MS)
                         // Re-verify after debounce delay before flipping state
@@ -265,7 +272,7 @@ object NetworkMonitor {
                 _isOnline.value = true
                 _lastReconnectedAt.value = System.currentTimeMillis()
             } else {
-                evaluateNetwork(isImmediateOnline = false)
+                evaluateNetwork()
             }
         }
     }
