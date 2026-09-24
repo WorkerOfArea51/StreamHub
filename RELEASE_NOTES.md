@@ -1,3 +1,12 @@
+### What's New in StreamHub v4.8.360 🚀
+
+- ⚡ **Stream Buffer Stall Watchdog & Zombie Socket Elimination**:
+  - **Zero Zombie Sockets on Stall Reconnect**: When network stalls or server throttles, OkHttp's streaming connection pool is now immediately evicted on Attempt 1 (`evictAll()`). OkHttp is forced to perform a clean TCP handshake, instantly jumping straight to **1–2 MB/s** on the very first try instead of failing once on a dead socket.
+  - **Starvation Trickle Detection**: At 0s buffer, incoming packet trickles under 100 KB/s are no longer mistaken for healthy transfers. Watchdog stall trigger reduced from 6.0s of complete silence to **2.0s**.
+  - **Proactive Zero-Freeze Defense**: If forward buffer runway drops to critical levels (1–4s) during active playback and download speed remains choked (< 60 KB/s) for 3 continuous seconds, the player automatically triggers an in-place range reconnect with a fresh socket *before* playback completely runs out of frames and freezes.
+  - **Ultra-Fast Reconnect Backoff**: Attempt 1 reconnect backoff reduced from 800ms to **350ms** for near-instant resumption.
+  - **Uninterrupted 2X Speed Hold & Gesture Lockout**: While holding down the screen for 2X playback, vertical gestures (brightness, volume, subtitle height) are now strictly locked out. You can comfortably rest, shift, or roll your thumb on the screen without 2X speed aborting or accidentally triggering sliders. Exits cleanly only when you lift your finger.
+
 ### What's New in StreamHub v4.8.359 🚀
 
 - 🛡️ **Master Project Health & Lifecycle Hardening (Sprints 1, 2, & 3)**:

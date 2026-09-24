@@ -1161,15 +1161,12 @@ fun PlayerScreen(
                                                 val deltaY = currentPos.y - startPos.y
                                                 val distance = kotlin.math.sqrt(deltaX * deltaX + deltaY * deltaY)
 
-                                                if (!isDragging && distance > 16f) {
+                                                // Once in 2X hold, lock out vertical drag gestures completely so the user
+                                                // can move or rest their finger without interrupting 2X speed or changing brightness/volume.
+                                                if (!isDragging && !isLongPressed && distance > 28f) {
                                                     longPressJob.cancel()
-                                                    if (kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX) * 1.1f) {
+                                                    if (kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX) * 1.25f) {
                                                         isDragging = true
-                                                        if (isLongPressed) {
-                                                            viewModel.setPlaybackSpeed(speedBeforeHold)
-                                                            is2xSpeedHolding = false
-                                                            isLongPressed = false
-                                                        }
                                                         if (playerSettings.volumeOnRight) {
                                                             isDraggingBrightness = true
                                                             originalBrightness = currentBrightnessPercent
@@ -1307,15 +1304,12 @@ fun PlayerScreen(
                                                 val deltaY = currentPos.y - startPos.y
                                                 val distance = kotlin.math.sqrt(deltaX * deltaX + deltaY * deltaY)
 
-                                                if (!isDragging && distance > 16f) {
+                                                // Once in 2X hold, lock out subtitle vertical drag gestures completely so the user
+                                                // can move or rest their finger without interrupting 2X speed or shifting subtitles.
+                                                if (!isDragging && !isLongPressed && distance > 28f) {
                                                     longPressJob.cancel()
-                                                    if (kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX) * 1.1f && playerSettings.subtitleVerticalDragEnabled) {
+                                                    if (kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX) * 1.25f && playerSettings.subtitleVerticalDragEnabled) {
                                                         isDragging = true
-                                                        if (isLongPressed) {
-                                                            viewModel.setPlaybackSpeed(speedBeforeHold)
-                                                            is2xSpeedHolding = false
-                                                            isLongPressed = false
-                                                        }
                                                         originalPadding = subConfig.bottomPaddingFraction
                                                         triggerHudPill("Subtitle Position: ${(originalPadding * 100).toInt()}%", Icons.Default.Subtitles)
                                                     }
@@ -1421,15 +1415,12 @@ fun PlayerScreen(
                                                 val deltaY = currentPos.y - startPos.y
                                                 val distance = kotlin.math.sqrt(deltaX * deltaX + deltaY * deltaY)
 
-                                                if (!isDragging && distance > 16f) {
+                                                // Once in 2X hold, lock out vertical drag gestures completely so the user
+                                                // can move or rest their finger without interrupting 2X speed or changing volume/brightness.
+                                                if (!isDragging && !isLongPressed && distance > 28f) {
                                                     longPressJob.cancel()
-                                                    if (kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX) * 1.1f) {
+                                                    if (kotlin.math.abs(deltaY) > kotlin.math.abs(deltaX) * 1.25f) {
                                                         isDragging = true
-                                                        if (isLongPressed) {
-                                                            viewModel.setPlaybackSpeed(speedBeforeHold)
-                                                            is2xSpeedHolding = false
-                                                            isLongPressed = false
-                                                        }
                                                         if (playerSettings.volumeOnRight) {
                                                             isDraggingVolume = true
                                                             originalVolume = currentVolumePercent

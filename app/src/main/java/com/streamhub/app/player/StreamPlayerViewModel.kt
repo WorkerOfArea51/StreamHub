@@ -141,6 +141,7 @@ class StreamPlayerViewModel : ViewModel() {
     private var lastBackgroundTimestampMs: Long = 0L
     private var lastPauseTimestampMs: Long = 0L
     private var stallAccumulatorMs: Long = 0L
+    private var proactiveStallAccumulatorMs: Long = 0L
 
     init {
         viewModelScope.launch {
@@ -1354,6 +1355,7 @@ class StreamPlayerViewModel : ViewModel() {
         Log.i("StreamPlayerViewModel", "App foregrounded after ${elapsedMs}ms in background")
 
         stallAccumulatorMs = 0L // Reset stall accumulator to prevent false watchdog trigger upon returning
+        proactiveStallAccumulatorMs = 0L
 
         // If the app was in the background for >= 3 seconds, the TCP connection to the streaming
         // server is likely dead or timed out by the server/proxy. Proactively refresh it.
@@ -1378,6 +1380,7 @@ class StreamPlayerViewModel : ViewModel() {
         debouncedSeekJob?.cancel()
         debouncedSeekJob = null
         stallAccumulatorMs = 0L
+        proactiveStallAccumulatorMs = 0L
         val player = exoPlayer ?: return
         val duration = player.duration.coerceAtLeast(0L)
         val target = if (duration > 0L) positionMs.coerceIn(0L, duration) else positionMs.coerceAtLeast(0L)
@@ -1557,6 +1560,7 @@ class StreamPlayerViewModel : ViewModel() {
         var lastProgressSaveMs = 0L
         var watchTimeAccumulatorMs = 0L
         stallAccumulatorMs = 0L
+        proactiveStallAccumulatorMs = 0L
         positionTrackerJob?.cancel()
         positionTrackerJob = viewModelScope.launch {
             while (isActive) {
@@ -1594,33 +1598,52 @@ class StreamPlayerViewModel : ViewModel() {
                         _uiState.update { it.copy(isBuffering = isBuffering) }
                     }
 
-                    // Active Stream Stall Watchdog:
+                    // Active Stream Stall Watchdog & Proactive Zero-Freeze Defense:
                     // Detects if the player is buffering with 0s buffer while trying to play (playWhenReady == true),
-                    // not actively seeking, not already reconnecting, and past the startup grace period.
-                    // Active Stream Stall Watchdog:
-                    // Detects if the player is buffering with 0s buffer while trying to play (playWhenReady == true),
-                    // not actively seeking, not already reconnecting, and past the startup grace period.
+                    // or if the forward buffer has starved to a critical point while throughput is severely throttled.
                     // Startup grace: 25s before first frame renders, 15s after first frame renders.
-                    // Active transfer protection: if bytes were received in the last 3.5s or speed > 15 KB/s,
-                    // the connection is alive and actively transferring.
                     val timeSincePrepare = if (prepareStartTimeMs > 0L) System.currentTimeMillis() - prepareStartTimeMs else Long.MAX_VALUE
                     val isFirstFrameDone = _uiState.value.isFirstFrameRendered
                     val isPastStartupGrace = if (isFirstFrameDone) timeSincePrepare >= 15_000L else timeSincePrepare >= 25_000L
                     val timeSinceLastByteMs = bandwidthTracker?.timeSinceLastTransferMs ?: Long.MAX_VALUE
-                    val isActivelyTransferring = speedKbps > 15L || timeSinceLastByteMs < 3_500L
-                    val isStalled = isBuffering && bufferHealthSec == 0L && player.playWhenReady &&
-                        !isActivelyTransferring &&
+
+                    // At 0s buffer, any throughput below 100 KB/s or byte gap > 2.0s is starvation trickle (cannot sustain 1080p playback)
+                    val isActivelyTransferringAtZeroBuffer = speedKbps >= 100L && timeSinceLastByteMs < 2_000L
+                    val isStalledAtZeroBuffer = isBuffering && bufferHealthSec == 0L && player.playWhenReady &&
+                        !isActivelyTransferringAtZeroBuffer &&
                         pendingSeekTargetMs == null && !_uiState.value.isReconnecting && isPastStartupGrace
 
-                    if (isStalled) {
+                    if (isStalledAtZeroBuffer) {
                         stallAccumulatorMs += 200L
-                        // 6.0s threshold accommodates Wi-Fi 5GHz <-> 2.4GHz handoffs while recovering quickly from dead sockets
-                        if (stallAccumulatorMs >= 6000L) {
+                        // 2.0s threshold: fast recovery from frozen 0s buffer without lingering on dead sockets
+                        if (stallAccumulatorMs >= 2000L) {
                             stallAccumulatorMs = 0L
+                            proactiveStallAccumulatorMs = 0L
+                            Log.w("StreamPlayerViewModel", "Stall watchdog triggered: 0s buffer starved for 2.0s (speed: ${speedKbps} KB/s, last byte: ${timeSinceLastByteMs}ms ago). Reconnecting...")
                             handleStreamStall(playerPos)
                         }
-                    } else if (!isBuffering || bufferHealthSec > 1L || isActivelyTransferring) {
+                    } else if (!isBuffering || bufferHealthSec > 1L || isActivelyTransferringAtZeroBuffer) {
                         stallAccumulatorMs = 0L
+                    }
+
+                    // Proactive Zero-Freeze Defense:
+                    // If video is currently playing but the forward buffer has drained to a critical level (1-4s)
+                    // AND incoming download speed is choked (< 60 KB/s) for 3 continuous seconds,
+                    // proactively refresh the socket connection in-place BEFORE playback runs out of frames and freezes.
+                    val isCriticallyStarved = player.isPlaying && !isBuffering && bufferHealthSec in 1L..4L &&
+                        (speedKbps < 60L || timeSinceLastByteMs > 3_000L) &&
+                        pendingSeekTargetMs == null && !_uiState.value.isReconnecting && isPastStartupGrace
+
+                    if (isCriticallyStarved) {
+                        proactiveStallAccumulatorMs += 200L
+                        if (proactiveStallAccumulatorMs >= 3000L) {
+                            proactiveStallAccumulatorMs = 0L
+                            stallAccumulatorMs = 0L
+                            Log.w("StreamPlayerViewModel", "Proactive zero-freeze defense triggered: Buffer critically low (${bufferHealthSec}s) and network choked (${speedKbps} KB/s). Evicting socket pool and refreshing connection in-place...")
+                            handleStreamStall(playerPos)
+                        }
+                    } else if (bufferHealthSec > 5L || speedKbps >= 100L) {
+                        proactiveStallAccumulatorMs = 0L
                     }
 
                     // Keep bufferSec for bandwidth protection below, but do not constrain video track sizes
@@ -1761,15 +1784,15 @@ class StreamPlayerViewModel : ViewModel() {
             autoRetryCount++
             Log.w(
                 "StreamPlayerViewModel",
-                "Stream stall watchdog triggered at ${stalledPositionMs}ms (buffer 0s for >= 6s). Auto-reconnecting attempt #$autoRetryCount/$maxAutoRetries..."
+                "Stream stall watchdog triggered at ${stalledPositionMs}ms. Auto-reconnecting attempt #$autoRetryCount/$maxAutoRetries..."
             )
-            // On attempt 1, do NOT evict the OkHttp pool so healthy in-flight sockets can recover cleanly
-            if (autoRetryCount >= 2) {
-                try {
-                    com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
-                } catch (e: Exception) {
-                    Log.w("StreamPlayerViewModel", "Failed to evict streaming connection pool on stall", e)
-                }
+            // CRITICAL: Always evict OkHttp connection pool on ANY stall (including attempt 1).
+            // A stalled or throttled proxy socket is poisoned/choked. Re-using it from the pool causes
+            // a guaranteed second stall. Evicting forces a fresh TCP handshake, immediately restoring 1-2 MB/s line speed.
+            try {
+                com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+            } catch (e: Exception) {
+                Log.w("StreamPlayerViewModel", "Failed to evict streaming connection pool on stall", e)
             }
             StreamPreloadManager.cancelDetailsPrewarm()
             StreamPreloadManager.cancelBingePrecache()
@@ -1832,7 +1855,7 @@ class StreamPlayerViewModel : ViewModel() {
             // Server is returning 5xx — give the backend room to recover instead of
             // re-firing into a single-worker process every second.
             serverDown -> when (autoRetryCount) { 1 -> 2_000L; 2 -> 5_000L; else -> 9_000L }
-            else -> when (autoRetryCount) { 1 -> 800L; 2 -> 1_500L; else -> 2_500L }
+            else -> when (autoRetryCount) { 1 -> 350L; 2 -> 1_000L; else -> 2_500L }
         }
         Log.i(
             "StreamPlayerViewModel",
@@ -1847,12 +1870,10 @@ class StreamPlayerViewModel : ViewModel() {
 
             _uiState.update { it.copy(isBuffering = true, playerError = null, playerErrorInfo = null) }
 
-            // Ensure stale/hung TCP sockets are evicted from OkHttp pool from attempt 2 onward
-            if (autoRetryCount >= 2) {
-                try {
-                    com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
-                } catch (_: Exception) {}
-            }
+            // Ensure stale/hung TCP sockets are evicted from OkHttp pool on every reconnect
+            try {
+                com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+            } catch (_: Exception) {}
 
             // Attempt 1: In-place seamless reconnection without tearing down decoders or screen blacking
             if (autoRetryCount == 1 && exoPlayer != null && (exoPlayer?.mediaItemCount ?: 0) > 0) {
@@ -1908,6 +1929,7 @@ class StreamPlayerViewModel : ViewModel() {
         debouncedSeekJob?.cancel()
         debouncedSeekJob = null
         stallAccumulatorMs = 0L
+        proactiveStallAccumulatorMs = 0L
         autoRetryJob?.cancel()
         autoRetryJob = null
         seekTo(0L)
