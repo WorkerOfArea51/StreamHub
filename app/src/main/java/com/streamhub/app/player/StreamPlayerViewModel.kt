@@ -495,12 +495,16 @@ class StreamPlayerViewModel : ViewModel() {
                         androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_EMIT_RAW_SUBTITLE_DATA
                     )
 
-                // Fast In-Place Range Reconnect Policy:
-                // If a remote streaming socket drops or resets, immediately retry in 250ms with HTTP Range
-                // instead of the slow 1000ms -> 2000ms -> 4000ms default backoff.
-                val loadErrorHandlingPolicy = object : androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(6) {
+                // Pillar 3: Silent Fast In-Place Range Reconnect Policy:
+                // If a remote streaming socket drops or resets, immediately retry in 150ms with HTTP Range.
+                // Evicts OkHttp connection pool on retry to force a clean TCP handshake directly to the server.
+                // Keeps recovery completely silent in the background while forward buffer is playing.
+                val loadErrorHandlingPolicy = object : androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy(8) {
                     override fun getRetryDelayMsFor(loadErrorInfo: androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy.LoadErrorInfo): Long {
-                        return if (loadErrorInfo.errorCount <= 4) 250L else super.getRetryDelayMsFor(loadErrorInfo)
+                        try {
+                            com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+                        } catch (_: Exception) {}
+                        return if (loadErrorInfo.errorCount <= 6) 150L else super.getRetryDelayMsFor(loadErrorInfo)
                     }
                 }
 
@@ -1639,8 +1643,11 @@ class StreamPlayerViewModel : ViewModel() {
                         if (proactiveStallAccumulatorMs >= 3000L) {
                             proactiveStallAccumulatorMs = 0L
                             stallAccumulatorMs = 0L
-                            Log.w("StreamPlayerViewModel", "Proactive zero-freeze defense triggered: Buffer critically low (${bufferHealthSec}s) and network choked (${speedKbps} KB/s). Evicting socket pool and refreshing connection in-place...")
-                            handleStreamStall(playerPos)
+                            Log.w("StreamPlayerViewModel", "Proactive silent recovery: Buffer low (${bufferHealthSec}s) and network choked (${speedKbps} KB/s). Evicting socket pool and refreshing connection silently in background...")
+                            try {
+                                com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+                            } catch (_: Exception) {}
+                            player.seekTo(playerPos)
                         }
                     } else if (bufferHealthSec > 5L || speedKbps >= 100L) {
                         proactiveStallAccumulatorMs = 0L
