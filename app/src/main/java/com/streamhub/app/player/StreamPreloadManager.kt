@@ -81,8 +81,9 @@ object StreamPreloadManager {
     /** Dedicated OkHttpClient for background preloader to isolate sockets from active player */
     private val preloadClient: okhttp3.OkHttpClient by lazy {
         SharedHttpClient.baseClient.newBuilder()
+            .socketFactory(com.streamhub.app.data.api.HighThroughputSocketFactory())
             .connectTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
             .connectionPool(okhttp3.ConnectionPool(2, 2, java.util.concurrent.TimeUnit.MINUTES))
             .build()
     }

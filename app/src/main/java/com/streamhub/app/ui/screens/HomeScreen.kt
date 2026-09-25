@@ -93,6 +93,7 @@ import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.models.PlaybackProgress
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.data.models.matchesCategory
+import com.streamhub.app.data.models.isActivelyTrending
 import com.streamhub.app.ui.components.AdminEditorDialog
 import com.streamhub.app.ui.components.MediaCard
 import com.streamhub.app.ui.components.MediaQuickActionsSheet
@@ -308,7 +309,7 @@ fun HomeScreen(
         var firstSeriesIndex = Int.MAX_VALUE
 
         filteredCatalog.forEachIndexed { index, item ->
-            if (item.isTrending) trending.add(item)
+            if (item.isActivelyTrending()) trending.add(item)
             if (item.matchesCategory("ANIME")) {
                 anime.add(item)
                 if (firstAnimeIndex == Int.MAX_VALUE) firstAnimeIndex = index
@@ -320,6 +321,15 @@ fun HomeScreen(
                 if (firstSeriesIndex == Int.MAX_VALUE) firstSeriesIndex = index
             }
         }
+
+        // 7-Day Auto-Decay: rank newest trending titles on top, secondary by rating
+        trending.sortWith(
+            compareByDescending<MediaItem> {
+                if (it.trendingAt > 0L) it.trendingAt
+                else if (it.updatedAt > 0L) it.updatedAt
+                else it.createdAt
+            }.thenByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
+        )
 
         val shelves = mutableListOf<CategoryShelf>()
         if (movies.isNotEmpty()) {
@@ -722,11 +732,17 @@ fun HomeScreen(
                 }
             }
 
-            // 3. Trending & Popular Row
+            // 3. Trending & Popular Row (Contextual tab title & auto-vanishes when empty)
             if (layoutConfig.showTrendingSection && trendingItems.isNotEmpty()) {
+                val trendingSectionTitle = when (selectedCategoryFilter.uppercase()) {
+                    "MOVIES", "MOVIE" -> "🔥 Trending Movies"
+                    "ANIME" -> "🔥 Trending Anime"
+                    "SERIES", "WEB_SERIES" -> "🔥 Trending Series"
+                    else -> "🔥 Trending & Popular"
+                }
                 item(key = "section_trending") {
                     MediaSectionRow(
-                        title = "🔥 Trending & Popular",
+                        title = trendingSectionTitle,
                         items = trendingItems,
                         onMediaClick = onMediaClick,
                         onMediaLongClick = { item -> selectedQuickActionMedia = item }

@@ -1,5 +1,8 @@
 package com.streamhub.app.data.models
 
+import com.google.firebase.firestore.IgnoreExtraProperties
+import com.google.firebase.firestore.PropertyName
+
 /**
  * Domain model representing a single media entry (movie, anime, or web series).
  *
@@ -11,6 +14,7 @@ package com.streamhub.app.data.models
  * Required fields (no sensible empty default): id, title, type, category.
  * All other fields are optional and may be empty.
  */
+@IgnoreExtraProperties
 data class MediaItem(
     val id: String = "",
     val title: String = "",
@@ -36,8 +40,11 @@ data class MediaItem(
     val posterUrl: String = "",
     val bannerUrl: String = "",
     val description: String = "",
+    @get:PropertyName("isFeatured")
     val isFeatured: Boolean = false,
+    @get:PropertyName("isTrending")
     val isTrending: Boolean = false,
+    val trendingAt: Long = 0L,           // Epoch millis when marked trending (for 7-day decay window)
     val franchiseId: String = "",        // e.g. "solo-leveling", "naruto" — for universe grouping
     val franchiseTitle: String = "",     // e.g. "Solo Leveling Franchise", "Naruto Universe"
     val seasonNumber: Int = 1,           // chronological season order (1, 2, 3... or 0 for movie/special)
@@ -121,3 +128,50 @@ fun MediaItem.matchesCategory(targetCategory: String): Boolean {
         else -> category.equals(targetCategory, ignoreCase = true)
     }
 }
+
+/**
+ * 7-Day Auto-Decay Lifespan Window for Trending Content (7 * 24 * 60 * 60 * 1000 ms).
+ */
+const val TRENDING_LIFESPAN_MS = 7L * 24L * 60L * 60L * 1000L
+
+/**
+ * Returns whether this item is actively trending within the 7-day decay window.
+ * Content marked as trending automatically expires after 7 days, causing the show
+ * (or the entire Trending section if no other items remain) to cleanly vanish.
+ */
+fun MediaItem.isActivelyTrending(now: Long = System.currentTimeMillis()): Boolean {
+    if (!isTrending) return false
+    val effectiveTime = when {
+        trendingAt > 0L -> trendingAt
+        updatedAt > 0L -> updatedAt
+        createdAt > 0L -> createdAt
+        else -> 0L
+    }
+    // If no timestamp was recorded at all, keep it active to prevent sudden unexpected drops
+    if (effectiveTime == 0L) return true
+    val ageMs = now - effectiveTime
+    // Allow for slight future clock skew (up to 1 hour ahead) while strictly capping lifespan at 7 days
+    return ageMs >= -3600_000L && ageMs <= TRENDING_LIFESPAN_MS
+}
+
+/**
+ * Calculates remaining trending duration in days (e.g., 7 down to 1), or 0 if expired.
+ */
+fun MediaItem.remainingTrendingDays(now: Long = System.currentTimeMillis()): Int {
+    if (!isTrending) return 0
+    val effectiveTime = when {
+        trendingAt > 0L -> trendingAt
+        updatedAt > 0L -> updatedAt
+        createdAt > 0L -> createdAt
+        else -> 0L
+    }
+    if (effectiveTime == 0L) return 7
+    val ageMs = now - effectiveTime
+    if (ageMs > TRENDING_LIFESPAN_MS || ageMs < -3600_000L) return 0
+    val remainingMs = TRENDING_LIFESPAN_MS - ageMs.coerceAtLeast(0L)
+    if (remainingMs <= 0L) return 0
+    val oneDayMs = 24L * 60L * 60L * 1000L
+    val days = ((remainingMs + oneDayMs - 1L) / oneDayMs).toInt()
+    return days.coerceIn(1, 7)
+}
+

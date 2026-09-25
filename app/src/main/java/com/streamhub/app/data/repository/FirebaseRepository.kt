@@ -87,7 +87,10 @@ class FirebaseRepository private constructor() {
                 "bannerUrl" to item.bannerUrl,
                 "description" to item.description,
                 "isFeatured" to item.isFeatured,
+                "featured" to item.isFeatured,
                 "isTrending" to item.isTrending,
+                "trending" to item.isTrending,
+                "trendingAt" to item.trendingAt,
                 "franchiseId" to item.franchiseId,
                 "franchiseTitle" to item.franchiseTitle,
                 "seasonNumber" to item.seasonNumber,
@@ -242,14 +245,14 @@ class FirebaseRepository private constructor() {
                 try {
                     val allBundleItems = mutableListOf<MediaItem>()
                     for (doc in snapshot.documents) {
-                        val bundle = doc.toObject(com.streamhub.app.data.models.CatalogBundle::class.java)
-                        if (bundle != null && bundle.items.isNotEmpty()) {
-                            allBundleItems.addAll(bundle.items)
+                        val rawItems = doc.get("items") as? List<Map<String, Any?>>
+                        if (rawItems != null && rawItems.isNotEmpty()) {
+                            val parsed = rawItems.mapNotNull { parseMediaItemMap(it, doc.id) }
+                            allBundleItems.addAll(parsed)
                         } else {
-                            // Fallback manual parsing if reflection misses dynamic nested fields
-                            val rawItems = doc.get("items") as? List<Map<String, Any?>>
-                            rawItems?.mapNotNull { parseMediaItemMap(it, doc.id) }?.let {
-                                allBundleItems.addAll(it)
+                            val bundle = doc.toObject(com.streamhub.app.data.models.CatalogBundle::class.java)
+                            if (bundle != null && bundle.items.isNotEmpty()) {
+                                allBundleItems.addAll(bundle.items)
                             }
                         }
                     }
@@ -340,6 +343,15 @@ class FirebaseRepository private constructor() {
                                         ?: doc.getLong("franchiseOrder")?.toDouble()
                                         ?: 0.0
                                 }
+                                val isFeatured = doc.getBoolean("isFeatured")
+                                    ?: doc.getBoolean("featured")
+                                    ?: item.isFeatured
+                                val isTrending = doc.getBoolean("isTrending")
+                                    ?: doc.getBoolean("trending")
+                                    ?: item.isTrending
+                                val trendingAt = doc.getLong("trendingAt")
+                                    ?: doc.getTimestamp("trendingAt")?.toDate()?.time
+                                    ?: item.trendingAt
                                 val migratedEpisodes = item.episodes.map { ep ->
                                     ep.copy(
                                         streamUrl = StreamBackendConfig.migrateUrl(ep.streamUrl),
@@ -349,6 +361,9 @@ class FirebaseRepository private constructor() {
                                 (if (item.id.isBlank()) item.copy(id = doc.id) else item).copy(
                                     category = finalCategory,
                                     type = finalType,
+                                    isFeatured = isFeatured,
+                                    isTrending = isTrending,
+                                    trendingAt = trendingAt,
                                     franchiseOrder = franchiseOrder,
                                     createdAt = createdAt,
                                     updatedAt = updatedAt,
@@ -431,8 +446,9 @@ class FirebaseRepository private constructor() {
             val posterUrl = map["posterUrl"] as? String ?: ""
             val bannerUrl = map["bannerUrl"] as? String ?: ""
             val description = map["description"] as? String ?: ""
-            val isFeatured = map["isFeatured"] as? Boolean ?: false
-            val isTrending = map["isTrending"] as? Boolean ?: false
+            val isFeatured = (map["isFeatured"] as? Boolean) ?: (map["featured"] as? Boolean) ?: false
+            val isTrending = (map["isTrending"] as? Boolean) ?: (map["trending"] as? Boolean) ?: false
+            val trendingAt = (map["trendingAt"] as? Number)?.toLong() ?: 0L
             val franchiseId = map["franchiseId"] as? String ?: ""
             val franchiseTitle = map["franchiseTitle"] as? String ?: ""
             val seasonNumber = (map["seasonNumber"] as? Number)?.toInt() ?: 1
@@ -503,6 +519,7 @@ class FirebaseRepository private constructor() {
                 description = description,
                 isFeatured = isFeatured,
                 isTrending = isTrending,
+                trendingAt = trendingAt,
                 franchiseId = franchiseId,
                 franchiseTitle = franchiseTitle,
                 seasonNumber = seasonNumber,
@@ -540,9 +557,13 @@ class FirebaseRepository private constructor() {
             )
         }
         val normalizedEpisodes = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(migratedEpisodes)
+        val finalTrendingAt = if (item.isTrending) {
+            if (item.trendingAt > 0L) item.trendingAt else finalUpdatedAt
+        } else 0L
         val itemToSave = item.copy(
             createdAt = finalCreatedAt,
             updatedAt = finalUpdatedAt,
+            trendingAt = finalTrendingAt,
             episodes = normalizedEpisodes
         )
 
@@ -621,9 +642,13 @@ class FirebaseRepository private constructor() {
             )
         }
         val normalizedEpisodes = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(migratedEpisodes)
+        val finalTrendingAt = if (item.isTrending) {
+            if (item.trendingAt > 0L) item.trendingAt else finalUpdatedAt
+        } else 0L
         val itemToSave = item.copy(
             createdAt = finalCreatedAt,
             updatedAt = finalUpdatedAt,
+            trendingAt = finalTrendingAt,
             episodes = normalizedEpisodes
         )
 

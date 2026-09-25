@@ -60,6 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamhub.app.data.models.MediaItem
+import com.streamhub.app.data.models.isActivelyTrending
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.components.EmptyStateCard
 import com.streamhub.app.ui.components.MediaCard
@@ -239,8 +240,8 @@ fun SearchScreen(
         val scoredItems = categoryScopedCatalog.map { item ->
             var score = (item.rating.toDoubleOrNull() ?: 5.0)
 
-            // Admin Trending boost (+4.0)
-            if (item.isTrending) score += 4.0
+            // Admin Trending boost (+4.0 within 7-day decay window)
+            if (item.isActivelyTrending()) score += 4.0
 
             // Featured Carousel boost (+2.5)
             if (item.isFeatured) score += 2.5

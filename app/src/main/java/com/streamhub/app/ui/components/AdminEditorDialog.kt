@@ -85,6 +85,7 @@ import com.streamhub.app.data.api.MetadataFetchManager
 import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.models.MediaInfo
 import com.streamhub.app.data.models.MediaItem
+import com.streamhub.app.data.models.remainingTrendingDays
 import com.streamhub.app.ui.theme.AccentGold
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.PrimaryRed
@@ -136,6 +137,7 @@ fun AdminEditorDialog(
     var description by remember(initialItem) { mutableStateOf(initialItem?.description ?: "") }
     var isFeatured by remember(initialItem) { mutableStateOf(initialItem?.isFeatured ?: true) }
     var isTrending by remember(initialItem) { mutableStateOf(initialItem?.isTrending ?: true) }
+    var trendingAt by remember(initialItem) { mutableStateOf(initialItem?.trendingAt ?: 0L) }
 
     // --- State: Franchise & Sequel Grouping ---
     var franchiseId by remember(initialItem) { mutableStateOf(initialItem?.franchiseId ?: "") }
@@ -240,6 +242,7 @@ fun AdminEditorDialog(
         description = itemToEdit.description
         isFeatured = itemToEdit.isFeatured
         isTrending = itemToEdit.isTrending
+        trendingAt = itemToEdit.trendingAt
         franchiseId = itemToEdit.franchiseId
         franchiseTitle = itemToEdit.franchiseTitle
         seasonNumberText = if (itemToEdit.seasonNumber > 0) itemToEdit.seasonNumber.toString() else ""
@@ -511,13 +514,33 @@ fun AdminEditorDialog(
                                 }
                             }
 
+                            val remainingTrendingDays = if (isTrending) {
+                                val dummyItem = com.streamhub.app.data.models.MediaItem(
+                                    isTrending = true,
+                                    trendingAt = trendingAt,
+                                    updatedAt = initialItem?.updatedAt ?: 0L,
+                                    createdAt = initialItem?.createdAt ?: 0L
+                                )
+                                dummyItem.remainingTrendingDays()
+                            } else 0
+                            val trendingLabel = when {
+                                !isTrending -> "Set Trending"
+                                remainingTrendingDays in 1..7 -> "Trending ($remainingTrendingDays d left)"
+                                else -> "Trending Now (7d)"
+                            }
+
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = if (isTrending) PrimaryRed.copy(alpha = 0.2f) else Color(0xFF1A1A28),
                                 border = BorderStroke(1.dp, if (isTrending) PrimaryRed else Color(0xFF2C2C3E)),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clickable { isTrending = !isTrending }
+                                    .clickable {
+                                        isTrending = !isTrending
+                                        if (isTrending) {
+                                            trendingAt = System.currentTimeMillis()
+                                        }
+                                    }
                             ) {
                                 Row(
                                     modifier = Modifier.padding(vertical = 8.dp, horizontal = 10.dp),
@@ -532,7 +555,7 @@ fun AdminEditorDialog(
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = if (isTrending) "Trending Now" else "Set Trending",
+                                        text = trendingLabel,
                                         color = if (isTrending) PrimaryRed else TextSecondary,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold
@@ -603,6 +626,7 @@ fun AdminEditorDialog(
                                             if (meta.relationType.isNotBlank()) relationType = meta.relationType
                                             isFeatured = true
                                             isTrending = true
+                                            trendingAt = System.currentTimeMillis()
                                         },
                                         onFailure = { err ->
                                             fetchError = "Auto-fetch failed: ${err.message}"
@@ -2204,6 +2228,9 @@ fun AdminEditorDialog(
                                         description = description,
                                         isFeatured = isFeatured,
                                         isTrending = isTrending,
+                                        trendingAt = if (isTrending) {
+                                            if (trendingAt > 0L) trendingAt else System.currentTimeMillis()
+                                        } else 0L,
                                         franchiseId = finalFranchiseId,
                                         franchiseTitle = finalFranchiseTitle,
                                         seasonNumber = parsedSeasonNum,

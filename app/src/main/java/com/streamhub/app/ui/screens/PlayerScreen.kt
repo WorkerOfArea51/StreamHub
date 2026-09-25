@@ -919,7 +919,7 @@ fun PlayerScreen(
         }
 
         // Real-Time PGS, ASS & Universal Subtitle Processing Pipeline
-        DisposableEffect(exoPlayerInstance, subConfig, rememberSubtitleViewRef, isSubOff) {
+        DisposableEffect(exoPlayerInstance, subConfig, rememberSubtitleViewRef, isSubOff, uiState.subtitleOffsetMs) {
             val p = exoPlayerInstance
             val sv = rememberSubtitleViewRef
             if (p == null || sv == null) return@DisposableEffect onDispose {}
@@ -932,14 +932,25 @@ fun PlayerScreen(
                 sv.visibility = android.view.View.VISIBLE
             }
 
+            var pendingCueRunnable: Runnable? = null
             val cueListener = object : androidx.media3.common.Player.Listener {
                 override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
+                    pendingCueRunnable?.let { sv.removeCallbacks(it) }
                     if (isSubOff) {
                         sv.setCues(emptyList())
                         return
                     }
                     val transformed = cueGroup.cues.map { transformCue(it, subConfig) }
-                    sv.setCues(transformed)
+                    val offset = uiState.subtitleOffsetMs
+                    if (offset > 0L) {
+                        val runnable = Runnable {
+                            if (!isSubOff) sv.setCues(transformed)
+                        }
+                        pendingCueRunnable = runnable
+                        sv.postDelayed(runnable, offset)
+                    } else {
+                        sv.setCues(transformed)
+                    }
                 }
             }
             p.addListener(cueListener)
@@ -951,6 +962,7 @@ fun PlayerScreen(
             }
 
             onDispose {
+                pendingCueRunnable?.let { sv.removeCallbacks(it) }
                 p.removeListener(cueListener)
             }
         }
@@ -2551,7 +2563,8 @@ fun PlayerScreen(
         if (showSpeedSheet) {
             MpvPlaybackSpeedSheet(
                 currentSpeed = uiState.playbackSpeed,
-                onSpeedChange = { viewModel.setPlaybackSpeed(it) },
+                pitchCorrection = uiState.pitchCorrection,
+                onSpeedChange = { speed, pitch -> viewModel.setPlaybackSpeed(speed, pitch) },
                 onDismiss = { showSpeedSheet = false }
             )
         }
@@ -2590,7 +2603,10 @@ fun PlayerScreen(
                 selectedTrackId = uiState.selectedAudioTrack,
                 onSelectTrack = { viewModel.selectAudioTrack(it) },
                 audioDelayMs = audioDelayMs,
-                onAudioDelayChange = { audioDelayMs = it },
+                onAudioDelayChange = {
+                    audioDelayMs = it
+                    com.streamhub.app.data.PlayerSettingsManager.updateDefaultAudioDelayMs(it.toInt())
+                },
                 onOpenAudioDelaySheet = {
                     showAudioSheet = false
                     showAudioDelaySheet = true
@@ -2605,6 +2621,11 @@ fun PlayerScreen(
                 tracks = uiState.availableSubtitleTracks,
                 selectedTrackId = uiState.selectedSubtitleTrack,
                 onSelectTrack = { opt -> viewModel.selectSubtitleTrack(opt) },
+                onAddExternalSubtitle = { uri ->
+                    viewModel.addExternalSubtitle(uri)
+                    triggerHudPill("External Subtitle Loaded", Icons.Default.Subtitles)
+                    showSubtitleSheet = false
+                },
                 subtitleDelayMs = uiState.subtitleOffsetMs,
                 onSubtitleDelayChange = { viewModel.setSubtitleOffset(it) },
                 onOpenSubtitleSettings = {
@@ -2713,7 +2734,10 @@ fun PlayerScreen(
         if (showAudioDelaySheet) {
             MpvAudioDelaySheet(
                 audioOffsetMs = audioDelayMs,
-                onUpdateOffset = { audioDelayMs = it },
+                onUpdateOffset = {
+                    audioDelayMs = it
+                    com.streamhub.app.data.PlayerSettingsManager.updateDefaultAudioDelayMs(it.toInt())
+                },
                 onDismissRequest = { showAudioDelaySheet = false }
             )
         }
@@ -2727,14 +2751,13 @@ fun PlayerScreen(
             )
         }
 
-
-
         // 13. Online Subtitle Search Modal Sheet
         if (showOnlineSubSearchSheet) {
             MpvOnlineSubtitleSearchSheet(
                 initialQuery = mediaItem.title,
-                onSelectSubtitle = { sub ->
-                    triggerHudPill("Loaded: ${sub.title}", Icons.Default.Subtitles)
+                onAddLocalSubtitleUri = { uri ->
+                    viewModel.addExternalSubtitle(uri)
+                    triggerHudPill("External Subtitle Loaded", Icons.Default.Subtitles)
                     showOnlineSubSearchSheet = false
                 },
                 onDismiss = { showOnlineSubSearchSheet = false }

@@ -61,12 +61,13 @@ import kotlin.math.roundToInt
 @Composable
 fun MpvPlaybackSpeedSheet(
     currentSpeed: Float,
-    onSpeedChange: (Float) -> Unit,
+    pitchCorrection: Boolean = true,
+    onSpeedChange: (Float, Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     val scrollState = rememberScrollState()
     val speedPresets = listOf(0.25f, 0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
-    var pitchCorrection by remember { mutableStateOf(true) }
+    var pitchCorrectionState by remember(pitchCorrection) { mutableStateOf(pitchCorrection) }
 
     MpvPlayerSheet(onDismissRequest = onDismiss) {
         Column(
@@ -146,10 +147,9 @@ fun MpvPlaybackSpeedSheet(
                         color = Color(0x33FFFFFF),
                         modifier = Modifier
                             .size(40.dp)
-                            .clip(CircleShape)
                             .clickable {
                                 val next = ((currentSpeed - 0.05f) * 20).roundToInt() / 20f
-                                onSpeedChange(next.coerceIn(0.25f, 2.0f))
+                                onSpeedChange(next.coerceIn(0.25f, 2.0f), pitchCorrectionState)
                             }
                     ) {
                         Box(contentAlignment = Alignment.Center) {
@@ -166,7 +166,7 @@ fun MpvPlaybackSpeedSheet(
                         value = currentSpeed.coerceIn(0.25f, 2.0f),
                         onValueChange = {
                             val snapped = (it * 20).roundToInt() / 20f
-                            onSpeedChange(snapped.coerceIn(0.25f, 2.0f))
+                            onSpeedChange(snapped.coerceIn(0.25f, 2.0f), pitchCorrectionState)
                         },
                         valueRange = 0.25f..2.0f,
                         colors = SliderDefaults.colors(
@@ -185,7 +185,7 @@ fun MpvPlaybackSpeedSheet(
                             .clip(CircleShape)
                             .clickable {
                                 val next = ((currentSpeed + 0.05f) * 20).roundToInt() / 20f
-                                onSpeedChange(next.coerceIn(0.25f, 2.0f))
+                                onSpeedChange(next.coerceIn(0.25f, 2.0f), pitchCorrectionState)
                             }
                     ) {
                         Box(contentAlignment = Alignment.Center) {
@@ -215,7 +215,7 @@ fun MpvPlaybackSpeedSheet(
                             modifier = Modifier
                                 .height(38.dp)
                                 .clip(RoundedCornerShape(12.dp))
-                                .clickable { onSpeedChange(preset) }
+                                .clickable { onSpeedChange(preset, pitchCorrectionState) }
                         ) {
                             Box(
                                 contentAlignment = Alignment.Center,
@@ -259,8 +259,11 @@ fun MpvPlaybackSpeedSheet(
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     Switch(
-                        checked = pitchCorrection,
-                        onCheckedChange = { pitchCorrection = it },
+                        checked = pitchCorrectionState,
+                        onCheckedChange = {
+                            pitchCorrectionState = it
+                            onSpeedChange(currentSpeed, it)
+                        },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = Color(0xFF6750A4),
@@ -290,7 +293,7 @@ fun MpvPlaybackSpeedSheet(
 
                     Button(
                         onClick = {
-                            onSpeedChange(1.0f)
+                            onSpeedChange(1.0f, pitchCorrectionState)
                             onDismiss()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0x22FFFFFF)),
@@ -304,4 +307,21 @@ fun MpvPlaybackSpeedSheet(
                 Spacer(modifier = Modifier.height(14.dp))
             }
     }
+}
+
+/**
+ * Backward-compatible overload for callers that don't need pitch correction callbacks.
+ */
+@Composable
+fun MpvPlaybackSpeedSheet(
+    currentSpeed: Float,
+    onSpeedChange: (Float) -> Unit,
+    onDismiss: () -> Unit
+) {
+    MpvPlaybackSpeedSheet(
+        currentSpeed = currentSpeed,
+        pitchCorrection = true,
+        onSpeedChange = { speed, _ -> onSpeedChange(speed) },
+        onDismiss = onDismiss
+    )
 }

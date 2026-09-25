@@ -54,6 +54,7 @@ data class PlayerUiState(
     val durationMs: Long = 0L,
     val isBuffering: Boolean = true,
     val playbackSpeed: Float = 1.0f,
+    val pitchCorrection: Boolean = true,
     val aspectRatioMode: AspectRatioMode = AspectRatioMode.FIT,
     val currentEpisodeIndex: Int = 0,
     val isControlsVisible: Boolean = true,
@@ -1294,12 +1295,51 @@ class StreamPlayerViewModel : ViewModel() {
 
     @OptIn(UnstableApi::class)
     fun setSubtitleOffset(offsetMs: Long) {
-        val clamped = offsetMs.coerceIn(-1000L, 1000L)  // Cap at ±1s
+        val clamped = offsetMs.coerceIn(-5000L, 5000L)  // Full ±5s stepper & slider range
         _uiState.update { it.copy(subtitleOffsetMs = clamped) }
     }
 
     fun adjustSubtitleOffset(deltaMs: Long) {
         setSubtitleOffset(_uiState.value.subtitleOffsetMs + deltaMs)
+    }
+
+    /**
+     * Dynamically attaches an external subtitle file (.srt, .vtt, .ass) picked by user
+     * to the active ExoPlayer MediaItem without restarting playback position.
+     */
+    fun addExternalSubtitle(uri: android.net.Uri, label: String = "External Subtitle") {
+        val player = exoPlayer ?: return
+        val currentItem = player.currentMediaItem ?: return
+
+        val uriString = uri.toString().lowercase()
+        val mimeType = when {
+            uriString.endsWith(".vtt") -> androidx.media3.common.MimeTypes.TEXT_VTT
+            uriString.endsWith(".ssa") || uriString.endsWith(".ass") -> androidx.media3.common.MimeTypes.TEXT_SSA
+            else -> androidx.media3.common.MimeTypes.APPLICATION_SUBRIP
+        }
+
+        val subtitleConfig = androidx.media3.common.MediaItem.SubtitleConfiguration.Builder(uri)
+            .setMimeType(mimeType)
+            .setLanguage("und")
+            .setSelectionFlags(androidx.media3.common.C.SELECTION_FLAG_DEFAULT)
+            .setLabel(label)
+            .build()
+
+        val currentPosition = player.currentPosition
+        val isPlaying = player.isPlaying
+        val updatedMediaItem = currentItem.buildUpon()
+            .setSubtitleConfigurations(listOf(subtitleConfig))
+            .build()
+
+        player.setMediaItem(updatedMediaItem, currentPosition)
+        player.prepare()
+        player.playWhenReady = isPlaying
+        _uiState.update {
+            it.copy(
+                selectedSubtitleTrack = label,
+                availableSubtitleTracks = (it.availableSubtitleTracks + label).distinct()
+            )
+        }
     }
 
     fun toggleAudioDialog() {
@@ -1479,10 +1519,11 @@ class StreamPlayerViewModel : ViewModel() {
         seekTo(target)
     }
 
-    fun setPlaybackSpeed(speed: Float) {
+    fun setPlaybackSpeed(speed: Float, pitchCorrection: Boolean = _uiState.value.pitchCorrection) {
         val clamped = speed.coerceIn(0.25f, 4.0f)
-        exoPlayer?.setPlaybackSpeed(clamped)
-        _uiState.update { it.copy(playbackSpeed = clamped) }
+        val pitch = if (pitchCorrection) 1.0f else clamped
+        exoPlayer?.playbackParameters = androidx.media3.common.PlaybackParameters(clamped, pitch)
+        _uiState.update { it.copy(playbackSpeed = clamped, pitchCorrection = pitchCorrection) }
     }
 
     fun cycleAspectRatio() {
@@ -1603,54 +1644,67 @@ class StreamPlayerViewModel : ViewModel() {
                     }
 
                     // Active Stream Stall Watchdog & Proactive Zero-Freeze Defense:
-                    // Detects if the player is buffering with 0s buffer while trying to play (playWhenReady == true),
-                    // or if the forward buffer has starved to a critical point while throughput is severely throttled.
-                    // Startup grace: 25s before first frame renders, 15s after first frame renders.
-                    val timeSincePrepare = if (prepareStartTimeMs > 0L) System.currentTimeMillis() - prepareStartTimeMs else Long.MAX_VALUE
-                    val isFirstFrameDone = _uiState.value.isFirstFrameRendered
-                    val isPastStartupGrace = if (isFirstFrameDone) timeSincePrepare >= 15_000L else timeSincePrepare >= 25_000L
-                    val timeSinceLastByteMs = bandwidthTracker?.timeSinceLastTransferMs ?: Long.MAX_VALUE
+                    // Guard: Offline local files (downloads, storage files) are not network streams.
+                    // StreamBandwidthTracker has 0 throughput for disk files, and buffer health
+                    // naturally drops to 0 at the end of the video. Skip all stall watchdogs for local media.
+                    val resolvedUrl = _uiState.value.resolvedStreamUrl
+                    val isLocalStream = resolvedUrl.startsWith("/") ||
+                        resolvedUrl.startsWith("file://") ||
+                        resolvedUrl.startsWith("content://")
 
-                    // At 0s buffer, any throughput below 100 KB/s or byte gap > 2.0s is starvation trickle (cannot sustain 1080p playback)
-                    val isActivelyTransferringAtZeroBuffer = speedKbps >= 100L && timeSinceLastByteMs < 2_000L
-                    val isStalledAtZeroBuffer = isBuffering && bufferHealthSec == 0L && player.playWhenReady &&
-                        !isActivelyTransferringAtZeroBuffer &&
-                        pendingSeekTargetMs == null && !_uiState.value.isReconnecting && isPastStartupGrace
-
-                    if (isStalledAtZeroBuffer) {
-                        stallAccumulatorMs += 200L
-                        // 2.0s threshold: fast recovery from frozen 0s buffer without lingering on dead sockets
-                        if (stallAccumulatorMs >= 2000L) {
-                            stallAccumulatorMs = 0L
-                            proactiveStallAccumulatorMs = 0L
-                            Log.w("StreamPlayerViewModel", "Stall watchdog triggered: 0s buffer starved for 2.0s (speed: ${speedKbps} KB/s, last byte: ${timeSinceLastByteMs}ms ago). Reconnecting...")
-                            handleStreamStall(playerPos)
-                        }
-                    } else if (!isBuffering || bufferHealthSec > 1L || isActivelyTransferringAtZeroBuffer) {
+                    if (isLocalStream) {
                         stallAccumulatorMs = 0L
-                    }
-
-                    // Proactive Zero-Freeze Defense:
-                    // If video is currently playing but the forward buffer has drained to a critical level (1-4s)
-                    // AND incoming download speed is choked (< 60 KB/s) for 3 continuous seconds,
-                    // proactively refresh the socket connection in-place BEFORE playback runs out of frames and freezes.
-                    val isCriticallyStarved = player.isPlaying && !isBuffering && bufferHealthSec in 1L..4L &&
-                        (speedKbps < 60L || timeSinceLastByteMs > 3_000L) &&
-                        pendingSeekTargetMs == null && !_uiState.value.isReconnecting && isPastStartupGrace
-
-                    if (isCriticallyStarved) {
-                        proactiveStallAccumulatorMs += 200L
-                        if (proactiveStallAccumulatorMs >= 3000L) {
-                            proactiveStallAccumulatorMs = 0L
-                            stallAccumulatorMs = 0L
-                            Log.w("StreamPlayerViewModel", "Proactive silent recovery: Buffer low (${bufferHealthSec}s) and network choked (${speedKbps} KB/s). Evicting socket pool and refreshing connection silently in background...")
-                            try {
-                                com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
-                            } catch (_: Exception) {}
-                            player.seekTo(playerPos)
-                        }
-                    } else if (bufferHealthSec > 5L || speedKbps >= 100L) {
                         proactiveStallAccumulatorMs = 0L
+                    } else {
+                        // Detects if the player is buffering with 0s buffer while trying to play (playWhenReady == true),
+                        // or if the forward buffer has starved to a critical point while throughput is severely throttled.
+                        // Startup grace: 25s before first frame renders, 15s after first frame renders.
+                        val timeSincePrepare = if (prepareStartTimeMs > 0L) System.currentTimeMillis() - prepareStartTimeMs else Long.MAX_VALUE
+                        val isFirstFrameDone = _uiState.value.isFirstFrameRendered
+                        val isPastStartupGrace = if (isFirstFrameDone) timeSincePrepare >= 15_000L else timeSincePrepare >= 25_000L
+                        val timeSinceLastByteMs = bandwidthTracker?.timeSinceLastTransferMs ?: Long.MAX_VALUE
+
+                        // At 0s buffer, any throughput below 100 KB/s or byte gap > 2.0s is starvation trickle (cannot sustain 1080p playback)
+                        val isActivelyTransferringAtZeroBuffer = speedKbps >= 100L && timeSinceLastByteMs < 2_000L
+                        val isStalledAtZeroBuffer = isBuffering && bufferHealthSec == 0L && player.playWhenReady &&
+                            !isActivelyTransferringAtZeroBuffer &&
+                            pendingSeekTargetMs == null && !_uiState.value.isReconnecting && isPastStartupGrace
+
+                        if (isStalledAtZeroBuffer) {
+                            stallAccumulatorMs += 200L
+                            // 2.0s threshold: fast recovery from frozen 0s buffer without lingering on dead sockets
+                            if (stallAccumulatorMs >= 2000L) {
+                                stallAccumulatorMs = 0L
+                                proactiveStallAccumulatorMs = 0L
+                                Log.w("StreamPlayerViewModel", "Stall watchdog triggered: 0s buffer starved for 2.0s (speed: ${speedKbps} KB/s, last byte: ${timeSinceLastByteMs}ms ago). Reconnecting...")
+                                handleStreamStall(playerPos)
+                            }
+                        } else if (!isBuffering || bufferHealthSec > 1L || isActivelyTransferringAtZeroBuffer) {
+                            stallAccumulatorMs = 0L
+                        }
+
+                        // Proactive Zero-Freeze Defense:
+                        // If video is currently playing but the forward buffer has drained to a critical level (1-4s)
+                        // AND incoming download speed is choked (< 60 KB/s) for 3 continuous seconds,
+                        // proactively refresh the socket connection in-place BEFORE playback runs out of frames and freezes.
+                        val isCriticallyStarved = player.isPlaying && !isBuffering && bufferHealthSec in 1L..4L &&
+                            (speedKbps < 60L || timeSinceLastByteMs > 3_000L) &&
+                            pendingSeekTargetMs == null && !_uiState.value.isReconnecting && isPastStartupGrace
+
+                        if (isCriticallyStarved) {
+                            proactiveStallAccumulatorMs += 200L
+                            if (proactiveStallAccumulatorMs >= 3000L) {
+                                proactiveStallAccumulatorMs = 0L
+                                stallAccumulatorMs = 0L
+                                Log.w("StreamPlayerViewModel", "Proactive silent recovery: Buffer low (${bufferHealthSec}s) and network choked (${speedKbps} KB/s). Evicting socket pool and refreshing connection silently in background...")
+                                try {
+                                    com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+                                } catch (_: Exception) {}
+                                player.seekTo(playerPos)
+                            }
+                        } else if (bufferHealthSec > 5L || speedKbps >= 100L) {
+                            proactiveStallAccumulatorMs = 0L
+                        }
                     }
 
                     // Keep bufferSec for bandwidth protection below, but do not constrain video track sizes
@@ -1762,7 +1816,9 @@ class StreamPlayerViewModel : ViewModel() {
 
     private fun handleStreamStall(stalledPositionMs: Long) {
         val snapshot = _uiState.value
-        val isLocal = snapshot.resolvedStreamUrl.startsWith("/") || snapshot.resolvedStreamUrl.startsWith("file://")
+        val isLocal = snapshot.resolvedStreamUrl.startsWith("/") ||
+            snapshot.resolvedStreamUrl.startsWith("file://") ||
+            snapshot.resolvedStreamUrl.startsWith("content://")
         if (isLocal) {
             // Local disk stream: not a network stall
             return

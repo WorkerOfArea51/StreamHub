@@ -31,11 +31,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,6 +66,41 @@ fun MpvPlaylistSheet(
     onDismiss: () -> Unit
 ) {
     var isGridView by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    val safeCurrentIndex = currentIndex.coerceIn(0, (episodes.size - 1).coerceAtLeast(0))
+    val initialScrollIndex = (safeCurrentIndex - 1).coerceAtLeast(0)
+
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialScrollIndex)
+    val gridState = rememberLazyListState(initialFirstVisibleItemIndex = initialScrollIndex)
+
+    LaunchedEffect(currentIndex, isGridView) {
+        if (episodes.isNotEmpty() && currentIndex in episodes.indices) {
+            val target = (currentIndex - 1).coerceAtLeast(0)
+            if (isGridView) {
+                gridState.animateScrollToItem(target)
+            } else {
+                listState.animateScrollToItem(target)
+            }
+        }
+    }
+
+    val isCurrentVisible by remember {
+        derivedStateOf {
+            if (isGridView) {
+                gridState.layoutInfo.visibleItemsInfo.any { it.index == currentIndex }
+            } else {
+                listState.layoutInfo.visibleItemsInfo.any { it.index == currentIndex }
+            }
+        }
+    }
+
+    val currentEp = episodes.getOrNull(currentIndex)
+    val currentEpNumber = if (currentEp != null) {
+        com.streamhub.app.data.EpisodeOrderingManager.resolveEffectiveEpisode(currentEp).episodeNumber
+    } else {
+        currentIndex + 1
+    }
 
     MpvPlayerSheet(onDismissRequest = onDismiss) {
         Column(
@@ -89,7 +129,10 @@ fun MpvPlaylistSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
                     IconButton(
                         onClick = onDismiss,
                         modifier = Modifier
@@ -105,28 +148,66 @@ fun MpvPlaylistSheet(
                         )
                     }
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "Now Playing • ${episodes.size} episodes",
-                        color = Color(0xFFD0BCFF),
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column {
+                        Text(
+                            text = "Now Playing",
+                            color = Color(0xFFD0BCFF),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Episode $currentEpNumber of ${episodes.size}",
+                            color = Color(0xAAFFFFFF),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Normal
+                        )
+                    }
                 }
 
-                // View Switcher Button (List <-> Grid)
-                IconButton(
-                    onClick = { isGridView = !isGridView },
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x22FFFFFF))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
-                        contentDescription = "Toggle Grid View",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    // Quick jump back to playing episode chip if user scrolled away
+                    if (!isCurrentVisible && episodes.isNotEmpty()) {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = Color(0x336750A4),
+                            border = BorderStroke(1.dp, Color(0xFFD0BCFF)),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable {
+                                    coroutineScope.launch {
+                                        val target = (safeCurrentIndex - 1).coerceAtLeast(0)
+                                        if (isGridView) gridState.animateScrollToItem(target)
+                                        else listState.animateScrollToItem(target)
+                                    }
+                                }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                            ) {
+                                Text("🎯 Ep $currentEpNumber", color = Color(0xFFD0BCFF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    // View Switcher Button (List <-> Grid)
+                    IconButton(
+                        onClick = { isGridView = !isGridView },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x22FFFFFF))
+                    ) {
+                        Icon(
+                            imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
+                            contentDescription = "Toggle Grid View",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
 
@@ -135,6 +216,7 @@ fun MpvPlaylistSheet(
             if (isGridView) {
                 // Grid View: Horizontal Scrolling Carousel of Cards
                 LazyRow(
+                    state = gridState,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     contentPadding = PaddingValues(bottom = 12.dp),
                     modifier = Modifier.fillMaxWidth()
@@ -271,15 +353,26 @@ fun MpvPlaylistSheet(
                                     if (isCurrent) {
                                         Surface(
                                             shape = RoundedCornerShape(50),
-                                            color = Color(0xFF6750A4)
+                                            color = Color(0xFF7C4DFF)
                                         ) {
-                                            Text(
-                                                text = "Playing",
-                                                color = Color.White,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                            )
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.PlayArrow,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(10.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(3.dp))
+                                                Text(
+                                                    text = "Playing",
+                                                    color = Color.White,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -290,6 +383,7 @@ fun MpvPlaylistSheet(
             } else {
                 // List View: Vertical List of Cards matching DetailsScreen styling
                 LazyColumn(
+                    state = listState,
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(bottom = 12.dp),
                     modifier = Modifier.fillMaxWidth().heightIn(max = 440.dp)
@@ -348,7 +442,7 @@ fun MpvPlaylistSheet(
 
                                     Surface(
                                         shape = RoundedCornerShape(6.dp),
-                                        color = Color(0xCC000000),
+                                        color = if (isCurrent) Color(0xFF7C4DFF) else Color(0xCC000000),
                                         modifier = Modifier
                                             .align(Alignment.TopStart)
                                             .padding(4.dp)
@@ -429,15 +523,26 @@ fun MpvPlaylistSheet(
                                         if (isCurrent) {
                                             Surface(
                                                 shape = RoundedCornerShape(50),
-                                                color = Color(0xFF6750A4)
+                                                color = Color(0xFF7C4DFF)
                                             ) {
-                                                Text(
-                                                    text = "Playing",
-                                                    color = Color.White,
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 1.dp)
-                                                )
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.PlayArrow,
+                                                        contentDescription = null,
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(10.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(3.dp))
+                                                    Text(
+                                                        text = "Playing",
+                                                        color = Color.White,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
                                             }
                                         }
                                     }
