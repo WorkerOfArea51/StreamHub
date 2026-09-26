@@ -1,3 +1,10 @@
+### What's New in StreamHub v4.8.364 🚀
+
+- 🔥 **Top Discovery Shelf Hierarchy — Trending Now at #1**:
+  - Re-anchored the "🔥 Trending & Popular" row to the premier #1 discovery position on the Home Screen, immediately below the Hero Carousel and Continue Watching rail.
+  - Ensures buzz-worthy, time-sensitive (7-day lifespan) trending titles receive maximum prominence without being pushed down by high-volume catalog uploads or personalized "Because You Watched" shelves.
+  - Aligns with industry UX benchmarks (Netflix Top 10 / Trending Now, Disney+, Crunchyroll), seamlessly auto-vanishing when no titles are trending to let Recently Added slide up.
+
 ### What's New in StreamHub v4.8.363 🚀
 
 - 🔥 **Trending Now Persistence Fix & Firestore JavaBean Immunization**:

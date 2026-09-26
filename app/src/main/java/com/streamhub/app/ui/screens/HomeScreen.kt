@@ -706,33 +706,7 @@ fun HomeScreen(
                 }
             }
 
-            // 1. Recently Added Row (Auto-hides after 3 days of upload inactivity)
-            if (layoutConfig.showRecentlyAdded && recentlyAddedItems.isNotEmpty()) {
-                item(key = "section_recently_added") {
-                    MediaSectionRow(
-                        title = "✨ Recently Added",
-                        items = recentlyAddedItems,
-                        onMediaClick = onMediaClick,
-                        onMediaLongClick = { item -> selectedQuickActionMedia = item }
-                    )
-                }
-            }
-
-            // 2. Smart Personalized "Because You Watched [Title]" Recommendation Shelf
-            if (layoutConfig.showBecauseYouWatched) {
-                becauseYouWatchedData?.let { (title, items) ->
-                    item(key = "section_because_you_watched") {
-                        MediaSectionRow(
-                            title = title,
-                            items = items,
-                            onMediaClick = onMediaClick,
-                            onMediaLongClick = { item -> selectedQuickActionMedia = item }
-                        )
-                    }
-                }
-            }
-
-            // 3. Trending & Popular Row (Contextual tab title & auto-vanishes when empty)
+            // 1. Trending & Popular Row (Contextual tab title & auto-vanishes when empty)
             if (layoutConfig.showTrendingSection && trendingItems.isNotEmpty()) {
                 val trendingSectionTitle = when (selectedCategoryFilter.uppercase()) {
                     "MOVIES", "MOVIE" -> "🔥 Trending Movies"
@@ -747,6 +721,32 @@ fun HomeScreen(
                         onMediaClick = onMediaClick,
                         onMediaLongClick = { item -> selectedQuickActionMedia = item }
                     )
+                }
+            }
+
+            // 2. Recently Added Row (Auto-hides after 3 days of upload inactivity)
+            if (layoutConfig.showRecentlyAdded && recentlyAddedItems.isNotEmpty()) {
+                item(key = "section_recently_added") {
+                    MediaSectionRow(
+                        title = "✨ Recently Added",
+                        items = recentlyAddedItems,
+                        onMediaClick = onMediaClick,
+                        onMediaLongClick = { item -> selectedQuickActionMedia = item }
+                    )
+                }
+            }
+
+            // 3. Smart Personalized "Because You Watched [Title]" Recommendation Shelf
+            if (layoutConfig.showBecauseYouWatched) {
+                becauseYouWatchedData?.let { (title, items) ->
+                    item(key = "section_because_you_watched") {
+                        MediaSectionRow(
+                            title = title,
+                            items = items,
+                            onMediaClick = onMediaClick,
+                            onMediaLongClick = { item -> selectedQuickActionMedia = item }
+                        )
+                    }
                 }
             }
 
