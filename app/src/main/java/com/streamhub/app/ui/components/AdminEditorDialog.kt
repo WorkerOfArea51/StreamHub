@@ -1599,7 +1599,7 @@ fun AdminEditorDialog(
                                         .horizontalScroll(rememberScrollState()),
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    val codecPills = listOf("HEVC/x265 (10-Bit)", "HEVC/x265", "x264", "AV1")
+                                    val codecPills = listOf("HEVC/x265", "x264", "AV1")
                                     codecPills.forEach { c ->
                                         val isSelected = videoCodec.equals(c, ignoreCase = true)
                                         Surface(

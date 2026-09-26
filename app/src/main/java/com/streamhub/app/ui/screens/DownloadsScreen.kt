@@ -456,9 +456,21 @@ fun DownloadedEpisodeCard(
                         maxLines = 1
                     )
                     Spacer(modifier = Modifier.height(2.dp))
+                    val statusText = when {
+                        item.isCompleted -> "${String.format(java.util.Locale.US, "%.1f", item.fileSizeMb)} MB • Offline Ready"
+                        item.isQueued -> "In Queue ⏳"
+                        item.isPaused -> "Paused • ${item.progressPercent}%"
+                        else -> "Downloading... ${item.progressPercent}%"
+                    }
+                    val statusColor = when {
+                        item.isCompleted -> primaryColor
+                        item.isQueued -> Color(0xFFB388FF)
+                        item.isPaused -> AccentOrange
+                        else -> primaryColor
+                    }
                     Text(
-                        text = if (item.isCompleted) "${String.format(java.util.Locale.US, "%.1f", item.fileSizeMb)} MB • Offline Ready" else "Downloading... ${item.progressPercent}%",
-                        color = primaryColor,
+                        text = statusText,
+                        color = statusColor,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -467,6 +479,10 @@ fun DownloadedEpisodeCard(
                 if (item.isCompleted) {
                     IconButton(onClick = onDelete) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444))
+                    }
+                } else if (item.isQueued) {
+                    IconButton(onClick = { com.streamhub.app.data.DownloadManager.cancelDownload(item) }) {
+                        Icon(Icons.Default.Close, contentDescription = "Remove from Queue", tint = Color(0xFFEF4444))
                     }
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -489,8 +505,12 @@ fun DownloadedEpisodeCard(
 
             if (!item.isCompleted) {
                 LinearProgressIndicator(
-                    progress = { (item.progressPercent / 100f).coerceIn(0f, 1f) },
-                    color = if (item.isPaused) AccentOrange else primaryColor,
+                    progress = { if (item.isQueued) 0f else (item.progressPercent / 100f).coerceIn(0f, 1f) },
+                    color = when {
+                        item.isQueued -> Color(0xFFB388FF)
+                        item.isPaused -> AccentOrange
+                        else -> primaryColor
+                    },
                     trackColor = Color(0x33FFFFFF),
                     modifier = Modifier
                         .fillMaxWidth()

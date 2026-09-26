@@ -72,6 +72,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import com.streamhub.app.ui.components.ArcEpisodeEditorDialog
+import com.streamhub.app.ui.components.BatchDownloadSheet
 import com.streamhub.app.ui.components.FolderSelectionDialog
 import com.streamhub.app.ui.components.SeasonArcSelectorSheet
 import androidx.compose.material3.Button
@@ -163,6 +164,7 @@ fun DetailsScreen(
     var showAdminEditDialog by remember { mutableStateOf(false) }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     var isSeasonSheetOpen by remember { mutableStateOf(false) }
+    var isBatchDownloadSheetOpen by remember { mutableStateOf(false) }
     var isTrailerPlaying by remember { mutableStateOf(false) }
     var recommendations by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
 
@@ -1103,6 +1105,37 @@ fun DetailsScreen(
                                         }
                                     }
                                 }
+
+                                // 3. Batch Download Capsule (Visible for multi-episode seasons/series)
+                                if (seasonFilteredEpisodes.size > 1) {
+                                    Surface(
+                                        onClick = { isBatchDownloadSheetOpen = true },
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = SurfaceDark,
+                                        border = BorderStroke(1.dp, Color(0x66E11D48)),
+                                        modifier = Modifier.height(34.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Download,
+                                                contentDescription = null,
+                                                tint = Color(0xFFF43F5E),
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Text(
+                                                text = "Download",
+                                                color = Color.White,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
@@ -1353,6 +1386,22 @@ fun DetailsScreen(
             onEditArc = { opt ->
                 isArcSheetOpen = false
                 selectedArcForEdit = opt
+            }
+        )
+    }
+
+    if (isBatchDownloadSheetOpen) {
+        val currentOpt = seasonOptions.firstOrNull { it.isCurrent }
+        val seasonLabel = currentOpt?.shortLabel ?: "Season $selectedSeasonNumber"
+        BatchDownloadSheet(
+            mediaItem = mediaItem,
+            episodes = seasonFilteredEpisodes,
+            episodeIndexMap = episodeIndexMap,
+            seasonLabel = seasonLabel,
+            onDismiss = { isBatchDownloadSheetOpen = false },
+            onConfirmDownload = { selectedIndices ->
+                ToastManager.showToast("Queued ${selectedIndices.size} episodes for download", Icons.Default.Download)
+                DownloadManager.enqueueBatch(context, mediaItem, selectedIndices)
             }
         )
     }

@@ -49,6 +49,7 @@ data class DownloadedItem(
     val isCompleted: Boolean = false,
     val isPaused: Boolean = false,
     val isCanceled: Boolean = false,
+    val isQueued: Boolean = false,
     val streamUrl: String = "",
     // FIX: Persist already-downloaded byte count for true HTTP Range resume.
     val resumeFromBytes: Long = 0L
@@ -100,6 +101,9 @@ object DownloadManager {
         registerCompletionReceiver()
         if (_downloads.value.any { !it.isCompleted && !it.isPaused && it.downloadId != -1L }) {
             startProgressPolling()
+        }
+        if (!hasActiveDownload() && _downloads.value.any { it.isQueued && !it.isCompleted && !it.isPaused && !it.isCanceled }) {
+            processNextQueuedDownload(context)
         }
     }
 
@@ -153,6 +157,7 @@ object DownloadManager {
                     progressPercent = 100,
                     isCompleted = true,
                     isPaused = false,
+                    isQueued = false,
                     fileSizeMb = realSizeMb,
                     resumeFromBytes = 0L
                 )
@@ -168,6 +173,7 @@ object DownloadManager {
             mutableList
         }
         saveToDisk()
+        appContext?.let { processNextQueuedDownload(it) }
     }
 
     @Synchronized
@@ -198,15 +204,17 @@ object DownloadManager {
      * if active downloads are present.
      */
     fun resumeProgressPolling() {
-        if (_downloads.value.any { !it.isCompleted && !it.isPaused && it.downloadId != -1L }) {
+        if (_downloads.value.any { !it.isCompleted && !it.isPaused && it.downloadId != -1L && it.downloadId != getNotificationId(it.mediaId, it.episodeIndex) }) {
             startProgressPolling()
-            Log.i(TAG, "Progress polling resumed")
+            Log.i(TAG, "Legacy progress polling resumed")
         }
     }
 
     private fun pollActiveDownloads() {
         val dm = systemDownloadManager ?: return
-        val activeItems = _downloads.value.filter { !it.isCompleted && !it.isPaused && it.downloadId != -1L }
+        val activeItems = _downloads.value.filter { 
+            !it.isCompleted && !it.isPaused && it.downloadId != -1L && it.downloadId != getNotificationId(it.mediaId, it.episodeIndex) 
+        }
         if (activeItems.isEmpty()) {
             progressPollJob?.cancel()
             progressPollJob = null
@@ -360,6 +368,7 @@ object DownloadManager {
                         isCompleted = obj.optBoolean("isCompleted", false),
                         isPaused = obj.optBoolean("isPaused", false),
                         isCanceled = obj.optBoolean("isCanceled", false),
+                        isQueued = obj.optBoolean("isQueued", false),
                         streamUrl = obj.optString("streamUrl", ""),
                         resumeFromBytes = obj.optLong("resumeFromBytes", 0L)
                     )
@@ -388,6 +397,7 @@ object DownloadManager {
                 put("isCompleted", item.isCompleted)
                 put("isPaused", item.isPaused)
                 put("isCanceled", item.isCanceled)
+                put("isQueued", item.isQueued)
                 // FIX: Persist streamUrl AS-IS — Telegram CDN tokens are required for resume.
                 put("streamUrl", item.streamUrl)
                 put("resumeFromBytes", item.resumeFromBytes)
@@ -397,7 +407,61 @@ object DownloadManager {
         prefs?.edit()?.putString(KEY_DOWNLOADS_LIST, array.toString())?.apply()
     }
 
+    fun hasActiveDownload(): Boolean {
+        return _downloads.value.any { 
+            !it.isCompleted && !it.isPaused && !it.isCanceled && !it.isQueued 
+        }
+    }
+
+    @Synchronized
+    fun processNextQueuedDownload(context: Context) {
+        if (hasActiveDownload()) {
+            Log.d(TAG, "processNextQueuedDownload: an active download is already in progress")
+            return
+        }
+
+        val nextItem = _downloads.value.firstOrNull { 
+            it.isQueued && !it.isCompleted && !it.isPaused && !it.isCanceled 
+        } ?: return
+
+        Log.i(TAG, "Promoting queued item to active: ${nextItem.mediaTitle} (Ep ${nextItem.episodeIndex + 1})")
+
+        _downloads.update { currentList ->
+            val mutableList = currentList.toMutableList()
+            val index = mutableList.indexOfFirst { it.mediaId == nextItem.mediaId && it.episodeIndex == nextItem.episodeIndex }
+            if (index != -1) {
+                mutableList[index] = mutableList[index].copy(isQueued = false)
+            }
+            mutableList
+        }
+        saveToDisk()
+
+        resumeDownload(nextItem.copy(isQueued = false), context)
+    }
+
+    fun enqueueBatch(context: Context, mediaItem: MediaItem, episodeIndices: List<Int>) {
+        if (episodeIndices.isEmpty()) return
+        val appCtx = context.applicationContext ?: context
+        scope.launch(Dispatchers.IO) {
+            for (index in episodeIndices) {
+                if (isDownloaded(mediaItem.id, index)) continue
+                val alreadyInFlight = _downloads.value.any { 
+                    it.mediaId == mediaItem.id && it.episodeIndex == index && !it.isCompleted 
+                }
+                if (alreadyInFlight) continue
+
+                startDownloadInternal(appCtx, mediaItem, index)
+            }
+        }
+    }
+
     fun startDownload(context: Context, mediaItem: MediaItem, episodeIndex: Int) {
+        scope.launch(Dispatchers.IO) {
+            startDownloadInternal(context, mediaItem, episodeIndex)
+        }
+    }
+
+    private suspend fun startDownloadInternal(context: Context, mediaItem: MediaItem, episodeIndex: Int) {
         val episode = mediaItem.episodes.getOrNull(episodeIndex) ?: return
         val rawUrl = episode.streamUrl.ifEmpty { episode.mirrorStreamUrl.ifEmpty { episode.telegramFileId } }
         if (rawUrl.isBlank()) {
@@ -405,178 +469,277 @@ object DownloadManager {
             return
         }
 
-        scope.launch(Dispatchers.IO) {
-            val resolvedUrl = try {
-                if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
-                    if (rawUrl.contains("t.me/")) {
-                        TelegramLinkResolver.resolveAsync(rawUrl)
-                    } else {
-                        // Downloads deliberately target the /dl/ (attachment) endpoint,
-                        // while the PLAYER uses /stream/ (inline).
-                        TelegramLinkResolver.toDownloadUrl(rawUrl)
-                    }
-                } else {
+        val resolvedUrl = try {
+            if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
+                if (rawUrl.contains("t.me/")) {
                     TelegramLinkResolver.resolveAsync(rawUrl)
+                } else {
+                    // Downloads deliberately target the /dl/ (attachment) endpoint,
+                    // while the PLAYER uses /stream/ (inline).
+                    TelegramLinkResolver.toDownloadUrl(rawUrl)
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to resolve download URL: $rawUrl", e)
-                rawUrl
-            }
-
-            if (resolvedUrl.isBlank()) {
-                Log.w(TAG, "Cannot download blank resolved URL")
-                return@launch
-            }
-
-            val isMovie = mediaItem.category.equals("Movie", ignoreCase = true) ||
-                          mediaItem.category.equals("Movies", ignoreCase = true) ||
-                          mediaItem.type.equals("Movie", ignoreCase = true)
-            val estimatedMb = if (isMovie) 900.0 else 350.0
-
-            // Pre-Allocation & Free Space Validation
-            when (val storageCheck = checkStorageAvailability(context, estimatedMb)) {
-                is StorageCheckResult.Insufficient -> {
-                    val msg = "⚠️ Low Storage: Only ${storageCheck.freeMb.toInt()} MB free. At least ${storageCheck.requiredMb.toInt()} MB required."
-                    Log.e(TAG, msg)
-                    withContext(Dispatchers.Main) {
-                        android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
-                    }
-                    return@launch
-                }
-                is StorageCheckResult.Error -> {
-                    val msg = "Storage Error: ${storageCheck.message}"
-                    Log.e(TAG, msg)
-                    withContext(Dispatchers.Main) {
-                        android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
-                    }
-                    return@launch
-                }
-                is StorageCheckResult.Available -> {
-                    Log.i(TAG, "Storage pre-allocated & verified: ${storageCheck.freeMb.toInt()} MB free (Estimated: ${estimatedMb.toInt()} MB)")
-                }
-            }
-
-            val downloadsDir = getEffectiveDownloadDir(context)
-            val fileExt = extractFileExtension(resolvedUrl, rawUrl, mediaItem.title)
-            val cleanTitle = mediaItem.title
-                .removeSuffix(".mkv").removeSuffix(".mp4").removeSuffix(".webm").removeSuffix(".avi")
-                .removeSuffix(".MKV").removeSuffix(".MP4").removeSuffix(".WEBM").removeSuffix(".AVI")
-                .replace(FILENAME_SANITIZE_REGEX, "_")
-                .trim('_')
-                .ifBlank { "Media" }
-            val idSuffix = if (mediaItem.id.isNotBlank()) "_${mediaItem.id.takeLast(6)}" else ""
-            val fileName = if (isMovie) {
-                "${cleanTitle}${idSuffix}.$fileExt"
             } else {
-                "${cleanTitle}${idSuffix}_Ep${episodeIndex + 1}.$fileExt"
+                TelegramLinkResolver.resolveAsync(rawUrl)
             }
-            val targetFile = File(downloadsDir, fileName)
-            val epTitle = if (isMovie) mediaItem.title else (episode.title.ifEmpty { "Episode ${episodeIndex + 1}" })
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to resolve download URL: $rawUrl", e)
+            rawUrl
+        }
 
-            // Handle local file
-            if (resolvedUrl.startsWith("/") || File(resolvedUrl).exists()) {
-                val sourceFile = File(resolvedUrl)
-                if (sourceFile.exists() && sourceFile.length() > 0L) {
-                    val actualExt = sourceFile.extension.ifBlank { fileExt }
-                    val finalTargetName = if (isMovie) "${cleanTitle}${idSuffix}.$actualExt" else "${cleanTitle}${idSuffix}_Ep${episodeIndex + 1}.$actualExt"
-                    val finalTarget = File(downloadsDir, finalTargetName)
-                    try {
-                        if (sourceFile.absolutePath != finalTarget.absolutePath) {
-                            sourceFile.copyTo(finalTarget, overwrite = true)
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed copying completed local file to target: ${finalTarget.absolutePath}", e)
+        if (resolvedUrl.isBlank()) {
+            Log.w(TAG, "Cannot download blank resolved URL")
+            return
+        }
+
+        val isMovie = mediaItem.category.equals("Movie", ignoreCase = true) ||
+                      mediaItem.category.equals("Movies", ignoreCase = true) ||
+                      mediaItem.type.equals("Movie", ignoreCase = true)
+        val estimatedMb = if (isMovie) 900.0 else 350.0
+
+        // Pre-Allocation & Free Space Validation
+        when (val storageCheck = checkStorageAvailability(context, estimatedMb)) {
+            is StorageCheckResult.Insufficient -> {
+                val msg = "⚠️ Low Storage: Only ${storageCheck.freeMb.toInt()} MB free. At least ${storageCheck.requiredMb.toInt()} MB required."
+                Log.e(TAG, msg)
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                }
+                return
+            }
+            is StorageCheckResult.Error -> {
+                val msg = "Storage Error: ${storageCheck.message}"
+                Log.e(TAG, msg)
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                }
+                return
+            }
+            is StorageCheckResult.Available -> {
+                Log.i(TAG, "Storage pre-allocated & verified: ${storageCheck.freeMb.toInt()} MB free (Estimated: ${estimatedMb.toInt()} MB)")
+            }
+        }
+
+        val downloadsDir = getEffectiveDownloadDir(context)
+        val fileExt = extractFileExtension(resolvedUrl, rawUrl, mediaItem.title)
+        val cleanTitle = mediaItem.title
+            .removeSuffix(".mkv").removeSuffix(".mp4").removeSuffix(".webm").removeSuffix(".avi")
+            .removeSuffix(".MKV").removeSuffix(".MP4").removeSuffix(".WEBM").removeSuffix(".AVI")
+            .replace(FILENAME_SANITIZE_REGEX, "_")
+            .trim('_')
+            .ifBlank { "Media" }
+        val idSuffix = if (mediaItem.id.isNotBlank()) "_${mediaItem.id.takeLast(6)}" else ""
+        val fileName = if (isMovie) {
+            "${cleanTitle}${idSuffix}.$fileExt"
+        } else {
+            "${cleanTitle}${idSuffix}_Ep${episodeIndex + 1}.$fileExt"
+        }
+        val targetFile = File(downloadsDir, fileName)
+        val epTitle = if (isMovie) mediaItem.title else (episode.title.ifEmpty { "Episode ${episodeIndex + 1}" })
+
+        // Handle local file
+        if (resolvedUrl.startsWith("/") || File(resolvedUrl).exists()) {
+            val sourceFile = File(resolvedUrl)
+            if (sourceFile.exists() && sourceFile.length() > 0L) {
+                val actualExt = sourceFile.extension.ifBlank { fileExt }
+                val finalTargetName = if (isMovie) "${cleanTitle}${idSuffix}.$actualExt" else "${cleanTitle}${idSuffix}_Ep${episodeIndex + 1}.$actualExt"
+                val finalTarget = File(downloadsDir, finalTargetName)
+                try {
+                    if (sourceFile.absolutePath != finalTarget.absolutePath) {
+                        sourceFile.copyTo(finalTarget, overwrite = true)
                     }
-                    val effectiveFile = if (finalTarget.exists()) finalTarget else sourceFile
-                    val sizeMb = effectiveFile.length() / (1024.0 * 1024.0)
-                    val notifId = getNotificationId(mediaItem.id, episodeIndex)
-                    val newItem = DownloadedItem(
-                        mediaId = mediaItem.id,
-                        mediaTitle = mediaItem.title,
-                        posterUrl = mediaItem.posterUrl,
-                        episodeIndex = episodeIndex,
-                        episodeTitle = epTitle,
-                        localFilePath = effectiveFile.absolutePath,
-                        fileSizeMb = sizeMb,
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed copying completed local file to target: ${finalTarget.absolutePath}", e)
+                }
+                val effectiveFile = if (finalTarget.exists()) finalTarget else sourceFile
+                val sizeMb = effectiveFile.length() / (1024.0 * 1024.0)
+                val notifId = getNotificationId(mediaItem.id, episodeIndex)
+                val newItem = DownloadedItem(
+                    mediaId = mediaItem.id,
+                    mediaTitle = mediaItem.title,
+                    posterUrl = mediaItem.posterUrl,
+                    episodeIndex = episodeIndex,
+                    episodeTitle = epTitle,
+                    localFilePath = effectiveFile.absolutePath,
+                    fileSizeMb = sizeMb,
+                    downloadId = notifId,
+                    progressPercent = 100,
+                    isCompleted = true,
+                    isPaused = false,
+                    isQueued = false,
+                    streamUrl = rawUrl
+                )
+                _downloads.update { currentList ->
+                    val mutableList = currentList.toMutableList()
+                    mutableList.removeAll { it.mediaId == mediaItem.id && it.episodeIndex == episodeIndex }
+                    mutableList.add(newItem)
+                    mutableList
+                }
+                saveToDisk()
+                Log.i(TAG, "Attached completed download for ${mediaItem.title}: ${effectiveFile.absolutePath} (${sizeMb} MB)")
+                processNextQueuedDownload(context)
+                return
+            }
+        }
+
+        if (!resolvedUrl.startsWith("http://") && !resolvedUrl.startsWith("https://")) {
+            Log.w(TAG, "Cannot download non-HTTP URL: $resolvedUrl")
+            return
+        }
+
+        val partFile = File(downloadsDir, "$fileName.part")
+        val notifId = getNotificationId(mediaItem.id, episodeIndex)
+        val key = getDownloadKey(mediaItem.id, episodeIndex)
+
+        val isAnotherActive = hasActiveDownload()
+        val initialBytes = if (partFile.exists()) partFile.length() else 0L
+
+        val newItem = DownloadedItem(
+            mediaId = mediaItem.id,
+            mediaTitle = mediaItem.title,
+            posterUrl = mediaItem.posterUrl,
+            episodeIndex = episodeIndex,
+            episodeTitle = epTitle,
+            localFilePath = targetFile.absolutePath,
+            fileSizeMb = estimatedMb,
+            downloadId = notifId,
+            progressPercent = if (estimatedMb > 0) ((initialBytes * 100.0) / (estimatedMb * 1024.0 * 1024.0)).toInt().coerceIn(0, 99) else 0,
+            isCompleted = false,
+            isPaused = false,
+            isQueued = isAnotherActive,
+            streamUrl = resolvedUrl,
+            resumeFromBytes = initialBytes
+        )
+
+        _downloads.update { currentList ->
+            val mutableList = currentList.toMutableList()
+            mutableList.removeAll { it.mediaId == mediaItem.id && it.episodeIndex == episodeIndex }
+            mutableList.add(newItem)
+            mutableList
+        }
+        saveToDisk()
+
+        if (isAnotherActive) {
+            Log.i(TAG, "Active download in progress; enqueued ${mediaItem.title} Ep ${episodeIndex + 1}")
+            return
+        }
+
+        appContext?.let { ctx ->
+            DownloadNotificationHelper.showProgress(
+                context = ctx,
+                downloadId = notifId,
+                mediaId = mediaItem.id,
+                episodeIndex = episodeIndex,
+                mediaTitle = mediaItem.title,
+                episodeTitle = epTitle,
+                progressPercent = newItem.progressPercent,
+                downloadedMb = initialBytes / (1024.0 * 1024.0),
+                totalMb = estimatedMb
+            )
+        }
+
+        HttpRangeResumeEngine.download(
+            key = key,
+            url = resolvedUrl,
+            partFile = partFile,
+            targetFile = targetFile,
+            client = com.streamhub.app.data.api.SharedHttpClient.streamingClient,
+            context = context,
+            onProgress = { percent, writtenBytes, totalBytes ->
+                val currentMb = writtenBytes / (1024.0 * 1024.0)
+                val totalMb = if (totalBytes > 0) totalBytes / (1024.0 * 1024.0) else 0.0
+                _downloads.update { currentList ->
+                    val mutableList = currentList.toMutableList()
+                    val index = mutableList.indexOfFirst { it.mediaId == mediaItem.id && it.episodeIndex == episodeIndex }
+                    if (index != -1 && !mutableList[index].isCompleted) {
+                        mutableList[index] = mutableList[index].copy(
+                            progressPercent = percent,
+                            fileSizeMb = if (totalMb > 0) totalMb else mutableList[index].fileSizeMb,
+                            resumeFromBytes = writtenBytes
+                        )
+                    }
+                    mutableList
+                }
+                appContext?.let { ctx ->
+                    DownloadNotificationHelper.showProgress(
+                        context = ctx,
                         downloadId = notifId,
-                        progressPercent = 100,
-                        isCompleted = true,
-                        isPaused = false,
-                        streamUrl = rawUrl
+                        mediaId = mediaItem.id,
+                        episodeIndex = episodeIndex,
+                        mediaTitle = mediaItem.title,
+                        episodeTitle = epTitle,
+                        progressPercent = percent,
+                        downloadedMb = currentMb,
+                        totalMb = totalMb
                     )
+                }
+            },
+            onFinished = { result ->
+                if (result.completed && result.error == null) {
+                    val finalFile = if (targetFile.exists()) targetFile else partFile
+                    val realMb = if (finalFile.exists()) finalFile.length() / (1024.0 * 1024.0) else (result.bytesWritten / (1024.0 * 1024.0))
                     _downloads.update { currentList ->
                         val mutableList = currentList.toMutableList()
-                        mutableList.removeAll { it.mediaId == mediaItem.id && it.episodeIndex == episodeIndex }
-                        mutableList.add(newItem)
+                        val index = mutableList.indexOfFirst { it.mediaId == mediaItem.id && it.episodeIndex == episodeIndex }
+                        if (index != -1) {
+                            mutableList[index] = mutableList[index].copy(
+                                progressPercent = 100,
+                                isCompleted = true,
+                                isPaused = false,
+                                isQueued = false,
+                                resumeFromBytes = 0L,
+                                fileSizeMb = realMb
+                            )
+                        }
                         mutableList
                     }
                     saveToDisk()
-                    Log.i(TAG, "Attached completed download for ${mediaItem.title}: ${effectiveFile.absolutePath} (${sizeMb} MB)")
-                    return@launch
+                    appContext?.let { ctx ->
+                        DownloadNotificationHelper.showCompleted(
+                            context = ctx,
+                            downloadId = notifId,
+                            mediaTitle = mediaItem.title,
+                            episodeTitle = epTitle
+                        )
+                        processNextQueuedDownload(ctx)
+                    }
+                } else if (!result.completed && result.error != "cancelled") {
+                    Log.w(TAG, "Download interrupted for ${mediaItem.title}: ${result.error}")
+                    _downloads.update { currentList ->
+                        val mutableList = currentList.toMutableList()
+                        val index = mutableList.indexOfFirst { it.mediaId == mediaItem.id && it.episodeIndex == episodeIndex }
+                        if (index != -1) {
+                            mutableList[index] = mutableList[index].copy(
+                                isPaused = true,
+                                isQueued = false,
+                                downloadId = -1L,
+                                resumeFromBytes = result.bytesWritten
+                            )
+                        }
+                        mutableList
+                    }
+                    saveToDisk()
+                    appContext?.let { ctx ->
+                        val currentPercent = _downloads.value.firstOrNull { it.mediaId == mediaItem.id && it.episodeIndex == episodeIndex }?.progressPercent ?: 0
+                        DownloadNotificationHelper.showPaused(
+                            context = ctx,
+                            downloadId = notifId,
+                            mediaId = mediaItem.id,
+                            episodeIndex = episodeIndex,
+                            mediaTitle = mediaItem.title,
+                            episodeTitle = epTitle,
+                            progressPercent = currentPercent
+                        )
+                        processNextQueuedDownload(ctx)
+                    }
                 }
             }
-
-            if (!resolvedUrl.startsWith("http://") && !resolvedUrl.startsWith("https://")) {
-                Log.w(TAG, "Cannot download non-HTTP URL via SystemDownloadManager: $resolvedUrl")
-                return@launch
-            }
-
-            var sysDownloadId = -1L
-
-            try {
-                val request = SystemDownloadManager.Request(Uri.parse(resolvedUrl))
-                    .setTitle("${mediaItem.title} - Episode ${episodeIndex + 1}")
-                    .setDescription("Downloading video for offline streaming...")
-                    .setNotificationVisibility(SystemDownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                    .setDestinationUri(Uri.fromFile(targetFile))
-                    .setAllowedNetworkTypes(SystemDownloadManager.Request.NETWORK_WIFI or SystemDownloadManager.Request.NETWORK_MOBILE)
-                    .setAllowedOverMetered(true)
-                    .setAllowedOverRoaming(true)
-
-                sysDownloadId = systemDownloadManager?.enqueue(request) ?: -1L
-            } catch (e: Exception) {
-                Log.e(TAG, "DownloadManager enqueue failed", e)
-            }
-
-            val newItem = DownloadedItem(
-                mediaId = mediaItem.id,
-                mediaTitle = mediaItem.title,
-                posterUrl = mediaItem.posterUrl,
-                episodeIndex = episodeIndex,
-                episodeTitle = epTitle,
-                localFilePath = targetFile.absolutePath,
-                fileSizeMb = 0.0,
-                downloadId = sysDownloadId,
-                progressPercent = 0,
-                isCompleted = false,
-                isPaused = false,
-                streamUrl = resolvedUrl
-            )
-
-            _downloads.update { currentList ->
-                val mutableList = currentList.toMutableList()
-                mutableList.removeAll { it.mediaId == mediaItem.id && it.episodeIndex == episodeIndex }
-                mutableList.add(newItem)
-                mutableList
-            }
-            saveToDisk()
-
-            if (sysDownloadId != -1L) {
-                DownloadNotificationHelper.showProgress(
-                    context = context,
-                    downloadId = sysDownloadId,
-                    mediaId = mediaItem.id,
-                    episodeIndex = episodeIndex,
-                    mediaTitle = mediaItem.title,
-                    episodeTitle = epTitle,
-                    progressPercent = 0
-                )
-                startProgressPolling()
-            }
-        }
+        )
     }
 
     fun pauseDownload(item: DownloadedItem) {
+        val key = getDownloadKey(item.mediaId, item.episodeIndex)
+        HttpRangeResumeEngine.cancel(key)
+
         val targetFile = File(item.localFilePath)
         val partFile = File(item.localFilePath + ".part")
 
@@ -601,7 +764,7 @@ object DownloadManager {
             systemDownloadManager?.remove(item.downloadId)
         }
 
-        val notifId = if (item.downloadId != -1L) item.downloadId else getNotificationId(item.mediaId, item.episodeIndex)
+        val notifId = getNotificationId(item.mediaId, item.episodeIndex)
 
         _downloads.update { currentList ->
             val mutableList = currentList.toMutableList()
@@ -609,6 +772,7 @@ object DownloadManager {
             if (index != -1) {
                 mutableList[index] = mutableList[index].copy(
                     isPaused = true,
+                    isQueued = false,
                     downloadId = -1L,
                     resumeFromBytes = guardedBytes
                 )
@@ -627,15 +791,35 @@ object DownloadManager {
                 episodeTitle = item.episodeTitle,
                 progressPercent = item.progressPercent
             )
+            processNextQueuedDownload(ctx)
         }
     }
 
     /**
-     * Resumes an existing download (supports Telegram and HTTP streams).
+     * Resumes an existing download (supports Telegram and HTTP streams) via the high-throughput OkHttp engine.
      */
     fun resumeDownload(item: DownloadedItem, context: Context? = null) {
         if (item.isCompleted) return
         val ctx = context?.applicationContext ?: appContext ?: return
+
+        // If another item is actively running, put this item into queue instead of parallel running
+        val isAnotherRunning = _downloads.value.any { 
+            !it.isCompleted && !it.isPaused && !it.isCanceled && !it.isQueued && 
+            !(it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex)
+        }
+        if (isAnotherRunning) {
+            _downloads.update { currentList ->
+                val mutableList = currentList.toMutableList()
+                val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
+                if (index != -1) {
+                    mutableList[index] = mutableList[index].copy(isPaused = false, isQueued = true)
+                }
+                mutableList
+            }
+            saveToDisk()
+            Log.i(TAG, "Another download is running; queued ${item.mediaTitle} Ep ${item.episodeIndex + 1}")
+            return
+        }
 
         val url = item.streamUrl
         if (url.isBlank() || !url.startsWith("http")) {
@@ -660,126 +844,112 @@ object DownloadManager {
         val targetFile = File(item.localFilePath)
         val partFile = File(item.localFilePath + ".part")
         val key = getDownloadKey(item.mediaId, item.episodeIndex)
+        val notifId = getNotificationId(item.mediaId, item.episodeIndex)
 
-        // PATH 1 — guarded partial exists: true HTTP Range resume via the engine.
-        if (partFile.exists() && partFile.length() > 0L) {
-            _downloads.update { currentList ->
-                val mutableList = currentList.toMutableList()
-                val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
-                if (index != -1) {
-                    // downloadId = -1 keeps this item OUT of the system-DM polling loop
-                    // (poll filter requires downloadId != -1L); progress comes from the engine.
-                    mutableList[index] = mutableList[index].copy(
-                        downloadId = -1L,
-                        isPaused = false
-                    )
-                }
-                mutableList
+        _downloads.update { currentList ->
+            val mutableList = currentList.toMutableList()
+            val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
+            if (index != -1) {
+                mutableList[index] = mutableList[index].copy(
+                    downloadId = notifId,
+                    isPaused = false,
+                    isQueued = false
+                )
             }
-            saveToDisk()
+            mutableList
+        }
+        saveToDisk()
 
-            HttpRangeResumeEngine.resume(
-                key = key,
-                url = url,
-                partFile = partFile,
-                client = com.streamhub.app.data.api.SharedHttpClient.streamingClient,
-                onProgress = { percent ->
+        HttpRangeResumeEngine.download(
+            key = key,
+            url = url,
+            partFile = partFile,
+            targetFile = targetFile,
+            client = com.streamhub.app.data.api.SharedHttpClient.streamingClient,
+            context = ctx,
+            onProgress = { percent, writtenBytes, totalBytes ->
+                val currentMb = writtenBytes / (1024.0 * 1024.0)
+                val totalMb = if (totalBytes > 0) totalBytes / (1024.0 * 1024.0) else 0.0
+                _downloads.update { currentList ->
+                    val mutableList = currentList.toMutableList()
+                    val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
+                    if (index != -1 && !mutableList[index].isCompleted) {
+                        mutableList[index] = mutableList[index].copy(
+                            progressPercent = percent,
+                            fileSizeMb = if (totalMb > 0) totalMb else mutableList[index].fileSizeMb,
+                            resumeFromBytes = writtenBytes
+                        )
+                    }
+                    mutableList
+                }
+                DownloadNotificationHelper.showProgress(
+                    context = ctx,
+                    downloadId = notifId,
+                    mediaId = item.mediaId,
+                    episodeIndex = item.episodeIndex,
+                    mediaTitle = item.mediaTitle,
+                    episodeTitle = item.episodeTitle,
+                    progressPercent = percent,
+                    downloadedMb = currentMb,
+                    totalMb = totalMb
+                )
+            },
+            onFinished = { result ->
+                if (result.completed && result.error == null) {
+                    val finalFile = if (targetFile.exists()) targetFile else partFile
+                    val realMb = if (finalFile.exists()) finalFile.length() / (1024.0 * 1024.0) else (result.bytesWritten / (1024.0 * 1024.0))
                     _downloads.update { currentList ->
                         val mutableList = currentList.toMutableList()
                         val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
-                        if (index != -1 && !mutableList[index].isCompleted) {
-                            mutableList[index] = mutableList[index].copy(progressPercent = percent.coerceIn(1, 99))
+                        if (index != -1) {
+                            mutableList[index] = mutableList[index].copy(
+                                progressPercent = 100,
+                                isCompleted = true,
+                                isPaused = false,
+                                isQueued = false,
+                                resumeFromBytes = 0L,
+                                fileSizeMb = realMb
+                            )
                         }
                         mutableList
                     }
-                },
-                onFinished = { result ->
-                    if (result.completed && result.error == null) {
-                        // Atomic-ish finalize: replace any stale target, then promote the .part.
-                        if (targetFile.exists()) targetFile.delete()
-                        if (partFile.renameTo(targetFile)) {
-                            _downloads.update { currentList ->
-                                val mutableList = currentList.toMutableList()
-                                val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
-                                if (index != -1) {
-                                    mutableList[index] = mutableList[index].copy(
-                                        progressPercent = 100,
-                                        isCompleted = true,
-                                        isPaused = false,
-                                        downloadId = -1L,
-                                        resumeFromBytes = 0L,
-                                        fileSizeMb = targetFile.length() / (1024.0 * 1024.0)
-                                    )
-                                }
-                                mutableList
-                            }
-                            saveToDisk()
-                            appContext?.let { appCtx ->
-                                DownloadNotificationHelper.showCompleted(
-                                    context = appCtx,
-                                    downloadId = getNotificationId(item.mediaId, item.episodeIndex),
-                                    mediaTitle = item.mediaTitle,
-                                    episodeTitle = item.episodeTitle
-                                )
-                            }
-                        } else {
-                            Log.e(TAG, "Failed to promote .part to final file for ${item.mediaTitle}")
-                            markAsPaused(item)
-                        }
-                    } else {
-                        Log.w(TAG, "Resume engine stopped for ${item.mediaTitle}: ${result.error} (${result.bytesWritten}/${result.totalBytes} bytes)")
-                        // Keep the partial for the next resume attempt — only mark paused.
-                        _downloads.update { currentList ->
-                            val mutableList = currentList.toMutableList()
-                            val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
-                            if (index != -1) {
-                                mutableList[index] = mutableList[index].copy(
-                                    isPaused = true,
-                                    resumeFromBytes = result.bytesWritten
-                                )
-                            }
-                            mutableList
-                        }
-                        saveToDisk()
-                    }
-                }
-            )
-            return
-        }
-
-        // PATH 2 — no guarded partial: fresh system-DM enqueue.
-        // FIX: setDestinationUri is now ALWAYS set.
-        try {
-            val requestBuilder = SystemDownloadManager.Request(Uri.parse(url))
-                .setTitle("${item.mediaTitle} - ${item.episodeTitle}")
-                .setDescription("Downloading...")
-                .setNotificationVisibility(SystemDownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setAllowedNetworkTypes(SystemDownloadManager.Request.NETWORK_WIFI or SystemDownloadManager.Request.NETWORK_MOBILE)
-                .setAllowedOverMetered(true)
-                .setAllowedOverRoaming(true)
-                .setDestinationUri(Uri.fromFile(targetFile))
-
-            val newDownloadId = systemDownloadManager?.enqueue(requestBuilder) ?: -1L
-
-            _downloads.update { currentList ->
-                val mutableList = currentList.toMutableList()
-                val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
-                if (index != -1) {
-                    mutableList[index] = item.copy(
-                        downloadId = newDownloadId,
-                        isPaused = false,
-                        resumeFromBytes = 0L
+                    saveToDisk()
+                    DownloadNotificationHelper.showCompleted(
+                        context = ctx,
+                        downloadId = notifId,
+                        mediaTitle = item.mediaTitle,
+                        episodeTitle = item.episodeTitle
                     )
+                    processNextQueuedDownload(ctx)
+                } else if (!result.completed && result.error != "cancelled") {
+                    Log.w(TAG, "Resume engine stopped for ${item.mediaTitle}: ${result.error}")
+                    _downloads.update { currentList ->
+                        val mutableList = currentList.toMutableList()
+                        val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
+                        if (index != -1) {
+                            mutableList[index] = mutableList[index].copy(
+                                isPaused = true,
+                                isQueued = false,
+                                downloadId = -1L,
+                                resumeFromBytes = result.bytesWritten
+                            )
+                        }
+                        mutableList
+                    }
+                    saveToDisk()
+                    DownloadNotificationHelper.showPaused(
+                        context = ctx,
+                        downloadId = notifId,
+                        mediaId = item.mediaId,
+                        episodeIndex = item.episodeIndex,
+                        mediaTitle = item.mediaTitle,
+                        episodeTitle = item.episodeTitle,
+                        progressPercent = _downloads.value.firstOrNull { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }?.progressPercent ?: 0
+                    )
+                    processNextQueuedDownload(ctx)
                 }
-                mutableList
             }
-            saveToDisk()
-            startProgressPolling()
-            Log.i(TAG, "Restarted download for ${item.mediaTitle} with new downloadId=$newDownloadId")
-        } catch (e: Exception) {
-            Log.e(TAG, "Resume re-enqueue failed for ${item.mediaTitle}", e)
-            markAsPaused(item)
-        }
+        )
     }
 
     private fun markAsPaused(item: DownloadedItem) {
@@ -787,12 +957,13 @@ object DownloadManager {
             val mutableList = currentList.toMutableList()
             val index = mutableList.indexOfFirst { it.mediaId == item.mediaId && it.episodeIndex == item.episodeIndex }
             if (index != -1) {
-                mutableList[index] = item.copy(isPaused = true)
+                mutableList[index] = item.copy(isPaused = true, isQueued = false)
             }
             mutableList
         }
         saveToDisk()
         Log.w(TAG, "Resume failed for ${item.mediaTitle} — marked as paused instead of deleting")
+        appContext?.let { processNextQueuedDownload(it) }
     }
 
     fun setCustomDownloadPath(path: String) {
@@ -872,6 +1043,7 @@ object DownloadManager {
             mutableList
         }
         saveToDisk()
+        appContext?.let { processNextQueuedDownload(it) }
     }
 
     /**

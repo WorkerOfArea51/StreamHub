@@ -61,4 +61,51 @@ class DownloadManagerTest {
         assertEquals("Download ID should be reset to -1L", -1L, afterPause[0].downloadId)
         assertEquals("Progress should be preserved", 45, afterPause[0].progressPercent)
     }
+
+    @Test
+    fun downloadManager_hasActiveDownload_evaluatesCorrectly() {
+        // Clear downloads list
+        DownloadManager.deleteDownloadsForMedia("media_test")
+
+        val queuedItem = DownloadedItem(
+            mediaId = "media_test",
+            mediaTitle = "One Piece",
+            posterUrl = "https://example.com/op.jpg",
+            episodeIndex = 1,
+            episodeTitle = "Episode 2",
+            localFilePath = "/path/to/op_ep2.mp4",
+            isCompleted = false,
+            isPaused = false,
+            isQueued = true,
+            streamUrl = "https://cdn.example.com/op_ep2.mp4"
+        )
+        DownloadManager.addOrUpdateDownload(queuedItem)
+
+        // Queued item should NOT count as actively running
+        assertFalse("Queued item should not count as active download", DownloadManager.hasActiveDownload())
+
+        val activeItem = DownloadedItem(
+            mediaId = "media_test",
+            mediaTitle = "One Piece",
+            posterUrl = "https://example.com/op.jpg",
+            episodeIndex = 0,
+            episodeTitle = "Episode 1",
+            localFilePath = "/path/to/op_ep1.mp4",
+            isCompleted = false,
+            isPaused = false,
+            isQueued = false,
+            streamUrl = "https://cdn.example.com/op_ep1.mp4"
+        )
+        DownloadManager.addOrUpdateDownload(activeItem)
+
+        // Active item present -> hasActiveDownload should be true
+        assertTrue("Active item should count as active download", DownloadManager.hasActiveDownload())
+
+        // Pause the active item -> should be false again
+        DownloadManager.pauseDownload(activeItem)
+        assertFalse("Paused item should not count as active download", DownloadManager.hasActiveDownload())
+
+        // Cleanup
+        DownloadManager.deleteDownloadsForMedia("media_test")
+    }
 }
