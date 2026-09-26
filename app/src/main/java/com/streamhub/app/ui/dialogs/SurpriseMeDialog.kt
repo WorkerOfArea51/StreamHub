@@ -487,10 +487,10 @@ fun SurpriseMeDialog(
 
                                 Spacer(modifier = Modifier.height(12.dp))
 
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
-                                    color = AccentOrange
+                                com.streamhub.app.ui.components.ExpressiveLoadingIndicator(
+                                    size = 28.dp,
+                                    color = AccentOrange,
+                                    accentColor = PrimaryRed
                                 )
                             }
                         }

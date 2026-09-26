@@ -109,38 +109,32 @@ fun AccessGateOverlay(
             contentAlignment = Alignment.Center
         ) {
             Card(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF141422).copy(alpha = 0.95f)),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xF4141424)),
                 modifier = Modifier
-                    .fillMaxWidth(0.96f)
+                    .fillMaxWidth(0.94f)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = {}
                     )
                     .border(
-                        1.5.dp,
-                        Brush.linearGradient(
-                            listOf(
-                                primaryColor.copy(alpha = 0.8f),
-                                Color(0xFFFFD700).copy(alpha = 0.6f),
-                                Color(0xFF00E676).copy(alpha = 0.4f)
-                            )
-                        ),
-                        RoundedCornerShape(24.dp)
+                        1.2.dp,
+                        primaryColor.copy(alpha = 0.6f),
+                        RoundedCornerShape(28.dp)
                     )
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(20.dp),
+                        .padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Header Glowing Icon
+                    // Header Glowing Squircle Badge
                     Box(
                         modifier = Modifier
-                            .size(56.dp)
-                            .clip(CircleShape)
+                            .size(62.dp)
+                            .clip(RoundedCornerShape(20.dp))
                             .background(
                                 Brush.linearGradient(
                                     listOf(primaryColor, Color(0xFFFF9800))
@@ -152,58 +146,58 @@ fun AccessGateOverlay(
                             imageVector = Icons.Default.Lock,
                             contentDescription = "Lock",
                             tint = Color.White,
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(30.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     Text(
                         text = "Community Access Gate 🔐",
                         color = Color.White,
-                        fontSize = 18.sp,
+                        fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center
                     )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     // Bandwidth & Server Note
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFF1E1E30),
-                        border = BorderStroke(1.dp, Color(0xFF2C2C44)),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0x33FFFFFF),
+                        border = BorderStroke(1.dp, Color(0x22FFFFFF)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(10.dp)) {
+                        Column(modifier = Modifier.padding(12.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
                                     imageVector = Icons.Default.Shield,
                                     contentDescription = null,
                                     tint = primaryColor,
-                                    modifier = Modifier.size(15.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "Private Streaming Network",
                                     color = primaryColor,
-                                    fontSize = 11.sp,
+                                    fontSize = 11.5.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
-                            Spacer(modifier = Modifier.height(3.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = "To maintain high-speed, bufferless 1080p streaming, please enter your community access code.",
                                 color = TextSecondary,
-                                fontSize = 10.5.sp,
-                                lineHeight = 14.sp
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(18.dp))
 
-                    // Access Code Input
+                    // Access Code Input (Squircle)
                     OutlinedTextField(
                         value = accessCodeInput,
                         onValueChange = {
@@ -216,6 +210,7 @@ fun AccessGateOverlay(
                         leadingIcon = {
                             Icon(Icons.Default.Key, contentDescription = null, tint = primaryColor, modifier = Modifier.size(18.dp))
                         },
+                        shape = RoundedCornerShape(16.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = primaryColor,
                             unfocusedBorderColor = Color(0xFF38384E),
@@ -226,7 +221,7 @@ fun AccessGateOverlay(
                     )
 
                     errorMessage?.let {
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = it,
                             color = PrimaryRed,
@@ -235,9 +230,9 @@ fun AccessGateOverlay(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                    // Unlock Button
+                    // Unlock Button (M3 Squircle Button with Bouncy Touch)
                     Button(
                         onClick = {
                             if (accessCodeInput.isBlank()) {
@@ -276,30 +271,29 @@ fun AccessGateOverlay(
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(42.dp)
+                            .height(46.dp)
                     ) {
                         if (isVerifying) {
-                            CircularProgressIndicator(
-                                color = Color.White,
-                                strokeWidth = 2.dp,
-                                modifier = Modifier.size(18.dp)
+                            ExpressiveLoadingIndicator(
+                                size = 24.dp,
+                                color = Color.White
                             )
                         } else {
                             Text(
                                 text = "Enter StreamHub 🚀",
                                 color = Color.White,
-                                fontSize = 13.sp,
+                                fontSize = 13.5.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
-                    // Telegram Contact Button
+                    // Telegram Contact Button (M3 Squircle Button)
                     OutlinedButton(
                         onClick = {
                             runCatching {
@@ -309,12 +303,12 @@ fun AccessGateOverlay(
                                 ToastManager.showToast("Visit: $TELEGRAM_CONTACT_URL")
                             }
                         },
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(16.dp),
                         border = BorderStroke(1.dp, Color(0xFF0088CC)),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF0088CC)),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(38.dp)
+                            .height(42.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -330,7 +324,7 @@ fun AccessGateOverlay(
                             Text(
                                 text = "Get Code on Telegram (@Londe_Lapate)",
                                 color = Color(0xFF0088CC),
-                                fontSize = 11.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }

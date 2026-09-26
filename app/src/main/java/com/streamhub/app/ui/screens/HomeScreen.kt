@@ -21,6 +21,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -34,6 +38,9 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Animation
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.History
@@ -41,13 +48,21 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.SortByAlpha
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import com.streamhub.app.ui.components.EmptyStateCard
@@ -79,6 +94,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -123,6 +139,7 @@ fun HomeScreen(
     onPlayEpisode: (MediaItem, Int) -> Unit,
     onNavigateToHistory: () -> Unit = {},
     onNavigateToDownloads: () -> Unit = {},
+    onNavigateToAdmin: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -162,6 +179,23 @@ fun HomeScreen(
     val sortOrder = homeLayoutConfig.catalogSortOrder
     var showSortMenu by remember { mutableStateOf(false) }
 
+    val haptic = LocalHapticFeedback.current
+    var categoryHoldLabel by remember { mutableStateOf<String?>(null) }
+    var categoryHoldIcon by remember { mutableStateOf<ImageVector?>(null) }
+    var categoryDismissJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    fun triggerCategoryHold(label: String, icon: ImageVector) {
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        categoryHoldLabel = label
+        categoryHoldIcon = icon
+        categoryDismissJob?.cancel()
+        categoryDismissJob = coroutineScope.launch {
+            kotlinx.coroutines.delay(1800)
+            categoryHoldLabel = null
+            categoryHoldIcon = null
+        }
+    }
+
     val sortedCatalog = remember(catalog, sortOrder) {
         when (sortOrder) {
             com.streamhub.app.data.CatalogSortOrder.NEWEST_FIRST -> {
@@ -179,8 +213,17 @@ fun HomeScreen(
                 )
             }
             com.streamhub.app.data.CatalogSortOrder.HIGHEST_RATED -> catalog.sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
+            com.streamhub.app.data.CatalogSortOrder.LOWEST_RATED -> catalog.sortedWith(
+                compareBy<MediaItem> { val r = it.rating.toDoubleOrNull(); if (r != null && r > 0.0) r else 999.0 }
+                    .thenBy { it.title.lowercase() }
+            )
             com.streamhub.app.data.CatalogSortOrder.RELEASE_YEAR -> catalog.sortedByDescending { it.releaseYear.toIntOrNull() ?: 0 }
-            com.streamhub.app.data.CatalogSortOrder.ALPHABETICAL -> catalog.sortedBy { it.title.lowercase() }
+            com.streamhub.app.data.CatalogSortOrder.RELEASE_YEAR_ASC -> catalog.sortedWith(
+                compareBy<MediaItem> { val y = it.releaseYear.toIntOrNull(); if (y != null && y > 1900) y else 9999 }
+                    .thenBy { it.title.lowercase() }
+            )
+            com.streamhub.app.data.CatalogSortOrder.ALPHABETICAL -> catalog.sortedBy { it.title.lowercase().trim() }
+            com.streamhub.app.data.CatalogSortOrder.ALPHABETICAL_DESC -> catalog.sortedByDescending { it.title.lowercase().trim() }
         }
     }
 
@@ -251,7 +294,7 @@ fun HomeScreen(
         .map { it.first }
 
         if (candidates.size >= 2) {
-            Pair("💡 Because You Watched ${sourceMedia.title}", candidates.take(12))
+            Pair("Because You Watched ${sourceMedia.title}", candidates.take(12))
         } else null
     }
 
@@ -274,26 +317,26 @@ fun HomeScreen(
         val acclaimed = filteredCatalog.filter { (it.rating.toDoubleOrNull() ?: 0.0) >= 8.0 }
             .sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
         if (acclaimed.size >= 2) {
-            shelves.add(Pair("🏆 Critically Acclaimed (8.0+ ⭐)", acclaimed))
+            shelves.add(Pair("Critically Acclaimed (8.0+)", acclaimed))
         }
 
         // 2. Action & High Stakes
-        addGenreShelf("⚡ Adrenaline & High-Octane Action", "action", "adventure", "martial arts", "military")
+        addGenreShelf("Action & High Stakes", "action", "adventure", "martial arts", "military")
 
         // 3. Fantasy & Supernatural
-        addGenreShelf("🔮 Fantasy, Magic & Supernatural", "fantasy", "supernatural", "magic", "isekai", "super power", "mythology")
+        addGenreShelf("Fantasy & Supernatural", "fantasy", "supernatural", "magic", "isekai", "super power", "mythology")
 
         // 4. Mystery, Crime & Psychological Thrillers
-        addGenreShelf("🧠 Mind-Bending Mystery & Crime", "mystery", "thriller", "psychological", "crime", "detective", "suspense")
+        addGenreShelf("Mystery & Thrillers", "mystery", "thriller", "psychological", "crime", "detective", "suspense")
 
         // 5. Romance & Drama
-        addGenreShelf("❤️ Heartfelt Romance & Drama", "romance", "drama", "school", "shoujo", "slice of life")
+        addGenreShelf("Romance & Drama", "romance", "drama", "school", "shoujo", "slice of life")
 
         // 6. Sci-Fi & Futuristic
-        addGenreShelf("🤖 Sci-Fi & Cyberpunk Worlds", "sci-fi", "science fiction", "mecha", "space", "cyberpunk")
+        addGenreShelf("Sci-Fi & Cyberpunk", "sci-fi", "science fiction", "mecha", "space", "cyberpunk")
 
         // 7. Comedy & Feel-Good
-        addGenreShelf("😂 Laugh-Out-Loud Comedy", "comedy", "parody", "gag", "funny")
+        addGenreShelf("Comedy & Satire", "comedy", "parody", "gag", "funny")
 
         shelves
     }
@@ -333,13 +376,13 @@ fun HomeScreen(
 
         val shelves = mutableListOf<CategoryShelf>()
         if (movies.isNotEmpty()) {
-            shelves.add(CategoryShelf("MOVIES", "🎬 Blockbuster Movies", movies, firstMovieIndex))
+            shelves.add(CategoryShelf("MOVIES", "Blockbuster Movies", movies, firstMovieIndex))
         }
         if (anime.isNotEmpty()) {
-            shelves.add(CategoryShelf("ANIME", "🎌 Top Rated Anime", anime, firstAnimeIndex))
+            shelves.add(CategoryShelf("ANIME", "Top Rated Anime", anime, firstAnimeIndex))
         }
         if (series.isNotEmpty()) {
-            shelves.add(CategoryShelf("SERIES", "📺 Popular Web Series", series, firstSeriesIndex))
+            shelves.add(CategoryShelf("SERIES", "Popular Web Series", series, firstSeriesIndex))
         }
 
         // Dynamically rank shelves so the category with the most recently added title appears on top!
@@ -360,167 +403,264 @@ fun HomeScreen(
         }
     }
 
-    Box(modifier = modifier.fillMaxSize().background(BackgroundDark)) {
+    Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerLowest)) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Pinned Top Header Rail (Always visible while scrolling)
-            Surface(
-                color = BackgroundDark,
-                modifier = Modifier.fillMaxWidth()
+            // Pinned Top Header Nav Bar (Immediately below status bar, Icon-Only M3 Expressive Split Button Design)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.wrapContentWidth()
             ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    LazyRow(
+                // M3 Expressive Floating Hold Popup Pill for Category Bar
+                com.streamhub.app.ui.components.ExpressiveHoldPopup(
+                    visible = categoryHoldLabel != null,
+                    label = categoryHoldLabel,
+                    icon = categoryHoldIcon,
+                    accentColor = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 6.dp)
+                )
+
+                // Split Button Segmented Dock Container (Zero Text Names, Icon-Only M3 Expressive Design)
+                Surface(
+                    shape = RoundedCornerShape(32.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    shadowElevation = 14.dp,
+                    tonalElevation = 6.dp,
+                    modifier = Modifier
+                        .padding(horizontal = 10.dp)
+                        .wrapContentWidth()
+                ) {
+                    Row(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 6.dp, bottom = 8.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        item {
-                            CategoryFilterChip("All", selectedCategoryFilter == "ALL") {
+                        // 1. All Media (Leading Asymmetric Segment)
+                        com.streamhub.app.ui.components.ExpressiveSplitCategoryIconItem(
+                            icon = Icons.Default.Apps,
+                            contentDescription = "All Media",
+                            isSelected = selectedCategoryFilter == "ALL",
+                            shape = RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp, topEnd = 4.dp, bottomEnd = 4.dp),
+                            onClick = {
+                                categoryHoldLabel = null
                                 if (selectedCategoryFilter == "ALL") {
                                     coroutineScope.launch { homeVerticalListState.animateScrollToItem(0) }
                                 } else {
                                     com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("ALL")
                                 }
+                            },
+                            onHold = {
+                                triggerCategoryHold("All Catalog", Icons.Default.Apps)
                             }
-                        }
-                        item {
-                            CategoryFilterChip("Anime", selectedCategoryFilter == "ANIME") {
+                        )
+
+                        // 2. Anime
+                        com.streamhub.app.ui.components.ExpressiveSplitCategoryIconItem(
+                            icon = Icons.Default.Animation,
+                            contentDescription = "Anime",
+                            isSelected = selectedCategoryFilter == "ANIME",
+                            shape = RoundedCornerShape(4.dp),
+                            onClick = {
+                                categoryHoldLabel = null
                                 if (selectedCategoryFilter == "ANIME") {
                                     coroutineScope.launch { homeVerticalListState.animateScrollToItem(0) }
                                 } else {
                                     com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("ANIME")
                                 }
+                            },
+                            onHold = {
+                                triggerCategoryHold("Anime & Animation", Icons.Default.Animation)
                             }
-                        }
-                        item {
-                            CategoryFilterChip("Movies", selectedCategoryFilter == "MOVIES") {
+                        )
+
+                        // 3. Movies
+                        com.streamhub.app.ui.components.ExpressiveSplitCategoryIconItem(
+                            icon = Icons.Default.Movie,
+                            contentDescription = "Movies",
+                            isSelected = selectedCategoryFilter == "MOVIES",
+                            shape = RoundedCornerShape(4.dp),
+                            onClick = {
+                                categoryHoldLabel = null
                                 if (selectedCategoryFilter == "MOVIES") {
                                     coroutineScope.launch { homeVerticalListState.animateScrollToItem(0) }
                                 } else {
                                     com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("MOVIES")
                                 }
+                            },
+                            onHold = {
+                                triggerCategoryHold("Blockbuster Movies", Icons.Default.Movie)
                             }
-                        }
-                        item {
-                            CategoryFilterChip("Series", selectedCategoryFilter == "SERIES") {
+                        )
+
+                        // 4. Series
+                        com.streamhub.app.ui.components.ExpressiveSplitCategoryIconItem(
+                            icon = Icons.Default.Tv,
+                            contentDescription = "Series",
+                            isSelected = selectedCategoryFilter == "SERIES",
+                            shape = RoundedCornerShape(4.dp),
+                            onClick = {
+                                categoryHoldLabel = null
                                 if (selectedCategoryFilter == "SERIES") {
                                     coroutineScope.launch { homeVerticalListState.animateScrollToItem(0) }
                                 } else {
                                     com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("SERIES")
                                 }
+                            },
+                            onHold = {
+                                triggerCategoryHold("Web Series & Shows", Icons.Default.Tv)
                             }
-                        }
-                        item {
-                            // Surprise Roulette Button (Matches the mockup photo)
-                            Box(
-                                modifier = Modifier
-                                    .bouncyClickable { showSurpriseMeDialog = true }
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .background(
-                                        androidx.compose.ui.graphics.Brush.horizontalGradient(
-                                            colors = listOf(
-                                                Color(0xFFE11D48),
-                                                Color(0xFF8B5CF6)
-                                            )
-                                        )
-                                    )
-                                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                ) {
-                                    Text("🎲", fontSize = 12.sp)
-                                    Text(
-                                        text = "Surprise Me",
-                                        color = Color.White,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-                        item {
-                            // Sort Mode Selector Pill (Matches the mockup photo)
-                            Box {
-                                Box(
-                                    modifier = Modifier
-                                        .bouncyClickable { showSortMenu = true }
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .background(Color(0xFF1E1E2C))
-                                        .border(1.dp, Color(0xFF38384E), RoundedCornerShape(20.dp))
-                                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Text(
-                                            text = if (sortOrder == com.streamhub.app.data.CatalogSortOrder.NEWEST_FIRST) "Sort" else sortOrder.shortName,
-                                            color = TextPrimary,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                        Text(
-                                            text = "▾",
-                                            color = TextSecondary,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-
-                                DropdownMenu(
-                                    expanded = showSortMenu,
-                                    onDismissRequest = { showSortMenu = false },
-                                    modifier = Modifier.background(SurfaceDark).border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
-                                ) {
-                                    com.streamhub.app.data.CatalogSortOrder.values().forEach { order ->
-                                        val isSelected = order == sortOrder
-                                        DropdownMenuItem(
-                                            text = {
-                                                Text(
-                                                    text = order.displayName,
-                                                    color = if (isSelected) AccentOrange else TextPrimary,
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                    fontSize = 13.sp
-                                                )
-                                            },
-                                            onClick = {
-                                                com.streamhub.app.data.HomeScreenLayoutManager.setSortOrder(order)
-                                                showSortMenu = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Subtle hairline divider when scrolled
-                    if (isScrolled) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(CardBorderDark.copy(alpha = 0.50f))
                         )
+
+                        // 5. Surprise Me
+                        com.streamhub.app.ui.components.ExpressiveSplitCategoryIconItem(
+                            icon = Icons.Default.Casino,
+                            contentDescription = "Surprise Roulette",
+                            isSelected = false,
+                            isGradient = true,
+                            shape = RoundedCornerShape(4.dp),
+                            onClick = {
+                                categoryHoldLabel = null
+                                showSurpriseMeDialog = true
+                            },
+                            onHold = {
+                                triggerCategoryHold("Surprise Roulette", Icons.Default.Casino)
+                            }
+                        )
+
+                        // 6. M3 Expressive Split Sort Button (Direction + Menu)
+                        Box {
+                            com.streamhub.app.ui.components.ExpressiveSortSplitIconButton(
+                                isSelected = sortOrder != com.streamhub.app.data.CatalogSortOrder.NEWEST_FIRST,
+                                isMenuOpen = showSortMenu,
+                                onDirectionClick = {
+                                    categoryHoldLabel = null
+                                    val toggled = sortOrder.toggleDirection()
+                                    com.streamhub.app.data.HomeScreenLayoutManager.setSortOrder(toggled)
+                                    triggerCategoryHold("Sort: ${toggled.displayName}", Icons.AutoMirrored.Filled.Sort)
+                                },
+                                onMenuClick = {
+                                    categoryHoldLabel = null
+                                    showSortMenu = true
+                                },
+                                onHold = {
+                                    triggerCategoryHold("Sort Order", Icons.AutoMirrored.Filled.Sort)
+                                }
+                            )
+
+                            DropdownMenu(
+                                expanded = showSortMenu,
+                                onDismissRequest = { showSortMenu = false },
+                                modifier = Modifier
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(16.dp))
+                                    .padding(vertical = 4.dp)
+                            ) {
+                                // Direction Toggle Header Row
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    val isAsc = sortOrder.isAscending
+                                    Surface(
+                                        onClick = {
+                                            val newOrder = sortOrder.withDirection(false)
+                                            com.streamhub.app.data.HomeScreenLayoutManager.setSortOrder(newOrder)
+                                        },
+                                        shape = CircleShape,
+                                        color = if (!isAsc) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            contentAlignment = Alignment.Center,
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = "High to Low",
+                                                color = if (!isAsc) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (!isAsc) FontWeight.Bold else FontWeight.Medium
+                                            )
+                                        }
+                                    }
+
+                                    Surface(
+                                        onClick = {
+                                            val newOrder = sortOrder.withDirection(true)
+                                            com.streamhub.app.data.HomeScreenLayoutManager.setSortOrder(newOrder)
+                                        },
+                                        shape = CircleShape,
+                                        color = if (isAsc) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            contentAlignment = Alignment.Center,
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = "Low to High",
+                                                color = if (isAsc) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isAsc) FontWeight.Bold else FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                }
+
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 4.dp))
+
+                                // 4 Clean Criteria Options
+                                listOf<Triple<String, String, ImageVector>>(
+                                    Triple("DATE", "Upload Date", Icons.Default.Schedule),
+                                    Triple("RATING", "Rating", Icons.Default.Star),
+                                    Triple("YEAR", "Release Year", Icons.Default.CalendarToday),
+                                    Triple("TITLE", "Alphabetical (A - Z)", Icons.Default.SortByAlpha)
+                                ).forEach { (key: String, label: String, icon: ImageVector) ->
+                                    val isCurrentCriterion = sortOrder.criterionKey == key
+                                    DropdownMenuItem(
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = icon,
+                                                contentDescription = null,
+                                                tint = if (isCurrentCriterion) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(17.dp)
+                                            )
+                                        },
+                                        text = {
+                                            Text(
+                                                text = label,
+                                                color = if (isCurrentCriterion) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                                fontWeight = if (isCurrentCriterion) FontWeight.Bold else FontWeight.Normal,
+                                                fontSize = 13.sp
+                                            )
+                                        },
+                                        onClick = {
+                                            val targetOrder = com.streamhub.app.data.CatalogSortOrder.forCriterion(key, sortOrder.isAscending)
+                                            com.streamhub.app.data.HomeScreenLayoutManager.setSortOrder(targetOrder)
+                                            showSortMenu = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
+        }
 
-            // Scrollable Content
+            // Scrollable Content (Edge-to-Edge Full-Bleed under floating header)
             CompositionLocalProvider(LocalIsScrollInProgress provides homeVerticalListState.isScrollInProgress) {
                 LazyColumn(
                     state = homeVerticalListState,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp)
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(top = 0.dp, bottom = 120.dp)
                 ) {
 
 
@@ -709,10 +849,10 @@ fun HomeScreen(
             // 1. Trending & Popular Row (Contextual tab title & auto-vanishes when empty)
             if (layoutConfig.showTrendingSection && trendingItems.isNotEmpty()) {
                 val trendingSectionTitle = when (selectedCategoryFilter.uppercase()) {
-                    "MOVIES", "MOVIE" -> "🔥 Trending Movies"
-                    "ANIME" -> "🔥 Trending Anime"
-                    "SERIES", "WEB_SERIES" -> "🔥 Trending Series"
-                    else -> "🔥 Trending & Popular"
+                    "MOVIES", "MOVIE" -> "Trending Movies"
+                    "ANIME" -> "Trending Anime"
+                    "SERIES", "WEB_SERIES" -> "Trending Series"
+                    else -> "Trending & Popular"
                 }
                 item(key = "section_trending") {
                     MediaSectionRow(
@@ -728,7 +868,7 @@ fun HomeScreen(
             if (layoutConfig.showRecentlyAdded && recentlyAddedItems.isNotEmpty()) {
                 item(key = "section_recently_added") {
                     MediaSectionRow(
-                        title = "✨ Recently Added",
+                        title = "Recently Added",
                         items = recentlyAddedItems,
                         onMediaClick = onMediaClick,
                         onMediaLongClick = { item -> selectedQuickActionMedia = item }
@@ -782,16 +922,13 @@ fun HomeScreen(
         }
 
         if (isAdminMode) {
-            FloatingActionButton(
-                onClick = { showAdminAddDialog = true },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = Color.White,
+            com.streamhub.app.ui.components.ExpressiveStudioButton(
+                onClick = { onNavigateToAdmin() },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 16.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Add Show")
-            }
+                    .zIndex(20f)
+                    .padding(end = 16.dp, bottom = 90.dp)
+            )
         }
 
         SnackbarHost(
@@ -1022,22 +1159,21 @@ fun ContinueWatchingSection(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = "⏯️ Continue Watching",
+                    text = "Continue Watching",
                     color = TextPrimary,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = primaryColor.copy(alpha = 0.15f),
-                    border = BorderStroke(1.dp, color = primaryColor.copy(alpha = 0.4f))
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh
                 ) {
                     Text(
                         text = "${continueWatchingList.size}",
                         color = primaryColor,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 1.dp)
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                     )
                 }
             }
@@ -1313,9 +1449,8 @@ fun OfflineCinemaHub(
     onNavigateToDownloads: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = Color(0xFF13131F),
-        border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f)),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp)
@@ -1329,8 +1464,7 @@ fun OfflineCinemaHub(
                 modifier = Modifier
                     .size(56.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFFF59E0B).copy(alpha = 0.15f))
-                    .border(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f), CircleShape),
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -1364,13 +1498,13 @@ fun OfflineCinemaHub(
                 Button(
                     onClick = onNavigateToDownloads,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = CircleShape,
                     modifier = Modifier.fillMaxWidth(0.9f)
                 ) {
                     Icon(Icons.Default.DownloadDone, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Watch Offline Downloads (${completedDownloads.size}) 📥",
+                        text = "Watch Offline Downloads (${completedDownloads.size})",
                         color = Color.White,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold

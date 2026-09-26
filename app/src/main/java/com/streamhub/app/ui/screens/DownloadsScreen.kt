@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SdCard
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -57,15 +58,11 @@ import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.data.DownloadManager
 import com.streamhub.app.data.DownloadedItem
 import com.streamhub.app.data.models.MediaItem
-import com.streamhub.app.ui.theme.BackgroundDark
-import com.streamhub.app.ui.theme.CardBorderDark
-import com.streamhub.app.ui.theme.SurfaceDark
-import com.streamhub.app.ui.theme.TextPrimary
-import com.streamhub.app.ui.theme.TextSecondary
 
 @Composable
 fun DownloadsScreen(
     onPlayEpisode: (MediaItem, Int) -> Unit,
+    onNavigateToStorage: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -104,68 +101,73 @@ fun DownloadsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(BackgroundDark)
-            .padding(16.dp)
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Text(
-            text = "Offline Downloads 📥",
-            color = TextPrimary,
+            text = "Offline Downloads",
+            color = MaterialTheme.colorScheme.onSurface,
             fontSize = 22.sp,
             fontWeight = FontWeight.Bold
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(2.dp))
 
         Text(
-            text = "Watch your downloaded anime, movies and series with ZERO internet connection.",
-            color = TextSecondary,
-            fontSize = 12.sp
+            text = "Watch your downloaded anime, movies and series with ZERO internet connection",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 11.5.sp
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        // Expressive Storage Usage & Location Banner
+        // Expressive Storage Usage & Location Banner (M3 Expressive Borderless Grouped Container)
         Card(
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+                .clickable { onNavigateToStorage() }
         ) {
-            Column(modifier = Modifier.padding(14.dp)) {
+            Column(modifier = Modifier.padding(16.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(primaryColor.copy(alpha = 0.15f))
-                                .padding(8.dp)
+                                .padding(10.dp)
                         ) {
                             Icon(
                                 imageVector = if (storageLocation == "SD Card") Icons.Default.SdCard else Icons.Default.Folder,
                                 contentDescription = "Storage",
-                                tint = primaryColor
+                                tint = primaryColor,
+                                modifier = Modifier.size(22.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = storageLocation,
-                                    color = TextPrimary,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
+                                        .clip(androidx.compose.foundation.shape.CircleShape)
                                         .background(Color(0x2210B981))
-                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Text("Active", color = Color(0xFF10B981), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                 }
@@ -175,38 +177,47 @@ fun DownloadsScreen(
                                     "${String.format(java.util.Locale.US, "%.1f", totalMbUsed)} MB used (${String.format(java.util.Locale.US, "%.1f", freeGb)} GB free)"
                                 else
                                     "0.0 MB used / ${String.format(java.util.Locale.US, "%.1f", freeGb)} GB free of ${String.format(java.util.Locale.US, "%.1f", totalGb)} GB",
-                                color = TextSecondary,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 11.sp
                             )
                         }
                     }
 
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(primaryColor.copy(alpha = 0.2f))
-                            .border(1.dp, primaryColor.copy(alpha = 0.4f), RoundedCornerShape(20.dp))
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "${downloadsList.size} Downloads",
-                            color = primaryColor,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                            color = primaryColor.copy(alpha = 0.18f),
+                            modifier = Modifier.padding(end = 4.dp)
+                        ) {
+                            Text(
+                                text = "${downloadsList.size} Downloads",
+                                color = primaryColor,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.Storage,
+                            contentDescription = "Storage Dashboard",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
 
                 if (totalMbUsed > 0) {
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                     LinearProgressIndicator(
                         progress = { storageFraction.coerceAtLeast(0.02f) },
                         color = primaryColor,
-                        trackColor = Color(0x33FFFFFF),
+                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp))
+                            .height(5.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
                     )
                 }
             }
@@ -214,7 +225,7 @@ fun DownloadsScreen(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Quick Download & Network Preferences Row
+        // Quick Download & Network Preferences Row (M3 Expressive Borderless Pills)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -222,30 +233,26 @@ fun DownloadsScreen(
         ) {
             // Auto-Resume on Wi-Fi Toggle Pill
             Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = if (downloadSettings.autoResumeOnWifi) Color(0x2610B981) else SurfaceDark,
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    if (downloadSettings.autoResumeOnWifi) Color(0xFF10B981) else CardBorderDark
-                ),
+                shape = androidx.compose.foundation.shape.CircleShape,
+                color = if (downloadSettings.autoResumeOnWifi) Color(0x2610B981) else MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier.clickable {
                     com.streamhub.app.data.DownloadSettingsManager.updateAutoResumeOnWifi(!downloadSettings.autoResumeOnWifi)
                 }
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
+                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Wifi,
                         contentDescription = null,
-                        tint = if (downloadSettings.autoResumeOnWifi) Color(0xFF10B981) else TextSecondary,
-                        modifier = Modifier.size(13.dp)
+                        tint = if (downloadSettings.autoResumeOnWifi) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = if (downloadSettings.autoResumeOnWifi) "Auto-Resume: ON" else "Auto-Resume: OFF",
-                        color = if (downloadSettings.autoResumeOnWifi) Color(0xFF10B981) else TextSecondary,
+                        color = if (downloadSettings.autoResumeOnWifi) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -254,23 +261,19 @@ fun DownloadsScreen(
 
             // Wi-Fi Only Toggle Pill
             Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = if (downloadSettings.downloadOverWifiOnly) primaryColor.copy(alpha = 0.2f) else SurfaceDark,
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    if (downloadSettings.downloadOverWifiOnly) primaryColor else CardBorderDark
-                ),
+                shape = androidx.compose.foundation.shape.CircleShape,
+                color = if (downloadSettings.downloadOverWifiOnly) primaryColor.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier.clickable {
                     com.streamhub.app.data.DownloadSettingsManager.updateDownloadOverWifiOnly(!downloadSettings.downloadOverWifiOnly)
                 }
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
+                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp)
                 ) {
                     Text(
                         text = if (downloadSettings.downloadOverWifiOnly) "Wi-Fi Only: ON" else "Wi-Fi Only: OFF",
-                        color = if (downloadSettings.downloadOverWifiOnly) primaryColor else TextSecondary,
+                        color = if (downloadSettings.downloadOverWifiOnly) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -281,39 +284,12 @@ fun DownloadsScreen(
         Spacer(modifier = Modifier.height(14.dp))
 
         if (downloadsList.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Default.DownloadDone,
-                        contentDescription = "Downloads",
-                        tint = primaryColor,
-                        modifier = Modifier.height(64.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        text = "No Offline Downloads Yet",
-                        color = TextPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Text(
-                        text = "Tap the download icon beside any episode while online to save it for offline playback anywhere!",
-                        color = TextSecondary,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 32.dp)
-                    )
-                }
-            }
+            EmptyStateCard(
+                icon = Icons.Default.DownloadDone,
+                title = "No Offline Downloads Yet",
+                subtitle = "Tap the download icon beside any episode while online to save it for offline playback anywhere!",
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            )
         } else {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -323,8 +299,6 @@ fun DownloadsScreen(
                     DownloadedEpisodeCard(
                         item = downloadItem,
                         onPlay = {
-                            // FIX: Navigate with a special "offline" prefix so the Player
-                            // route knows to use the local file path, not the catalog stream URL.
                             val offlineMediaId = "offline:${downloadItem.mediaId}:${downloadItem.episodeIndex}"
                             val localEpisode = com.streamhub.app.data.models.Episode(
                                 title = downloadItem.episodeTitle,
@@ -344,21 +318,21 @@ fun DownloadsScreen(
             }
         }
 
-        // Delete Download Confirmation Dialog
+        // Delete Download Confirmation Dialog (M3 Expressive Dialog)
         itemToDelete?.let { target ->
             AlertDialog(
                 onDismissRequest = { itemToDelete = null },
                 title = {
                     Text(
                         text = "Delete Download?",
-                        color = TextPrimary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold
                     )
                 },
                 text = {
                     Text(
                         text = "Are you sure you want to delete \"${target.episodeTitle}\"? This offline file will be removed from your device storage.",
-                        color = TextSecondary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 13.sp
                     )
                 },
@@ -375,11 +349,11 @@ fun DownloadsScreen(
                 },
                 dismissButton = {
                     TextButton(onClick = { itemToDelete = null }) {
-                        Text("Cancel", color = TextSecondary)
+                        Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
-                containerColor = SurfaceDark,
-                shape = RoundedCornerShape(16.dp)
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = RoundedCornerShape(28.dp)
             )
         }
     }
@@ -393,25 +367,24 @@ fun DownloadedEpisodeCard(
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
     Card(
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, CardBorderDark, RoundedCornerShape(10.dp))
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier.fillMaxWidth()
     ) {
         Column {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(10.dp),
+                    .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
-                        .width(90.dp)
-                        .height(55.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xFF1F1F2C))
+                        .width(96.dp)
+                        .height(60.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 ) {
                     AsyncImage(
                         model = item.posterUrl,
@@ -432,7 +405,7 @@ fun DownloadedEpisodeCard(
                                 imageVector = Icons.Default.PlayArrow,
                                 contentDescription = "Play Offline",
                                 tint = Color.White,
-                                modifier = Modifier.height(24.dp)
+                                modifier = Modifier.size(26.dp)
                             )
                         }
                     }
@@ -443,7 +416,7 @@ fun DownloadedEpisodeCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = item.mediaTitle,
-                        color = TextPrimary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
@@ -451,14 +424,14 @@ fun DownloadedEpisodeCard(
                     )
                     Text(
                         text = item.episodeTitle,
-                        color = TextSecondary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
                         maxLines = 1
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     val statusText = when {
                         item.isCompleted -> "${String.format(java.util.Locale.US, "%.1f", item.fileSizeMb)} MB • Offline Ready"
-                        item.isQueued -> "In Queue ⏳"
+                        item.isQueued -> "In Queue"
                         item.isPaused -> "Paused • ${item.progressPercent}%"
                         else -> "Downloading... ${item.progressPercent}%"
                     }
@@ -511,7 +484,7 @@ fun DownloadedEpisodeCard(
                         item.isPaused -> AccentOrange
                         else -> primaryColor
                     },
-                    trackColor = Color(0x33FFFFFF),
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(3.dp)
@@ -520,3 +493,4 @@ fun DownloadedEpisodeCard(
         }
     }
 }
+

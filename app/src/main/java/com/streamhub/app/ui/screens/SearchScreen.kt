@@ -1,5 +1,6 @@
 package com.streamhub.app.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,13 +25,27 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.CompositionLocalProvider
 import com.streamhub.app.ui.components.LocalIsScrollInProgress
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Animation
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SortByAlpha
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.graphics.vector.ImageVector
+import kotlinx.coroutines.Job
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.DropdownMenu
@@ -82,11 +97,54 @@ import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 
-enum class SortOption {
-    LATEST,
-    RATING_DESC,
-    TITLE_ASC,
-    YEAR_DESC
+enum class SortOption(val label: String, val shortLabel: String) {
+    LATEST("Latest Added", "Latest"),
+    OLDEST("Oldest Added", "Oldest"),
+    RATING_DESC("Rating: High to Low", "Rating ↓"),
+    RATING_ASC("Rating: Low to High", "Rating ↑"),
+    TITLE_ASC("Title: (A - Z)", "A - Z"),
+    TITLE_DESC("Title: (Z - A)", "Z - A"),
+    YEAR_DESC("Release Year: Newest", "Year ↓"),
+    YEAR_ASC("Release Year: Oldest", "Year ↑");
+
+    val isAscending: Boolean
+        get() = this == OLDEST || this == RATING_ASC || this == TITLE_DESC || this == YEAR_ASC
+
+    fun toggleDirection(): SortOption = when (this) {
+        LATEST -> OLDEST
+        OLDEST -> LATEST
+        RATING_DESC -> RATING_ASC
+        RATING_ASC -> RATING_DESC
+        TITLE_ASC -> TITLE_DESC
+        TITLE_DESC -> TITLE_ASC
+        YEAR_DESC -> YEAR_ASC
+        YEAR_ASC -> YEAR_DESC
+    }
+
+    fun withDirection(ascending: Boolean): SortOption = when (this) {
+        LATEST, OLDEST -> if (ascending) OLDEST else LATEST
+        RATING_DESC, RATING_ASC -> if (ascending) RATING_ASC else RATING_DESC
+        TITLE_ASC, TITLE_DESC -> if (ascending) TITLE_DESC else TITLE_ASC
+        YEAR_DESC, YEAR_ASC -> if (ascending) YEAR_ASC else YEAR_DESC
+    }
+
+    val criterionKey: String
+        get() = when (this) {
+            LATEST, OLDEST -> "DATE"
+            RATING_DESC, RATING_ASC -> "RATING"
+            TITLE_ASC, TITLE_DESC -> "TITLE"
+            YEAR_DESC, YEAR_ASC -> "YEAR"
+        }
+
+    companion object {
+        fun forCriterion(criterionKey: String, ascending: Boolean = false): SortOption = when (criterionKey) {
+            "DATE" -> if (ascending) OLDEST else LATEST
+            "RATING" -> if (ascending) RATING_ASC else RATING_DESC
+            "TITLE" -> if (ascending) TITLE_DESC else TITLE_ASC
+            "YEAR" -> if (ascending) YEAR_ASC else YEAR_DESC
+            else -> LATEST
+        }
+    }
 }
 
 @Composable
@@ -123,38 +181,55 @@ fun SearchScreen(
     var sortOption by remember { mutableStateOf(SortOption.LATEST) }
     var isSortMenuExpanded by remember { mutableStateOf(false) }
 
+    var searchHoldLabel by remember { mutableStateOf<String?>(null) }
+    var searchHoldIcon by remember { mutableStateOf<ImageVector?>(null) }
+    var searchDismissJob by remember { mutableStateOf<Job?>(null) }
+    val searchHaptic = LocalHapticFeedback.current
+
+    fun triggerSearchHold(label: String, icon: ImageVector?) {
+        searchHaptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        searchHoldLabel = label
+        searchHoldIcon = icon
+        searchDismissJob?.cancel()
+        searchDismissJob = coroutineScope.launch {
+            delay(1800)
+            searchHoldLabel = null
+            searchHoldIcon = null
+        }
+    }
+
     val typeFilterList = listOf(
-        Pair("ALL", "All 🌐"),
-        Pair("ANIME", "🎌 Anime"),
-        Pair("MOVIE", "🎬 Movies"),
-        Pair("SERIES", "📺 Series")
+        Pair("ALL", "All"),
+        Pair("ANIME", "Anime"),
+        Pair("MOVIE", "Movies"),
+        Pair("SERIES", "Series")
     )
 
     val genreList = listOf(
-        "Action ⚔️" to "Action",
-        "Fantasy 🔮" to "Fantasy",
-        "Sci-Fi 🤖" to "Sci-Fi",
-        "Romance ❤️" to "Romance",
-        "Comedy 😂" to "Comedy",
-        "Drama 🎭" to "Drama",
-        "Supernatural ⚡" to "Supernatural",
-        "Horror 👻" to "Horror",
-        "Mystery 🕵️" to "Mystery",
-        "Adventure 🗺️" to "Adventure",
-        "Thriller 🩸" to "Thriller",
-        "Slice of Life ☕" to "Slice of Life"
+        "Action" to "Action",
+        "Fantasy" to "Fantasy",
+        "Sci-Fi" to "Sci-Fi",
+        "Romance" to "Romance",
+        "Comedy" to "Comedy",
+        "Drama" to "Drama",
+        "Supernatural" to "Supernatural",
+        "Horror" to "Horror",
+        "Mystery" to "Mystery",
+        "Adventure" to "Adventure",
+        "Thriller" to "Thriller",
+        "Slice of Life" to "Slice of Life"
     )
 
     val ratingFilterList = listOf(
         Pair(0.0, "All Ratings"),
-        Pair(8.0, "⭐ 8.0+ Top Rated"),
-        Pair(7.0, "⭐ 7.0+ High Quality")
+        Pair(8.0, "8.0+ Top Rated"),
+        Pair(7.0, "7.0+ High Quality")
     )
 
     val currentYear = remember { java.time.LocalDate.now().year }
     val yearFilterList = remember(currentYear) {
         listOf(
-            "ALL" to "All Years 📅",
+            "ALL" to "All Years",
             currentYear.toString() to currentYear.toString(),
             (currentYear - 1).toString() to (currentYear - 1).toString(),
             (currentYear - 2).toString() to (currentYear - 2).toString(),
@@ -219,9 +294,23 @@ fun SearchScreen(
                     .thenByDescending { it.releaseYear.toIntOrNull() ?: 0 }
                     .thenByDescending { it.id }
             )
+            SortOption.OLDEST -> filteredCatalog.sortedWith(
+                compareBy<MediaItem> { if (it.createdAt > 0L) it.createdAt else Long.MAX_VALUE }
+                    .thenBy { it.releaseYear.toIntOrNull() ?: 9999 }
+                    .thenBy { it.id }
+            )
             SortOption.RATING_DESC -> filteredCatalog.sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
-            SortOption.TITLE_ASC -> filteredCatalog.sortedBy { it.title.lowercase() }
+            SortOption.RATING_ASC -> filteredCatalog.sortedWith(
+                compareBy<MediaItem> { val r = it.rating.toDoubleOrNull(); if (r != null && r > 0.0) r else 999.0 }
+                    .thenBy { it.title.lowercase() }
+            )
+            SortOption.TITLE_ASC -> filteredCatalog.sortedBy { it.title.lowercase().trim() }
+            SortOption.TITLE_DESC -> filteredCatalog.sortedByDescending { it.title.lowercase().trim() }
             SortOption.YEAR_DESC -> filteredCatalog.sortedByDescending { it.releaseYear.toIntOrNull() ?: 0 }
+            SortOption.YEAR_ASC -> filteredCatalog.sortedWith(
+                compareBy<MediaItem> { val y = it.releaseYear.toIntOrNull(); if (y != null && y > 1900) y else 9999 }
+                    .thenBy { it.title.lowercase() }
+            )
         }
     }
 
@@ -303,93 +392,170 @@ fun SearchScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(BackgroundDark)
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "Explore & Search 🔍",
-                    color = TextPrimary,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                if (activeFilterCount > 0) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = primaryColor.copy(alpha = 0.2f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, primaryColor)
-                    ) {
-                        Text(
-                            text = "$activeFilterCount active",
-                            color = primaryColor,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-            }
-
-            // Sort Dropdown Button
-            Box {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(SurfaceDark)
-                        .border(1.dp, CardBorderDark, RoundedCornerShape(8.dp))
-                        .clickable { isSortMenuExpanded = true }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort", tint = primaryColor, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = when (sortOption) {
-                            SortOption.LATEST -> "Latest"
-                            SortOption.RATING_DESC -> "Rating ★"
-                            SortOption.TITLE_ASC -> "Name A-Z"
-                            SortOption.YEAR_DESC -> "Year 📅"
-                        },
-                        color = TextPrimary,
-                        fontSize = 11.sp,
+                        text = "Explore & Search",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.Bold
                     )
+                    if (activeFilterCount > 0) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Text(
+                                text = "$activeFilterCount active",
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
                 }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Discover anime, movies, series and more",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.5.sp
+                )
+            }
+
+            // M3 Expressive Split Sort Button
+            Box {
+                com.streamhub.app.ui.components.ExpressiveSortSplitButton(
+                    text = sortOption.shortLabel,
+                    isSelected = sortOption != SortOption.LATEST,
+                    isMenuOpen = isSortMenuExpanded,
+                    onDirectionClick = {
+                        val toggled = sortOption.toggleDirection()
+                        sortOption = toggled
+                    },
+                    onMenuClick = {
+                        isSortMenuExpanded = true
+                    }
+                )
 
                 DropdownMenu(
                     expanded = isSortMenuExpanded,
-                    onDismissRequest = { isSortMenuExpanded = false }
+                    onDismissRequest = { isSortMenuExpanded = false },
+                    modifier = Modifier
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .clip(RoundedCornerShape(16.dp))
+                        .padding(vertical = 4.dp)
                 ) {
-                    DropdownMenuItem(text = { Text("Latest Added") }, onClick = { sortOption = SortOption.LATEST; isSortMenuExpanded = false })
-                    DropdownMenuItem(text = { Text("Rating (High to Low)") }, onClick = { sortOption = SortOption.RATING_DESC; isSortMenuExpanded = false })
-                    DropdownMenuItem(text = { Text("Title (A to Z)") }, onClick = { sortOption = SortOption.TITLE_ASC; isSortMenuExpanded = false })
-                    DropdownMenuItem(text = { Text("Release Year") }, onClick = { sortOption = SortOption.YEAR_DESC; isSortMenuExpanded = false })
+                    // Direction Toggle Header Row inside dropdown
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val isAsc = sortOption.isAscending
+                        Surface(
+                            onClick = {
+                                sortOption = sortOption.withDirection(false)
+                            },
+                            shape = CircleShape,
+                            color = if (!isAsc) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                                Text(
+                                    text = "High to Low",
+                                    color = if (!isAsc) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (!isAsc) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
+
+                        Surface(
+                            onClick = {
+                                sortOption = sortOption.withDirection(true)
+                            },
+                            shape = CircleShape,
+                            color = if (isAsc) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                                Text(
+                                    text = "Low to High",
+                                    color = if (isAsc) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isAsc) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+
+                    // 4 Clean Criteria Options
+                    listOf<Triple<String, String, ImageVector>>(
+                        Triple("DATE", "Latest Added", Icons.Default.Schedule),
+                        Triple("RATING", "Rating", Icons.Default.Star),
+                        Triple("YEAR", "Release Year", Icons.Default.CalendarToday),
+                        Triple("TITLE", "Alphabetical (A - Z)", Icons.Default.SortByAlpha)
+                    ).forEach { (key: String, label: String, icon: ImageVector) ->
+                        val isCurrent = sortOption.criterionKey == key
+                        DropdownMenuItem(
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    tint = if (isCurrent) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            },
+                            text = {
+                                Text(
+                                    text = label,
+                                    color = if (isCurrent) primaryColor else MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 13.sp
+                                )
+                            },
+                            onClick = {
+                                sortOption = SortOption.forCriterion(key, sortOption.isAscending)
+                                isSortMenuExpanded = false
+                            }
+                        )
+                    }
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Search Input Bar
+        // Search Input Bar (M3 Expressive Pill)
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            placeholder = { Text("Search title, synonyms, studio, genre...", color = TextSecondary, fontSize = 13.sp) },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = AccentOrange) },
+            placeholder = { Text("Search title, synonyms, studio, genre...", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = primaryColor) },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
                     IconButton(onClick = { searchQuery = "" }) {
-                        Icon(Icons.Default.Clear, contentDescription = "Clear", tint = TextSecondary)
+                        Icon(Icons.Default.Clear, contentDescription = "Clear", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             },
@@ -405,14 +571,14 @@ fun SearchScreen(
                 }
             ),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = SurfaceDark,
-                unfocusedContainerColor = SurfaceDark,
-                focusedBorderColor = primaryColor,
-                unfocusedBorderColor = CardBorderDark,
-                focusedTextColor = TextPrimary,
-                unfocusedTextColor = TextPrimary
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                focusedBorderColor = Color.Transparent,
+                unfocusedBorderColor = Color.Transparent,
+                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedTextColor = MaterialTheme.colorScheme.onSurface
             ),
-            shape = RoundedCornerShape(12.dp),
+            shape = CircleShape,
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -426,8 +592,8 @@ fun SearchScreen(
             ) {
                 item {
                     Text(
-                        text = "💡 Suggestions:",
-                        color = TextSecondary,
+                        text = "Suggestions:",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(end = 2.dp)
@@ -435,9 +601,8 @@ fun SearchScreen(
                 }
                 items(autocompleteSuggestions) { suggestion ->
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = primaryColor.copy(alpha = 0.12f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, primaryColor.copy(alpha = 0.35f)),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         modifier = Modifier.clickable {
                             searchQuery = suggestion
                             debouncedQuery = suggestion
@@ -447,75 +612,123 @@ fun SearchScreen(
                     ) {
                         Text(
                             text = suggestion,
-                            color = TextPrimary,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
-        // Row 1: Content Type Pills
+        // M3 Expressive Floating Hold Popup Pill for Content Type Filters
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            com.streamhub.app.ui.components.ExpressiveHoldPopup(
+                visible = searchHoldLabel != null,
+                label = searchHoldLabel,
+                icon = searchHoldIcon,
+                accentColor = primaryColor
+            )
+        }
+
+        // Row 1: Content Type Pills (M3 Expressive Icon Chips)
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
         ) {
-            items(typeFilterList) { (key, label) ->
-                val isSelected = selectedTypeFilter == key
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(if (isSelected) primaryColor else SurfaceDark)
-                        .border(1.dp, if (isSelected) primaryColor else CardBorderDark, RoundedCornerShape(20.dp))
-                        .clickable { selectedTypeFilter = key }
-                        .padding(horizontal = 13.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        text = label,
-                        color = if (isSelected) Color.White else TextSecondary,
-                        fontSize = 12.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                    )
-                }
+            item {
+                com.streamhub.app.ui.components.ExpressiveCategoryChip(
+                    icon = Icons.Default.Apps,
+                    label = "All Media",
+                    isSelected = selectedTypeFilter == "ALL",
+                    onClick = {
+                        searchHoldLabel = null
+                        selectedTypeFilter = "ALL"
+                    },
+                    onHold = {
+                        triggerSearchHold("All Catalog", Icons.Default.Apps)
+                    }
+                )
+            }
+            item {
+                com.streamhub.app.ui.components.ExpressiveCategoryChip(
+                    icon = Icons.Default.Animation,
+                    label = "Anime",
+                    isSelected = selectedTypeFilter == "ANIME",
+                    onClick = {
+                        searchHoldLabel = null
+                        selectedTypeFilter = "ANIME"
+                    },
+                    onHold = {
+                        triggerSearchHold("Anime & Animation", Icons.Default.Animation)
+                    }
+                )
+            }
+            item {
+                com.streamhub.app.ui.components.ExpressiveCategoryChip(
+                    icon = Icons.Default.Movie,
+                    label = "Movies",
+                    isSelected = selectedTypeFilter == "MOVIE",
+                    onClick = {
+                        searchHoldLabel = null
+                        selectedTypeFilter = "MOVIE"
+                    },
+                    onHold = {
+                        triggerSearchHold("Blockbuster Movies", Icons.Default.Movie)
+                    }
+                )
+            }
+            item {
+                com.streamhub.app.ui.components.ExpressiveCategoryChip(
+                    icon = Icons.Default.Tv,
+                    label = "Series",
+                    isSelected = selectedTypeFilter == "SERIES",
+                    onClick = {
+                        searchHoldLabel = null
+                        selectedTypeFilter = "SERIES"
+                    },
+                    onHold = {
+                        triggerSearchHold("Web Series & Shows", Icons.Default.Tv)
+                    }
+                )
             }
         }
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Row 2: Multi-tag Genre Chips
+        // Row 2: Multi-tag Genre Chips (M3 Expressive Borderless Pills)
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             items(genreList) { (label, rawKey) ->
                 val isSelected = selectedGenres.contains(rawKey)
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(if (isSelected) Color(0xFF00E5FF).copy(alpha = 0.2f) else SurfaceDark)
-                        .border(
-                            1.dp,
-                            if (isSelected) Color(0xFF00E5FF) else CardBorderDark,
-                            RoundedCornerShape(20.dp)
-                        )
-                        .clickable {
-                            selectedGenres = if (isSelected) {
-                                selectedGenres - rawKey
-                            } else {
-                                selectedGenres + rawKey
-                            }
+                Surface(
+                    shape = CircleShape,
+                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.clickable {
+                        selectedGenres = if (isSelected) {
+                            selectedGenres - rawKey
+                        } else {
+                            selectedGenres + rawKey
                         }
-                        .padding(horizontal = 12.dp, vertical = 5.dp)
+                    }
                 ) {
                     Text(
                         text = if (isSelected) "✓ $label" else label,
-                        color = if (isSelected) Color(0xFF00E5FF) else TextSecondary,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                     )
                 }
             }
@@ -523,45 +736,41 @@ fun SearchScreen(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Row 3: Rating & Year Quick Filters
+        // Row 3: Rating & Year Quick Filters (M3 Expressive Borderless Pills)
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             items(ratingFilterList) { (minRating, label) ->
                 val isSelected = minRatingFilter == minRating
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(if (isSelected) Color(0xFFF59E0B) else SurfaceDark)
-                        .border(1.dp, if (isSelected) Color(0xFFF59E0B) else CardBorderDark, RoundedCornerShape(20.dp))
-                        .clickable { minRatingFilter = if (isSelected && minRating > 0.0) 0.0 else minRating }
-                        .padding(horizontal = 11.dp, vertical = 5.dp)
+                Surface(
+                    shape = CircleShape,
+                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.clickable { minRatingFilter = if (isSelected && minRating > 0.0) 0.0 else minRating }
                 ) {
                     Text(
                         text = label,
-                        color = if (isSelected) Color.Black else TextSecondary,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                     )
                 }
             }
 
             items(yearFilterList) { (yearKey, label) ->
                 val isSelected = selectedYearFilter == yearKey
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(if (isSelected) AccentOrange.copy(alpha = 0.25f) else SurfaceDark)
-                        .border(1.dp, if (isSelected) AccentOrange else CardBorderDark, RoundedCornerShape(20.dp))
-                        .clickable { selectedYearFilter = if (isSelected && yearKey != "ALL") "ALL" else yearKey }
-                        .padding(horizontal = 11.dp, vertical = 5.dp)
+                Surface(
+                    shape = CircleShape,
+                    color = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier.clickable { selectedYearFilter = if (isSelected && yearKey != "ALL") "ALL" else yearKey }
                 ) {
                     Text(
                         text = label,
-                        color = if (isSelected) AccentOrange else TextSecondary,
+                        color = if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                     )
                 }
             }
@@ -577,14 +786,14 @@ fun SearchScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "🕒 Recent Searches",
-                        color = TextPrimary,
+                        text = "Recent Searches",
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = "Clear",
-                        color = TextSecondary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.clickable {
@@ -599,17 +808,16 @@ fun SearchScreen(
                 ) {
                     items(searchHistory) { queryItem ->
                         Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = SurfaceDark,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, CardBorderDark)
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
+                                modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 5.dp, bottom = 5.dp)
                             ) {
                                 Text(
                                     text = queryItem,
-                                    color = TextPrimary,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
                                     modifier = Modifier.clickable {
@@ -621,7 +829,7 @@ fun SearchScreen(
                                 Icon(
                                     imageVector = Icons.Default.Close,
                                     contentDescription = "Remove search",
-                                    tint = TextSecondary,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier
                                         .size(14.dp)
                                         .clickable {
@@ -646,12 +854,12 @@ fun SearchScreen(
                 ) {
                     Text(
                         text = when (selectedTypeFilter) {
-                            "ANIME" -> "🔥 Trending Anime Searches"
-                            "MOVIE" -> "🔥 Trending Movie Searches"
-                            "SERIES" -> "🔥 Trending Series Searches"
-                            else -> "🔥 Trending Searches"
+                            "ANIME" -> "Trending Anime Searches"
+                            "MOVIE" -> "Trending Movie Searches"
+                            "SERIES" -> "Trending Series Searches"
+                            else -> "Trending Searches"
                         },
-                        color = TextPrimary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -670,12 +878,8 @@ fun SearchScreen(
                     itemsIndexed(trendingSearches) { index, popTitle ->
                         val isTop3 = index < 3
                         Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = if (isTop3) primaryColor.copy(alpha = 0.15f) else SurfaceDark,
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                if (isTop3) primaryColor.copy(alpha = 0.5f) else CardBorderDark
-                            ),
+                            shape = CircleShape,
+                            color = if (isTop3) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
                             modifier = Modifier.clickable {
                                 searchQuery = popTitle
                                 debouncedQuery = popTitle
@@ -685,18 +889,18 @@ fun SearchScreen(
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                             ) {
                                 Text(
                                     text = "#${index + 1}",
-                                    color = if (isTop3) primaryColor else TextSecondary,
+                                    color = if (isTop3) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.width(5.dp))
                                 Text(
                                     text = popTitle,
-                                    color = TextPrimary,
+                                    color = if (isTop3) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
                                     fontSize = 11.sp,
                                     fontWeight = if (isTop3) FontWeight.SemiBold else FontWeight.Medium
                                 )
@@ -717,15 +921,15 @@ fun SearchScreen(
         ) {
             Text(
                 text = "Results (${sortedCatalog.size})",
-                color = TextSecondary,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold
             )
 
             if (activeFilterCount > 0) {
                 Text(
-                    text = "Reset All Filters 🔄",
-                    color = AccentOrange,
+                    text = "Reset All Filters",
+                    color = primaryColor,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.clickable {
@@ -766,13 +970,13 @@ fun SearchScreen(
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = "No results",
-                            tint = TextSecondary,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(56.dp)
                         )
                         Spacer(modifier = Modifier.height(14.dp))
                         Text(
                             text = "No results found for \"$searchQuery\"",
-                            color = TextPrimary,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -780,7 +984,7 @@ fun SearchScreen(
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = "Try adjusting your filters or explore trending titles:",
-                            color = TextSecondary,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 12.sp,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
@@ -791,9 +995,8 @@ fun SearchScreen(
                         ) {
                             items(trendingSearches.take(6)) { trendTitle ->
                                 Surface(
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = primaryColor.copy(alpha = 0.15f),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, primaryColor.copy(alpha = 0.4f)),
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                     modifier = Modifier.clickable {
                                         searchQuery = trendTitle
                                         debouncedQuery = trendTitle
@@ -801,20 +1004,19 @@ fun SearchScreen(
                                     }
                                 ) {
                                     Text(
-                                        text = "🔥 $trendTitle",
-                                        color = TextPrimary,
+                                        text = trendTitle,
+                                        color = MaterialTheme.colorScheme.onSurface,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                     )
                                 }
                             }
                         }
                         Spacer(modifier = Modifier.height(14.dp))
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = SurfaceDark,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, CardBorderDark),
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             modifier = Modifier.clickable {
                                 searchQuery = ""
                                 debouncedQuery = ""
@@ -826,11 +1028,11 @@ fun SearchScreen(
                             }
                         ) {
                             Text(
-                                text = "Clear Search & Reset Filters 🔄",
-                                color = AccentOrange,
+                                text = "Clear Search & Reset Filters",
+                                color = primaryColor,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                             )
                         }
                     }
@@ -849,7 +1051,7 @@ fun SearchScreen(
                 LazyVerticalGrid(
                     state = gridState,
                     columns = GridCells.Adaptive(minSize = 135.dp),
-                    contentPadding = PaddingValues(bottom = 16.dp),
+                    contentPadding = PaddingValues(bottom = 120.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.weight(1f)

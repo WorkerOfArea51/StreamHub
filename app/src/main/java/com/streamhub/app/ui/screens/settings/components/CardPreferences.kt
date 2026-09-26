@@ -52,9 +52,9 @@ fun PreferenceCard(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF181824)
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
@@ -76,7 +76,7 @@ fun PreferenceDivider(
 ) {
     HorizontalDivider(
         modifier = modifier.padding(horizontal = 16.dp),
-        color = Color(0x1AFFFFFF),
+        color = MaterialTheme.colorScheme.outlineVariant,
         thickness = 0.5.dp
     )
 }
@@ -137,7 +137,7 @@ fun PreferenceItem(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(iconTint.copy(alpha = 0.12f)),
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -211,7 +211,7 @@ fun PreferenceSwitchItem(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(iconTint.copy(alpha = 0.12f)),
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(

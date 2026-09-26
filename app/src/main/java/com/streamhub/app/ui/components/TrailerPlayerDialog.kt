@@ -315,10 +315,9 @@ fun TrailerPlayerDialog(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    CircularProgressIndicator(
-                                        color = PrimaryRed,
-                                        strokeWidth = 3.dp,
-                                        modifier = Modifier.size(36.dp)
+                                    ExpressiveLoadingIndicator(
+                                        size = 38.dp,
+                                        color = PrimaryRed
                                     )
                                     Text(
                                         text = "Loading HD Trailer...",

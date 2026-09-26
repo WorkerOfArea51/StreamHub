@@ -354,13 +354,16 @@ fun MetadataInspectorDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f).padding(end = 8.dp)
+                    ) {
                         Box(
                             modifier = Modifier
                                 .size(40.dp)
-                                .clip(CircleShape)
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(Color(0xFF7C4DFF).copy(alpha = 0.2f))
-                                .border(1.dp, Color(0xFF7C4DFF).copy(alpha = 0.5f), CircleShape),
+                                .border(1.dp, Color(0xFF7C4DFF).copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -370,16 +373,18 @@ fun MetadataInspectorDialog(
                                 modifier = Modifier.size(22.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = "Metadata Health Inspector",
                                     color = TextPrimary,
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
                                     color = Color(0xFF7C4DFF).copy(alpha = 0.2f),
@@ -388,20 +393,23 @@ fun MetadataInspectorDialog(
                                     Text(
                                         text = "v2.0 Full Audit",
                                         color = Color(0xFFD0BCFF),
-                                        fontSize = 10.sp,
+                                        fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                                     )
                                 }
                             }
                             Text(
                                 text = "Comprehensive diagnostic engine: audit trailers, cast, genres, synopses, and technical specs",
                                 color = TextSecondary,
-                                fontSize = 11.sp
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
 
+                    // Clean Standard Close Button (Consistent with Creator Studio and app dialogs)
                     IconButton(
                         onClick = {
                             batchJob?.cancel()
@@ -409,7 +417,11 @@ fun MetadataInspectorDialog(
                         },
                         enabled = !isBatchRepairing
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = TextPrimary
+                        )
                     }
                 }
 

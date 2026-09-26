@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
 import com.streamhub.app.ui.theme.bouncyTouch
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -77,19 +78,35 @@ import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
+import com.streamhub.app.data.DownloadManager
 import kotlinx.coroutines.launch
+
+private data class ShowDownloadGroup(
+    val mediaId: String,
+    val title: String,
+    val posterUrl: String,
+    val totalCount: Int,
+    val completedCount: Int,
+    val totalMb: Double
+)
 
 @Composable
 fun StorageManagementScreen(
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onNavigateToDownloads: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val metrics by StorageCacheManager.metricsFlow.collectAsState()
     val config by StorageCacheManager.configFlow.collectAsState()
+    val downloadsList by DownloadManager.downloads.collectAsState()
 
     var showClearAllConfirmDialog by remember { mutableStateOf(false) }
-    var isOptimizingDb by remember { mutableStateOf(false) }
+    var showDeleteAllDownloadsConfirmDialog by remember { mutableStateOf(false) }
+    var showMediaDeleteConfirmDialog by remember { mutableStateOf<Pair<String, String>?>(null) }
     var showCachedStreamsSheet by remember { mutableStateOf(false) }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -100,7 +117,7 @@ fun StorageManagementScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundDark)
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             .statusBarsPadding()
     ) {
         Column(
@@ -108,26 +125,33 @@ fun StorageManagementScreen(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
         ) {
-            // Top Bar
+            // Modernized M3 Top Bar with tactile CircleShape controls
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = onBackClick,
-                        modifier = Modifier.bouncyTouch()
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        modifier = Modifier
+                            .size(42.dp)
+                            .bouncyTouch()
+                            .clickable { onBackClick() }
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = TextPrimary
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = TextPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(14.dp))
                     Column {
                         Text(
                             text = "Storage & Cache",
@@ -143,35 +167,42 @@ fun StorageManagementScreen(
                     }
                 }
 
-                IconButton(
-                    onClick = {
-                        StorageCacheManager.enforceCachePolicies()
-                        StorageCacheManager.calculateStorageUsage()
-                    },
-                    enabled = !metrics.isCalculating
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier
+                        .size(42.dp)
+                        .bouncyTouch()
+                        .clickable(enabled = !metrics.isCalculating) {
+                            StorageCacheManager.enforceCachePolicies()
+                            StorageCacheManager.calculateStorageUsage()
+                        }
                 ) {
-                    if (metrics.isCalculating) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = PrimaryRed,
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Refresh Storage",
-                            tint = TextPrimary
-                        )
+                    Box(contentAlignment = Alignment.Center) {
+                        if (metrics.isCalculating) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = PrimaryRed,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Refresh Storage",
+                                tint = TextPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             // Multi-Color Storage Gauge Card
             StorageGaugeCard(metrics = metrics)
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             // Section 1: Granular Cache Cleaner
             Text(
@@ -179,18 +210,18 @@ fun StorageManagementScreen(
                 color = AccentOrange,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                letterSpacing = 0.5.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
             )
 
             Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(18.dp)) {
                     // Video Streaming Cache Row
                     CacheActionRow(
                         icon = Icons.Default.VideoLibrary,
@@ -214,8 +245,8 @@ fun StorageManagementScreen(
                     )
 
                     HorizontalDivider(
-                        color = CardBorderDark,
-                        modifier = Modifier.padding(vertical = 12.dp)
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
+                        modifier = Modifier.padding(vertical = 14.dp)
                     )
 
                     // Image Cache Row
@@ -238,8 +269,8 @@ fun StorageManagementScreen(
                     )
 
                     HorizontalDivider(
-                        color = CardBorderDark,
-                        modifier = Modifier.padding(vertical = 12.dp)
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
+                        modifier = Modifier.padding(vertical = 14.dp)
                     )
 
                     // App Data & Temp Cache Row
@@ -254,8 +285,8 @@ fun StorageManagementScreen(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .size(40.dp)
+                                    .clip(CircleShape)
                                     .background(Color(0xFFFFA726).copy(alpha = 0.15f)),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -266,7 +297,7 @@ fun StorageManagementScreen(
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.width(12.dp))
+                            Spacer(modifier = Modifier.width(14.dp))
                             Column {
                                 Text(
                                     text = "App Data & Metadata",
@@ -289,14 +320,34 @@ fun StorageManagementScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
+                        modifier = Modifier.padding(vertical = 14.dp)
+                    )
+
+                    // Offline Downloads Row
+                    CacheActionRow(
+                        icon = Icons.Default.Download,
+                        iconColor = Color(0xFFAB47BC),
+                        title = "Offline Downloads",
+                        subtitle = "${downloadsList.count { it.isCompleted }} downloaded files (${downloadsList.size} total)",
+                        sizeStr = StorageCacheManager.formatBytes(metrics.downloadsBytes),
+                        actionText = "Manage",
+                        onClick = onNavigateToDownloads,
+                        onAction = onNavigateToDownloads
+                    )
+
+                    Spacer(modifier = Modifier.height(18.dp))
 
                     // Master Clear All Button
                     Button(
                         onClick = { showClearAllConfirmDialog = true },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        shape = CircleShape,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .bouncyTouch()
                     ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
@@ -313,7 +364,161 @@ fun StorageManagementScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            // Downloaded Media by Show Section
+            if (downloadsList.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "DOWNLOADED MEDIA BY SHOW",
+                        color = AccentOrange,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+
+                    Surface(
+                        shape = CircleShape,
+                        color = PrimaryRed.copy(alpha = 0.15f),
+                        modifier = Modifier
+                            .bouncyTouch()
+                            .clickable { showDeleteAllDownloadsConfirmDialog = true }
+                    ) {
+                        Text(
+                            text = "Delete All",
+                            color = PrimaryRed,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+
+                Card(
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        val shows = remember(downloadsList) {
+                            downloadsList.groupBy { it.mediaId }
+                                .map { (id, items) ->
+                                    val completed = items.count { it.isCompleted }
+                                    val title = items.firstOrNull()?.mediaTitle?.ifBlank { "Media" } ?: "Media"
+                                    val poster = items.firstOrNull()?.posterUrl ?: ""
+                                    val mb = items.sumOf { it.fileSizeMb }
+                                    ShowDownloadGroup(id, title, poster, items.size, completed, mb)
+                                }
+                        }
+
+                        shows.forEachIndexed { index, show ->
+                            if (index > 0) {
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
+                                    modifier = Modifier.padding(vertical = 12.dp)
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    if (show.posterUrl.isNotBlank()) {
+                                        AsyncImage(
+                                            model = show.posterUrl,
+                                            contentDescription = show.title,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(width = 44.dp, height = 62.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(width = 44.dp, height = 62.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Download,
+                                                contentDescription = null,
+                                                tint = Color(0xFFAB47BC),
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(14.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = show.title,
+                                            color = TextPrimary,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 14.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "${show.completedCount} of ${show.totalCount} episodes ready",
+                                            color = TextSecondary,
+                                            fontSize = 11.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = if (show.totalMb >= 1024)
+                                                "${String.format(java.util.Locale.US, "%.2f", show.totalMb / 1024.0)} GB"
+                                            else
+                                                "${String.format(java.util.Locale.US, "%.1f", show.totalMb)} MB",
+                                            color = Color(0xFFAB47BC),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(10.dp))
+
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .bouncyTouch()
+                                        .clickable { showMediaDeleteConfirmDialog = Pair(show.mediaId, show.title) }
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete show downloads",
+                                            tint = PrimaryRed.copy(alpha = 0.85f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
 
             // Section 2: Automated Cache Policies
             Text(
@@ -321,18 +526,18 @@ fun StorageManagementScreen(
                 color = AccentOrange,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                letterSpacing = 0.5.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)
             )
 
             Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
-                    .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(18.dp)) {
                     // Cache Size Limit Dropdown Row
                     DropdownSettingRow(
                         title = "Maximum Cache Size Limit",
@@ -357,8 +562,8 @@ fun StorageManagementScreen(
                     )
 
                     HorizontalDivider(
-                        color = CardBorderDark,
-                        modifier = Modifier.padding(vertical = 12.dp)
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
+                        modifier = Modifier.padding(vertical = 14.dp)
                     )
 
                     // Cache TTL Auto-Delete Row
@@ -391,8 +596,8 @@ fun StorageManagementScreen(
                     )
 
                     HorizontalDivider(
-                        color = CardBorderDark,
-                        modifier = Modifier.padding(vertical = 12.dp)
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
+                        modifier = Modifier.padding(vertical = 14.dp)
                     )
 
                     // Keep Watched for Instant Resume Switch
@@ -425,105 +630,9 @@ fun StorageManagementScreen(
                                 checkedThumbColor = Color.White,
                                 checkedTrackColor = PrimaryRed,
                                 uncheckedThumbColor = TextSecondary,
-                                uncheckedTrackColor = SurfaceDark
+                                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest
                             )
                         )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // Section 3: Database & Engine Optimization
-            Text(
-                text = "DATABASE & ENGINE MAINTENANCE",
-                color = AccentOrange,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-            )
-
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(PrimaryRed.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CleaningServices,
-                                contentDescription = null,
-                                tint = PrimaryRed,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "Defragment & Compact Database",
-                                color = TextPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Vacuums indices & compacts SQLite storage to reclaim disk space safely.",
-                                color = TextSecondary,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    OutlinedButton(
-                        onClick = {
-                            isOptimizingDb = true
-                            scope.launch {
-                                val ok = StorageCacheManager.compactAndOptimizeDatabase()
-                                isOptimizingDb = false
-                                ToastManager.showToast(
-                                    if (ok) "Database compacted & optimized successfully" else "Optimization completed",
-                                    if (ok) Icons.Default.CloudDone else Icons.Default.Speed
-                                )
-                            }
-                        },
-                        enabled = !isOptimizingDb,
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        if (isOptimizingDb) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                color = PrimaryRed,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Text(
-                                text = "Optimize",
-                                color = PrimaryRed,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
                     }
                 }
             }
@@ -539,7 +648,10 @@ fun StorageManagementScreen(
             title = { Text("Clear All Cache?", color = TextPrimary, fontWeight = FontWeight.Bold) },
             text = { Text("This will delete all temporary video streaming chunks, poster images, and temporary cache. Your watch history, favorites, and offline downloads will remain safe.", color = TextSecondary) },
             confirmButton = {
-                TextButton(
+                Button(
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                    modifier = Modifier.bouncyTouch(),
                     onClick = {
                         scope.launch {
                             StorageCacheManager.clearAllCache()
@@ -548,16 +660,90 @@ fun StorageManagementScreen(
                         showClearAllConfirmDialog = false
                     }
                 ) {
-                    Text("Clear All", color = Color(0xFFFF5252), fontWeight = FontWeight.Bold)
+                    Text("Clear All", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearAllConfirmDialog = false }) {
+                TextButton(
+                    shape = CircleShape,
+                    modifier = Modifier.bouncyTouch(),
+                    onClick = { showClearAllConfirmDialog = false }
+                ) {
                     Text("Cancel", color = TextSecondary)
                 }
             },
-            containerColor = SurfaceDark,
-            shape = RoundedCornerShape(16.dp)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(28.dp)
+        )
+    }
+
+    // Confirmation Dialog for Show Downloads Batch Deletion
+    showMediaDeleteConfirmDialog?.let { (mediaId, title) ->
+        AlertDialog(
+            onDismissRequest = { showMediaDeleteConfirmDialog = null },
+            title = { Text("Delete Downloads?", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to delete all downloaded files for \"$title\"? This cannot be undone.", color = TextSecondary) },
+            confirmButton = {
+                Button(
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                    modifier = Modifier.bouncyTouch(),
+                    onClick = {
+                        DownloadManager.deleteDownloadsForMedia(mediaId)
+                        StorageCacheManager.calculateStorageUsage()
+                        ToastManager.showToast("Deleted downloads for $title", Icons.Default.Delete)
+                        showMediaDeleteConfirmDialog = null
+                    }
+                ) {
+                    Text("Delete", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    shape = CircleShape,
+                    modifier = Modifier.bouncyTouch(),
+                    onClick = { showMediaDeleteConfirmDialog = null }
+                ) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(28.dp)
+        )
+    }
+
+    // Confirmation Dialog for Delete All Offline Downloads
+    if (showDeleteAllDownloadsConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAllDownloadsConfirmDialog = false },
+            title = { Text("Delete All Offline Downloads?", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            text = { Text("This will permanently remove all downloaded videos and episodes from your device storage.", color = TextSecondary) },
+            confirmButton = {
+                Button(
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                    modifier = Modifier.bouncyTouch(),
+                    onClick = {
+                        DownloadManager.deleteAllDownloads()
+                        StorageCacheManager.calculateStorageUsage()
+                        ToastManager.showToast("All offline downloads deleted", Icons.Default.Delete)
+                        showDeleteAllDownloadsConfirmDialog = false
+                    }
+                ) {
+                    Text("Delete All", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    shape = CircleShape,
+                    modifier = Modifier.bouncyTouch(),
+                    onClick = { showDeleteAllDownloadsConfirmDialog = false }
+                ) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(28.dp)
         )
     }
 
@@ -589,14 +775,13 @@ fun StorageGaugeCard(metrics: com.streamhub.app.data.StorageMetrics) {
     val otherAndFreeFrac = (1f - (videoFrac + imageFrac + appDataFrac + downloadsFrac)).coerceAtLeast(0f)
 
     Card(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            .border(1.dp, CardBorderDark, RoundedCornerShape(16.dp))
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(18.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -616,15 +801,15 @@ fun StorageGaugeCard(metrics: com.streamhub.app.data.StorageMetrics) {
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // Multi-segment Gauge Bar
+            // Multi-segment Gauge Bar clipped to capsule
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(10.dp)
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(Color(0xFF2C2C2C))
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
             ) {
                 Row(modifier = Modifier.fillMaxSize()) {
                     if (videoFrac > 0.002f) {
@@ -664,39 +849,54 @@ fun StorageGaugeCard(metrics: com.streamhub.app.data.StorageMetrics) {
                             modifier = Modifier
                                 .weight(otherAndFreeFrac)
                                 .fillMaxSize()
-                                .background(Color(0xFF424242))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f))
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Legend Rows
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                StorageLegendItem(
-                    color = Color(0xFF29B6F6),
-                    label = "Video Cache",
-                    value = StorageCacheManager.formatBytes(metrics.videoCacheBytes)
-                )
-                StorageLegendItem(
-                    color = Color(0xFF66BB6A),
-                    label = "Image Cache",
-                    value = StorageCacheManager.formatBytes(metrics.imageCacheBytes)
-                )
-                StorageLegendItem(
-                    color = Color(0xFFFFA726),
-                    label = "App Data",
-                    value = StorageCacheManager.formatBytes(metrics.appDataBytes)
-                )
-                StorageLegendItem(
-                    color = Color(0xFF424242),
-                    label = "Free Space",
-                    value = StorageCacheManager.formatBytes(metrics.freeDeviceBytes)
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    StorageLegendItem(
+                        color = Color(0xFF29B6F6),
+                        label = "Video Cache",
+                        value = StorageCacheManager.formatBytes(metrics.videoCacheBytes)
+                    )
+                    StorageLegendItem(
+                        color = Color(0xFF66BB6A),
+                        label = "Image Cache",
+                        value = StorageCacheManager.formatBytes(metrics.imageCacheBytes)
+                    )
+                    StorageLegendItem(
+                        color = Color(0xFFFFA726),
+                        label = "App Data",
+                        value = StorageCacheManager.formatBytes(metrics.appDataBytes)
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    StorageLegendItem(
+                        color = Color(0xFFAB47BC),
+                        label = "Offline Media",
+                        value = StorageCacheManager.formatBytes(metrics.downloadsBytes)
+                    )
+                    StorageLegendItem(
+                        color = Color(0xFF757575),
+                        label = "Free Space",
+                        value = StorageCacheManager.formatBytes(metrics.freeDeviceBytes)
+                    )
+                }
             }
         }
     }
@@ -734,7 +934,7 @@ fun CacheActionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(14.dp))
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -745,8 +945,8 @@ fun CacheActionRow(
         ) {
             Box(
                 modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .size(40.dp)
+                    .clip(CircleShape)
                     .background(iconColor.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -757,7 +957,7 @@ fun CacheActionRow(
                     modifier = Modifier.size(20.dp)
                 )
             }
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(14.dp))
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -769,7 +969,7 @@ fun CacheActionRow(
                     if (inspectHint != null) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Surface(
-                            shape = RoundedCornerShape(4.dp),
+                            shape = CircleShape,
                             color = iconColor.copy(alpha = 0.15f)
                         ) {
                             Text(
@@ -777,7 +977,7 @@ fun CacheActionRow(
                                 color = iconColor,
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
                     }
@@ -799,17 +999,22 @@ fun CacheActionRow(
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp
             )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = actionText,
-                color = PrimaryRed,
-                fontWeight = FontWeight.Bold,
-                fontSize = 12.sp,
+            Spacer(modifier = Modifier.height(4.dp))
+            Surface(
+                shape = CircleShape,
+                color = if (actionText == "Manage") MaterialTheme.colorScheme.surfaceContainerHighest else PrimaryRed.copy(alpha = 0.15f),
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
+                    .bouncyTouch()
                     .clickable { onAction() }
-                    .padding(horizontal = 4.dp, vertical = 2.dp)
-            )
+            ) {
+                Text(
+                    text = actionText,
+                    color = if (actionText == "Manage") TextPrimary else PrimaryRed,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                )
+            }
         }
     }
 }
@@ -850,24 +1055,27 @@ fun <T> DropdownSettingRow(
 
         Box {
             Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = Color(0x33FF6B00),
-                border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0x66FF6B00)),
-                modifier = Modifier.clickable { expanded = true }
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                modifier = Modifier
+                    .bouncyTouch()
+                    .clickable { expanded = true }
             ) {
                 Text(
                     text = "$currentValue ▾",
                     color = AccentOrange,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                 )
             }
 
             DropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
-                modifier = Modifier.background(SurfaceDark)
+                modifier = Modifier
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .clip(RoundedCornerShape(16.dp))
             ) {
                 options.forEach { (label, value) ->
                     DropdownMenuItem(

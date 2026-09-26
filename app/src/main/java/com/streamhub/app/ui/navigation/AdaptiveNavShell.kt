@@ -1,5 +1,7 @@
 package com.streamhub.app.ui.navigation
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -7,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Icon
@@ -54,7 +57,7 @@ fun AdaptiveNavShell(
     Row(modifier = modifier.fillMaxSize()) {
         if (showRail) {
             NavigationRail(
-                containerColor = MaterialTheme.colorScheme.surface,
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
                 header = { Spacer(Modifier.statusBarsPadding()) }
             ) {
                 bottomBarScreens.forEach { screen ->
@@ -78,6 +81,7 @@ fun AdaptiveNavShell(
                                 )
                             }
                         },
+                        alwaysShowLabel = false,
                         label = {
                             Text(
                                 text = screen.title,
@@ -94,51 +98,12 @@ fun AdaptiveNavShell(
             }
         }
 
-        Scaffold(
-            bottomBar = {
-                if (showBottomBar) {
-                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                        bottomBarScreens.forEach { screen ->
-                            val selected = currentRoute == screen.route
-                            NavigationBarItem(
-                                selected = selected,
-                                onClick = {
-                                    navController.navigate(screen.route) {
-                                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                },
-                                icon = {
-                                    screen.icon?.let {
-                                        Icon(
-                                            imageVector = it,
-                                            contentDescription = screen.title,
-                                            tint = if (selected) MaterialTheme.colorScheme.primary
-                                            else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                },
-                                label = {
-                                    Text(
-                                        text = screen.title,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = if (selected) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                },
-                                colors = NavigationBarItemDefaults.colors(
-                                    indicatorColor = Color.Transparent
-                                )
-                            )
-                        }
-                    }
-                }
-            },
-            containerColor = com.streamhub.app.ui.theme.BackgroundDark,
-            contentWindowInsets = if (showNav) WindowInsets.statusBars else WindowInsets(0.dp),
-            modifier = Modifier.weight(1f).fillMaxHeight()
-        ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+        ) {
             val contentModifier = if (showNav) {
                 if (showRail) {
                     Modifier
@@ -148,15 +113,27 @@ fun AdaptiveNavShell(
                 } else {
                     Modifier
                         .fillMaxSize()
-                        .padding(
-                            top = innerPadding.calculateTopPadding(),
-                            bottom = innerPadding.calculateBottomPadding()
-                        )
+                        .statusBarsPadding()
                 }
             } else {
                 Modifier.fillMaxSize()
             }
             content(contentModifier)
+
+            if (showBottomBar) {
+                com.streamhub.app.ui.components.ExpressiveFloatingNavBar(
+                    screens = bottomBarScreens,
+                    currentRoute = currentRoute,
+                    onScreenSelected = { screen ->
+                        navController.navigate(screen.route) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                )
+            }
         }
     }
 }

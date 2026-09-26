@@ -54,9 +54,12 @@ import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.ElectricBolt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -65,6 +68,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -103,6 +107,7 @@ import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
+import com.streamhub.app.ui.theme.bouncyTouch
 
 @Composable
 fun LiveAudienceTelemetryDialog(
@@ -147,9 +152,8 @@ fun LiveAudienceTelemetryDialog(
             contentAlignment = Alignment.Center
         ) {
             Card(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                border = BorderStroke(1.5.dp, Color(0xFF2A2A3C)),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight(0.94f)
@@ -188,32 +192,32 @@ fun LiveAudienceTelemetryDialog(
                         IconButton(
                             onClick = onDismiss,
                             modifier = Modifier
-                                .size(32.dp)
+                                .size(36.dp)
                                 .clip(CircleShape)
-                                .background(Color(0x22FFFFFF))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .bouncyTouch()
                         ) {
                             Icon(Icons.Default.Close, contentDescription = "Close", tint = TextPrimary, modifier = Modifier.size(18.dp))
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
                         modifier = Modifier.weight(1f)
                     ) {
                         // ── Big Online Counter Hero Card ──
                         item {
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = Color(0xFF141422),
-                                border = BorderStroke(1.dp, Color(0xFF33334D)),
+                                shape = RoundedCornerShape(24.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(18.dp),
+                                        .padding(20.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -234,7 +238,7 @@ fun LiveAudienceTelemetryDialog(
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Surface(
-                                                shape = RoundedCornerShape(8.dp),
+                                                shape = CircleShape,
                                                 color = Color(0x3300E676),
                                                 modifier = Modifier.padding(top = 4.dp)
                                             ) {
@@ -243,7 +247,7 @@ fun LiveAudienceTelemetryDialog(
                                                     color = Color(0xFF00E676),
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.Black,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                                 )
                                             }
                                         }
@@ -270,33 +274,41 @@ fun LiveAudienceTelemetryDialog(
                         // ── Global Broadcast Announcement Trigger ──
                         item {
                             Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFF1B1B32),
-                                border = BorderStroke(1.dp, Color(0x6638BDF8)),
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .bouncyTouch()
                                     .clickable { showGlobalBroadcastDialog = true }
                             ) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                        .padding(horizontal = 16.dp, vertical = 14.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Campaign,
-                                            contentDescription = null,
-                                            tint = Color(0xFF38BDF8),
-                                            modifier = Modifier.size(22.dp)
-                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .size(38.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF38BDF8).copy(alpha = 0.15f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Campaign,
+                                                contentDescription = null,
+                                                tint = Color(0xFF38BDF8),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
                                         Column {
                                             Text(
-                                                text = "📢 Broadcast to All Users",
+                                                text = "Broadcast to All Users",
                                                 color = Color.White,
                                                 fontSize = 13.sp,
                                                 fontWeight = FontWeight.Bold
@@ -339,8 +351,6 @@ fun LiveAudienceTelemetryDialog(
                                     total = metrics.totalOnline,
                                     icon = Icons.Default.Person,
                                     accentColor = Color(0xFF38BDF8),
-                                    bgColor = Color(0xFF14222E),
-                                    borderColor = Color(0x6638BDF8),
                                     modifier = Modifier.weight(1f)
                                 )
 
@@ -350,8 +360,6 @@ fun LiveAudienceTelemetryDialog(
                                     total = metrics.totalOnline,
                                     icon = Icons.Default.Star,
                                     accentColor = AccentGold,
-                                    bgColor = Color(0xFF261E14),
-                                    borderColor = Color(0x66FFD700),
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -368,8 +376,6 @@ fun LiveAudienceTelemetryDialog(
                                     total = metrics.totalOnline,
                                     icon = Icons.Default.Shield,
                                     accentColor = Color(0xFFFF5252),
-                                    bgColor = Color(0xFF261418),
-                                    borderColor = Color(0x66FF5252),
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -378,25 +384,30 @@ fun LiveAudienceTelemetryDialog(
                         // ── Top Streaming Content Right Now ──
                         if (metrics.topWatchingTitles.isNotEmpty()) {
                             item {
-                                Text(
-                                    text = "MOST WATCHED RIGHT NOW 🍿",
-                                    color = AccentOrange,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null, tint = AccentOrange, modifier = Modifier.size(14.dp))
+                                    Text(
+                                        text = "MOST WATCHED RIGHT NOW",
+                                        color = AccentOrange,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp
+                                    )
+                                }
                                 Spacer(modifier = Modifier.height(8.dp))
 
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     metrics.topWatchingTitles.take(4).forEachIndexed { rank, (title, watcherCount) ->
                                         Surface(
-                                            shape = RoundedCornerShape(10.dp),
-                                            color = Color(0xFF161626),
-                                            border = BorderStroke(1.dp, CardBorderDark),
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = MaterialTheme.colorScheme.surfaceContainer,
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Row(
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.SpaceBetween
                                             ) {
@@ -460,8 +471,8 @@ fun LiveAudienceTelemetryDialog(
                         if (metrics.activeWatchers.isEmpty()) {
                             item {
                                 Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = Color(0xFF141420),
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainer,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(
@@ -490,12 +501,17 @@ fun LiveAudienceTelemetryDialog(
                     Spacer(modifier = Modifier.height(14.dp))
 
                     // Close Button
-                    OutlinedButton(
+                    Button(
                         onClick = onDismiss,
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
-                        border = BorderStroke(1.dp, CardBorderDark),
-                        modifier = Modifier.fillMaxWidth().height(46.dp)
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = TextPrimary
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .bouncyTouch()
                     ) {
                         Text("Close Dashboard", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
@@ -533,26 +549,31 @@ fun TierMetricCard(
     total: Int,
     icon: ImageVector,
     accentColor: Color,
-    bgColor: Color,
-    borderColor: Color,
     modifier: Modifier = Modifier
 ) {
     val percentage = if (total > 0) (count.toFloat() / total.toFloat()) else 0f
 
     Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = bgColor,
-        border = BorderStroke(1.dp, borderColor),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = modifier
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(text = title, color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                Icon(imageVector = icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp))
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(accentColor.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(imageVector = icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp))
+                }
             }
             Spacer(modifier = Modifier.height(6.dp))
             Row(
@@ -573,15 +594,15 @@ fun TierMetricCard(
                     modifier = Modifier.padding(bottom = 2.dp)
                 )
             }
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             LinearProgressIndicator(
                 progress = { percentage },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(4.dp)
+                    .height(5.dp)
                     .clip(CircleShape),
                 color = accentColor,
-                trackColor = Color(0x33FFFFFF)
+                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
             )
         }
     }
@@ -604,15 +625,15 @@ fun ActiveDeviceItem(
     }
 
     Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = Color(0xFF141422),
-        border = BorderStroke(1.dp, CardBorderDark),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier
             .fillMaxWidth()
+            .bouncyTouch()
             .clickable(onClick = onClick)
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -629,16 +650,15 @@ fun ActiveDeviceItem(
                         fontWeight = FontWeight.Bold
                     )
                     Surface(
-                        shape = RoundedCornerShape(4.dp),
-                        color = badgeColor.copy(alpha = 0.2f),
-                        border = BorderStroke(0.5.dp, badgeColor)
+                        shape = CircleShape,
+                        color = badgeColor.copy(alpha = 0.15f)
                     ) {
                         Text(
                             text = badgeText,
                             color = badgeColor,
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Black,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
                 }
@@ -650,12 +670,23 @@ fun ActiveDeviceItem(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(3.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(text = "⚡ ${session.batteryPercent}%", color = TextSecondary, fontSize = 10.sp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ElectricBolt,
+                            contentDescription = null,
+                            tint = if (session.isCharging) Color(0xFF00E676) else TextSecondary,
+                            modifier = Modifier.size(11.dp)
+                        )
+                        Text(text = "${session.batteryPercent}%", color = TextSecondary, fontSize = 10.sp)
+                    }
                     Text(text = "•", color = TextSecondary, fontSize = 10.sp)
                     Text(text = session.networkType, color = TextSecondary, fontSize = 10.sp)
                 }
@@ -671,12 +702,20 @@ fun ActiveDeviceItem(
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Medium
                 )
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
-                    contentDescription = "Inspect",
-                    tint = TextSecondary,
-                    modifier = Modifier.size(12.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                        contentDescription = "Inspect",
+                        tint = TextSecondary,
+                        modifier = Modifier.size(10.dp)
+                    )
+                }
             }
         }
     }
@@ -716,9 +755,8 @@ fun DeviceTelemetryDetailDialog(
             contentAlignment = Alignment.Center
         ) {
             Card(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF12111E)),
-                border = BorderStroke(1.5.dp, Color(0xFF2A2A3C)),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight(0.92f)
@@ -726,7 +764,7 @@ fun DeviceTelemetryDetailDialog(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(18.dp)
+                        .padding(20.dp)
                 ) {
                     // Header
                     Row(
@@ -736,9 +774,9 @@ fun DeviceTelemetryDetailDialog(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Text(text = session.flagEmoji, fontSize = 20.sp)
+                            Text(text = session.flagEmoji, fontSize = 22.sp)
                             Column {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Text(
@@ -748,16 +786,15 @@ fun DeviceTelemetryDetailDialog(
                                         fontWeight = FontWeight.Bold
                                     )
                                     Surface(
-                                        shape = RoundedCornerShape(4.dp),
-                                        color = badgeColor.copy(alpha = 0.2f),
-                                        border = BorderStroke(0.5.dp, badgeColor)
+                                        shape = CircleShape,
+                                        color = badgeColor.copy(alpha = 0.15f)
                                     ) {
                                         Text(
                                             text = badgeText,
                                             color = badgeColor,
                                             fontSize = 9.sp,
                                             fontWeight = FontWeight.Black,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                         )
                                     }
                                 }
@@ -772,15 +809,16 @@ fun DeviceTelemetryDetailDialog(
                         IconButton(
                             onClick = onDismiss,
                             modifier = Modifier
-                                .size(30.dp)
+                                .size(34.dp)
                                 .clip(CircleShape)
-                                .background(Color(0x22FFFFFF))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .bouncyTouch()
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = TextPrimary, modifier = Modifier.size(16.dp))
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     LazyColumn(
                         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -788,14 +826,13 @@ fun DeviceTelemetryDetailDialog(
                     ) {
                         // ── 1 & 2: LIVE STREAMING & PLAYBACK INTELLIGENCE ──
                         item {
-                            SectionHeader(title = "🎬 LIVE PLAYBACK & STREAM STATE")
+                            SectionHeader(title = "LIVE PLAYBACK & STREAM STATE", icon = Icons.Default.Movie)
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFF181728),
-                                border = BorderStroke(1.dp, CardBorderDark),
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column(modifier = Modifier.padding(14.dp)) {
+                                Column(modifier = Modifier.padding(16.dp)) {
                                     if (session.mediaTitle.isNotBlank()) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
@@ -828,10 +865,10 @@ fun DeviceTelemetryDetailDialog(
                                                 progress = { progressRatio },
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .height(4.dp)
+                                                    .height(5.dp)
                                                     .clip(CircleShape),
                                                 color = PrimaryRed,
-                                                trackColor = Color(0x33FFFFFF)
+                                                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
                                             )
                                             Spacer(modifier = Modifier.height(4.dp))
                                             Row(
@@ -854,20 +891,19 @@ fun DeviceTelemetryDetailDialog(
 
                         // ── 6, 7 & 8: APP ACTIVITY & BACKGROUND DOWNLOADS ──
                         item {
-                            SectionHeader(title = "📱 APP ACTIVITY & SESSION")
+                            SectionHeader(title = "APP ACTIVITY & SESSION", icon = Icons.Default.Devices)
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFF181728),
-                                border = BorderStroke(1.dp, CardBorderDark),
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     InfoRow(label = "Current Screen:", value = session.currentScreen)
                                     InfoRow(label = "Status / Action:", value = session.currentActivity)
                                     InfoRow(label = "Session Duration:", value = "Active for $activeDurationMinutes min(s)")
                                     InfoRow(
                                         label = "Downloads:",
-                                        value = if (session.activeDownloadsCount > 0) "⬇️ ${session.downloadStatusText}" else "No active downloads"
+                                        value = if (session.activeDownloadsCount > 0) "Active: ${session.downloadStatusText}" else "No active downloads"
                                     )
                                 }
                             }
@@ -875,18 +911,17 @@ fun DeviceTelemetryDetailDialog(
 
                         // ── 9, 10 & 11: HARDWARE & NETWORK HEALTH ──
                         item {
-                            SectionHeader(title = "⚡ HARDWARE & NETWORK HEALTH")
+                            SectionHeader(title = "HARDWARE & NETWORK HEALTH", icon = Icons.Default.ElectricBolt)
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFF181728),
-                                border = BorderStroke(1.dp, CardBorderDark),
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     InfoRow(label = "Network Type:", value = session.networkType)
                                     InfoRow(
                                         label = "Battery:",
-                                        value = "${session.batteryPercent}% ${if (session.isCharging) "⚡ (Charging)" else "🔋"}"
+                                        value = "${session.batteryPercent}% ${if (session.isCharging) "(Charging)" else ""}"
                                     )
                                     InfoRow(label = "OS Version:", value = session.osVersion)
                                     InfoRow(label = "Architecture:", value = session.architecture)
@@ -896,30 +931,29 @@ fun DeviceTelemetryDetailDialog(
 
                         // ── 12, 13 & 14: SECURITY, LOCALE & INTEGRITY ──
                         item {
-                            SectionHeader(title = "🛡️ SECURITY & INTEGRITY SHIELD")
+                            SectionHeader(title = "SECURITY & INTEGRITY SHIELD", icon = Icons.Default.Shield)
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFF181728),
-                                border = BorderStroke(1.dp, CardBorderDark),
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     InfoRow(label = "Country / Locale:", value = "${session.flagEmoji} ${session.countryName} (${session.countryCode})")
                                     InfoRow(
                                         label = "Environment:",
-                                        value = if (session.isEmulator) "⚠️ Emulator Detected" else "Physical Device ✅"
+                                        value = if (session.isEmulator) "Emulator Detected" else "Physical Device"
                                     )
                                     InfoRow(
                                         label = "Root / Jailbreak:",
-                                        value = if (session.isRooted) "⚠️ Root Detected" else "No Root Detected 🔒"
+                                        value = if (session.isRooted) "Root Detected" else "No Root Detected"
                                     )
                                     InfoRow(
                                         label = "VPN / Proxy:",
-                                        value = if (session.isVpnActive) "🌐 Active VPN" else "Inactive (Direct) 🛡️"
+                                        value = if (session.isVpnActive) "Active VPN" else "Inactive (Direct)"
                                     )
                                     InfoRow(
                                         label = "App Build:",
-                                        value = if (session.isOfficialBuild) "Official Build (${session.appVersion}) ✅" else "⚠️ Unofficial Clone"
+                                        value = if (session.isOfficialBuild) "Official Build (${session.appVersion})" else "Unofficial Clone"
                                     )
                                 }
                             }
@@ -927,54 +961,67 @@ fun DeviceTelemetryDetailDialog(
 
                         // ── 15 & 16: REMOTE ADMIN CONTROLS ──
                         item {
-                            SectionHeader(title = "👑 REMOTE ADMIN ACTIONS")
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SectionHeader(title = "REMOTE ADMIN ACTIONS", icon = Icons.Default.Tune)
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 // Send Message
                                 Button(
                                     onClick = { showSendMessageDialog = true },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier.fillMaxWidth().height(42.dp)
+                                    shape = CircleShape,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(46.dp)
+                                        .bouncyTouch()
                                 ) {
                                     Icon(Icons.Default.NotificationsActive, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Send Direct Push Notification 💬", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Send Direct Push Notification", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
 
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     // Force Refresh
-                                    OutlinedButton(
+                                    Button(
                                         onClick = {
                                             UserTelemetryManager.sendForceRefresh(session.clientId)
-                                            ToastManager.showToast("Force refresh sent to ${session.deviceModel} 🔄")
+                                            ToastManager.showToast("Force refresh sent to ${session.deviceModel}")
                                         },
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                                        border = BorderStroke(1.dp, Color(0xFF38BDF8)),
-                                        modifier = Modifier.weight(1f).height(40.dp)
+                                        shape = CircleShape,
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                            contentColor = Color(0xFF38BDF8)
+                                        ),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(44.dp)
+                                            .bouncyTouch()
                                     ) {
-                                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(15.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text("Force Reload", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                     }
 
                                     // Kick Session
-                                    OutlinedButton(
+                                    Button(
                                         onClick = {
                                             UserTelemetryManager.sendKickUser(session.clientId)
-                                            ToastManager.showToast("Kick command sent to ${session.deviceModel} 🚫")
+                                            ToastManager.showToast("Kick command sent to ${session.deviceModel}")
                                             onDismiss()
                                         },
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF5252)),
-                                        border = BorderStroke(1.dp, Color(0xFFFF5252)),
-                                        modifier = Modifier.weight(1f).height(40.dp)
+                                        shape = CircleShape,
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0x26FF5252),
+                                            contentColor = Color(0xFFFF5252)
+                                        ),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(44.dp)
+                                            .bouncyTouch()
                                     ) {
-                                        Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(14.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(15.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text("Kick Session", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
@@ -982,13 +1029,21 @@ fun DeviceTelemetryDetailDialog(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
-                    TextButton(
+                    Button(
                         onClick = onDismiss,
-                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = TextPrimary
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .bouncyTouch()
                     ) {
-                        Text("Close Inspector", color = TextSecondary, fontSize = 12.sp)
+                        Text("Close Inspector", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
             }
@@ -997,7 +1052,7 @@ fun DeviceTelemetryDetailDialog(
 
     // Direct Message Dialog for this Device
     if (showSendMessageDialog) {
-        var messageTitle by remember { mutableStateOf("Admin Alert 👑") }
+        var messageTitle by remember { mutableStateOf("Admin Alert") }
         var messageText by remember { mutableStateOf("") }
 
         AlertDialog(
@@ -1011,6 +1066,7 @@ fun DeviceTelemetryDetailDialog(
                         onValueChange = { messageTitle = it },
                         label = { Text("Title") },
                         singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
@@ -1018,6 +1074,7 @@ fun DeviceTelemetryDetailDialog(
                         onValueChange = { messageText = it },
                         label = { Text("Message") },
                         placeholder = { Text("e.g. Please update to latest build!") },
+                        shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -1027,21 +1084,28 @@ fun DeviceTelemetryDetailDialog(
                     onClick = {
                         if (messageText.isNotBlank()) {
                             UserTelemetryManager.sendDirectNotification(session.clientId, messageTitle.trim(), messageText.trim())
-                            ToastManager.showToast("Notification sent to ${session.deviceModel} 🚀")
+                            ToastManager.showToast("Notification sent to ${session.deviceModel}")
                             showSendMessageDialog = false
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                    modifier = Modifier.bouncyTouch()
                 ) {
-                    Text("Send Notification")
+                    Text("Send Notification", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showSendMessageDialog = false }) {
+                TextButton(
+                    onClick = { showSendMessageDialog = false },
+                    shape = CircleShape,
+                    modifier = Modifier.bouncyTouch()
+                ) {
                     Text("Cancel", color = TextSecondary)
                 }
             },
-            containerColor = SurfaceDark
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(28.dp)
         )
     }
 }
@@ -1053,22 +1117,30 @@ fun DeviceTelemetryDetailDialog(
 @Composable
 fun GlobalBroadcastDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
-    var broadcastTitle by remember { mutableStateOf("StreamHub Announcement 📢") }
+    var broadcastTitle by remember { mutableStateOf("StreamHub Announcement") }
     var broadcastMessage by remember { mutableStateOf("") }
     var expiryHours by remember { mutableIntStateOf(24) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Default.Campaign, contentDescription = null, tint = Color(0xFF38BDF8))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF38BDF8).copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Campaign, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(20.dp))
+                }
                 Text("Global Broadcast Announcement", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "Broadcasts a live heads-up notification to active users. Stored as a single self-expiring document in Firestore (0 database size growth).",
+                    text = "Broadcasts a live heads-up notification to active users. Stored as a single self-expiring document in Firestore.",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
@@ -1077,13 +1149,15 @@ fun GlobalBroadcastDialog(onDismiss: () -> Unit) {
                     onValueChange = { broadcastTitle = it },
                     label = { Text("Broadcast Title") },
                     singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = broadcastMessage,
                     onValueChange = { broadcastMessage = it },
                     label = { Text("Broadcast Message") },
-                    placeholder = { Text("e.g. Bleach Thousand-Year Blood War Ep 13 is now streaming in 1080p! 🍿") },
+                    placeholder = { Text("e.g. Bleach Thousand-Year Blood War Ep 13 is now streaming in 1080p!") },
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -1100,37 +1174,28 @@ fun GlobalBroadcastDialog(onDismiss: () -> Unit) {
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        listOf(6 to "6 Hours", 12 to "12 Hours", 24 to "24 Hours", 48 to "48 Hours").forEach { (hrs, label) ->
+                        listOf(6 to "6h", 12 to "12h", 24 to "24h", 48 to "48h").forEach { (hrs, label) ->
                             val isSelected = expiryHours == hrs
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isSelected) Color(0xFF00E676).copy(alpha = 0.2f) else Color(0xFF232230),
-                                border = BorderStroke(1.dp, if (isSelected) Color(0xFF00E676) else CardBorderDark),
+                                shape = CircleShape,
+                                color = if (isSelected) Color(0xFF00E676).copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceContainer,
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(CircleShape)
                                     .clickable { expiryHours = hrs }
                             ) {
                                 Text(
                                     text = label,
                                     color = if (isSelected) Color(0xFF00E676) else TextSecondary,
-                                    fontSize = 10.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                    modifier = Modifier.padding(vertical = 6.dp)
+                                    modifier = Modifier.padding(vertical = 8.dp)
                                 )
                             }
                         }
                     }
                 }
-
-                Text(
-                    text = "🔒 Safety Guard: Past announcements will never be shown to new app downloads or fresh installs.",
-                    color = Color(0xFF00E676).copy(alpha = 0.85f),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
             }
         },
         confirmButton = {
@@ -1138,11 +1203,13 @@ fun GlobalBroadcastDialog(onDismiss: () -> Unit) {
                 onClick = {
                     if (broadcastMessage.isNotBlank()) {
                         UserTelemetryManager.sendGlobalBroadcast(broadcastTitle.trim(), broadcastMessage.trim(), expiryHours)
-                        ToastManager.showToast("Broadcast announcement published to all users! 📢")
+                        ToastManager.showToast("Broadcast announcement published to all users!")
                         onDismiss()
                     }
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676))
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676)),
+                modifier = Modifier.bouncyTouch()
             ) {
                 Text("Broadcast to All", color = Color.Black, fontWeight = FontWeight.Bold)
             }
@@ -1152,32 +1219,47 @@ fun GlobalBroadcastDialog(onDismiss: () -> Unit) {
                 TextButton(
                     onClick = {
                         UserTelemetryManager.clearActiveBroadcast { ok ->
-                            ToastManager.showToast(if (ok) "Active broadcast cleared! 🗑️" else "Failed to clear broadcast")
+                            ToastManager.showToast(if (ok) "Active broadcast cleared" else "Failed to clear broadcast")
                         }
                         onDismiss()
-                    }
+                    },
+                    shape = CircleShape,
+                    modifier = Modifier.bouncyTouch()
                 ) {
-                    Text("Clear Active 🗑️", color = PrimaryRed, fontSize = 12.sp)
+                    Text("Clear Active", color = PrimaryRed, fontSize = 12.sp)
                 }
-                TextButton(onClick = onDismiss) {
+                TextButton(
+                    onClick = onDismiss,
+                    shape = CircleShape,
+                    modifier = Modifier.bouncyTouch()
+                ) {
                     Text("Cancel", color = TextSecondary)
                 }
             }
         },
-        containerColor = SurfaceDark
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(28.dp)
     )
 }
 
 @Composable
-private fun SectionHeader(title: String) {
-    Text(
-        text = title,
-        color = TextSecondary,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 0.8.sp,
+private fun SectionHeader(title: String, icon: ImageVector? = null) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier.padding(bottom = 6.dp)
-    )
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(14.dp))
+        }
+        Text(
+            text = title,
+            color = TextSecondary,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.8.sp
+        )
+    }
 }
 
 @Composable
@@ -1195,24 +1277,23 @@ private fun InfoRow(label: String, value: String) {
 @Composable
 private fun PlayerStateBadge(state: String) {
     val (color, label) = when (state) {
-        "PLAYING" -> Pair(Color(0xFF00E676), "PLAYING ▶️")
-        "PAUSED" -> Pair(AccentGold, "PAUSED ⏸️")
-        "BUFFERING" -> Pair(AccentOrange, "BUFFERING ⏳")
-        "SEEKING" -> Pair(Color(0xFF38BDF8), "SEEKING ⏩")
-        else -> Pair(Color(0xFF9E9E9E), "IDLE ⏹️")
+        "PLAYING" -> Pair(Color(0xFF00E676), "PLAYING")
+        "PAUSED" -> Pair(AccentGold, "PAUSED")
+        "BUFFERING" -> Pair(AccentOrange, "BUFFERING")
+        "SEEKING" -> Pair(Color(0xFF38BDF8), "SEEKING")
+        else -> Pair(Color(0xFF9E9E9E), "IDLE")
     }
 
     Surface(
-        shape = RoundedCornerShape(6.dp),
-        color = color.copy(alpha = 0.2f),
-        border = BorderStroke(0.5.dp, color)
+        shape = CircleShape,
+        color = color.copy(alpha = 0.15f)
     ) {
         Text(
             text = label,
             color = color,
             fontSize = 9.sp,
             fontWeight = FontWeight.Black,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
         )
     }
 }

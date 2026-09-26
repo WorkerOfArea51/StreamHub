@@ -38,6 +38,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -72,6 +73,7 @@ import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
+import com.streamhub.app.ui.theme.bouncyTouch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -143,17 +145,17 @@ fun CachedStreamsSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Color(0xFF14131C),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         contentColor = TextPrimary,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         dragHandle = {
             Box(
                 modifier = Modifier
-                    .padding(vertical = 10.dp)
+                    .padding(vertical = 12.dp)
                     .width(40.dp)
                     .height(4.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFF3E3B54))
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
             )
         }
     ) {
@@ -161,7 +163,7 @@ fun CachedStreamsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp)
+                .padding(bottom = 28.dp)
         ) {
             // Header
             Row(
@@ -172,8 +174,8 @@ fun CachedStreamsSheet(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(42.dp)
-                            .clip(RoundedCornerShape(12.dp))
+                            .size(44.dp)
+                            .clip(CircleShape)
                             .background(Color(0xFF29B6F6).copy(alpha = 0.15f)),
                         contentAlignment = Alignment.Center
                     ) {
@@ -181,10 +183,10 @@ fun CachedStreamsSheet(
                             imageVector = Icons.Default.VideoLibrary,
                             contentDescription = null,
                             tint = Color(0xFF29B6F6),
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(22.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(14.dp))
                     Column {
                         Text(
                             text = "Cached Video Streams",
@@ -199,12 +201,22 @@ fun CachedStreamsSheet(
                         )
                     }
                 }
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = TextSecondary
-                    )
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .bouncyTouch()
+                        .clickable { onDismiss() }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = TextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 
@@ -219,15 +231,14 @@ fun CachedStreamsSheet(
                 // Interactive TTL Policy Pill
                 Box {
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFF232230),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorderDark),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .bouncyTouch()
                             .clickable { showTtlDropdown = true }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
@@ -257,8 +268,8 @@ fun CachedStreamsSheet(
                         expanded = showTtlDropdown,
                         onDismissRequest = { showTtlDropdown = false },
                         modifier = Modifier
-                            .background(Color(0xFF1E1D2A))
-                            .border(1.dp, CardBorderDark, RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .clip(RoundedCornerShape(16.dp))
                     ) {
                         val ttlOptions = listOf(
                             "1 Hour" to 1,
@@ -318,9 +329,11 @@ fun CachedStreamsSheet(
                                 containerColor = PrimaryRed.copy(alpha = 0.2f),
                                 contentColor = PrimaryRed
                             ),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            modifier = Modifier.height(32.dp)
+                            shape = CircleShape,
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .height(34.dp)
+                                .bouncyTouch()
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
@@ -328,7 +341,7 @@ fun CachedStreamsSheet(
                                 modifier = Modifier.size(13.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(text = "Purge Expired ($liveExpiredCount)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(text = "Purge ($liveExpiredCount)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                     }
@@ -338,12 +351,14 @@ fun CachedStreamsSheet(
                         Button(
                             onClick = { showClearAllConfirm = true },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF2A1C24),
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                                 contentColor = PrimaryRed
                             ),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            modifier = Modifier.height(32.dp)
+                            shape = CircleShape,
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .height(34.dp)
+                                .bouncyTouch()
                         ) {
                             Icon(
                                 imageVector = Icons.Default.DeleteSweep,
@@ -357,7 +372,7 @@ fun CachedStreamsSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Cached Streams List
             if (cachedItems.isEmpty()) {
@@ -368,13 +383,21 @@ fun CachedStreamsSheet(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Timer,
-                            contentDescription = null,
-                            tint = TextSecondary.copy(alpha = 0.5f),
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Timer,
+                                contentDescription = null,
+                                tint = TextSecondary.copy(alpha = 0.6f),
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(14.dp))
                         Text(
                             text = if (isLoading) "Scanning cache..." else "No Cached Streams",
                             color = TextPrimary,
@@ -417,16 +440,25 @@ fun CachedStreamsSheet(
     if (showClearAllConfirm) {
         AlertDialog(
             onDismissRequest = { showClearAllConfirm = false },
-            containerColor = Color(0xFF1E1D2A),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(28.dp),
             titleContentColor = TextPrimary,
             textContentColor = TextSecondary,
             icon = {
-                Icon(
-                    imageVector = Icons.Default.DeleteSweep,
-                    contentDescription = null,
-                    tint = PrimaryRed,
-                    modifier = Modifier.size(32.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(PrimaryRed.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteSweep,
+                        contentDescription = null,
+                        tint = PrimaryRed,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             },
             title = {
                 Text(
@@ -444,6 +476,8 @@ fun CachedStreamsSheet(
             },
             confirmButton = {
                 Button(
+                    shape = CircleShape,
+                    modifier = Modifier.bouncyTouch(),
                     onClick = {
                         showClearAllConfirm = false
                         onClearAllStreams()
@@ -455,7 +489,11 @@ fun CachedStreamsSheet(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearAllConfirm = false }) {
+                TextButton(
+                    shape = CircleShape,
+                    modifier = Modifier.bouncyTouch(),
+                    onClick = { showClearAllConfirm = false }
+                ) {
                     Text("Cancel", color = TextSecondary)
                 }
             }
@@ -482,7 +520,7 @@ private fun CachedStreamCard(
         item.expiryTimestamp == null -> {
             CountdownVisual(
                 text = "Retained (Auto-delete off)",
-                bg = Color(0xFF232230),
+                bg = MaterialTheme.colorScheme.surfaceContainerHighest,
                 tint = Color(0xFF64B5F6),
                 icon = Icons.Default.Timer
             )
@@ -511,7 +549,7 @@ private fun CachedStreamCard(
             when {
                 remainingMs < 3600_000L -> CountdownVisual(text, PrimaryRed.copy(alpha = 0.15f), PrimaryRed, Icons.Default.Warning)
                 remainingMs < 24 * 3600_000L -> CountdownVisual(text, AccentOrange.copy(alpha = 0.15f), AccentOrange, Icons.Default.Schedule)
-                else -> CountdownVisual(text, AccentGold.copy(alpha = 0.12f), AccentGold, Icons.Default.Schedule)
+                else -> CountdownVisual(text, AccentGold.copy(alpha = 0.15f), AccentGold, Icons.Default.Schedule)
             }
         }
     }
@@ -528,24 +566,22 @@ private fun CachedStreamCard(
     }
 
     Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Poster thumbnail
             Box(
                 modifier = Modifier
                     .size(width = 46.dp, height = 64.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF222030)),
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                 contentAlignment = Alignment.Center
             ) {
                 if (!item.posterUrl.isNullOrBlank()) {
@@ -565,7 +601,7 @@ private fun CachedStreamCard(
                 }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(14.dp))
 
             // Metadata & Countdown
             Column(modifier = Modifier.weight(1f)) {
@@ -593,7 +629,7 @@ private fun CachedStreamCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // Size Badge
                     Surface(
-                        shape = RoundedCornerShape(4.dp),
+                        shape = CircleShape,
                         color = Color(0xFF29B6F6).copy(alpha = 0.15f)
                     ) {
                         Text(
@@ -601,7 +637,7 @@ private fun CachedStreamCard(
                             color = Color(0xFF29B6F6),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                         )
                     }
 
@@ -616,16 +652,15 @@ private fun CachedStreamCard(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(5.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
-                // Auto-Delete Live Countdown Pill
+                // Auto-Delete Live Countdown Pill (borderless)
                 Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = countdownVisual.bg,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, countdownVisual.tint.copy(alpha = 0.3f))
+                    shape = CircleShape,
+                    color = countdownVisual.bg
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
@@ -655,14 +690,14 @@ private fun CachedStreamCard(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(3.dp)
-                                .clip(RoundedCornerShape(1.5.dp))
-                                .background(Color(0xFF232230))
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                         ) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxHeight()
                                     .fillMaxWidth(lifespanProgress)
-                                    .clip(RoundedCornerShape(1.5.dp))
+                                    .clip(CircleShape)
                                     .background(
                                         when {
                                             isExpired || lifespanProgress >= 1f -> PrimaryRed
@@ -687,17 +722,24 @@ private fun CachedStreamCard(
             Spacer(modifier = Modifier.width(8.dp))
 
             // Delete single stream button
-            IconButton(
-                onClick = onDelete,
-                modifier = Modifier.size(36.dp)
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                modifier = Modifier
+                    .size(36.dp)
+                    .bouncyTouch()
+                    .clickable(onClick = onDelete)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "Delete Stream Cache",
-                    tint = PrimaryRed.copy(alpha = 0.8f),
-                    modifier = Modifier.size(18.dp)
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Delete Stream Cache",
+                        tint = PrimaryRed.copy(alpha = 0.85f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
     }
 }
+

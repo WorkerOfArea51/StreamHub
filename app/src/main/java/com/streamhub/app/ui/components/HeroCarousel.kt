@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -101,7 +102,7 @@ fun HeroCarousel(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(385.dp)
+            .height(480.dp)
     ) {
         HorizontalPager(
             state = pagerState,
@@ -123,16 +124,18 @@ fun HeroCarousel(
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // Multi-layer Vibrant Glassmorphic Dark Gradient
+                // Crystal-clear hero gradient with transparent art viewing zone
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(
                             Brush.verticalGradient(
-                                colors = listOf(
-                                    Color(0x660A0A0F),
-                                    Color(0xCC0A0A0F),
-                                    BackgroundDark
+                                colorStops = arrayOf(
+                                    0.0f to Color.Black.copy(alpha = 0.40f),
+                                    0.18f to Color.Transparent,
+                                    0.55f to Color.Transparent,
+                                    0.78f to BackgroundDark.copy(alpha = 0.88f),
+                                    1.0f to BackgroundDark
                                 )
                             )
                         )
@@ -208,38 +211,64 @@ fun HeroCarousel(
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Button(
-                            onClick = {
-                                lastInteractionTime = System.currentTimeMillis()
-                                onPlayClick(media)
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .bouncyTouch()
-                        ) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = "Watch Now", tint = Color.White)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Watch Now 🍿", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isBookmarked) primaryColor.copy(alpha = 0.2f) else Color(0x22181824),
-                            border = BorderStroke(1.dp, if (isBookmarked) primaryColor else Color(0x44FFFFFF)),
+                            shape = CircleShape,
+                            color = primaryColor,
+                            shadowElevation = 4.dp,
                             modifier = Modifier
                                 .weight(1f)
                                 .height(44.dp)
                                 .bouncyTouch()
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(CircleShape)
+                                .clickable {
+                                    lastInteractionTime = System.currentTimeMillis()
+                                    onPlayClick(media)
+                                }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 12.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = "Watch Now",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Watch Now",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+
+                        val myListBg = if (isBookmarked) primaryColor.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceContainerHigh
+                        val myListTint = if (isBookmarked) primaryColor else MaterialTheme.colorScheme.onSurface
+
+                        Surface(
+                            shape = CircleShape,
+                            color = myListBg,
+                            shadowElevation = 2.dp,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .bouncyTouch()
+                                .clip(CircleShape)
                                 .combinedClickable(
                                     onClick = {
                                         lastInteractionTime = System.currentTimeMillis()
                                         val added = MyListManager.toggleBookmark(media.id)
-                                        val msg = if (added) "Added to My List • Hold to choose folder 📁" else "Removed from My List"
+                                        val msg = if (added) "Added to My List • Hold to choose folder" else "Removed from My List"
                                         ToastManager.showToast(msg)
                                     },
                                     onLongClick = {
@@ -253,20 +282,21 @@ fun HeroCarousel(
                                 horizontalArrangement = Arrangement.Center,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = 8.dp)
+                                    .padding(horizontal = 12.dp)
                             ) {
                                 Icon(
                                     imageVector = if (isBookmarked) Icons.Default.Check else Icons.Default.Add,
                                     contentDescription = "My List",
-                                    tint = primaryColor,
+                                    tint = myListTint,
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = if (isBookmarked) "In My List" else "My List",
-                                    color = primaryColor,
+                                    color = myListTint,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
+                                    fontSize = 13.sp,
+                                    maxLines = 1
                                 )
                             }
                         }

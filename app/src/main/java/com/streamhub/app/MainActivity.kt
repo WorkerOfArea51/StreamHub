@@ -618,6 +618,9 @@ fun StreamHubApp(
                     },
                     onNavigateToDownloads = {
                         navController.navigate(Screen.Downloads.route) { launchSingleTop = true }
+                    },
+                    onNavigateToAdmin = {
+                        navController.navigate(Screen.Admin.route)
                     }
                 )
             }
@@ -634,7 +637,10 @@ fun StreamHubApp(
 
             composable(Screen.Downloads.route) {
                 DownloadsScreen(
-                    onPlayEpisode = safePlayEpisode
+                    onPlayEpisode = safePlayEpisode,
+                    onNavigateToStorage = {
+                        navController.navigate(Screen.StorageManagement.route)
+                    }
                 )
             }
 
@@ -686,7 +692,10 @@ fun StreamHubApp(
 
             composable(Screen.StorageManagement.route) {
                 StorageManagementScreen(
-                    onBackClick = { navController.popBackStack() }
+                    onBackClick = { navController.popBackStack() },
+                    onNavigateToDownloads = {
+                        navController.navigate(Screen.Downloads.route) { launchSingleTop = true }
+                    }
                 )
             }
 
@@ -717,6 +726,9 @@ fun StreamHubApp(
                     },
                     onNavigateToAdvanced = {
                         navController.navigate(Screen.AdvancedSettings.route)
+                    },
+                    onNavigateToStorage = {
+                        navController.navigate(Screen.StorageManagement.route)
                     }
                 )
             }
@@ -905,7 +917,7 @@ private fun PlayerLoadingScreen() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            CircularProgressIndicator(color = PrimaryRed)
+            com.streamhub.app.ui.components.ExpressiveLoadingIndicator(size = 48.dp, color = PrimaryRed)
             Text(
                 text = "Loading media...",
                 color = TextSecondary,

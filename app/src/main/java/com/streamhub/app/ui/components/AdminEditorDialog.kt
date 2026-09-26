@@ -26,25 +26,33 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Whatshot
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.ElectricBolt
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.HealthAndSafety
-import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Whatshot
 import java.util.Locale
 import com.streamhub.app.data.StreamBackendConfig
 import com.streamhub.app.data.repository.FirebaseRepository
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -91,6 +99,7 @@ import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
+import com.streamhub.app.ui.theme.bouncyTouch
 import kotlinx.coroutines.launch
 
 /**
@@ -270,8 +279,23 @@ fun AdminEditorDialog(
     if (showDeleteConfirmDialog && itemForDeletion != null) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirmDialog = false },
-            title = { Text("Delete Media?", color = Color.White, fontWeight = FontWeight.Bold) },
-            text = { Text("Are you sure you want to permanently delete \"${itemForDeletion.title}\"? This action cannot be undone.", color = TextSecondary) },
+            title = {
+                Text(
+                    "Delete Media?",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                )
+            },
+            text = {
+                Text(
+                    "Are you sure you want to permanently delete \"${itemForDeletion.title}\"? This action cannot be undone.",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                )
+            },
             confirmButton = {
                 Button(
                     onClick = {
@@ -285,17 +309,22 @@ fun AdminEditorDialog(
                         }
                         onDismiss()
                     },
+                    shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed)
                 ) {
-                    Text("Delete Permanently", color = Color.White)
+                    Text("Delete Permanently", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteConfirmDialog = false }) {
-                    Text("Cancel", color = TextSecondary)
+                TextButton(
+                    onClick = { showDeleteConfirmDialog = false },
+                    shape = CircleShape
+                ) {
+                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
-            containerColor = Color(0xFF1E1E2E)
+            shape = RoundedCornerShape(28.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         )
     }
 
@@ -338,23 +367,16 @@ fun AdminEditorDialog(
         )
     ) {
         Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF13131F)),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
             modifier = Modifier
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight(0.90f)
-                .border(
-                    BorderStroke(
-                        1.5.dp,
-                        Brush.linearGradient(listOf(Color(0xFFFFD700), PrimaryRed))
-                    ),
-                    RoundedCornerShape(24.dp)
-                )
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp)
+                    .padding(20.dp)
             ) {
                 // Header Bar (Title + Close Button)
                 Row(
@@ -363,42 +385,54 @@ fun AdminEditorDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Creator Studio", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("✨", fontSize = 16.sp)
-                        }
+                        Text(
+                            text = "Creator Studio",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = if (initialItem == null) "Publish New Show to Catalog" else "Edit Show Details",
-                            color = Color(0xFFFFD700),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Medium
+                            )
                         )
                     }
 
                     IconButton(
                         onClick = onDismiss,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Segment Tab Bar (Overview, Stream Links, Full Specs, Studio Tools)
+                // M3 Expressive Segmented Tab Dock (Overview, Links, Specs, Tools)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF1E1E2E))
-                        .padding(3.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    TabButton("🎬 Overview", isSelected = selectedTab == 0, modifier = Modifier.weight(1.05f)) { selectedTab = 0 }
-                    TabButton("🔗 Links", isSelected = selectedTab == 1, modifier = Modifier.weight(0.95f)) { selectedTab = 1 }
-                    TabButton("⚙️ Specs", isSelected = selectedTab == 2, modifier = Modifier.weight(0.95f)) { selectedTab = 2 }
-                    TabButton("🛠️ Tools", isSelected = selectedTab == 3, modifier = Modifier.weight(1.05f)) { selectedTab = 3 }
+                    TabButton(Icons.Default.Movie, "Overview", isSelected = selectedTab == 0, modifier = Modifier.weight(1f)) { selectedTab = 0 }
+                    TabButton(Icons.Default.Link, "Links", isSelected = selectedTab == 1, modifier = Modifier.weight(1f)) { selectedTab = 1 }
+                    TabButton(Icons.Default.Tune, "Specs", isSelected = selectedTab == 2, modifier = Modifier.weight(1f)) { selectedTab = 2 }
+                    TabButton(Icons.Default.Build, "Tools", isSelected = selectedTab == 3, modifier = Modifier.weight(1f)) { selectedTab = 3 }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -416,8 +450,8 @@ fun AdminEditorDialog(
                         // ==========================================
                         // TAB 0: OVERVIEW & TITLE AUTO-FETCH
                         // ==========================================
-                        Text("1. Category & Type", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Text("1. Category & Type", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
 
                         // Category Chips Row
                         Row(
@@ -427,11 +461,12 @@ fun AdminEditorDialog(
                             listOf("ANIME", "MOVIE", "SERIES").forEach { cat ->
                                 val isSelected = category.equals(cat, ignoreCase = true)
                                 Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isSelected) PrimaryRed else Color(0xFF1A1A28),
-                                    border = BorderStroke(1.dp, if (isSelected) PrimaryRed else Color(0xFF2C2C3E)),
+                                    shape = CircleShape,
+                                    color = if (isSelected) PrimaryRed else MaterialTheme.colorScheme.surfaceContainerLowest,
                                     modifier = Modifier
                                         .weight(1f)
+                                        .bouncyTouch()
+                                        .clip(CircleShape)
                                         .clickable {
                                             category = cat
                                             if (cat == "MOVIE") type = "MOVIE"
@@ -439,10 +474,10 @@ fun AdminEditorDialog(
                                 ) {
                                     Text(
                                         text = cat,
-                                        color = if (isSelected) Color.White else TextSecondary,
+                                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(vertical = 8.dp),
+                                        modifier = Modifier.padding(vertical = 9.dp),
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                                     )
                                 }
@@ -459,19 +494,20 @@ fun AdminEditorDialog(
                             listOf("MOVIE", "SERIES").forEach { t ->
                                 val isSelected = type.equals(t, ignoreCase = true)
                                 Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isSelected) Color(0xFFFFD700).copy(alpha = 0.2f) else Color(0xFF1A1A28),
-                                    border = BorderStroke(1.dp, if (isSelected) Color(0xFFFFD700) else Color(0xFF2C2C3E)),
+                                    shape = CircleShape,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLowest,
                                     modifier = Modifier
                                         .weight(1f)
+                                        .bouncyTouch()
+                                        .clip(CircleShape)
                                         .clickable { type = t }
                                 ) {
                                     Text(
                                         text = "FORMAT: $t",
-                                        color = if (isSelected) Color(0xFFFFD700) else TextSecondary,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(vertical = 6.dp),
+                                        modifier = Modifier.padding(vertical = 7.dp),
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                                     )
                                 }
@@ -486,11 +522,12 @@ fun AdminEditorDialog(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isFeatured) Color(0xFFFFD700).copy(alpha = 0.2f) else Color(0xFF1A1A28),
-                                border = BorderStroke(1.dp, if (isFeatured) Color(0xFFFFD700) else Color(0xFF2C2C3E)),
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (isFeatured) AccentGold.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceContainerLowest,
                                 modifier = Modifier
                                     .weight(1f)
+                                    .bouncyTouch()
+                                    .clip(RoundedCornerShape(14.dp))
                                     .clickable { isFeatured = !isFeatured }
                             ) {
                                 Row(
@@ -501,13 +538,13 @@ fun AdminEditorDialog(
                                     Icon(
                                         imageVector = Icons.Default.Star,
                                         contentDescription = null,
-                                        tint = if (isFeatured) Color(0xFFFFD700) else TextSecondary,
-                                        modifier = Modifier.size(15.dp)
+                                        tint = if (isFeatured) AccentGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = if (isFeatured) "Featured Hero" else "Feature Show",
-                                        color = if (isFeatured) Color(0xFFFFD700) else TextSecondary,
+                                        color = if (isFeatured) AccentGold else MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -530,11 +567,12 @@ fun AdminEditorDialog(
                             }
 
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isTrending) PrimaryRed.copy(alpha = 0.2f) else Color(0xFF1A1A28),
-                                border = BorderStroke(1.dp, if (isTrending) PrimaryRed else Color(0xFF2C2C3E)),
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (isTrending) PrimaryRed.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceContainerLowest,
                                 modifier = Modifier
                                     .weight(1f)
+                                    .bouncyTouch()
+                                    .clip(RoundedCornerShape(14.dp))
                                     .clickable {
                                         isTrending = !isTrending
                                         if (isTrending) {
@@ -550,13 +588,13 @@ fun AdminEditorDialog(
                                     Icon(
                                         imageVector = Icons.Default.Whatshot,
                                         contentDescription = null,
-                                        tint = if (isTrending) PrimaryRed else TextSecondary,
-                                        modifier = Modifier.size(15.dp)
+                                        tint = if (isTrending) PrimaryRed else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = trendingLabel,
-                                        color = if (isTrending) PrimaryRed else TextSecondary,
+                                        color = if (isTrending) PrimaryRed else MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -637,17 +675,20 @@ fun AdminEditorDialog(
                             },
                             enabled = title.isNotBlank() && !isFetchingApi,
                             colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            shape = CircleShape,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(46.dp)
+                                .bouncyTouch()
                         ) {
                             if (isFetchingApi) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                ExpressiveLoadingIndicator(size = 16.dp, color = Color.White, accentColor = AccentGold)
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("Searching TMDB & MAL...", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             } else {
                                 Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("✨ Auto-Fetch Metadata by Title or Link", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Auto-Fetch Metadata", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
 
@@ -668,9 +709,8 @@ fun AdminEditorDialog(
                                 modifier = Modifier
                                     .width(95.dp)
                                     .height(135.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0xFF1E1E2E))
-                                    .border(1.dp, Color(0xFF2C2C3E), RoundedCornerShape(12.dp)),
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerLowest),
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (posterUrl.isNotBlank()) {
@@ -682,9 +722,9 @@ fun AdminEditorDialog(
                                     )
                                 } else {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Icon(Icons.Default.Movie, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(24.dp))
+                                        Icon(Icons.Default.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
                                         Spacer(modifier = Modifier.height(4.dp))
-                                        Text("Poster Preview", color = TextSecondary, fontSize = 9.sp)
+                                        Text("Poster Preview", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
                                     }
                                 }
                             }
@@ -730,11 +770,11 @@ fun AdminEditorDialog(
                             // --- MOVIE FORMAT: SMART STREAM LINK & READY PREVIEW (SERIES-PARITY) ---
                             val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
 
-                            Text("2. Movie Direct Stream Link 🎬", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("2. Movie Direct Stream Link", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 "Paste the direct stream URL, Serv00 link, or Telegram F2L link for this movie.",
-                                color = TextSecondary,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 11.sp,
                                 lineHeight = 15.sp
                             )
@@ -791,32 +831,39 @@ fun AdminEditorDialog(
                                         generatedEpisodesText = cleanLink
                                         movieLinkProbeResult = null
                                     },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0088CC)),
-                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                                    shape = CircleShape,
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.ContentPaste, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("📋 Paste from Clipboard", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("Paste from Clipboard", color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
 
                                 if (startBatchLink.isNotBlank() || generatedEpisodesText.isNotBlank()) {
-                                    OutlinedButton(
-                                        onClick = {
-                                            startBatchLink = ""
-                                            generatedEpisodesText = ""
-                                            fetchedFileName = ""
-                                            fetchedDurationMs = 0L
-                                            batchError = null
-                                            movieLinkProbeResult = null
-                                        },
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryRed),
-                                        border = BorderStroke(1.dp, PrimaryRed)
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = PrimaryRed.copy(alpha = 0.15f),
+                                        modifier = Modifier
+                                            .bouncyTouch()
+                                            .clip(CircleShape)
+                                            .clickable {
+                                                startBatchLink = ""
+                                                generatedEpisodesText = ""
+                                                fetchedFileName = ""
+                                                fetchedDurationMs = 0L
+                                                batchError = null
+                                                movieLinkProbeResult = null
+                                            }
                                     ) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Clear", tint = PrimaryRed, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Clear", color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.DeleteOutline, contentDescription = "Clear", tint = PrimaryRed, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Clear", color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
                                     }
                                 }
                             }
@@ -831,58 +878,64 @@ fun AdminEditorDialog(
                             if (cleanActiveLink.isNotBlank()) {
                                 Spacer(modifier = Modifier.height(10.dp))
                                 Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = Color(0xFF162316),
-                                    border = BorderStroke(1.dp, Color(0xFF4CAF50)),
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerLowest,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
+                                    Column(modifier = Modifier.padding(14.dp)) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(
-                                                text = "🎬 1 Movie Stream Ready",
-                                                color = Color(0xFF81C784),
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
                                                 modifier = Modifier.weight(1f)
-                                            )
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CheckCircle,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF10B981),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "1 Movie Stream Ready",
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
 
                                             // Health Check Action (Series-Parity: on-demand, non-blocking)
                                             Surface(
-                                                shape = RoundedCornerShape(8.dp),
+                                                shape = CircleShape,
                                                 color = if (isTestingMovieLink) Color(0xFFFF9800).copy(alpha = 0.2f)
                                                         else if (movieLinkProbeResult?.isAlive == true) Color(0xFF10B981).copy(alpha = 0.2f)
                                                         else if (movieLinkProbeResult?.isAlive == false) PrimaryRed.copy(alpha = 0.2f)
-                                                        else Color(0xFF10B981).copy(alpha = 0.2f),
-                                                border = BorderStroke(
-                                                    1.dp,
-                                                    if (isTestingMovieLink) Color(0xFFFF9800)
-                                                    else if (movieLinkProbeResult?.isAlive == true) Color(0xFF10B981)
-                                                    else if (movieLinkProbeResult?.isAlive == false) PrimaryRed
-                                                    else Color(0xFF10B981)
-                                                ),
-                                                modifier = Modifier.clickable(enabled = !isTestingMovieLink) {
-                                                    isTestingMovieLink = true
-                                                    scope.launch {
-                                                        val result = com.streamhub.app.data.api.StreamHealthChecker.probeUrl(cleanActiveLink)
-                                                        movieLinkProbeResult = result
-                                                        isTestingMovieLink = false
+                                                        else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                                modifier = Modifier
+                                                    .clip(CircleShape)
+                                                    .clickable(enabled = !isTestingMovieLink) {
+                                                        isTestingMovieLink = true
+                                                        scope.launch {
+                                                            val result = com.streamhub.app.data.api.StreamHealthChecker.probeUrl(cleanActiveLink)
+                                                            movieLinkProbeResult = result
+                                                            isTestingMovieLink = false
+                                                        }
                                                     }
-                                                }
                                             ) {
                                                 Row(
                                                     verticalAlignment = Alignment.CenterVertically,
                                                     horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                                                 ) {
                                                     if (isTestingMovieLink) {
-                                                        CircularProgressIndicator(
-                                                            modifier = Modifier.size(10.dp),
+                                                        ExpressiveLoadingIndicator(
+                                                            modifier = Modifier.size(11.dp),
                                                             color = Color(0xFFFF9800),
-                                                            strokeWidth = 1.5.dp
+                                                            accentColor = AccentGold,
+                                                            size = 11.dp
                                                         )
                                                         Text(
                                                             "Checking...",
@@ -893,14 +946,14 @@ fun AdminEditorDialog(
                                                     } else {
                                                         Text(
                                                             text = when {
-                                                                movieLinkProbeResult?.isAlive == true -> "🩺 Live (${movieLinkProbeResult?.latencyMs}ms)"
-                                                                movieLinkProbeResult?.isAlive == false -> "🩺 Unreachable (${movieLinkProbeResult?.errorMessage ?: "Error"})"
-                                                                else -> "🩺 Check Link"
+                                                                movieLinkProbeResult?.isAlive == true -> "Live (${movieLinkProbeResult?.latencyMs}ms)"
+                                                                movieLinkProbeResult?.isAlive == false -> "Unreachable (${movieLinkProbeResult?.errorMessage ?: "Error"})"
+                                                                else -> "Check Link"
                                                             },
                                                             color = when {
                                                                 movieLinkProbeResult?.isAlive == true -> Color(0xFF10B981)
                                                                 movieLinkProbeResult?.isAlive == false -> PrimaryRed
-                                                                else -> Color(0xFF10B981)
+                                                                else -> MaterialTheme.colorScheme.onSurfaceVariant
                                                             },
                                                             fontSize = 10.sp,
                                                             fontWeight = FontWeight.Bold
@@ -910,24 +963,24 @@ fun AdminEditorDialog(
                                             }
                                         }
 
-                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Spacer(modifier = Modifier.height(10.dp))
 
                                         // Stream link metadata row
                                         val isBackend = StreamBackendConfig.isBackendHost(cleanActiveLink)
                                         val streamBadge = when {
-                                            isBackend && cleanActiveLink.contains("/dl/") -> "Serv00 Direct Stream ⚡"
-                                            isBackend && cleanActiveLink.contains("/stream/") -> "F2L Direct Stream ⚡"
-                                            cleanActiveLink.contains("t.me/") -> "Telegram Direct 🚀"
-                                            else -> "Web Stream URL 🌐"
+                                            isBackend && cleanActiveLink.contains("/dl/") -> "Serv00 Direct Stream"
+                                            isBackend && cleanActiveLink.contains("/stream/") -> "F2L Direct Stream"
+                                            cleanActiveLink.contains("t.me/") -> "Telegram Direct"
+                                            else -> "Web Stream URL"
                                         }
 
                                         Surface(
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = Color(0xFF1E1E2E),
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Row(
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Icon(
@@ -936,13 +989,13 @@ fun AdminEditorDialog(
                                                     tint = Color(0xFF81C784),
                                                     modifier = Modifier.size(18.dp)
                                                 )
-                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Spacer(modifier = Modifier.width(10.dp))
                                                 Column(modifier = Modifier.weight(1f)) {
                                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                                         Text(
                                                             text = title.ifBlank { "Main Feature Movie" },
-                                                            color = TextPrimary,
-                                                            fontSize = 11.sp,
+                                                            color = MaterialTheme.colorScheme.onSurface,
+                                                            fontSize = 12.sp,
                                                             fontWeight = FontWeight.SemiBold,
                                                             maxLines = 1,
                                                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -950,7 +1003,7 @@ fun AdminEditorDialog(
                                                         )
                                                         Spacer(modifier = Modifier.width(6.dp))
                                                         Surface(
-                                                            shape = RoundedCornerShape(4.dp),
+                                                            shape = CircleShape,
                                                             color = Color(0xFF38BDF8).copy(alpha = 0.15f)
                                                         ) {
                                                             Text(
@@ -958,13 +1011,14 @@ fun AdminEditorDialog(
                                                                 color = Color(0xFF38BDF8),
                                                                 fontSize = 9.sp,
                                                                 fontWeight = FontWeight.Bold,
-                                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                                             )
                                                         }
                                                     }
+                                                    Spacer(modifier = Modifier.height(2.dp))
                                                     Text(
                                                         text = cleanActiveLink,
-                                                        color = TextSecondary,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                         fontSize = 10.sp,
                                                         maxLines = 1,
                                                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
@@ -980,11 +1034,11 @@ fun AdminEditorDialog(
                             val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
                             val parsedSeasonNum = seasonNumberText.toIntOrNull() ?: 1
 
-                            Text("2. Stream Links & Episodes Importer 📺", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("2. Stream Links & Episodes Importer", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 "Paste raw links, Telegram posts, or 1-Click F2L Bot Batch ID to import episodes.",
-                                color = TextSecondary,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 11.sp,
                                 lineHeight = 15.sp
                             )
@@ -1017,12 +1071,11 @@ fun AdminEditorDialog(
 
                             // --- 1-CLICK F2L REST API IMPORTER ---
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = Color(0xFF1E1E2E),
-                                border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.5f)),
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerLowest,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Column(modifier = Modifier.padding(10.dp)) {
+                                Column(modifier = Modifier.padding(12.dp)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(
                                             imageVector = Icons.Default.AutoAwesome,
@@ -1032,13 +1085,13 @@ fun AdminEditorDialog(
                                         )
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = "1-Click F2L Bot REST API Importer ⚡",
+                                            text = "1-Click F2L Bot REST API Importer",
                                             color = Color(0xFF38BDF8),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold
                                         )
                                     }
-                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Spacer(modifier = Modifier.height(8.dp))
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1047,8 +1100,8 @@ fun AdminEditorDialog(
                                         OutlinedTextField(
                                             value = f2lBatchInput,
                                             onValueChange = { f2lBatchInput = it; batchError = null },
-                                            label = { Text("F2L Batch ID or URL", color = TextSecondary, fontSize = 11.sp) },
-                                            placeholder = { Text("e.g. eb76ab230b4d...", color = TextSecondary, fontSize = 11.sp) },
+                                            label = { Text("F2L Batch ID or URL", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp) },
+                                            placeholder = { Text("e.g. eb76ab230b4d...", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp) },
                                             singleLine = true,
                                             modifier = Modifier.weight(1f)
                                         )
@@ -1077,7 +1130,7 @@ fun AdminEditorDialog(
                                                                 startBatchLink = jsonDump
                                                                 generatedEpisodesText = jsonDump
                                                                 f2lBatchInput = ""
-                                                                batchSuccess = "✅ Fetched & Loaded ${eps.size} episodes! Check JSON below."
+                                                                batchSuccess = "Fetched & Loaded ${eps.size} episodes! Check JSON below."
                                                             } else {
                                                                 batchError = "No episodes returned by F2L API"
                                                             }
@@ -1091,11 +1144,13 @@ fun AdminEditorDialog(
                                             },
                                             enabled = f2lBatchInput.isNotBlank() && !isFetchingF2l,
                                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                                            shape = RoundedCornerShape(10.dp),
-                                            modifier = Modifier.height(50.dp)
+                                            shape = CircleShape,
+                                            modifier = Modifier
+                                                .height(50.dp)
+                                                .bouncyTouch()
                                         ) {
                                             if (isFetchingF2l) {
-                                                CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
+                                                ExpressiveLoadingIndicator(size = 14.dp, color = Color.White, accentColor = AccentGold)
                                             } else {
                                                 Text("Fetch API", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                             }
@@ -1136,7 +1191,7 @@ fun AdminEditorDialog(
                                                         val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps)
                                                         startBatchLink = jsonDump
                                                         generatedEpisodesText = jsonDump
-                                                        batchSuccess = "✅ Fetched & Loaded ${eps.size} episodes! Check JSON below."
+                                                        batchSuccess = "Fetched & Loaded ${eps.size} episodes! Check JSON below."
                                                     }
                                                 },
                                                 onFailure = { err ->
@@ -1147,7 +1202,7 @@ fun AdminEditorDialog(
                                         }
                                     }
                                 },
-                                label = { Text("⚡ Smart Raw Dump / Episode Links / Telegram Post *", color = TextSecondary) },
+                                label = { Text("Smart Raw Dump / Episode Links / Telegram Post *", color = TextSecondary) },
                                 placeholder = { Text("Paste raw links, Telegram posts, or JSON here...\n> Ep 01: https://cdn.example.com/ep01.mp4\n> Ep 02: https://cdn.example.com/ep02.mp4", color = TextSecondary) },
                                 minLines = 4,
                                 maxLines = 8,
@@ -1197,7 +1252,7 @@ fun AdminEditorDialog(
                                                             val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps)
                                                             startBatchLink = jsonDump
                                                             generatedEpisodesText = jsonDump
-                                                            batchSuccess = "✅ Fetched & Loaded ${eps.size} episodes! Check JSON below."
+                                                            batchSuccess = "Fetched & Loaded ${eps.size} episodes! Check JSON below."
                                                         } else {
                                                             batchError = "No episodes returned by F2L API"
                                                         }
@@ -1223,37 +1278,44 @@ fun AdminEditorDialog(
                                             currentEpisodes.addAll(com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(map.values.toList()))
                                             startBatchLink = clipText
                                             generatedEpisodesText = clipText
-                                            batchSuccess = "✅ Parsed & Loaded ${parsed.size} episodes! Check JSON below."
+                                            batchSuccess = "Parsed & Loaded ${parsed.size} episodes! Check JSON below."
                                         } else {
                                             batchError = "Could not parse episodes from clipboard text."
                                         }
                                     },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0088CC)),
-                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                                    shape = CircleShape,
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.ContentPaste, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("📋 Paste & Auto-Parse", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("Paste & Auto-Parse", color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
 
                                 if (startBatchLink.isNotBlank() || generatedEpisodesText.isNotBlank() || currentEpisodes.isNotEmpty()) {
-                                    OutlinedButton(
-                                        onClick = {
-                                            startBatchLink = ""
-                                            endBatchLink = ""
-                                            generatedEpisodesText = ""
-                                            currentEpisodes.clear()
-                                            batchError = null
-                                            batchSuccess = null
-                                        },
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryRed),
-                                        border = BorderStroke(1.dp, PrimaryRed)
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = PrimaryRed.copy(alpha = 0.15f),
+                                        modifier = Modifier
+                                            .bouncyTouch()
+                                            .clip(CircleShape)
+                                            .clickable {
+                                                startBatchLink = ""
+                                                endBatchLink = ""
+                                                generatedEpisodesText = ""
+                                                currentEpisodes.clear()
+                                                batchError = null
+                                                batchSuccess = null
+                                            }
                                     ) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Clear", tint = PrimaryRed, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Clear All", color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.DeleteOutline, contentDescription = "Clear", tint = PrimaryRed, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Clear All", color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
                                     }
                                 }
                             }
@@ -1276,24 +1338,34 @@ fun AdminEditorDialog(
 
                                 Spacer(modifier = Modifier.height(10.dp))
                                 Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = Color(0xFF162316),
-                                    border = BorderStroke(1.dp, if (validation.isValid) Color(0xFF4CAF50) else Color(0xFFFF9800)),
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerLowest,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
+                                    Column(modifier = Modifier.padding(14.dp)) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(
-                                                text = if (validation.isValid) "✅ ${currentEpisodes.size} Episodes Ready" else "⚠️ ${currentEpisodes.size} Episodes Ready (${validation.warningMessages.size} Warnings)",
-                                                color = if (validation.isValid) Color(0xFF81C784) else Color(0xFFFFB74D),
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
                                                 modifier = Modifier.weight(1f)
-                                            )
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (validation.isValid) Icons.Default.CheckCircle else Icons.Default.ErrorOutline,
+                                                    contentDescription = null,
+                                                    tint = if (validation.isValid) Color(0xFF10B981) else Color(0xFFFFB74D),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = if (validation.isValid) "${currentEpisodes.size} Episodes Ready" else "${currentEpisodes.size} Episodes Ready (${validation.warningMessages.size} Warnings)",
+                                                    color = if (validation.isValid) Color(0xFF81C784) else Color(0xFFFFB74D),
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
 
                                             Row(
                                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1301,31 +1373,33 @@ fun AdminEditorDialog(
                                             ) {
                                                 // Health Check Action
                                                 Surface(
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    color = if (isCheckingHealth) Color(0xFFFF9800).copy(alpha = 0.2f) else if ((healthReport?.deadCount ?: 0) > 0) PrimaryRed.copy(alpha = 0.2f) else Color(0xFF10B981).copy(alpha = 0.2f),
-                                                    border = BorderStroke(1.dp, if (isCheckingHealth) Color(0xFFFF9800) else if ((healthReport?.deadCount ?: 0) > 0) PrimaryRed else Color(0xFF10B981)),
-                                                    modifier = Modifier.clickable(enabled = !isCheckingHealth && currentEpisodes.isNotEmpty()) {
-                                                        isCheckingHealth = true
-                                                        scope.launch {
-                                                            com.streamhub.app.data.api.StreamHealthChecker.checkEpisodesHealth(currentEpisodes).collect { report ->
-                                                                healthReport = report
-                                                                if (!report.isChecking) {
-                                                                    isCheckingHealth = false
+                                                    shape = CircleShape,
+                                                    color = if (isCheckingHealth) Color(0xFFFF9800).copy(alpha = 0.2f) else if ((healthReport?.deadCount ?: 0) > 0) PrimaryRed.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                                    modifier = Modifier
+                                                        .clip(CircleShape)
+                                                        .clickable(enabled = !isCheckingHealth && currentEpisodes.isNotEmpty()) {
+                                                            isCheckingHealth = true
+                                                            scope.launch {
+                                                                com.streamhub.app.data.api.StreamHealthChecker.checkEpisodesHealth(currentEpisodes).collect { report ->
+                                                                    healthReport = report
+                                                                    if (!report.isChecking) {
+                                                                        isCheckingHealth = false
+                                                                    }
                                                                 }
                                                             }
                                                         }
-                                                    }
                                                 ) {
                                                     Row(
                                                         verticalAlignment = Alignment.CenterVertically,
                                                         horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                                                     ) {
                                                         if (isCheckingHealth) {
-                                                            CircularProgressIndicator(
-                                                                modifier = Modifier.size(10.dp),
+                                                            ExpressiveLoadingIndicator(
+                                                                modifier = Modifier.size(11.dp),
                                                                 color = Color(0xFFFF9800),
-                                                                strokeWidth = 1.5.dp
+                                                                accentColor = AccentGold,
+                                                                size = 11.dp
                                                             )
                                                             Text(
                                                                 "Checking (${healthReport?.checkedCount ?: 0}/${currentEpisodes.size})...",
@@ -1335,8 +1409,8 @@ fun AdminEditorDialog(
                                                             )
                                                         } else {
                                                             Text(
-                                                                if (healthReport != null) "🩺 ${healthReport?.aliveCount} Live / ${healthReport?.deadCount} Dead" else "🩺 Check Links",
-                                                                color = if ((healthReport?.deadCount ?: 0) > 0) PrimaryRed else Color(0xFF10B981),
+                                                                text = if (healthReport != null) "${healthReport?.aliveCount} Live / ${healthReport?.deadCount} Dead" else "Check Links",
+                                                                color = if ((healthReport?.deadCount ?: 0) > 0) PrimaryRed else MaterialTheme.colorScheme.onSurfaceVariant,
                                                                 fontSize = 10.sp,
                                                                 fontWeight = FontWeight.Bold
                                                             )
@@ -1346,56 +1420,71 @@ fun AdminEditorDialog(
 
                                                 // Quick Batch Renumbering Action
                                                 Surface(
-                                                    shape = RoundedCornerShape(8.dp),
+                                                    shape = CircleShape,
                                                     color = Color(0xFF0284C7).copy(alpha = 0.2f),
-                                                    border = BorderStroke(1.dp, Color(0xFF0284C7)),
-                                                    modifier = Modifier.clickable {
-                                                        val sortedBase = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(currentEpisodes)
-                                                        val renumbered = sortedBase.groupBy { it.seasonNumber }.flatMap { (_, epList) ->
-                                                            epList.mapIndexed { idx, ep ->
-                                                                ep.copy(
-                                                                    episodeNumber = idx + 1,
-                                                                    title = if (ep.title.matches(Regex("^Episode \\d+$", RegexOption.IGNORE_CASE))) "Episode ${idx + 1}" else ep.title
-                                                                )
+                                                    modifier = Modifier
+                                                        .clip(CircleShape)
+                                                        .clickable {
+                                                            val sortedBase = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(currentEpisodes)
+                                                            val renumbered = sortedBase.groupBy { it.seasonNumber }.flatMap { (_, epList) ->
+                                                                epList.mapIndexed { idx, ep ->
+                                                                    ep.copy(
+                                                                        episodeNumber = idx + 1,
+                                                                        title = if (ep.title.matches(Regex("^Episode \\d+$", RegexOption.IGNORE_CASE))) "Episode ${idx + 1}" else ep.title
+                                                                    )
+                                                                }
                                                             }
+                                                            currentEpisodes.clear()
+                                                            currentEpisodes.addAll(renumbered)
                                                         }
-                                                        currentEpisodes.clear()
-                                                        currentEpisodes.addAll(renumbered)
-                                                    }
                                                 ) {
-                                                    Text(
-                                                        "🔄 Re-Index",
-                                                        color = Color(0xFF38BDF8),
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                    )
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                                    ) {
+                                                        Icon(Icons.Default.Refresh, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(12.dp))
+                                                        Text(
+                                                            "Re-Index",
+                                                            color = Color(0xFF38BDF8),
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
 
                                         if (validation.warningMessages.isNotEmpty()) {
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            validation.warningMessages.forEach { msg ->
-                                                Text("• $msg", color = Color(0xFFFFB74D), fontSize = 10.sp)
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                                validation.warningMessages.forEach { msg ->
+                                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                        Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = Color(0xFFFFB74D), modifier = Modifier.size(12.dp))
+                                                        Text(msg, color = Color(0xFFFFB74D), fontSize = 10.sp)
+                                                    }
+                                                }
                                             }
                                         }
 
                                         healthReport?.let { hr ->
                                             if (hr.deadCount > 0) {
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                                Text(
-                                                    "⚠️ ${hr.deadCount} stream link(s) broken/dead!",
-                                                    color = PrimaryRed,
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
+                                                Spacer(modifier = Modifier.height(6.dp))
+                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = PrimaryRed, modifier = Modifier.size(12.dp))
+                                                    Text(
+                                                        "${hr.deadCount} stream link(s) broken/dead!",
+                                                        color = PrimaryRed,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
                                             }
                                         }
 
-                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Spacer(modifier = Modifier.height(10.dp))
                                         Column(
-                                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp),
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             currentEpisodes.take(5).forEachIndexed { idx, ep ->
@@ -1403,18 +1492,23 @@ fun AdminEditorDialog(
                                                     verticalAlignment = Alignment.CenterVertically,
                                                     modifier = Modifier.fillMaxWidth()
                                                 ) {
-                                                    val epPrefix = "EP ${ep.episodeNumber.toString().padStart(2, '0')}:"
-                                                    Text(
-                                                        text = epPrefix,
-                                                        color = Color(0xFFFFD700),
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        modifier = Modifier.width(45.dp)
-                                                    )
+                                                    Surface(
+                                                        shape = CircleShape,
+                                                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                                        modifier = Modifier.padding(end = 6.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "E${ep.episodeNumber.toString().padStart(2, '0')}",
+                                                            color = AccentGold,
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        )
+                                                    }
                                                     Text(
                                                         text = ep.title.removePrefix("Ep ${ep.episodeNumber}: ").ifBlank { ep.fileName },
-                                                        color = TextPrimary,
-                                                        fontSize = 10.sp,
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                        fontSize = 11.sp,
                                                         maxLines = 1,
                                                         modifier = Modifier.weight(1f)
                                                     )
@@ -1430,7 +1524,7 @@ fun AdminEditorDialog(
                                                         }
                                                     } else ""
                                                     val metaChips = listOfNotNull(
-                                                        durationText.takeIf { it.isNotBlank() }?.let { "⏱️ $it" },
+                                                        durationText.takeIf { it.isNotBlank() },
                                                         ep.fileSize.takeIf { it.isNotBlank() }
                                                     ).joinToString(" • ")
 
@@ -1438,8 +1532,8 @@ fun AdminEditorDialog(
                                                         Spacer(modifier = Modifier.width(6.dp))
                                                         Text(
                                                             text = metaChips,
-                                                            color = Color(0xFF38BDF8),
-                                                            fontSize = 9.sp,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            fontSize = 10.sp,
                                                             fontWeight = FontWeight.Medium
                                                         )
                                                     }
@@ -1448,21 +1542,28 @@ fun AdminEditorDialog(
                                                     val epHealth = healthReport?.results?.get(key)
                                                     if (epHealth != null) {
                                                         Spacer(modifier = Modifier.width(6.dp))
-                                                        Text(
-                                                            text = if (epHealth.isAlive) "🟢 ${epHealth.httpCode} (${epHealth.latencyMs}ms)" else "🔴 ${epHealth.errorMessage ?: "HTTP ${epHealth.httpCode}"}",
-                                                            color = if (epHealth.isAlive) Color(0xFF81C784) else Color(0xFFFF5252),
-                                                            fontSize = 9.sp,
-                                                            fontWeight = FontWeight.Bold
-                                                        )
+                                                        Surface(
+                                                            shape = CircleShape,
+                                                            color = if (epHealth.isAlive) Color(0xFF10B981).copy(alpha = 0.15f) else PrimaryRed.copy(alpha = 0.15f)
+                                                        ) {
+                                                            Text(
+                                                                text = if (epHealth.isAlive) "${epHealth.httpCode} (${epHealth.latencyMs}ms)" else (epHealth.errorMessage ?: "HTTP ${epHealth.httpCode}"),
+                                                                color = if (epHealth.isAlive) Color(0xFF10B981) else PrimaryRed,
+                                                                fontSize = 9.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }
                                             if (currentEpisodes.size > 5) {
                                                 Text(
-                                                    text = "... + ${currentEpisodes.size - 5} more episodes",
-                                                    color = Color(0xFFA5D6A7),
+                                                    text = "+ ${currentEpisodes.size - 5} more episodes",
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                     fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Medium
+                                                    fontWeight = FontWeight.Medium,
+                                                    modifier = Modifier.padding(start = 4.dp, top = 2.dp)
                                                 )
                                             }
                                         }
@@ -1536,7 +1637,7 @@ fun AdminEditorDialog(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        Text("Technical Specs & Quality Badges", color = Color(0xFFFFD700), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Technical Specs & Quality Badges", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(6.dp))
 
                         // Resolution & Codec with Quick-Pick Chips
@@ -1553,30 +1654,32 @@ fun AdminEditorDialog(
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth()
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     val resPills = listOf("1080p", "720p", "4K", "480p")
                                     resPills.forEach { res ->
                                         val isSelected = resolution.equals(res, ignoreCase = true)
                                         Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = if (isSelected) AccentGold.copy(alpha = 0.25f) else Color(0xFF1E1E2C),
-                                            border = BorderStroke(1.dp, if (isSelected) AccentGold else Color(0x33FFFFFF)),
-                                            modifier = Modifier.clickable {
-                                                resolution = if (isSelected) "" else res
-                                            }
+                                            shape = CircleShape,
+                                            color = if (isSelected) AccentGold else MaterialTheme.colorScheme.surfaceContainerLowest,
+                                            modifier = Modifier
+                                                .clip(CircleShape)
+                                                .bouncyTouch()
+                                                .clickable {
+                                                    resolution = if (isSelected) "" else res
+                                                }
                                         ) {
                                             Text(
                                                 text = res,
-                                                color = if (isSelected) AccentGold else TextSecondary,
-                                                fontSize = 10.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                                color = if (isSelected) Color.Black else TextSecondary,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                             )
                                         }
                                     }
@@ -1592,30 +1695,32 @@ fun AdminEditorDialog(
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth()
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     val codecPills = listOf("HEVC/x265", "x264", "AV1")
                                     codecPills.forEach { c ->
                                         val isSelected = videoCodec.equals(c, ignoreCase = true)
                                         Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = if (isSelected) AccentOrange.copy(alpha = 0.25f) else Color(0xFF1E1E2C),
-                                            border = BorderStroke(1.dp, if (isSelected) AccentOrange else Color(0x33FFFFFF)),
-                                            modifier = Modifier.clickable {
-                                                videoCodec = if (isSelected) "" else c
-                                            }
+                                            shape = CircleShape,
+                                            color = if (isSelected) AccentOrange else MaterialTheme.colorScheme.surfaceContainerLowest,
+                                            modifier = Modifier
+                                                .clip(CircleShape)
+                                                .bouncyTouch()
+                                                .clickable {
+                                                    videoCodec = if (isSelected) "" else c
+                                                }
                                         ) {
                                             Text(
                                                 text = c,
-                                                color = if (isSelected) AccentOrange else TextSecondary,
-                                                fontSize = 10.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                                color = if (isSelected) Color.Black else TextSecondary,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                             )
                                         }
                                     }
@@ -1642,11 +1747,11 @@ fun AdminEditorDialog(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         FlowRow(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             val audioLanguages = listOf(
                                 "English", "Spanish", "Japanese", "Korean", "Chinese",
@@ -1657,25 +1762,27 @@ fun AdminEditorDialog(
                             audioLanguages.forEach { lang ->
                                 val isSelected = currentTokens.any { it.equals(lang, ignoreCase = true) }
                                 Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = if (isSelected) Color(0xFF10B981).copy(alpha = 0.25f) else Color(0xFF1E1E2C),
-                                    border = BorderStroke(1.dp, if (isSelected) Color(0xFF10B981) else Color(0x33FFFFFF)),
-                                    modifier = Modifier.clickable {
-                                        val list = audioTracksText.split(",").map { it.trim() }.filter { it.isNotBlank() }.toMutableList()
-                                        if (isSelected) {
-                                            list.removeAll { it.equals(lang, ignoreCase = true) }
-                                        } else {
-                                            list.add(lang)
+                                    shape = CircleShape,
+                                    color = if (isSelected) Color(0xFF10B981) else MaterialTheme.colorScheme.surfaceContainerLowest,
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .bouncyTouch()
+                                        .clickable {
+                                            val list = audioTracksText.split(",").map { it.trim() }.filter { it.isNotBlank() }.toMutableList()
+                                            if (isSelected) {
+                                                list.removeAll { it.equals(lang, ignoreCase = true) }
+                                            } else {
+                                                list.add(lang)
+                                            }
+                                            audioTracksText = list.joinToString(", ")
                                         }
-                                        audioTracksText = list.joinToString(", ")
-                                    }
                                 ) {
                                     Text(
                                         text = if (isSelected) "✓ $lang" else lang,
-                                        color = if (isSelected) Color(0xFF10B981) else TextSecondary,
-                                        fontSize = 10.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                        color = if (isSelected) Color.Black else TextSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                     )
                                 }
                             }
@@ -1691,12 +1798,12 @@ fun AdminEditorDialog(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             val subtitleOptions = listOf("English", "English, Bengali", "Multi Subs", "None")
                             subtitleOptions.forEach { opt ->
@@ -1705,26 +1812,28 @@ fun AdminEditorDialog(
                                     else -> subtitleTracksText.equals(opt, ignoreCase = true)
                                 }
                                 Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = if (isSelected) Color(0xFF8B5CF6).copy(alpha = 0.25f) else Color(0xFF1E1E2C),
-                                    border = BorderStroke(1.dp, if (isSelected) Color(0xFF8B5CF6) else Color(0x33FFFFFF)),
-                                    modifier = Modifier.clickable {
-                                        subtitleTracksText = if (opt == "None") "" else opt
-                                    }
+                                    shape = CircleShape,
+                                    color = if (isSelected) Color(0xFF8B5CF6) else MaterialTheme.colorScheme.surfaceContainerLowest,
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .bouncyTouch()
+                                        .clickable {
+                                            subtitleTracksText = if (opt == "None") "" else opt
+                                        }
                                 ) {
                                     Text(
                                         text = opt,
-                                        color = if (isSelected) Color(0xFFD0BCFF) else TextSecondary,
-                                        fontSize = 10.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        color = if (isSelected) Color.White else TextSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                     )
                                 }
                             }
                         }
 
                         Spacer(modifier = Modifier.height(14.dp))
-                        Text("Franchise Universe & Sequel Grouping", color = Color(0xFFFFD700), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Franchise Universe & Sequel Grouping", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(6.dp))
 
                         MetadataRow(franchiseTitle, { franchiseTitle = it }, "Franchise Name (e.g. Solo Leveling)", franchiseId, { franchiseId = it }, "Franchise Slug (e.g. solo-leveling)")
@@ -1751,7 +1860,7 @@ fun AdminEditorDialog(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text("Relation Type & Story Role (Multi-Selectable)", color = TextSecondary, fontSize = 11.sp)
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier
@@ -1764,38 +1873,40 @@ fun AdminEditorDialog(
                             relationPills.forEach { rel ->
                                 val isSelected = currentTokens.any { it.equals(rel, ignoreCase = true) }
                                 Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isSelected) PrimaryRed else Color(0xFF1E1E2C),
-                                    border = BorderStroke(1.dp, if (isSelected) PrimaryRed else Color(0x33FFFFFF)),
-                                    modifier = Modifier.clickable {
-                                        val tokens = relationType.split("•", ",").map { it.trim() }.filter { it.isNotBlank() }.toMutableList()
-                                        if (tokens.any { it.equals(rel, ignoreCase = true) }) {
-                                            tokens.removeAll { it.equals(rel, ignoreCase = true) }
-                                        } else {
-                                            // Only exclude mutually conflicting directional roles
-                                            if (rel.equals("Sequel", ignoreCase = true)) {
-                                                tokens.removeAll { it.equals("Prequel", ignoreCase = true) }
-                                            } else if (rel.equals("Prequel", ignoreCase = true)) {
-                                                tokens.removeAll { it.equals("Sequel", ignoreCase = true) }
+                                    shape = CircleShape,
+                                    color = if (isSelected) PrimaryRed else MaterialTheme.colorScheme.surfaceContainerLowest,
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .bouncyTouch()
+                                        .clickable {
+                                            val tokens = relationType.split("•", ",").map { it.trim() }.filter { it.isNotBlank() }.toMutableList()
+                                            if (tokens.any { it.equals(rel, ignoreCase = true) }) {
+                                                tokens.removeAll { it.equals(rel, ignoreCase = true) }
+                                            } else {
+                                                // Only exclude mutually conflicting directional roles
+                                                if (rel.equals("Sequel", ignoreCase = true)) {
+                                                    tokens.removeAll { it.equals("Prequel", ignoreCase = true) }
+                                                } else if (rel.equals("Prequel", ignoreCase = true)) {
+                                                    tokens.removeAll { it.equals("Sequel", ignoreCase = true) }
+                                                }
+                                                tokens.add(rel)
                                             }
-                                            tokens.add(rel)
-                                        }
 
-                                        // Role tokens first, Format tokens second
-                                        val roleWeights = mapOf(
-                                            "Sequel" to 1, "Prequel" to 2, "Side Story" to 3, "Spin-Off" to 4,
-                                            "Movie" to 5, "TV" to 6, "TV Special" to 7, "OVA" to 8, "ONA" to 9, "Special" to 10
-                                        )
-                                        tokens.sortBy { roleWeights[it] ?: 99 }
-                                        relationType = tokens.joinToString(" • ")
-                                    }
+                                            // Role tokens first, Format tokens second
+                                            val roleWeights = mapOf(
+                                                "Sequel" to 1, "Prequel" to 2, "Side Story" to 3, "Spin-Off" to 4,
+                                                "Movie" to 5, "TV" to 6, "TV Special" to 7, "OVA" to 8, "ONA" to 9, "Special" to 10
+                                            )
+                                            tokens.sortBy { roleWeights[it] ?: 99 }
+                                            relationType = tokens.joinToString(" • ")
+                                        }
                                 ) {
                                     Text(
                                         text = rel,
                                         color = if (isSelected) Color.White else TextSecondary,
                                         fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                     )
                                 }
                             }
@@ -1821,16 +1932,15 @@ fun AdminEditorDialog(
                                         else -> PrimaryRed
                                     }
                                     Surface(
-                                        shape = RoundedCornerShape(4.dp),
-                                        color = chipColor.copy(alpha = 0.2f),
-                                        border = BorderStroke(0.8.dp, chipColor)
+                                        shape = CircleShape,
+                                        color = chipColor.copy(alpha = 0.15f)
                                     ) {
                                         Text(
                                             text = t.uppercase(),
                                             color = chipColor,
                                             fontSize = 9.sp,
                                             fontWeight = FontWeight.Black,
-                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                                         )
                                     }
                                 }
@@ -1859,9 +1969,8 @@ fun AdminEditorDialog(
                             }
 
                             Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = Color(0xFF1B182A),
-                                border = BorderStroke(1.dp, if (totalIssues > 0) Color(0xFF7C4DFF) else Color(0xFF28283C)),
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerLowest,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
@@ -1873,8 +1982,7 @@ fun AdminEditorDialog(
                                             modifier = Modifier
                                                 .size(42.dp)
                                                 .clip(CircleShape)
-                                                .background(Color(0xFF7C4DFF).copy(alpha = 0.2f))
-                                                .border(1.dp, Color(0xFF7C4DFF).copy(alpha = 0.5f), CircleShape),
+                                                .background(Color(0xFF7C4DFF).copy(alpha = 0.2f)),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(Icons.Default.HealthAndSafety, contentDescription = null, tint = Color(0xFFB388FF), modifier = Modifier.size(22.dp))
@@ -1890,16 +1998,15 @@ fun AdminEditorDialog(
                                                 )
                                                 Spacer(modifier = Modifier.width(6.dp))
                                                 Surface(
-                                                    shape = RoundedCornerShape(6.dp),
-                                                    color = if (totalIssues > 0) Color(0x33FF9800) else Color(0x2210B981),
-                                                    border = BorderStroke(1.dp, if (totalIssues > 0) Color(0x66FF9800) else Color(0x4410B981))
+                                                    shape = CircleShape,
+                                                    color = if (totalIssues > 0) Color(0x33FF9800) else Color(0x2210B981)
                                                 ) {
                                                     Text(
                                                         text = "$healthScore% Quality",
                                                         color = if (totalIssues > 0) Color(0xFFFFB74D) else Color(0xFF34D399),
                                                         fontSize = 11.sp,
                                                         fontWeight = FontWeight.Bold,
-                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                                     )
                                                 }
                                             }
@@ -1925,8 +2032,11 @@ fun AdminEditorDialog(
                                     Button(
                                         onClick = { showMetadataInspector = true },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
-                                        shape = RoundedCornerShape(10.dp),
-                                        modifier = Modifier.fillMaxWidth()
+                                        shape = CircleShape,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(46.dp)
+                                            .bouncyTouch()
                                     ) {
                                         Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(8.dp))
@@ -1937,15 +2047,14 @@ fun AdminEditorDialog(
 
                             // 2. User Codes & Voucher Manager Card
                             Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFF181824),
-                                border = BorderStroke(1.dp, Color(0xFF28283C)),
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerLowest,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(14.dp),
+                                        .padding(16.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
@@ -1955,42 +2064,43 @@ fun AdminEditorDialog(
                                     ) {
                                         Box(
                                             modifier = Modifier
-                                                .size(36.dp)
+                                                .size(38.dp)
                                                 .clip(CircleShape)
-                                                .background(Color(0xFFF59E0B).copy(alpha = 0.15f))
-                                                .border(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f), CircleShape),
+                                                .background(Color(0xFFF59E0B).copy(alpha = 0.15f)),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(Icons.Default.Key, contentDescription = null, tint = Color(0xFFFBBF24), modifier = Modifier.size(18.dp))
                                         }
                                         Spacer(modifier = Modifier.width(12.dp))
                                         Column {
-                                            Text("Access Codes & Vouchers 🔑", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                            Text("Access Codes & Vouchers", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                             Text("Manage private community gate access codes", color = TextSecondary, fontSize = 11.sp)
                                         }
                                     }
                                     Button(
                                         onClick = { showVoucherDialog = true },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B)),
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                        shape = CircleShape,
+                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                                        modifier = Modifier
+                                            .height(36.dp)
+                                            .bouncyTouch()
                                     ) {
                                         Text("Manage", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
 
-                            // 3. Backup / Restore Card
+                            // 3. Backup / Restore Card with M3 Expressive Split Button
                             Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFF181824),
-                                border = BorderStroke(1.dp, Color(0xFF28283C)),
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerLowest,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(14.dp),
+                                        .padding(16.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
@@ -2000,42 +2110,75 @@ fun AdminEditorDialog(
                                     ) {
                                         Box(
                                             modifier = Modifier
-                                                .size(36.dp)
+                                                .size(38.dp)
                                                 .clip(CircleShape)
-                                                .background(Color(0xFF0284C7).copy(alpha = 0.15f))
-                                                .border(1.dp, Color(0xFF0284C7).copy(alpha = 0.4f), CircleShape),
+                                                .background(Color(0xFF0284C7).copy(alpha = 0.15f)),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
                                         }
                                         Spacer(modifier = Modifier.width(12.dp))
                                         Column {
-                                            Text("Database Backup & Restore 💾", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                            Text("Database Backup & Restore", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                             Text("Export, share snapshots & manage device archives", color = TextSecondary, fontSize = 11.sp)
                                         }
                                     }
-                                    Button(
-                                        onClick = { showBackupDialog = true },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                    // Official M3 Expressive Split Button: [ Backup (18.dp, 6.dp) ] <3.dp gap> [ Restore ▾ (6.dp, 18.dp) ]
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.height(36.dp)
                                     ) {
-                                        Text("Backup/Restore", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        // Leading Button: Backup
+                                        Surface(
+                                            shape = RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp, topEnd = 6.dp, bottomEnd = 6.dp),
+                                            color = Color(0xFF0284C7),
+                                            modifier = Modifier
+                                                .fillMaxHeight()
+                                                .bouncyTouch(pressedScale = 0.94f)
+                                                .clickable { showBackupDialog = true }
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text("Backup", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.width(3.dp))
+
+                                        // Trailing Button: Restore
+                                        Surface(
+                                            shape = RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp, topEnd = 18.dp, bottomEnd = 18.dp),
+                                            color = Color(0xFF0284C7),
+                                            modifier = Modifier
+                                                .fillMaxHeight()
+                                                .bouncyTouch(pressedScale = 0.94f)
+                                                .clickable { showBackupDialog = true }
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                            ) {
+                                                Text("Restore", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                Spacer(modifier = Modifier.width(2.dp))
+                                                Icon(Icons.Default.ArrowDropDown, contentDescription = "Restore", tint = Color.White, modifier = Modifier.size(14.dp))
+                                            }
+                                        }
                                     }
                                 }
                             }
 
                             // 4. Server Migrate Card
                             Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFF181824),
-                                border = BorderStroke(1.dp, Color(0xFF28283C)),
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerLowest,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(14.dp),
+                                        .padding(16.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
@@ -2045,25 +2188,27 @@ fun AdminEditorDialog(
                                     ) {
                                         Box(
                                             modifier = Modifier
-                                                .size(36.dp)
+                                                .size(38.dp)
                                                 .clip(CircleShape)
-                                                .background(Color(0xFF10B981).copy(alpha = 0.15f))
-                                                .border(1.dp, Color(0xFF10B981).copy(alpha = 0.4f), CircleShape),
+                                                .background(Color(0xFF10B981).copy(alpha = 0.15f)),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color(0xFF34D399), modifier = Modifier.size(18.dp))
                                         }
                                         Spacer(modifier = Modifier.width(12.dp))
                                         Column {
-                                            Text("Server Migration 🚀", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                            Text("Server Migration", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                             Text("Migrate database between Firestore servers", color = TextSecondary, fontSize = 11.sp)
                                         }
                                     }
                                     Button(
                                         onClick = { showMigrationDialog = true },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                        shape = CircleShape,
+                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                                        modifier = Modifier
+                                            .height(36.dp)
+                                            .bouncyTouch()
                                     ) {
                                         Text("Migrate", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                     }
@@ -2092,15 +2237,20 @@ fun AdminEditorDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OutlinedButton(
+                    Button(
                         onClick = onDismiss,
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 6.dp),
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+                            contentColor = TextSecondary
+                        ),
+                        contentPadding = PaddingValues(horizontal = 14.dp),
                         modifier = Modifier
                             .weight(0.9f)
-                            .height(44.dp)
+                            .height(46.dp)
+                            .bouncyTouch()
                     ) {
-                        Text("Cancel", color = TextSecondary, fontSize = 12.sp, maxLines = 1)
+                        Text("Cancel", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                     }
 
                     if (activeEditItem != null || initialItem != null) {
@@ -2108,16 +2258,20 @@ fun AdminEditorDialog(
                             onClick = {
                                 showDeleteConfirmDialog = true
                             },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0x33FF3B30)),
-                            contentPadding = PaddingValues(horizontal = 6.dp),
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = PrimaryRed.copy(alpha = 0.15f),
+                                contentColor = PrimaryRed
+                            ),
+                            contentPadding = PaddingValues(horizontal = 10.dp),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(44.dp)
+                                .height(46.dp)
+                                .bouncyTouch()
                         ) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = PrimaryRed, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text("Delete", color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = PrimaryRed, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Delete", color = PrimaryRed, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                         }
                     }
 
@@ -2258,21 +2412,20 @@ fun AdminEditorDialog(
                                 }
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                        shape = CircleShape,
+                        contentPadding = PaddingValues(horizontal = 14.dp),
                         modifier = Modifier
                             .weight(1.8f)
-                            .height(44.dp)
-                            .background(
-                                brush = Brush.horizontalGradient(listOf(PrimaryRed, Color(0xFFFF5252))),
-                                shape = RoundedCornerShape(12.dp)
-                            )
+                            .height(46.dp)
+                            .bouncyTouch()
                     ) {
+                        Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (initialItem == null) "🚀 Save & Publish" else "🚀 Save Changes",
+                            text = if (initialItem == null) "Save & Publish" else "Save Changes",
                             color = Color.White,
-                            fontSize = 12.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1
                         )
@@ -2282,13 +2435,17 @@ fun AdminEditorDialog(
                 // Fixed Footer for Tools Tab
                 Button(
                     onClick = onDismiss,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF28283C)),
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+                        contentColor = TextPrimary
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(44.dp)
+                        .height(46.dp)
+                        .bouncyTouch()
                 ) {
-                    Text("Close Studio", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text("Close Studio", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -2298,24 +2455,40 @@ fun AdminEditorDialog(
 
 @Composable
 private fun TabButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     isSelected: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(9.dp),
+        shape = CircleShape,
         color = if (isSelected) PrimaryRed else Color.Transparent,
-        modifier = modifier.clickable(onClick = onClick)
+        modifier = modifier
+            .bouncyTouch()
+            .clip(CircleShape)
+            .clickable(onClick = onClick)
     ) {
-        Text(
-            text = title,
-            color = if (isSelected) Color.White else TextSecondary,
-            fontSize = 11.sp,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-            modifier = Modifier.padding(vertical = 8.dp),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-        )
+        Row(
+            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = title,
+                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                maxLines = 1
+            )
+        }
     }
 }
 

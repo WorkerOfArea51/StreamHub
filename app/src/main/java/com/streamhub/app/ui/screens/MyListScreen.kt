@@ -10,6 +10,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -50,11 +51,16 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircleOutline
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -63,7 +69,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -86,7 +91,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -106,12 +110,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import com.streamhub.app.data.repository.CatalogState
 import com.streamhub.app.ui.components.AppErrorState
 import com.streamhub.app.ui.theme.AccentGold
-import com.streamhub.app.ui.theme.AccentOrange
-import com.streamhub.app.ui.theme.BackgroundDark
-import com.streamhub.app.ui.theme.CardBorderDark
-import com.streamhub.app.ui.theme.SurfaceDark
-import com.streamhub.app.ui.theme.TextPrimary
-import com.streamhub.app.ui.theme.TextSecondary
 
 enum class MyListStatusCategory(val label: String, val icon: ImageVector) {
     ALL("All Saved", Icons.Default.Bookmark),
@@ -122,17 +120,60 @@ enum class MyListStatusCategory(val label: String, val icon: ImageVector) {
     COLLECTIONS("Collections", Icons.Default.Folder)
 }
 
-enum class MyListSortOption(val label: String) {
-    RECENTLY_ADDED("Recently Saved"),
-    RATING("Highest Rated ⭐"),
-    RELEASE_YEAR("Release Year"),
-    ALPHABETICAL("Alphabetical (A-Z)")
+enum class MyListSortOption(val label: String, val shortLabel: String) {
+    RECENTLY_ADDED("Recently Saved", "Recent"),
+    OLDEST_ADDED("Oldest Saved", "Oldest"),
+    RATING_DESC("Rating: High to Low", "Rating ↓"),
+    RATING_ASC("Rating: Low to High", "Rating ↑"),
+    RELEASE_YEAR_DESC("Release Year: Newest", "Year ↓"),
+    RELEASE_YEAR_ASC("Release Year: Oldest", "Year ↑"),
+    ALPHABETICAL_ASC("Title: (A - Z)", "A - Z"),
+    ALPHABETICAL_DESC("Title: (Z - A)", "Z - A");
+
+    val isAscending: Boolean
+        get() = this == OLDEST_ADDED || this == RATING_ASC || this == RELEASE_YEAR_ASC || this == ALPHABETICAL_DESC
+
+    fun toggleDirection(): MyListSortOption = when (this) {
+        RECENTLY_ADDED -> OLDEST_ADDED
+        OLDEST_ADDED -> RECENTLY_ADDED
+        RATING_DESC -> RATING_ASC
+        RATING_ASC -> RATING_DESC
+        RELEASE_YEAR_DESC -> RELEASE_YEAR_ASC
+        RELEASE_YEAR_ASC -> RELEASE_YEAR_DESC
+        ALPHABETICAL_ASC -> ALPHABETICAL_DESC
+        ALPHABETICAL_DESC -> ALPHABETICAL_ASC
+    }
+
+    fun withDirection(ascending: Boolean): MyListSortOption = when (this) {
+        RECENTLY_ADDED, OLDEST_ADDED -> if (ascending) OLDEST_ADDED else RECENTLY_ADDED
+        RATING_DESC, RATING_ASC -> if (ascending) RATING_ASC else RATING_DESC
+        RELEASE_YEAR_DESC, RELEASE_YEAR_ASC -> if (ascending) RELEASE_YEAR_ASC else RELEASE_YEAR_DESC
+        ALPHABETICAL_ASC, ALPHABETICAL_DESC -> if (ascending) ALPHABETICAL_DESC else ALPHABETICAL_ASC
+    }
+
+    val criterionKey: String
+        get() = when (this) {
+            RECENTLY_ADDED, OLDEST_ADDED -> "DATE"
+            RATING_DESC, RATING_ASC -> "RATING"
+            RELEASE_YEAR_DESC, RELEASE_YEAR_ASC -> "YEAR"
+            ALPHABETICAL_ASC, ALPHABETICAL_DESC -> "TITLE"
+        }
+
+    companion object {
+        fun forCriterion(criterionKey: String, ascending: Boolean = false): MyListSortOption = when (criterionKey) {
+            "DATE" -> if (ascending) OLDEST_ADDED else RECENTLY_ADDED
+            "RATING" -> if (ascending) RATING_ASC else RATING_DESC
+            "YEAR" -> if (ascending) RELEASE_YEAR_ASC else RELEASE_YEAR_DESC
+            "TITLE" -> if (ascending) ALPHABETICAL_DESC else ALPHABETICAL_ASC
+            else -> RECENTLY_ADDED
+        }
+    }
 }
 
 enum class MyListTypeFilter(val label: String) {
     ALL("All Types"),
-    MOVIES("Movies 🎬"),
-    SERIES("TV / Anime 📺")
+    MOVIES("Movies"),
+    SERIES("TV & Anime")
 }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
@@ -271,16 +312,26 @@ fun MyListScreen(
     val finalDisplayList = remember(searchFiltered, selectedSort, myItemsMap) {
         when (selectedSort) {
             MyListSortOption.RECENTLY_ADDED -> searchFiltered.sortedByDescending { myItemsMap[it.id]?.addedAt ?: 0L }
-            MyListSortOption.RATING -> searchFiltered.sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
-            MyListSortOption.RELEASE_YEAR -> searchFiltered.sortedByDescending { it.releaseYear.toIntOrNull() ?: 0 }
-            MyListSortOption.ALPHABETICAL -> searchFiltered.sortedBy { it.title.lowercase() }
+            MyListSortOption.OLDEST_ADDED -> searchFiltered.sortedBy { myItemsMap[it.id]?.addedAt ?: Long.MAX_VALUE }
+            MyListSortOption.RATING_DESC -> searchFiltered.sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
+            MyListSortOption.RATING_ASC -> searchFiltered.sortedBy {
+                val r = it.rating.toDoubleOrNull()
+                if (r != null && r > 0.0) r else 999.0
+            }
+            MyListSortOption.RELEASE_YEAR_DESC -> searchFiltered.sortedByDescending { it.releaseYear.toIntOrNull() ?: 0 }
+            MyListSortOption.RELEASE_YEAR_ASC -> searchFiltered.sortedBy {
+                val y = it.releaseYear.toIntOrNull()
+                if (y != null && y > 1900) y else 9999
+            }
+            MyListSortOption.ALPHABETICAL_ASC -> searchFiltered.sortedBy { it.title.lowercase() }
+            MyListSortOption.ALPHABETICAL_DESC -> searchFiltered.sortedByDescending { it.title.lowercase() }
         }
     }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(BackgroundDark)
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         // ── Header & Action Bar ──
@@ -291,15 +342,16 @@ fun MyListScreen(
         ) {
             Column {
                 Text(
-                    text = "My List & Watchlist 🔖",
-                    color = TextPrimary,
+                    text = "My List & Watchlist",
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold
                 )
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "Your curated library & real-time watch progress",
-                    color = TextSecondary,
-                    fontSize = 11.sp
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.5.sp
                 )
             }
 
@@ -312,7 +364,7 @@ fun MyListScreen(
                     Icon(
                         imageVector = if (isSearchActive) Icons.Default.Close else Icons.Default.Search,
                         contentDescription = "Search Watchlist",
-                        tint = if (isSearchActive) primaryColor else TextSecondary,
+                        tint = if (isSearchActive) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -347,26 +399,26 @@ fun MyListScreen(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("Search your saved titles...", color = TextSecondary, fontSize = 12.sp) },
+                placeholder = { Text("Search your saved titles...", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) },
                 leadingIcon = {
                     Icon(Icons.Default.Search, contentDescription = null, tint = primaryColor, modifier = Modifier.size(18.dp))
                 },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
                         IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear", tint = TextSecondary, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Close, contentDescription = "Clear", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                         }
                     }
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(12.dp),
+                shape = androidx.compose.foundation.shape.CircleShape,
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = primaryColor,
-                    unfocusedBorderColor = CardBorderDark,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary,
-                    focusedContainerColor = SurfaceDark,
-                    unfocusedContainerColor = SurfaceDark
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -376,7 +428,7 @@ fun MyListScreen(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // ── Core Status Category Tabs (Pills) ──
+        // ── Core Status Category Tabs (M3 Expressive Borderless Pills) ──
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(vertical = 4.dp),
@@ -394,25 +446,24 @@ fun MyListScreen(
                 }
 
                 Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = if (isSelected) primaryColor else SurfaceDark,
-                    border = BorderStroke(1.dp, if (isSelected) primaryColor else CardBorderDark),
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = if (isSelected) primaryColor else MaterialTheme.colorScheme.surfaceContainerHigh,
                     modifier = Modifier.clickable { selectedStatus = cat }
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Icon(
                             imageVector = cat.icon,
                             contentDescription = null,
-                            tint = if (isSelected) Color.White else (if (cat == MyListStatusCategory.FAVORITES) Color(0xFFFF5252) else TextSecondary),
+                            tint = if (isSelected) Color.White else (if (cat == MyListStatusCategory.FAVORITES) Color(0xFFFF5252) else MaterialTheme.colorScheme.onSurfaceVariant),
                             modifier = Modifier.size(14.dp)
                         )
                         Text(
                             text = "${cat.label} ($count)",
-                            color = if (isSelected) Color.White else TextPrimary,
+                            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
                             fontSize = 11.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                         )
@@ -430,17 +481,16 @@ fun MyListScreen(
             ) {
                 item {
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (selectedCollection == "All") Color(0xFF38BDF8) else Color(0xFF161626),
-                        border = BorderStroke(1.dp, if (selectedCollection == "All") Color(0xFF38BDF8) else CardBorderDark),
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                        color = if (selectedCollection == "All") Color(0xFF38BDF8) else MaterialTheme.colorScheme.surfaceContainerHigh,
                         modifier = Modifier.clickable { selectedCollection = "All" }
                     ) {
                         Text(
                             text = "All Folders",
-                            color = if (selectedCollection == "All") Color.Black else TextPrimary,
+                            color = if (selectedCollection == "All") Color.Black else MaterialTheme.colorScheme.onSurface,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
                     }
                 }
@@ -453,9 +503,8 @@ fun MyListScreen(
                     }
 
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (isColSelected) Color(0xFF38BDF8) else Color(0xFF161626),
-                        border = BorderStroke(1.dp, if (isColSelected) Color(0xFF38BDF8) else CardBorderDark),
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                        color = if (isColSelected) Color(0xFF38BDF8) else MaterialTheme.colorScheme.surfaceContainerHigh,
                         modifier = Modifier.combinedClickable(
                             onClick = { selectedCollection = col },
                             onLongClick = {
@@ -468,12 +517,18 @@ fun MyListScreen(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = null,
+                                tint = if (isColSelected) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(13.dp)
+                            )
                             Text(
-                                text = "📁 $col ($count)",
-                                color = if (isColSelected) Color.Black else TextPrimary,
+                                text = "$col ($count)",
+                                color = if (isColSelected) Color.Black else MaterialTheme.colorScheme.onSurface,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -481,7 +536,7 @@ fun MyListScreen(
                                 Icon(
                                     imageVector = Icons.Default.MoreVert,
                                     contentDescription = "Manage Folder",
-                                    tint = if (isColSelected) Color.Black.copy(alpha = 0.7f) else TextSecondary,
+                                    tint = if (isColSelected) Color.Black.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier
                                         .size(14.dp)
                                         .clickable {
@@ -496,9 +551,8 @@ fun MyListScreen(
 
                 item {
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFF222238),
-                        border = BorderStroke(1.dp, CardBorderDark),
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         modifier = Modifier.clickable { showNewCollectionDialog = true }
                     ) {
                         Text(
@@ -506,7 +560,7 @@ fun MyListScreen(
                             color = Color(0xFF38BDF8),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
                     }
                 }
@@ -521,62 +575,126 @@ fun MyListScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Type Filter Chips (All vs Movies vs Series)
+            // Type Filter Chips (All vs Movies vs Series - M3 Expressive Borderless Pills)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 MyListTypeFilter.values().forEach { t ->
                     val isSel = selectedType == t
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (isSel) primaryColor.copy(alpha = 0.2f) else SurfaceDark,
-                        border = BorderStroke(1.dp, if (isSel) primaryColor else CardBorderDark),
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                        color = if (isSel) primaryColor.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceContainerHigh,
                         modifier = Modifier.clickable { selectedType = t }
                     ) {
                         Text(
                             text = t.label,
-                            color = if (isSel) primaryColor else TextSecondary,
-                            fontSize = 10.sp,
+                            color = if (isSel) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                         )
                     }
                 }
             }
 
-            // Sort Dropdown Button
+            // M3 Expressive Split Sort Button
             Box {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = SurfaceDark,
-                    border = BorderStroke(1.dp, CardBorderDark),
-                    modifier = Modifier.clickable { showSortMenu = true }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null, tint = AccentGold, modifier = Modifier.size(13.dp))
-                        Text(text = selectedSort.label, color = TextPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                com.streamhub.app.ui.components.ExpressiveSortSplitButton(
+                    text = selectedSort.shortLabel,
+                    isSelected = selectedSort != MyListSortOption.RECENTLY_ADDED,
+                    isMenuOpen = showSortMenu,
+                    onDirectionClick = {
+                        val toggled = selectedSort.toggleDirection()
+                        selectedSort = toggled
+                    },
+                    onMenuClick = {
+                        showSortMenu = true
                     }
-                }
+                )
 
                 DropdownMenu(
                     expanded = showSortMenu,
                     onDismissRequest = { showSortMenu = false },
-                    modifier = Modifier.background(SurfaceDark)
+                    modifier = Modifier
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .clip(RoundedCornerShape(16.dp))
+                        .padding(vertical = 4.dp)
                 ) {
-                    MyListSortOption.values().forEach { opt ->
+                    // Direction Toggle Header Row inside dropdown
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val isAsc = selectedSort.isAscending
+                        Surface(
+                            onClick = {
+                                selectedSort = selectedSort.withDirection(false)
+                            },
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                            color = if (!isAsc) primaryColor else MaterialTheme.colorScheme.surfaceContainerHighest,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                                Text(
+                                    text = "High to Low",
+                                    color = if (!isAsc) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (!isAsc) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
+
+                        Surface(
+                            onClick = {
+                                selectedSort = selectedSort.withDirection(true)
+                            },
+                            shape = androidx.compose.foundation.shape.CircleShape,
+                            color = if (isAsc) primaryColor else MaterialTheme.colorScheme.surfaceContainerHighest,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                                Text(
+                                    text = "Low to High",
+                                    color = if (isAsc) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isAsc) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+
+                    // 4 Clean Criteria Options
+                    listOf<Triple<String, String, ImageVector>>(
+                        Triple("DATE", "Recently Saved", Icons.Default.Schedule),
+                        Triple("RATING", "Rating", Icons.Default.Star),
+                        Triple("YEAR", "Release Year", Icons.Default.CalendarToday),
+                        Triple("TITLE", "Alphabetical (A - Z)", Icons.Default.SortByAlpha)
+                    ).forEach { (key: String, label: String, icon: ImageVector) ->
+                        val isCurrent = selectedSort.criterionKey == key
                         DropdownMenuItem(
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    tint = if (isCurrent) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            },
                             text = {
                                 Text(
-                                    text = opt.label,
-                                    color = if (selectedSort == opt) AccentGold else TextPrimary,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (selectedSort == opt) FontWeight.Bold else FontWeight.Normal
+                                    text = label,
+                                    color = if (isCurrent) primaryColor else MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 13.sp
                                 )
                             },
                             onClick = {
-                                selectedSort = opt
+                                selectedSort = MyListSortOption.forCriterion(key, selectedSort.isAscending)
                                 showSortMenu = false
                             }
                         )
@@ -595,17 +713,16 @@ fun MyListScreen(
                 items(availableGenres) { genre ->
                     val isGenreSel = selectedGenre.equals(genre, ignoreCase = true)
                     Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (isGenreSel) Color(0x33FFD700) else Color(0xFF141420),
-                        border = BorderStroke(0.5.dp, if (isGenreSel) AccentGold else CardBorderDark),
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                        color = if (isGenreSel) AccentGold.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceContainerHigh,
                         modifier = Modifier.clickable { selectedGenre = genre }
                     ) {
                         Text(
                             text = genre,
-                            color = if (isGenreSel) AccentGold else TextSecondary,
-                            fontSize = 9.sp,
+                            color = if (isGenreSel) AccentGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
                         )
                     }
                 }
@@ -626,59 +743,35 @@ fun MyListScreen(
                     .weight(1f)
             )
         } else if (finalDisplayList.isEmpty()) {
-            Box(
+            val emptyTitle = when (selectedStatus) {
+                MyListStatusCategory.ALL -> "Your Watchlist is Empty"
+                MyListStatusCategory.IN_PROGRESS -> "No Shows In Progress"
+                MyListStatusCategory.WATCH_LATER -> "No Watch Later Titles"
+                MyListStatusCategory.FAVORITES -> "No Favorites Saved Yet"
+                MyListStatusCategory.COMPLETED -> "No Completed Titles Yet"
+                MyListStatusCategory.COLLECTIONS -> "No Items in this Folder"
+            }
+            val emptySubtitle = when (selectedStatus) {
+                MyListStatusCategory.ALL -> "Tap '+ My List' on any show to bookmark it here for quick access anytime!"
+                MyListStatusCategory.IN_PROGRESS -> "Start watching any anime or movie to track your resume points here!"
+                MyListStatusCategory.WATCH_LATER -> "Saved shows you haven't started yet will appear here."
+                MyListStatusCategory.FAVORITES -> "Tap the heart on any title card to add it to your loved favorites list."
+                MyListStatusCategory.COMPLETED -> "Finished anime and movies will be organized here."
+                MyListStatusCategory.COLLECTIONS -> "Move titles into custom folders to organize your collection."
+            }
+            com.streamhub.app.ui.components.EmptyStateCard(
+                icon = selectedStatus.icon,
+                title = emptyTitle,
+                subtitle = emptySubtitle,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = selectedStatus.icon,
-                        contentDescription = "Empty",
-                        tint = primaryColor,
-                        modifier = Modifier.size(54.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        text = when (selectedStatus) {
-                            MyListStatusCategory.ALL -> "Your Watchlist is Empty"
-                            MyListStatusCategory.IN_PROGRESS -> "No Shows In Progress"
-                            MyListStatusCategory.WATCH_LATER -> "No Watch Later Titles"
-                            MyListStatusCategory.FAVORITES -> "No Favorites Saved Yet"
-                            MyListStatusCategory.COMPLETED -> "No Completed Titles Yet"
-                            MyListStatusCategory.COLLECTIONS -> "No Items in this Folder"
-                        },
-                        color = TextPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Text(
-                        text = when (selectedStatus) {
-                            MyListStatusCategory.ALL -> "Tap '+ My List' on any show to bookmark it here for quick access anytime!"
-                            MyListStatusCategory.IN_PROGRESS -> "Start watching any anime or movie to track your resume points here!"
-                            MyListStatusCategory.WATCH_LATER -> "Saved shows you haven't started yet will appear here."
-                            MyListStatusCategory.FAVORITES -> "Tap ❤️ on any title card to add it to your loved favorites list."
-                            MyListStatusCategory.COMPLETED -> "Finished anime and movies will be organized here."
-                            MyListStatusCategory.COLLECTIONS -> "Move titles into custom folders to organize your collection."
-                        },
-                        color = TextSecondary,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 32.dp),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                }
-            }
+                    .weight(1f)
+            )
         } else {
             if (isGridView) {
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 135.dp),
-                    contentPadding = PaddingValues(bottom = 24.dp),
+                    contentPadding = PaddingValues(bottom = 120.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.weight(1f)
@@ -702,7 +795,7 @@ fun MyListScreen(
                 }
             } else {
                 androidx.compose.foundation.lazy.LazyColumn(
-                    contentPadding = PaddingValues(bottom = 24.dp),
+                    contentPadding = PaddingValues(bottom = 120.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.weight(1f)
                 ) {
@@ -735,23 +828,25 @@ fun MyListScreen(
     if (showNewCollectionDialog) {
         AlertDialog(
             onDismissRequest = { showNewCollectionDialog = false },
-            title = { Text("Create Custom Collection 📁", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            shape = RoundedCornerShape(28.dp),
+            title = { Text("Create Custom Collection", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    Text("Enter a folder name (e.g. Anime Classics, Late Night):", color = TextSecondary, fontSize = 12.sp)
+                    Text("Enter a folder name (e.g. Anime Classics, Late Night):", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = newCollectionName,
                         onValueChange = { newCollectionName = it },
-                        placeholder = { Text("Folder Name", color = TextSecondary) },
+                        placeholder = { Text("Folder Name", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) },
                         singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = primaryColor,
-                            unfocusedBorderColor = CardBorderDark,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary,
-                            focusedContainerColor = Color(0xFF141422),
-                            unfocusedContainerColor = Color(0xFF141422)
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -766,12 +861,13 @@ fun MyListScreen(
                                 selectedCollection = trimmed
                                 newCollectionName = ""
                                 showNewCollectionDialog = false
-                                ToastManager.showToast("Folder '$trimmed' created! 📁")
+                                ToastManager.showToast("Folder '$trimmed' created")
                             } else {
                                 ToastManager.showToast("Folder already exists or is reserved")
                             }
                         }
                     },
+                    shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(containerColor = primaryColor)
                 ) {
                     Text("Create Folder")
@@ -779,10 +875,10 @@ fun MyListScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showNewCollectionDialog = false }) {
-                    Text("Cancel", color = TextSecondary)
+                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
-            containerColor = SurfaceDark
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         )
     }
 
@@ -791,23 +887,25 @@ fun MyListScreen(
         val currentTarget = folderToManage ?: ""
         AlertDialog(
             onDismissRequest = { showRenameFolderDialog = false },
-            title = { Text("Rename Folder ✏️", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            shape = RoundedCornerShape(28.dp),
+            title = { Text("Rename Folder", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    Text("Enter new name for '$currentTarget':", color = TextSecondary, fontSize = 12.sp)
+                    Text("Enter new name for '$currentTarget':", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = renameFolderInput,
                         onValueChange = { renameFolderInput = it },
-                        placeholder = { Text("New Folder Name", color = TextSecondary) },
+                        placeholder = { Text("New Folder Name", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) },
                         singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = primaryColor,
-                            unfocusedBorderColor = CardBorderDark,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary,
-                            focusedContainerColor = Color(0xFF141422),
-                            unfocusedContainerColor = Color(0xFF141422)
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -825,12 +923,13 @@ fun MyListScreen(
                                 showRenameFolderDialog = false
                                 folderToManage = null
                                 renameFolderInput = ""
-                                ToastManager.showToast("Renamed to '$trimmed' 📁")
+                                ToastManager.showToast("Renamed to '$trimmed'")
                             } else {
                                 ToastManager.showToast("Name already exists or is reserved")
                             }
                         }
                     },
+                    shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(containerColor = primaryColor)
                 ) {
                     Text("Save")
@@ -838,10 +937,10 @@ fun MyListScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showRenameFolderDialog = false }) {
-                    Text("Cancel", color = TextSecondary)
+                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
-            containerColor = SurfaceDark
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         )
     }
 
@@ -851,11 +950,12 @@ fun MyListScreen(
         val count = MyListManager.getItemsInCollectionCount(currentTarget)
         AlertDialog(
             onDismissRequest = { showDeleteFolderDialog = false },
+            shape = RoundedCornerShape(28.dp),
             title = { Text("Delete '$currentTarget'?", color = Color(0xFFFF5252), fontWeight = FontWeight.Bold) },
             text = {
                 Text(
                     text = "Are you sure you want to delete this folder?\n\nAll $count saved show(s) inside will be safely moved to your main 'Watchlist'. No titles will be lost.",
-                    color = TextPrimary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 13.sp
                 )
             },
@@ -868,9 +968,10 @@ fun MyListScreen(
                             }
                             showDeleteFolderDialog = false
                             folderToManage = null
-                            ToastManager.showToast("Deleted '$currentTarget'. Shows moved to Watchlist 📁")
+                            ToastManager.showToast("Deleted '$currentTarget'. Shows moved to Watchlist")
                         }
                     },
+                    shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252))
                 ) {
                     Text("Delete Folder", color = Color.White, fontWeight = FontWeight.Bold)
@@ -878,10 +979,10 @@ fun MyListScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteFolderDialog = false }) {
-                    Text("Cancel", color = TextSecondary)
+                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
-            containerColor = SurfaceDark
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         )
     }
 
@@ -889,11 +990,12 @@ fun MyListScreen(
     if (showClearCompletedDialog) {
         AlertDialog(
             onDismissRequest = { showClearCompletedDialog = false },
-            title = { Text("Clear Completed Titles?", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            shape = RoundedCornerShape(28.dp),
+            title = { Text("Clear Completed Titles?", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold) },
             text = {
                 Text(
                     text = "Remove all ${completedMedia.size} finished show(s) from your watchlist? Your episode watch history progress will remain intact.",
-                    color = TextSecondary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 13.sp
                 )
             },
@@ -904,6 +1006,7 @@ fun MyListScreen(
                         showClearCompletedDialog = false
                         ToastManager.showToast("Cleared completed items from watchlist")
                     },
+                    shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252))
                 ) {
                     Text("Clear", color = Color.White, fontWeight = FontWeight.Bold)
@@ -911,10 +1014,10 @@ fun MyListScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showClearCompletedDialog = false }) {
-                    Text("Cancel", color = TextSecondary)
+                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
-            containerColor = SurfaceDark
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         )
     }
 
@@ -927,8 +1030,8 @@ fun MyListScreen(
                 showFolderOptionsSheet = false
                 folderToManage = null
             },
-            containerColor = Color(0xFF161626),
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
         ) {
             Column(
                 modifier = Modifier
@@ -942,17 +1045,17 @@ fun MyListScreen(
                 ) {
                     Icon(Icons.Default.Folder, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(24.dp))
                     Column {
-                        Text(text = currentTarget, color = TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                        Text(text = "$count saved show(s)", color = TextSecondary, fontSize = 11.sp)
+                        Text(text = currentTarget, color = MaterialTheme.colorScheme.onSurface, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        Text(text = "$count saved show(s)", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                     }
                 }
 
-                HorizontalDivider(color = CardBorderDark)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                 // Rename
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFF1E1E32),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
@@ -962,20 +1065,19 @@ fun MyListScreen(
                         }
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Icon(Icons.Default.Edit, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
-                        Text("Rename Folder", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text("Rename Folder", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     }
                 }
 
                 // Delete
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = Color(0x22FF5252),
-                    border = BorderStroke(1.dp, Color(0x44FF5252)),
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
@@ -984,7 +1086,7 @@ fun MyListScreen(
                         }
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
@@ -1043,12 +1145,11 @@ fun MyListGridCard(
     onOptionsClick: () -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-        border = BorderStroke(1.dp, CardBorderDark),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(20.dp))
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onOptionsClick
@@ -1090,11 +1191,11 @@ fun MyListGridCard(
                     // Rating Badge (Top Left)
                     if (item.rating.isNotBlank()) {
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
+                            shape = CircleShape,
                             color = Color(0xCC000000)
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
@@ -1151,7 +1252,7 @@ fun MyListGridCard(
             Column(modifier = Modifier.padding(8.dp)) {
                 Text(
                     text = item.title,
-                    color = TextPrimary,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -1165,7 +1266,7 @@ fun MyListGridCard(
                 ) {
                     Text(
                         text = if (item.type.equals("MOVIE", ignoreCase = true)) "Movie • ${item.releaseYear}" else "${item.category} • ${item.releaseYear}",
-                        color = TextSecondary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 10.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -1180,13 +1281,12 @@ fun MyListGridCard(
                     ) {
                         // Clickable Folder Chip
                         Surface(
-                            shape = RoundedCornerShape(6.dp),
+                            shape = CircleShape,
                             color = Color(0x1F38BDF8),
-                            border = BorderStroke(0.5.dp, Color(0x5538BDF8)),
                             modifier = Modifier.clickable { onManageCollection() }
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
@@ -1211,7 +1311,7 @@ fun MyListGridCard(
                         Icon(
                             imageVector = Icons.Default.MoreVert,
                             contentDescription = "More Options",
-                            tint = TextSecondary,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
                                 .size(16.dp)
                                 .clip(CircleShape)
@@ -1238,12 +1338,11 @@ fun MyListRowItem(
     onOptionsClick: () -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-        border = BorderStroke(1.dp, CardBorderDark),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(20.dp))
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onOptionsClick
@@ -1258,7 +1357,7 @@ fun MyListRowItem(
             Box(
                 modifier = Modifier
                     .size(width = 70.dp, height = 100.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(12.dp))
             ) {
                 AsyncImage(
                     model = item.posterUrl,
@@ -1293,7 +1392,7 @@ fun MyListRowItem(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.title,
-                    color = TextPrimary,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -1310,12 +1409,12 @@ fun MyListRowItem(
                             Text(text = item.rating, color = AccentGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
-                    Text(text = "•", color = TextSecondary, fontSize = 10.sp)
-                    Text(text = item.releaseYear, color = TextSecondary, fontSize = 11.sp)
-                    Text(text = "•", color = TextSecondary, fontSize = 10.sp)
+                    Text(text = "•", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                    Text(text = item.releaseYear, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                    Text(text = "•", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
                     Text(
                         text = if (item.type.equals("MOVIE", ignoreCase = true)) "Movie" else item.category,
-                        color = TextSecondary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp
                     )
                 }
@@ -1326,9 +1425,8 @@ fun MyListRowItem(
                 ) {
                     // Clickable Folder Badge
                     Surface(
-                        shape = RoundedCornerShape(6.dp),
+                        shape = CircleShape,
                         color = Color(0x1F38BDF8),
-                        border = BorderStroke(0.5.dp, Color(0x5538BDF8)),
                         modifier = Modifier.clickable { onManageCollection() }
                     ) {
                         Row(
@@ -1344,7 +1442,7 @@ fun MyListRowItem(
                     if (item.genres.isNotEmpty()) {
                         Text(
                             text = item.genres.take(2).joinToString(" • "),
-                            color = TextSecondary,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 10.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -1356,8 +1454,8 @@ fun MyListRowItem(
                     Spacer(modifier = Modifier.height(4.dp))
                     val percent = ((progress.positionMs.toFloat() / progress.durationMs.toFloat()) * 100).toInt()
                     Text(
-                        text = if (progress.isCompleted) "Completed ✅" else "Watched $percent% (Resume)",
-                        color = if (progress.isCompleted) Color(0xFF00E676) else AccentOrange,
+                        text = if (progress.isCompleted) "Completed" else "Watched $percent% (Resume)",
+                        color = if (progress.isCompleted) Color(0xFF00E676) else MaterialTheme.colorScheme.primary,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -1370,7 +1468,7 @@ fun MyListRowItem(
                     Icon(
                         imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                         contentDescription = "Favorite",
-                        tint = if (isFavorite) Color(0xFFFF5252) else TextSecondary,
+                        tint = if (isFavorite) Color(0xFFFF5252) else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -1380,7 +1478,7 @@ fun MyListRowItem(
                 }
 
                 IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.Delete, contentDescription = "Remove", tint = TextSecondary, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -1401,8 +1499,8 @@ fun MyListCardActionSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF141422),
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ) {
         Column(
             modifier = Modifier
@@ -1418,7 +1516,7 @@ fun MyListCardActionSheet(
                 Box(
                     modifier = Modifier
                         .size(width = 48.dp, height = 70.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(12.dp))
                 ) {
                     AsyncImage(
                         model = item.posterUrl,
@@ -1430,7 +1528,7 @@ fun MyListCardActionSheet(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = item.title,
-                        color = TextPrimary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 2,
@@ -1438,19 +1536,19 @@ fun MyListCardActionSheet(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "${item.category} • ${item.releaseYear} • 📁 $currentFolder",
-                        color = TextSecondary,
+                        text = "${item.category} • ${item.releaseYear} • $currentFolder",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp
                     )
                 }
             }
 
-            HorizontalDivider(color = CardBorderDark)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
             // Action: Play Now
             Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0xFF1C1C2E),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
@@ -1459,19 +1557,19 @@ fun MyListCardActionSheet(
                     }
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null, tint = AccentGold, modifier = Modifier.size(20.dp))
-                    Text("Play Show", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Play Show", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
 
             // Action: Move to Folder
             Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0xFF1C1C2E),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
@@ -1480,19 +1578,19 @@ fun MyListCardActionSheet(
                     }
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Icon(Icons.Default.Folder, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(20.dp))
-                    Text("Move to Folder / Collection", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Move to Folder / Collection", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
 
             // Action: Toggle Favorite
             Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0xFF1C1C2E),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
@@ -1501,19 +1599,19 @@ fun MyListCardActionSheet(
                     }
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Icon(
                         imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                         contentDescription = null,
-                        tint = if (isFavorite) Color(0xFFFF5252) else TextSecondary,
+                        tint = if (isFavorite) Color(0xFFFF5252) else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
                         text = if (isFavorite) "Remove from Favorites" else "Add to Favorites",
-                        color = TextPrimary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -1522,9 +1620,8 @@ fun MyListCardActionSheet(
 
             // Action: Remove from Watchlist
             Surface(
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 color = Color(0x22FF5252),
-                border = BorderStroke(1.dp, Color(0x44FF5252)),
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
@@ -1533,7 +1630,7 @@ fun MyListCardActionSheet(
                     }
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {

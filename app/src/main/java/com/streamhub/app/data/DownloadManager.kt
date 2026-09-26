@@ -1054,6 +1054,14 @@ object DownloadManager {
         targets.forEach { deleteDownload(it) }
     }
 
+    /**
+     * Purges all offline downloaded items and files across all media.
+     */
+    fun deleteAllDownloads() {
+        val targets = _downloads.value.toList()
+        targets.forEach { deleteDownload(it) }
+    }
+
     fun pauseDownloadByKeys(mediaId: String, episodeIndex: Int) {
         val item = _downloads.value.firstOrNull { it.mediaId == mediaId && it.episodeIndex == episodeIndex }
         if (item != null) {

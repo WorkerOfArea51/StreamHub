@@ -44,11 +44,13 @@ fun StreamHubTheme(
         onSurface = TextPrimary,
         surfaceVariant = SurfaceVariantDark,
         onSurfaceVariant = TextSecondary,
-        surfaceContainer = SurfaceVariantDark,
-        surfaceContainerHigh = SurfaceDark,
-        surfaceContainerLow = SurfaceDark,
+        surfaceContainerLowest = M3SurfaceContainerLowest,
+        surfaceContainerLow = M3SurfaceContainerLow,
+        surfaceContainer = M3SurfaceContainer,
+        surfaceContainerHigh = M3SurfaceContainerHigh,
+        surfaceContainerHighest = M3SurfaceContainerHighest,
         outline = CardBorderDark,
-        outlineVariant = CardBorderDark,
+        outlineVariant = M3OutlineVariant,
         error = Color(0xFFFF5252),
         onError = Color(0xFF0A0A0F),
         errorContainer = Color(0xFF3A1010),
@@ -77,3 +79,11 @@ fun StreamHubTheme(
 }
 
 private fun Color.luminance(): Float = 0.299f * red + 0.587f * green + 0.114f * blue
+
+/**
+ * Standard Material 3 Expressive spring physics specs for tactile press feedback.
+ */
+val ExpressiveSpringSpec = androidx.compose.animation.core.spring<Float>(
+    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+    stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
+)

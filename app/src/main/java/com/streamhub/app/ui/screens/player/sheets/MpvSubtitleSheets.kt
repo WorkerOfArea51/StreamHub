@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FormatAlignCenter
 import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.FormatItalic
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.MoreTime
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.RestartAlt
@@ -103,6 +104,55 @@ fun MpvSubtitleTracksSheet(
                         .background(Color(0x44FFFFFF))
                 )
             }
+
+            // Prominent Online Subtitles Search Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenSearch() }
+                    .height(48.dp)
+                    .padding(horizontal = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Language,
+                        contentDescription = "Search Online Subtitles",
+                        tint = Color(0xFFD0BCFF),
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Search Online Subtitles",
+                        color = Color(0xFFD0BCFF),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0x336750A4),
+                    border = BorderStroke(1.dp, Color(0x55D0BCFF))
+                ) {
+                    Text(
+                        text = "OpenSubtitles",
+                        color = Color(0xFFD0BCFF),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                color = Color(0x1FFFFFFF)
+            )
 
             // mpvEx AddTrackRow with Action Buttons (Search, Palette, Delay, Close)
             Row(

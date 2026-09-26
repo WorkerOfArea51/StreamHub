@@ -7,11 +7,62 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 enum class CatalogSortOrder(val displayName: String, val shortName: String) {
-    NEWEST_FIRST("Newest Uploads ⚡", "Newest ⚡"),
-    OLDEST_FIRST("Oldest Uploads ⏳", "Oldest ⏳"),
-    HIGHEST_RATED("Top Rated ⭐", "Top Rated ⭐"),
-    RELEASE_YEAR("Release Year 📅", "Year 📅"),
-    ALPHABETICAL("Alphabetical (A - Z)", "A - Z")
+    NEWEST_FIRST("Newest Uploads", "Newest"),
+    OLDEST_FIRST("Oldest Uploads", "Oldest"),
+    HIGHEST_RATED("Rating: High to Low", "Rating ↓"),
+    LOWEST_RATED("Rating: Low to High", "Rating ↑"),
+    RELEASE_YEAR("Release Year: Newest", "Year ↓"),
+    RELEASE_YEAR_ASC("Release Year: Oldest", "Year ↑"),
+    ALPHABETICAL("Title: (A - Z)", "A - Z"),
+    ALPHABETICAL_DESC("Title: (Z - A)", "Z - A");
+
+    val shortLabel: String get() = shortName
+
+    val isAscending: Boolean
+        get() = this == OLDEST_FIRST || this == LOWEST_RATED || this == RELEASE_YEAR_ASC || this == ALPHABETICAL_DESC
+
+    fun toggleDirection(): CatalogSortOrder = when (this) {
+        NEWEST_FIRST -> OLDEST_FIRST
+        OLDEST_FIRST -> NEWEST_FIRST
+        HIGHEST_RATED -> LOWEST_RATED
+        LOWEST_RATED -> HIGHEST_RATED
+        RELEASE_YEAR -> RELEASE_YEAR_ASC
+        RELEASE_YEAR_ASC -> RELEASE_YEAR
+        ALPHABETICAL -> ALPHABETICAL_DESC
+        ALPHABETICAL_DESC -> ALPHABETICAL
+    }
+
+    fun withDirection(ascending: Boolean): CatalogSortOrder = when (this) {
+        NEWEST_FIRST, OLDEST_FIRST -> if (ascending) OLDEST_FIRST else NEWEST_FIRST
+        HIGHEST_RATED, LOWEST_RATED -> if (ascending) LOWEST_RATED else HIGHEST_RATED
+        RELEASE_YEAR, RELEASE_YEAR_ASC -> if (ascending) RELEASE_YEAR_ASC else RELEASE_YEAR
+        ALPHABETICAL, ALPHABETICAL_DESC -> if (ascending) ALPHABETICAL_DESC else ALPHABETICAL
+    }
+
+    val criterionKey: String
+        get() = when (this) {
+            NEWEST_FIRST, OLDEST_FIRST -> "DATE"
+            HIGHEST_RATED, LOWEST_RATED -> "RATING"
+            RELEASE_YEAR, RELEASE_YEAR_ASC -> "YEAR"
+            ALPHABETICAL, ALPHABETICAL_DESC -> "TITLE"
+        }
+
+    companion object {
+        fun forCriterion(criterionKey: String, ascending: Boolean = false): CatalogSortOrder = when (criterionKey) {
+            "DATE" -> if (ascending) OLDEST_FIRST else NEWEST_FIRST
+            "RATING" -> if (ascending) LOWEST_RATED else HIGHEST_RATED
+            "YEAR" -> if (ascending) RELEASE_YEAR_ASC else RELEASE_YEAR
+            "TITLE" -> if (ascending) ALPHABETICAL_DESC else ALPHABETICAL
+            else -> NEWEST_FIRST
+        }
+
+        fun fromLegacyOrName(name: String?): CatalogSortOrder = when (name) {
+            "RELEASE_YEAR_DESC" -> RELEASE_YEAR
+            "ALPHABETICAL_ASC" -> ALPHABETICAL
+            null -> NEWEST_FIRST
+            else -> runCatching { valueOf(name) }.getOrDefault(NEWEST_FIRST)
+        }
+    }
 }
 
 data class HomeLayoutConfig(
@@ -66,8 +117,8 @@ object HomeScreenLayoutManager {
     private fun loadFromDisk() {
         val p = prefs ?: return
         try {
-            val sortOrderName = p.getString(KEY_SORT_ORDER, CatalogSortOrder.NEWEST_FIRST.name) ?: CatalogSortOrder.NEWEST_FIRST.name
-            val sortOrder = runCatching { CatalogSortOrder.valueOf(sortOrderName) }.getOrDefault(CatalogSortOrder.NEWEST_FIRST)
+            val sortOrderName = p.getString(KEY_SORT_ORDER, CatalogSortOrder.NEWEST_FIRST.name)
+            val sortOrder = CatalogSortOrder.fromLegacyOrName(sortOrderName)
 
             _layoutConfig.value = HomeLayoutConfig(
                 showHeroCarousel = p.getBoolean(KEY_SHOW_HERO, true),

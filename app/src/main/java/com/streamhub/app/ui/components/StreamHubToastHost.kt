@@ -3,6 +3,7 @@ package com.streamhub.app.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -10,6 +11,12 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import com.streamhub.app.ui.theme.bouncyTouch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -127,9 +134,9 @@ object ToastManager {
 }
 
 /**
- * Global Glassmorphic HUD Pill Toast Host.
- * Renders floating at the top center with smooth animations, neon borders,
- * and high-contrast typography, matching the mpvEx HUD design.
+ * Global Material 3 Expressive Glassmorphic Toast Host.
+ * Renders floating at the top center with spring overshoot physics, tonal circular badges,
+ * rich typography, and interactive tap-to-dismiss.
  */
 @Composable
 fun StreamHubToastHost(
@@ -149,45 +156,60 @@ fun StreamHubToastHost(
             .fillMaxSize()
             .zIndex(9999f)
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
-            .padding(top = 18.dp, start = 16.dp, end = 16.dp),
+            .padding(top = 16.dp, start = 16.dp, end = 16.dp),
         contentAlignment = Alignment.TopCenter
     ) {
         AnimatedVisibility(
             visible = toast != null,
-            enter = fadeIn(spring(stiffness = Spring.StiffnessMediumLow)) +
+            enter = fadeIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)) +
                     slideInVertically(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)) { -it / 2 } +
-                    scaleIn(initialScale = 0.88f),
-            exit = fadeOut(spring(stiffness = Spring.StiffnessMedium)) +
-                    slideOutVertically { -it / 3 } +
-                    scaleOut(targetScale = 0.88f)
+                    scaleIn(initialScale = 0.80f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)),
+            exit = fadeOut(tween(160)) +
+                    slideOutVertically { -it / 2 } +
+                    scaleOut(targetScale = 0.85f)
         ) {
             toast?.let { item ->
                 Surface(
-                    shape = RoundedCornerShape(50),
-                    color = Color(0xEE161624),
-                    border = BorderStroke(1.2.dp, currentAccent.color),
-                    shadowElevation = 16.dp
+                    shape = RoundedCornerShape(28.dp),
+                    color = Color(0xF4141422), // Frosted deep glassmorphism
+                    border = BorderStroke(1.2.dp, currentAccent.color.copy(alpha = 0.75f)),
+                    shadowElevation = 18.dp,
+                    tonalElevation = 8.dp,
+                    modifier = Modifier
+                        .bouncyTouch(pressedScale = 0.94f)
+                        .clip(RoundedCornerShape(28.dp))
+                        .clickable { ToastManager.dismiss() }
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center,
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
                     ) {
                         if (item.icon != null) {
-                            Icon(
-                                imageVector = item.icon,
-                                contentDescription = null,
-                                tint = currentAccent.color,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(currentAccent.color.copy(alpha = 0.18f))
+                                    .border(1.dp, currentAccent.color.copy(alpha = 0.45f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = item.icon,
+                                    contentDescription = null,
+                                    tint = currentAccent.color,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
                         }
                         Text(
                             text = item.text,
                             color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            fontFamily = FontFamily.Monospace
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.SansSerif,
+                            letterSpacing = 0.2.sp
                         )
                     }
                 }

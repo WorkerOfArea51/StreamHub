@@ -62,7 +62,10 @@ fun AppLoadingState(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        ExpressiveLoadingIndicator(
+            size = 44.dp,
+            color = MaterialTheme.colorScheme.primary
+        )
         Spacer(Modifier.height(16.dp))
         Text(
             text = message,

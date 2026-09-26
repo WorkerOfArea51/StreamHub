@@ -491,11 +491,11 @@ fun BufferingHud(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
-                // Spinner
-                androidx.compose.material3.CircularProgressIndicator(
-                    color = Color.White,
-                    strokeWidth = 2.5.dp,
-                    modifier = Modifier.size(28.dp)
+                // Material 3 Expressive Morphing Organic Petal Spinner
+                com.streamhub.app.ui.components.ExpressiveLoadingIndicator(
+                    size = 36.dp,
+                    color = PrimaryRed,
+                    accentColor = AccentOrange
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 // Buffer health bar

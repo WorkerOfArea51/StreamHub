@@ -6,7 +6,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -62,14 +61,9 @@ import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.streamhub.app.data.MyListManager
 import com.streamhub.app.data.models.MediaItem
-import com.streamhub.app.ui.theme.AccentGold
-import com.streamhub.app.ui.theme.CardBorderDark
-import com.streamhub.app.ui.theme.SurfaceDark
-import com.streamhub.app.ui.theme.TextPrimary
-import com.streamhub.app.ui.theme.TextSecondary
 
 /**
- * Premium Folder / Collection Picker & Organizer Dialog.
+ * Premium M3 Expressive Folder / Collection Picker & Organizer Dialog.
  * Allows choosing which folder a media title belongs to, creating new folders on the fly,
  * or removing it from My List.
  */
@@ -90,9 +84,8 @@ fun FolderSelectionDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = Color(0xFF14131C),
-            border = BorderStroke(1.dp, CardBorderDark),
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 16.dp)
@@ -129,14 +122,14 @@ fun FolderSelectionDialog(
 
                         Column {
                             Text(
-                                text = "Organize in Folder 📁",
-                                color = Color.White,
+                                text = "Organize in Folder",
+                                color = MaterialTheme.colorScheme.onSurface,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
                                 text = "Select folder for My List",
-                                color = TextSecondary,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 11.sp
                             )
                         }
@@ -162,9 +155,8 @@ fun FolderSelectionDialog(
 
                 // Media Preview Snippet
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFF1C1A28),
-                    border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -179,13 +171,13 @@ fun FolderSelectionDialog(
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
                                     .size(width = 36.dp, height = 50.dp)
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .clip(RoundedCornerShape(8.dp))
                             )
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = mediaItem.title,
-                                color = TextPrimary,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
@@ -193,8 +185,8 @@ fun FolderSelectionDialog(
                             )
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = if (isBookmarked) "Currently in: 📁 $currentFolder" else "Not yet saved to My List",
-                                color = if (isBookmarked) Color(0xFF38BDF8) else TextSecondary,
+                                text = if (isBookmarked) "Currently in: $currentFolder" else "Not yet saved to My List",
+                                color = if (isBookmarked) Color(0xFF38BDF8) else MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -207,7 +199,7 @@ fun FolderSelectionDialog(
                 // Folder List
                 Text(
                     text = "SELECT DESTINATION FOLDER",
-                    color = TextSecondary,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.8.sp
@@ -225,18 +217,14 @@ fun FolderSelectionDialog(
                         val isSelected = isBookmarked && currentFolder.equals(col, ignoreCase = true)
 
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isSelected) Color(0xFF0F2B48) else SurfaceDark,
-                            border = BorderStroke(
-                                width = if (isSelected) 1.5.dp else 1.dp,
-                                color = if (isSelected) Color(0xFF38BDF8) else CardBorderDark
-                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isSelected) Color(0xFF0F2B48) else MaterialTheme.colorScheme.surfaceContainer,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(RoundedCornerShape(16.dp))
                                 .clickable {
                                     MyListManager.setCollection(mediaItem.id, col)
-                                    ToastManager.showToast("Saved to '$col' 📁")
+                                    ToastManager.showToast("Saved to '$col'")
                                     onDismiss()
                                 }
                         ) {
@@ -254,12 +242,12 @@ fun FolderSelectionDialog(
                                     Icon(
                                         imageVector = Icons.Default.Folder,
                                         contentDescription = null,
-                                        tint = if (isSelected) Color(0xFF38BDF8) else TextSecondary,
+                                        tint = if (isSelected) Color(0xFF38BDF8) else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Text(
                                         text = col,
-                                        color = if (isSelected) Color.White else TextPrimary,
+                                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
                                         fontSize = 13.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                                     )
@@ -295,16 +283,16 @@ fun FolderSelectionDialog(
                         OutlinedTextField(
                             value = newFolderName,
                             onValueChange = { newFolderName = it },
-                            placeholder = { Text("Folder name (e.g. Top Picks)", color = TextSecondary, fontSize = 12.sp) },
+                            placeholder = { Text("Folder name (e.g. Top Picks)", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), fontSize = 12.sp) },
                             singleLine = true,
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(16.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = Color(0xFF38BDF8),
-                                unfocusedBorderColor = CardBorderDark,
-                                focusedTextColor = TextPrimary,
-                                unfocusedTextColor = TextPrimary,
-                                focusedContainerColor = Color(0xFF1A1A28),
-                                unfocusedContainerColor = Color(0xFF1A1A28)
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLowest
                             ),
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -318,7 +306,7 @@ fun FolderSelectionDialog(
                                 isCreatingFolder = false
                                 newFolderName = ""
                             }) {
-                                Text("Cancel", color = TextSecondary, fontSize = 12.sp)
+                                Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                             }
 
                             Spacer(modifier = Modifier.width(6.dp))
@@ -329,13 +317,13 @@ fun FolderSelectionDialog(
                                         val trimmed = newFolderName.trim()
                                         MyListManager.addCustomCollection(trimmed)
                                         MyListManager.setCollection(mediaItem.id, trimmed)
-                                        ToastManager.showToast("Saved to '$trimmed' 📁")
+                                        ToastManager.showToast("Saved to '$trimmed'")
                                         isCreatingFolder = false
                                         newFolderName = ""
                                         onDismiss()
                                     }
                                 },
-                                shape = RoundedCornerShape(8.dp),
+                                shape = CircleShape,
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
                             ) {
                                 Text("Create & Save", fontSize = 12.sp, fontWeight = FontWeight.Bold)
@@ -346,15 +334,14 @@ fun FolderSelectionDialog(
 
                 if (!isCreatingFolder) {
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = Color(0xFF1A1A28),
-                        border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { isCreatingFolder = true }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -404,7 +391,7 @@ fun FolderSelectionDialog(
                     }
 
                     TextButton(onClick = onDismiss) {
-                        Text("Close", color = TextSecondary, fontSize = 13.sp)
+                        Text("Close", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                     }
                 }
             }

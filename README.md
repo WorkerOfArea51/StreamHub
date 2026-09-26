@@ -31,14 +31,16 @@ Engineered from the ground up for low latency, zero-login instant playback, aggr
 
 | 🚀 Feature | 💡 Description |
 | :--- | :--- |
-| **⚡ Turbo HTTP Progressive Engine** | Sub-second playback initialization with byte-range requests and automatic multi-gigabyte disk caching (`SimpleCache`). |
-| **🍿 Slate Glassmorphism UI** | Netflix & Crunchyroll inspired Jetpack Compose interface with Hero Carousels, fluid category pills, and dynamic ambient glows. |
+| **🎨 Material 3 Expressive UI** | Native 5-level dark tonal elevation (`surfaceContainer`), split-button navigation dock, borderless tactile pills (`CircleShape`), and clean vector iconography. |
+| **⚡ Turbo HTTP Progressive Engine** | Sub-second playback initialization with byte-range requests and dynamic bitrate-proportional disk caching (`SimpleCache`). |
+| **📦 Smart Batch Download & Queue** | High-throughput in-app OkHttp download engine (2–3+ MB/s), intelligent batch episode selector, sequential queue, and single branded notification. |
+| **🌐 Live Online Subtitle Search** | OpenSubtitles & Cinemeta CDN integration with 1-tap player injection, live language filters, and real-time millisecond offset sync. |
 | **🎬 Multi-Arc Story Hub** | Dedicated Arc-Level episode manager with automatic missing episode gap detection, 1-click F2L REST batch importer, and snippet insertion. |
 | **🎧 Dual-Audio & Subtitle Master** | Embedded MKV multi-audio track switcher, subtitle track selector with audio/sub delay sync, and ASS/SSA anime typography styling. |
 | **📺 Advanced Player HUD** | Fluid seekbar with chapter markers, 3-zone swipe gestures (brightness, volume boost up to 200%), hold-to-2x, pinch-to-zoom, and Picture-in-Picture. |
 | **🏷️ Real-time MediaInfo Badges** | Dynamic resolution and codec badges (`4K UHD`, `1080p FHD`, `x264/AVC`, `HEVC/x265`, `Dual Audio`, `ESub`, `File Size`). |
-| **📥 Background Download Manager** | Multi-threaded offline file downloads with progress notifications and local playback support. |
-| **🎨 Dynamic Theming & Preferences** | 7 accent themes (AMOLED dark mode), structured preferences, volume normalization, and 1-click JSON Backup & Restore. |
+| **📊 Live Audience Telemetry** | Real-time active viewer tracking, access tier breakdown, live device health inspector, and admin broadcast alerts. |
+| **🎨 Dynamic Theming & Preferences** | 7 accent themes (AMOLED dark mode), structured contiguous preferences, volume normalization, and 1-click JSON Backup & Restore. |
 | **🔒 VIP Access Gate & Admin Studio** | Private community gate on launch with secret 5-tap gesture unlock for Creator Studio in-app publishing. |
 
 ---
@@ -90,17 +92,9 @@ StreamHub includes a private community access gate on first launch. If you need 
 
 If you enjoy StreamHub and want to support high-speed streaming nodes, server hosting costs, and ongoing development:
 
-### 💰 Crypto Donations (Binance / Web3):
-- **USDT / USDC (BNB Smart Chain - BEP20)**:
-  ```text
-  
-  ```
-- **USDT (Tron - TRC20)**:
-  ```text
-  
-  ```
-
-> 💬 Or reach out on Telegram [@Londe_Lapate](https://t.me/Londe_Lapate) for sponsorship or alternative payment methods.
+### 💰 Crypto Donations & Sponsorship:
+If you would like to contribute or sponsor high-speed streaming nodes and server hosting costs:
+- Reach out directly on Telegram: [@Londe_Lapate](https://t.me/Londe_Lapate) for donation wallet addresses (USDT/USDC - BEP20, TRC20) or alternative contribution methods.
 
 ---
 

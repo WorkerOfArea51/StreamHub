@@ -71,12 +71,15 @@ import com.streamhub.app.data.FranchiseTagType
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import com.streamhub.app.ui.components.ArcEpisodeEditorDialog
 import com.streamhub.app.ui.components.BatchDownloadSheet
 import com.streamhub.app.ui.components.FolderSelectionDialog
 import com.streamhub.app.ui.components.SeasonArcSelectorSheet
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -538,9 +541,8 @@ fun DetailsScreen(
                         if (cleanTrailerId.isNotBlank()) {
                             Surface(
                                 onClick = { isTrailerPlaying = true },
-                                shape = RoundedCornerShape(24.dp),
-                                color = Color(0xCC181824),
-                                border = BorderStroke(1.dp, Color(0x44FFFFFF)),
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.88f),
                                 shadowElevation = 8.dp,
                                 modifier = Modifier
                                     .align(Alignment.Center)
@@ -583,8 +585,7 @@ fun DetailsScreen(
                                 .padding(10.dp)
                                 .bouncyTouch()
                                 .clip(CircleShape)
-                                .background(Color(0x99181824))
-                                .border(1.dp, Color(0x33FFFFFF), CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.88f))
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -615,7 +616,6 @@ fun DetailsScreen(
                                 .width(105.dp)
                                 .aspectRatio(0.7f)
                                 .clip(RoundedCornerShape(12.dp))
-                                .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
                         )
 
                         Spacer(modifier = Modifier.width(16.dp))
@@ -661,9 +661,8 @@ fun DetailsScreen(
                                     if (mediaItem.maturityRating.isNotBlank()) {
                                         Box(
                                             modifier = Modifier
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(Color(0xFF282836))
-                                                .border(1.dp, Color(0xFF48485E), RoundedCornerShape(4.dp))
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                                         ) {
                                             Text(
@@ -705,16 +704,15 @@ fun DetailsScreen(
                                 ) {
                                     headerGenres.take(4).forEach { genre ->
                                         Surface(
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = Color(0xFF1E1E2E),
-                                            border = BorderStroke(1.dp, Color(0xFF38384E))
+                                            shape = CircleShape,
+                                            color = MaterialTheme.colorScheme.surfaceContainerHigh
                                         ) {
                                             Text(
                                                 text = genre,
-                                                color = Color(0xFFD0BCFF),
+                                                color = MaterialTheme.colorScheme.primary,
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.SemiBold,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
                                             )
                                         }
                                     }
@@ -781,10 +779,10 @@ fun DetailsScreen(
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (!isOnline && completedDownloads.isEmpty()) Color(0xFF38384E) else PrimaryRed
                             ),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = CircleShape,
                             modifier = Modifier
                                 .weight(1.3f)
-                                .height(46.dp)
+                                .height(48.dp)
                                 .bouncyTouch()
                         ) {
                             Icon(
@@ -804,19 +802,22 @@ fun DetailsScreen(
                             )
                         }
 
+                        val myListBg = if (isBookmarked) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh
+                        val myListTint = if (isBookmarked) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface
+
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isBookmarked) Color(0x33FF9800) else Color(0x22181824),
-                            border = BorderStroke(1.dp, if (isBookmarked) AccentOrange else Color(0x44FFFFFF)),
+                            shape = CircleShape,
+                            color = myListBg,
+                            shadowElevation = 2.dp,
                             modifier = Modifier
                                 .weight(1f)
-                                .height(46.dp)
+                                .height(48.dp)
                                 .bouncyTouch()
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(CircleShape)
                                 .combinedClickable(
                                     onClick = {
                                         val added = MyListManager.toggleBookmark(mediaItem.id)
-                                        val msg = if (added) "Added to My List • Hold to choose folder 📁" else "Removed from My List"
+                                        val msg = if (added) "Added to My List • Hold to choose folder" else "Removed from My List"
                                         ToastManager.showToast(msg)
                                     },
                                     onLongClick = {
@@ -834,13 +835,13 @@ fun DetailsScreen(
                                 Icon(
                                     imageVector = if (isBookmarked) Icons.Default.Check else Icons.Default.Add,
                                     contentDescription = "My List",
-                                    tint = if (isBookmarked) AccentOrange else TextPrimary,
+                                    tint = myListTint,
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = if (isBookmarked) "In My List" else "My List",
-                                    color = if (isBookmarked) AccentOrange else TextPrimary,
+                                    color = myListTint,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
@@ -853,7 +854,7 @@ fun DetailsScreen(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // MediaInfo Specs Badges
-                    Text("TECHNICAL MEDIAINFO SPECS", color = AccentOrange, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("TECHNICAL MEDIAINFO SPECS", color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(6.dp))
                     MediaInfoBadges(mediaInfo = mediaItem.mediaInfo)
 
@@ -997,46 +998,43 @@ fun DetailsScreen(
 
                 item {
                     if (!isMovie) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
                         ) {
-                            val countLabel = if (selectedArcName.isNotBlank()) {
-                                "$selectedArcName (${seasonFilteredEpisodes.size} Eps)"
-                            } else {
-                                "All Episodes (${seasonFilteredEpisodes.size})"
-                            }
-
-                            Text(
-                                text = countLabel,
-                                color = TextSecondary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-
-                            Spacer(modifier = Modifier.width(8.dp))
-
+                            // Row 1: Split Selectors (Season & Arc) + Squircle Batch Download Button
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // 1. Season Capsule (Visible when franchise has multiple seasons / media)
-                                if (seasonOptions.size > 1) {
+                                // Left Side: Split Button or Single Capsule for Season / Arc
+                                if (seasonOptions.size > 1 && arcOptions.isNotEmpty()) {
+                                    val currentSeasonOpt = seasonOptions.firstOrNull { it.isCurrent }
+                                    val seasonLabel = currentSeasonOpt?.shortLabel ?: "Season $selectedSeasonNumber"
+                                    val currentArcOpt = arcOptions.firstOrNull { it.internalArcName.equals(selectedArcName, ignoreCase = true) }
+                                    val arcLabel = currentArcOpt?.shortLabel ?: "Arc"
+
+                                    com.streamhub.app.ui.components.ExpressiveDualSelectorSplitButton(
+                                        leftText = seasonLabel,
+                                        leftIcon = Icons.Default.Layers,
+                                        onLeftClick = { isSeasonSheetOpen = true },
+                                        rightText = arcLabel,
+                                        rightIcon = Icons.Default.AutoStories,
+                                        onRightClick = { isArcSheetOpen = true },
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                } else if (seasonOptions.size > 1) {
                                     val currentOpt = seasonOptions.firstOrNull { it.isCurrent }
                                     val seasonLabel = currentOpt?.shortLabel ?: "Season $selectedSeasonNumber"
 
                                     Surface(
                                         onClick = { isSeasonSheetOpen = true },
-                                        shape = RoundedCornerShape(20.dp),
+                                        shape = RoundedCornerShape(12.dp),
                                         color = SurfaceDark,
                                         border = BorderStroke(1.dp, Color(0x66FF9800)),
-                                        modifier = Modifier.height(34.dp)
+                                        modifier = Modifier.height(34.dp).bouncyTouch()
                                     ) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
@@ -1064,19 +1062,16 @@ fun DetailsScreen(
                                             )
                                         }
                                     }
-                                }
-
-                                // 2. Arc Capsule (Visible when current season has internal arcs)
-                                if (arcOptions.isNotEmpty()) {
+                                } else if (arcOptions.isNotEmpty()) {
                                     val currentArcOpt = arcOptions.firstOrNull { it.internalArcName.equals(selectedArcName, ignoreCase = true) }
                                     val arcLabel = currentArcOpt?.shortLabel ?: "Arc"
 
                                     Surface(
                                         onClick = { isArcSheetOpen = true },
-                                        shape = RoundedCornerShape(20.dp),
+                                        shape = RoundedCornerShape(12.dp),
                                         color = SurfaceDark,
                                         border = BorderStroke(1.dp, Color(0x667C4DFF)),
-                                        modifier = Modifier.height(34.dp)
+                                        modifier = Modifier.height(34.dp).bouncyTouch()
                                     ) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
@@ -1104,16 +1099,28 @@ fun DetailsScreen(
                                             )
                                         }
                                     }
+                                } else {
+                                    Spacer(modifier = Modifier.width(1.dp))
                                 }
 
-                                // 3. Batch Download Capsule (Visible for multi-episode seasons/series)
+                                // Right Side: Batch Download Squircle Button
                                 if (seasonFilteredEpisodes.size > 1) {
+                                    val haptics = LocalHapticFeedback.current
                                     Surface(
-                                        onClick = { isBatchDownloadSheetOpen = true },
-                                        shape = RoundedCornerShape(20.dp),
+                                        shape = RoundedCornerShape(12.dp),
                                         color = SurfaceDark,
                                         border = BorderStroke(1.dp, Color(0x66E11D48)),
-                                        modifier = Modifier.height(34.dp)
+                                        modifier = Modifier
+                                            .height(34.dp)
+                                            .bouncyTouch()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .combinedClickable(
+                                                onClick = { isBatchDownloadSheetOpen = true },
+                                                onLongClick = {
+                                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    ToastManager.showToast("Batch Download Season Episodes 📥")
+                                                }
+                                            )
                                     ) {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
@@ -1122,7 +1129,7 @@ fun DetailsScreen(
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Download,
-                                                contentDescription = null,
+                                                contentDescription = "Batch Download",
                                                 tint = Color(0xFFF43F5E),
                                                 modifier = Modifier.size(13.dp)
                                             )
@@ -1137,8 +1144,56 @@ fun DetailsScreen(
                                     }
                                 }
                             }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Row 2: Brought down Arc Title / Prologue Header (Fully visible & unclipped)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (selectedArcName.isNotBlank()) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoStories,
+                                        contentDescription = null,
+                                        tint = Color(0xFFB388FF),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = selectedArcName,
+                                        color = Color.White,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "• ${seasonFilteredEpisodes.size} Episodes",
+                                        color = TextSecondary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                } else {
+                                    Text(
+                                        text = "All Episodes",
+                                        color = Color.White,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "• ${seasonFilteredEpisodes.size} Episodes",
+                                        color = TextSecondary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                     }
                 }
 
@@ -1183,14 +1238,20 @@ fun DetailsScreen(
                 } else {
                     itemsIndexed(seasonFilteredEpisodes, key = { _, episode -> "${episode.seasonNumber}_${episode.episodeNumber}_${episode.title}" }) { index, episode ->
                         val originalIndex = episodeIndexMap[episode] ?: index
-                        val downloadItem = downloads.firstOrNull { it.mediaId == mediaItem.id && it.episodeIndex == originalIndex && it.isCompleted }
-                        val isDownloaded = downloadItem != null
+                        val downloadItem = downloads.firstOrNull { it.mediaId == mediaItem.id && it.episodeIndex == originalIndex }
+                        val isDownloaded = downloadItem?.isCompleted == true
+                        val isQueued = downloadItem?.isQueued == true
+                        val isDownloading = downloadItem != null && !downloadItem.isCompleted && !downloadItem.isPaused && !downloadItem.isCanceled && !downloadItem.isQueued
+                        val downloadProgress = downloadItem?.progressPercent ?: 0
                         val isEpisodeGlowing = glowingEpisodeIndex != null && glowingEpisodeIndex == originalIndex
                         EpisodeRowItem(
                             episode = episode,
                             index = originalIndex,
                             mediaItem = mediaItem,
                             isDownloaded = isDownloaded,
+                            isDownloading = isDownloading,
+                            isQueued = isQueued,
+                            downloadProgress = downloadProgress,
                             isOnline = isOnline,
                             isGlowing = isEpisodeGlowing,
                             onPlay = {
@@ -1218,9 +1279,17 @@ fun DetailsScreen(
                             onDownload = { 
                                 if (!isOnline) {
                                     ToastManager.showToast("Cannot download while offline. Connect to internet first.", Icons.Default.WifiOff)
+                                } else if (isDownloaded) {
+                                    ToastManager.showToast("Episode is already downloaded for offline playback", Icons.Default.Check)
                                 } else {
                                     ToastManager.showToast("Starting download...", Icons.Default.Download)
                                     DownloadManager.startDownload(context, mediaItem, originalIndex) 
+                                }
+                            },
+                            onCancelDownload = {
+                                if (downloadItem != null) {
+                                    DownloadManager.deleteDownload(downloadItem)
+                                    ToastManager.showToast("Download cancelled", Icons.Default.Close)
                                 }
                             }
                         )
@@ -1466,10 +1535,14 @@ fun EpisodeRowItem(
     index: Int,
     mediaItem: MediaItem,
     isDownloaded: Boolean,
+    isDownloading: Boolean = false,
+    isQueued: Boolean = false,
+    downloadProgress: Int = 0,
     isOnline: Boolean = true,
     isGlowing: Boolean = false,
     onPlay: () -> Unit,
-    onDownload: () -> Unit
+    onDownload: () -> Unit,
+    onCancelDownload: () -> Unit = {}
 ) {
     val isMovie = mediaItem.category.equals("MOVIE", ignoreCase = true) ||
                   mediaItem.category.equals("Movies", ignoreCase = true) ||
@@ -1721,46 +1794,81 @@ fun EpisodeRowItem(
                         )
                     }
 
-                    if (isDownloaded) {
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = Color(0x2610B981),
-                            border = BorderStroke(1.dp, Color(0x6610B981)),
-                            modifier = Modifier.padding(top = 4.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    when {
+                        isDownloaded -> {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0x2610B981),
+                                border = BorderStroke(1.dp, Color(0x6610B981)),
+                                modifier = Modifier.padding(top = 4.dp)
                             ) {
-                                Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = Color(0xFF34D399),
-                                    modifier = Modifier.size(11.dp)
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = Color(0xFF34D399),
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = "Offline Ready",
+                                        color = Color(0xFF34D399),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                        isDownloading -> {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0x2200E5FF),
+                                border = BorderStroke(0.5.dp, Color(0x5500E5FF)),
+                                modifier = Modifier.padding(top = 4.dp)
+                            ) {
                                 Text(
-                                    text = "Offline Ready",
-                                    color = Color(0xFF34D399),
+                                    text = "Downloading $downloadProgress%",
+                                    color = Color(0xFF00E5FF),
                                     fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                 )
                             }
                         }
-                    } else if (!isOnline) {
-                        Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = Color(0x1AFFFFFF),
-                            border = BorderStroke(0.5.dp, Color(0x33FFFFFF)),
-                            modifier = Modifier.padding(top = 4.dp)
-                        ) {
-                            Text(
-                                text = "Requires Internet 🌐",
-                                color = Color(0xFF9E9EA8),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
+                        isQueued -> {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0x268B5CF6),
+                                border = BorderStroke(0.5.dp, Color(0x668B5CF6)),
+                                modifier = Modifier.padding(top = 4.dp)
+                            ) {
+                                Text(
+                                    text = "In Queue ⏳",
+                                    color = Color(0xFFB388FF),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        !isOnline -> {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0x1AFFFFFF),
+                                border = BorderStroke(0.5.dp, Color(0x33FFFFFF)),
+                                modifier = Modifier.padding(top = 4.dp)
+                            ) {
+                                Text(
+                                    text = "Requires Internet 🌐",
+                                    color = Color(0xFF9E9EA8),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -1768,17 +1876,25 @@ fun EpisodeRowItem(
 
             Spacer(modifier = Modifier.width(6.dp))
 
-            // Dedicated Download Button
-            IconButton(
-                onClick = onDownload,
-                modifier = Modifier.size(44.dp)
-            ) {
-                Icon(
-                    imageVector = if (isDownloaded) Icons.Default.Check else Icons.Default.Download,
-                    contentDescription = "Download Episode",
-                    tint = if (isDownloaded) Color(0xFF4CAF50) else if (!isOnline) TextSecondary.copy(alpha = 0.4f) else TextSecondary
-                )
-            }
+            // Dedicated Google Play Store-Style Circular Progress & Cancel Button
+            com.streamhub.app.ui.components.PlayStoreDownloadButton(
+                isDownloaded = isDownloaded,
+                isDownloading = isDownloading,
+                isQueued = isQueued,
+                progressPercent = downloadProgress,
+                onDownload = onDownload,
+                onCancel = onCancelDownload,
+                onHold = {
+                    val msg = when {
+                        isDownloaded -> "Episode ${episode.episodeNumber} is downloaded & ready offline 📥"
+                        isDownloading -> "Downloading Episode ${episode.episodeNumber} ($downloadProgress%) • Tap ✕ to cancel ⚡"
+                        isQueued -> "Episode ${episode.episodeNumber} is queued for download ⏳"
+                        else -> "Tap to download Episode ${episode.episodeNumber} 💾"
+                    }
+                    com.streamhub.app.ui.components.ToastManager.showToast(msg)
+                },
+                size = 38.dp
+            )
         }
     }
 }

@@ -4,6 +4,38 @@ All notable changes, architectural milestones, and performance optimizations for
 
 ---
 
+## 🌟 [v4.8.366] - 2026-09-26 (Material 3 Expressive & Cinema Tonal Elevation Release)
+
+### 🚀 Major Upgrades & Features
+
+- **Full Material 3 Expressive & Cinema Tonal Elevation Architecture**:
+  - **5-Level M3 Dark Tonal Surfaces**: Extirpated all artificial 1.dp glowing borders and neon strokes. Replaced with native M3 dark tonal elevation (`surfaceContainerLowest` through `surfaceContainerHighest`) and contiguous grouped containers separated by subtle `outlineVariant` dividers.
+  - **M3 Split-Button Navigation Dock & Header Protection**: Clean black status bar padding preventing hero carousel bleed, pinned icon-only category split-button top bar with tactile hold popups, and an M3 Expressive segmented bottom dock.
+  - **Borderless Pill Standards (`CircleShape`)**: Tactile spring physics (`bouncyTouch()`) across category filters, search bars, action buttons, and filter chips.
+  - **Global Unicode Emoji Purge**: Replaced emojis across all shelf titles, search filter tags, settings cards, profile badges, and dialogs with official Android vector icons.
+
+- **App-Wide Screen Modernization**:
+  - **Creator Studio (`AdminEditorDialog.kt`, `MetadataInspectorDialog.kt`)**: Edge-to-edge `RoundedCornerShape(28.dp)` card with `surfaceContainerHigh`, segmented tab dock, borderless category/format/specs chips, and M3 split buttons (`[ Backup ] [ Restore ▾ ]`).
+  - **Downloads & My List (`DownloadsScreen.kt`, `MyListScreen.kt`)**: Modernized with borderless 20/24.dp cards, `CircleShape` pills, and clean M3 action controls.
+  - **Live Audience Telemetry (`LiveAudienceTelemetryDialog.kt`)**: Borderless 28.dp modal with `surfaceContainerLow` elevation, active viewer counter card with pulsing green beacon badge, tactile global broadcast trigger pill, and emoji-purged device detail inspector.
+  - **Watch History (`HistoryScreen.kt`)**: Standardized 2-line header, tactile `CircleShape` back/search/clear-all pills in `surfaceContainerHigh`, search field, category chips, and 16:9 preview cards.
+  - **Storage & Cache Management (`StorageManagementScreen.kt`, `CachedStreamsSheet.kt`)**: Standardized top bar, borderless `RoundedCornerShape(24.dp)` storage gauge card with capsule bar, contiguous cache breakdown container with `outlineVariant` dividers, master clear pill, and edge-to-edge 28.dp cached streams bottom sheet with interactive TTL policy dropdown.
+
+- **Smart Batch Download & Sequential Queue Engine**:
+  - **Smart Batch Download Selector**: Dedicated "Download" capsule button in Details Screen with intelligent pre-selection (auto-excludes watched episodes $\ge 85\%$).
+  - **Quick Action Filter Pills**: `[Unwatched Only]`, `[Select All]`, `[Next 3]`, and `[Deselect All]`.
+  - **Sequential Batch Queue Engine**: Downloads 1 episode at a time at maximum 2–3+ MB/s line speed while remaining episodes sit in `isQueued = true`, auto-advancing on completion to avoid Telegram MTProto `FloodWait` (420).
+
+- **Turbo OkHttp Download Engine & Dual Notification Elimination**:
+  - **High-Throughput OkHttp Engine**: Replaced Android's throttled `SystemDownloadManager` with `HttpRangeResumeEngine` wired to `SharedHttpClient.streamingClient` (1 MB TCP window scaling, 45s read timeout) achieving full 2–3+ MB/s line speed.
+  - **Dual Notification Elimination**: Added `<uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />` to silence OS download notifications, displaying strictly 1 branded StreamHub notification.
+
+- **Live Online Subtitle Search & 1-Tap Injection**:
+  - **Online Subtitle Service**: Native `OnlineSubtitleService` powered by OpenSubtitles & Cinemeta CDN with zero authentication.
+  - **Interactive Player Sheet**: Live search, Season & Episode steppers, multilingual language filter chips, and 1-tap player injection with HUD confirmation pill.
+
+---
+
 ## 🌟 [v4.8.202] - 2026-08-30 (Ultra Reliability & Bulk Sync Release)
 
 ### 🚀 Major Upgrades & Features

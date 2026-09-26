@@ -2753,8 +2753,24 @@ fun PlayerScreen(
 
         // 13. Online Subtitle Search Modal Sheet
         if (showOnlineSubSearchSheet) {
+            val isMovie = mediaItem.type.equals("MOVIE", ignoreCase = true)
+            val currentEp = mediaItem.episodes.getOrNull(uiState.currentEpisodeIndex)
+            val seasonNum = if (mediaItem.seasonNumber > 0) mediaItem.seasonNumber else 1
+            val epNum = if (isMovie) 1 else (currentEp?.episodeNumber ?: (uiState.currentEpisodeIndex + 1))
+            val targetImdbId = mediaItem.id.takeIf { it.startsWith("tt") }
+                ?: mediaItem.tmdbId.takeIf { it.startsWith("tt") }
+
             MpvOnlineSubtitleSearchSheet(
                 initialQuery = mediaItem.title,
+                isMovie = isMovie,
+                initialSeason = seasonNum,
+                initialEpisode = epNum,
+                imdbId = targetImdbId,
+                onApplySubtitle = { uri, label ->
+                    viewModel.addExternalSubtitle(uri, label)
+                    triggerHudPill("$label Loaded", Icons.Default.Subtitles)
+                    showOnlineSubSearchSheet = false
+                },
                 onAddLocalSubtitleUri = { uri ->
                     viewModel.addExternalSubtitle(uri)
                     triggerHudPill("External Subtitle Loaded", Icons.Default.Subtitles)

@@ -27,10 +27,12 @@ import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Gesture
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -89,6 +91,7 @@ fun SettingsScreen(
     onNavigateToGestures: () -> Unit = {},
     onNavigateToAudio: () -> Unit = {},
     onNavigateToAdvanced: () -> Unit = {},
+    onNavigateToStorage: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val currentAccent by ThemeManager.currentAccent.collectAsState()
@@ -99,7 +102,8 @@ fun SettingsScreen(
         onNavigateToVideoSettings,
         onNavigateToGestures,
         onNavigateToAudio,
-        onNavigateToAdvanced
+        onNavigateToAdvanced,
+        onNavigateToStorage
     ) {
         listOf(
             SearchableItem("App Cinema Theme Accent", "Choose primary dynamic accent color", "UI & Appearance", Icons.Outlined.Palette, onNavigateToAppearance),
@@ -182,7 +186,7 @@ fun SettingsScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 6.dp),
             shape = RoundedCornerShape(28.dp),
-            color = Color(0xFF181824)
+            color = MaterialTheme.colorScheme.surfaceContainer
         ) {
             Row(
                 modifier = Modifier
@@ -345,9 +349,9 @@ fun SettingsScreen(
                     }
                 }
 
-                // Section 4: Downloads & Paths
+                // Section 4: Downloads & Storage Directories
                 item {
-                    PreferenceSectionHeader(title = "DOWNLOADS & PATHS", accentColor = currentAccent.color)
+                    PreferenceSectionHeader(title = "DOWNLOADS & DIRECTORIES", accentColor = currentAccent.color)
                     PreferenceCard {
                         DownloadPathPreferenceItem(currentAccent = currentAccent)
                         PreferenceDivider()

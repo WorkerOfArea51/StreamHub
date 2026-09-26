@@ -35,6 +35,8 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -42,6 +44,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarDuration
@@ -123,48 +126,86 @@ fun HistoryScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     IconButton(
                         onClick = onBackClick,
-                        modifier = Modifier.bouncyTouch()
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .bouncyTouch()
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = TextPrimary
+                            tint = TextPrimary,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Watch History",
-                        color = TextPrimary,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column {
+                        Text(
+                            text = "Watch History",
+                            color = TextPrimary,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        val subtitleText = when {
+                            totalCount == 0 -> "No items recorded"
+                            totalCount == 1 -> "1 show in chronological history"
+                            else -> "$totalCount shows in chronological history"
+                        }
+                        Text(
+                            text = subtitleText,
+                            color = TextSecondary,
+                            fontSize = 12.sp
+                        )
+                    }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = {
-                        isSearchExpanded = !isSearchExpanded
-                        if (!isSearchExpanded) searchQuery = ""
-                    }) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    IconButton(
+                        onClick = {
+                            isSearchExpanded = !isSearchExpanded
+                            if (!isSearchExpanded) searchQuery = ""
+                        },
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .bouncyTouch()
+                    ) {
                         Icon(
                             imageVector = if (isSearchExpanded) Icons.Default.Close else Icons.Default.Search,
                             contentDescription = "Search History",
-                            tint = if (isSearchExpanded) PrimaryRed else TextSecondary
+                            tint = if (isSearchExpanded) PrimaryRed else TextSecondary,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
 
                     if (historyMap.isNotEmpty()) {
-                        IconButton(onClick = { showClearDialog = true }) {
+                        IconButton(
+                            onClick = { showClearDialog = true },
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x26FF5252))
+                                .bouncyTouch()
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.DeleteOutline,
                                 contentDescription = "Clear All History",
-                                tint = Color(0xFFFF5252)
+                                tint = Color(0xFFFF5252),
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
@@ -185,12 +226,12 @@ fun HistoryScreen(
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = TextPrimary,
                         unfocusedTextColor = TextPrimary,
-                        focusedBorderColor = PrimaryRed,
-                        unfocusedBorderColor = CardBorderDark,
-                        focusedContainerColor = SurfaceDark,
-                        unfocusedContainerColor = SurfaceDark
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                     ),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = CircleShape,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 6.dp)
@@ -210,23 +251,19 @@ fun HistoryScreen(
                         label = {
                             Text(
                                 text = filter,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                 fontSize = 12.sp
                             )
                         },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = PrimaryRed,
                             selectedLabelColor = Color.White,
-                            containerColor = SurfaceDark,
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             labelColor = TextSecondary
                         ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            enabled = true,
-                            selected = isSelected,
-                            borderColor = CardBorderDark,
-                            selectedBorderColor = PrimaryRed
-                        ),
-                        shape = RoundedCornerShape(20.dp)
+                        border = null,
+                        shape = CircleShape,
+                        modifier = Modifier.bouncyTouch()
                     )
                 }
             }
@@ -292,11 +329,18 @@ fun HistoryScreen(
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold
                                 )
-                                Text(
-                                    text = "${items.size} ${if (items.size == 1) "item" else "items"}",
-                                    color = TextSecondary,
-                                    fontSize = 12.sp
-                                )
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh
+                                ) {
+                                    Text(
+                                        text = "${items.size} ${if (items.size == 1) "item" else "items"}",
+                                        color = TextSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
                         }
 
@@ -348,25 +392,40 @@ fun HistoryScreen(
     if (showClearDialog) {
         AlertDialog(
             onDismissRequest = { showClearDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.DeleteOutline,
+                    contentDescription = null,
+                    tint = Color(0xFFFF5252),
+                    modifier = Modifier.size(28.dp)
+                )
+            },
             title = { Text("Clear All History?", color = TextPrimary, fontWeight = FontWeight.Bold) },
             text = { Text("This will permanently remove all watch progress and continue watching history.", color = TextSecondary) },
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = {
                         WatchHistoryManager.clearAllHistory()
                         showClearDialog = false
-                    }
+                    },
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
+                    modifier = Modifier.bouncyTouch()
                 ) {
-                    Text("Clear All", color = Color(0xFFFF5252), fontWeight = FontWeight.Bold)
+                    Text("Clear All", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearDialog = false }) {
+                TextButton(
+                    onClick = { showClearDialog = false },
+                    shape = CircleShape,
+                    modifier = Modifier.bouncyTouch()
+                ) {
                     Text("Cancel", color = TextSecondary)
                 }
             },
-            containerColor = SurfaceDark,
-            shape = RoundedCornerShape(16.dp)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(28.dp)
         )
     }
 }
@@ -419,26 +478,26 @@ fun HistoryItemCard(
         }
     }
 
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+            .padding(horizontal = 16.dp, vertical = 5.dp)
+            .bouncyTouch()
             .clickable { onCardClick() }
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(10.dp),
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Thumbnail with Play overlay & Progress bar
             Box(
                 modifier = Modifier
-                    .size(width = 110.dp, height = 70.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .size(width = 114.dp, height = 72.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .background(Color(0xFF1E1E1E))
             ) {
                 AsyncImage(
@@ -448,7 +507,7 @@ fun HistoryItemCard(
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // Dark overlay
+                // Dark gradient overlay
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -481,7 +540,7 @@ fun HistoryItemCard(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(3.dp)
+                        .height(3.5.dp)
                         .align(Alignment.BottomCenter)
                         .background(Color(0x66000000))
                 ) {
@@ -490,8 +549,8 @@ fun HistoryItemCard(
                             modifier = Modifier
                                 .fillMaxHeight()
                                 .fillMaxWidth(progressFraction.coerceIn(0.04f, 1f))
-                                .clip(RoundedCornerShape(topEnd = 2.dp, bottomEnd = 2.dp))
-                                .background(if (progress.isCompleted) Color(0xFF4CAF50) else PrimaryRed)
+                                .clip(CircleShape)
+                                .background(if (progress.isCompleted) Color(0xFF00E676) else PrimaryRed)
                         )
                     }
                 }
@@ -533,13 +592,13 @@ fun HistoryItemCard(
                             Icon(
                                 imageVector = Icons.Default.CheckCircle,
                                 contentDescription = "Completed",
-                                tint = Color(0xFF4CAF50),
+                                tint = Color(0xFF00E676),
                                 modifier = Modifier.size(12.dp)
                             )
                             Spacer(modifier = Modifier.width(3.dp))
                             Text(
                                 text = "Completed",
-                                color = Color(0xFF4CAF50),
+                                color = Color(0xFF00E676),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -565,13 +624,17 @@ fun HistoryItemCard(
             // Remove Button
             IconButton(
                 onClick = onRemove,
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .bouncyTouch()
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = "Remove from history",
-                    tint = TextSecondary.copy(alpha = 0.6f),
-                    modifier = Modifier.size(18.dp)
+                    tint = TextSecondary,
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
