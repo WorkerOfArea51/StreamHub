@@ -347,19 +347,33 @@ fun DetailsScreen(
     // Instant Pre-Warming for Current Show, Seasons & Franchise:
     // Speculatively fetches the first 2MB (EBML container & initial keyframes) immediately upon opening
     // the show, changing season, or navigating to another franchise entry.
-    val prewarmTargetEpisode = remember(detailsTargetPlayIndex, seasonFilteredEpisodes, mediaItem.episodes, selectedSeasonNumber) {
+    // Speculatively pre-warm ALL episodes of the current season in the background
+    // Prioritizes the target/resume episode first, then chronologically pre-caches
+    // both the 2MB container head and the 2.5MB MKV Cues tail for every episode!
+    val episodesToPrewarm = remember(detailsTargetPlayIndex, seasonFilteredEpisodes, mediaItem.episodes, selectedSeasonNumber) {
         val resumeEp = mediaItem.episodes.getOrNull(detailsTargetPlayIndex)
-        if (resumeEp != null && (selectedSeasonNumber <= 0 || resumeEp.seasonNumber == selectedSeasonNumber)) {
+        val primaryEp = if (resumeEp != null && (selectedSeasonNumber <= 0 || resumeEp.seasonNumber == selectedSeasonNumber)) {
             resumeEp
         } else {
             seasonFilteredEpisodes.firstOrNull() ?: mediaItem.episodes.firstOrNull()
         }
+        val targetUrl = primaryEp?.streamUrl?.ifEmpty { primaryEp.mirrorStreamUrl } ?: ""
+        val list = mutableListOf<String>()
+        if (targetUrl.isNotBlank() && !targetUrl.startsWith("/")) {
+            list.add(targetUrl)
+        }
+        seasonFilteredEpisodes.forEach { ep ->
+            val url = ep.streamUrl.ifEmpty { ep.mirrorStreamUrl }
+            if (url.isNotBlank() && !url.startsWith("/") && url != targetUrl) {
+                list.add(url)
+            }
+        }
+        list
     }
 
-    LaunchedEffect(currentMediaId, selectedSeasonNumber, selectedArcName, prewarmTargetEpisode?.streamUrl, isOnline) {
-        val urlToPrewarm = prewarmTargetEpisode?.streamUrl?.ifEmpty { prewarmTargetEpisode.mirrorStreamUrl } ?: ""
-        if (isOnline && urlToPrewarm.isNotBlank() && !urlToPrewarm.startsWith("/")) {
-            StreamPreloadManager.prewarmDetailsStream(context, urlToPrewarm, prewarmCoroutineScope)
+    LaunchedEffect(currentMediaId, selectedSeasonNumber, selectedArcName, episodesToPrewarm, isOnline) {
+        if (isOnline && episodesToPrewarm.isNotEmpty()) {
+            StreamPreloadManager.prewarmEpisodesBatch(context, episodesToPrewarm, prewarmCoroutineScope)
         }
     }
 

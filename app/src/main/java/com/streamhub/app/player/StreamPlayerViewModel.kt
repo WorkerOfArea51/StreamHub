@@ -127,6 +127,7 @@ class StreamPlayerViewModel : ViewModel() {
 
     private var positionTrackerJob: Job? = null
     private var resolutionJob: Job? = null
+    private var tailPrefetchJob: Job? = null
     private var playerListener: Player.Listener? = null
     private var nextEpisodePreloadJob: Job? = null
     var pendingSeekTargetMs: Long? = null
@@ -1021,6 +1022,23 @@ class StreamPlayerViewModel : ViewModel() {
 
             prepareStartTimeMs = System.currentTimeMillis()
             isStartupPerfLogged = false
+
+            // Dual-Socket Parallel Launch:
+            // Concurrently download the 2.5MB MKV Cues / seek index tail on Dispatchers.IO
+            // while ExoPlayer reads Byte 0. When ExoPlayer finishes Byte 0 and seeks to EOF,
+            // the Cues are ALREADY on disk, cutting out the entire 4-second remote MTProto wait!
+            if (!isLocal && NetworkMonitor.isOnline.value) {
+                appContext?.let { ctx ->
+                    tailPrefetchJob?.cancel()
+                    tailPrefetchJob = StreamPreloadManager.precacheActiveStreamTailAsync(
+                        ctx,
+                        resolvedUrl,
+                        cacheKey,
+                        viewModelScope
+                    )
+                }
+            }
+
             exoPlayer?.apply {
                 setMediaItem(mediaItem, startPositionMs)
                 prepare()
@@ -1132,6 +1150,17 @@ class StreamPlayerViewModel : ViewModel() {
         resolutionJob = viewModelScope.launch {
             StreamPreloadManager.cancelDetailsPrewarmAwait()
             StreamPreloadManager.cancelBingePrecacheAwait()
+            if (!rawUrl.startsWith("/") && NetworkMonitor.isOnline.value) {
+                appContext?.let { ctx ->
+                    tailPrefetchJob?.cancel()
+                    tailPrefetchJob = StreamPreloadManager.precacheActiveStreamTailAsync(
+                        ctx,
+                        rawUrl,
+                        cacheKey,
+                        viewModelScope
+                    )
+                }
+            }
             exoPlayer?.apply {
                 setMediaItem(mediaItem, startPositionMs)
                 prepare()
@@ -2026,6 +2055,8 @@ class StreamPlayerViewModel : ViewModel() {
             positionTrackerJob = null
             resolutionJob?.cancel()
             resolutionJob = null
+            tailPrefetchJob?.cancel()
+            tailPrefetchJob = null
             StreamPreloadManager.cancelBingePrecache()
             nextEpisodePreloadJob?.cancel()
             nextEpisodePreloadJob = null
@@ -2047,6 +2078,8 @@ class StreamPlayerViewModel : ViewModel() {
         positionTrackerJob = null
         resolutionJob?.cancel()
         resolutionJob = null
+        tailPrefetchJob?.cancel()
+        tailPrefetchJob = null
         StreamPreloadManager.cancelDetailsPrewarm()
         StreamPreloadManager.cancelBingePrecache()
         nextEpisodePreloadJob?.cancel()

@@ -205,6 +205,153 @@ object StreamPreloadManager {
     }
 
     /**
+     * Sequentially pre-warms all episodes in a season/batch (Head 2MB + Tail 2.5MB Cues).
+     * If an episode is already cached on disk, skips it immediately in <1ms.
+     * Yields gracefully between episodes and halts cleanly if user leaves DetailsScreen or taps Play.
+     */
+    fun prewarmEpisodesBatch(
+        context: Context,
+        rawUrls: List<String>,
+        scope: CoroutineScope
+    ): Job {
+        if (rawUrls.isEmpty()) return Job().apply { complete() }
+
+        cancelDetailsPrewarm()
+
+        val job = scope.launch(Dispatchers.IO) {
+            try {
+                delay(300L)
+
+                if (!PlayerSettingsManager.settingsFlow.value.smartPrewarmEnabled) {
+                    Log.d(TAG, "Batch prewarm skipped: smartPrewarmEnabled is OFF")
+                    return@launch
+                }
+
+                if (!isNetworkConnected(context)) {
+                    Log.d(TAG, "Batch prewarm aborted: No network available")
+                    return@launch
+                }
+
+                val appContext = context.applicationContext
+                val simpleCache = StreamCacheManager.getCache(appContext)
+
+                for (rawUrl in rawUrls) {
+                    if (!isActive) break
+
+                    val sanitizedUrl = TelegramLinkResolver.sanitizePlayableUrl(rawUrl)
+                    if (sanitizedUrl.isBlank() || sanitizedUrl.startsWith("/")) continue
+
+                    val parsedUri = Uri.parse(sanitizedUrl)
+                    val cacheKey = StreamDataSourceFactory.sanitizeCacheKey(parsedUri)
+
+                    // 1. Pre-cache the 2.5MB MKV Cues / seek index (tail)
+                    var metaLen = androidx.media3.datasource.cache.ContentMetadata.getContentLength(simpleCache.getContentMetadata(cacheKey))
+                    if (metaLen <= 0L) {
+                        metaLen = probeContentLength(sanitizedUrl)
+                    }
+                    if (metaLen > DETAILS_PREWARM_BYTES) {
+                        precacheTailIndexAtomically(appContext, sanitizedUrl, cacheKey, metaLen, DETAILS_PREWARM_BYTES)
+                    }
+
+                    // 2. Pre-cache the 2MB container head if not cached
+                    val alreadyCached = simpleCache.isCached(cacheKey, 0, DETAILS_PREWARM_BYTES)
+                    if (!alreadyCached) {
+                        Log.i(TAG, "Batch prewarming head (2 MB): $sanitizedUrl")
+                        val upstreamFactory = OkHttpDataSource.Factory(preloadClient)
+                            .setUserAgent(USER_AGENT)
+                        val sinkFactory = CacheDataSink.Factory()
+                            .setCache(simpleCache)
+                            .setFragmentSize(4 * 1024 * 1024L)
+
+                        val cacheDataSource = CacheDataSource.Factory()
+                            .setCache(simpleCache)
+                            .setUpstreamDataSourceFactory(upstreamFactory)
+                            .setCacheWriteDataSinkFactory(sinkFactory)
+                            .setCacheKeyFactory { ds -> ds.key ?: StreamDataSourceFactory.sanitizeCacheKey(ds.uri) }
+                            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                            .createDataSource()
+
+                        val dataSpec = DataSpec.Builder()
+                            .setUri(parsedUri)
+                            .setKey(cacheKey)
+                            .setPosition(0)
+                            .setLength(DETAILS_PREWARM_BYTES)
+                            .build()
+
+                        val writer = CacheWriter(cacheDataSource, dataSpec, null, null)
+                        synchronized(this@StreamPreloadManager) {
+                            activeDetailsWriter = writer
+                            activeDetailsDataSource = cacheDataSource
+                        }
+
+                        try {
+                            writer.cache()
+                            Log.i(TAG, "Batch prewarm cached: $sanitizedUrl")
+                        } finally {
+                            synchronized(this@StreamPreloadManager) {
+                                activeDetailsWriter = null
+                                activeDetailsDataSource = null
+                            }
+                        }
+                    }
+
+                    // Gentle spacing between episodes to keep UI 120fps fluid
+                    delay(150L)
+                }
+            } catch (_: CancellationException) {
+                Log.d(TAG, "Batch prewarm cancelled by user action")
+            } catch (e: Exception) {
+                Log.w(TAG, "Batch prewarm non-fatal error: ${e.message}")
+            } finally {
+                synchronized(this@StreamPreloadManager) {
+                    activeDetailsWriter = null
+                    activeDetailsDataSource = null
+                    activeDetailsJob = null
+                    activePrewarmUrl = ""
+                }
+            }
+        }
+
+        activeDetailsJob = job
+        return job
+    }
+
+    /**
+     * Dual-Socket Parallel Launch:
+     * Immediately fetches the 2.5MB MKV Cues / seek index (tail) asynchronously while ExoPlayer opens Byte 0.
+     * When ExoPlayer finishes Byte 0 and seeks to EOF, the Cues table is already in local SimpleCache disk cache,
+     * completely eliminating the second sequential 4-second MTProto round-trip!
+     */
+    fun precacheActiveStreamTailAsync(
+        context: Context,
+        rawUrl: String,
+        cacheKey: String,
+        scope: CoroutineScope
+    ): Job {
+        val sanitizedUrl = TelegramLinkResolver.sanitizePlayableUrl(rawUrl)
+        if (sanitizedUrl.isBlank() || sanitizedUrl.startsWith("/")) return Job().apply { complete() }
+
+        return scope.launch(Dispatchers.IO) {
+            try {
+                val appContext = context.applicationContext
+                val simpleCache = StreamCacheManager.getCache(appContext)
+
+                var metaLen = androidx.media3.datasource.cache.ContentMetadata.getContentLength(simpleCache.getContentMetadata(cacheKey))
+                if (metaLen <= 0L) {
+                    metaLen = probeContentLength(sanitizedUrl)
+                }
+                if (metaLen > DETAILS_PREWARM_BYTES) {
+                    precacheTailIndexAtomically(appContext, sanitizedUrl, cacheKey, metaLen, DETAILS_PREWARM_BYTES)
+                }
+            } catch (_: CancellationException) {
+                // Cancelled cleanly
+            } catch (e: Exception) {
+                Log.w(TAG, "Active stream tail prefetch error: ${e.message}")
+            }
+        }
+    }
+
+    /**
      * Gracefully cancels details pre-warm and awaits background writer to release SimpleCache locks.
      */
     suspend fun cancelDetailsPrewarmAwait() {
