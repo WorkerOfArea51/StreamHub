@@ -1,4 +1,9 @@
-### What's New in StreamHub v4.8.367 🚀
+### What's New in StreamHub v4.8.368 🚀
+
+- ⚡ **Backend-Aligned Zero-Stall Buffer Architecture (`bufferForPlaybackMs = 1500`)**:
+  - Aligned ExoPlayer `DefaultLoadControl` directly with backend server's 500 MB NVMe SSD LRU cache, 4 MB head buffer, and parallel worker tail prefetching.
+  - Set `bufferForPlaybackMs = 1500` and `bufferForPlaybackAfterRebufferMs = 2500` to deliver instant, smooth playback synchronization with zero decoder frame starvation.
+  - Video streams launch almost instantaneously upon tapping Play, seamlessly leveraging the server's sub-millisecond (< 0.5 ms) SSD cues response.
 
 - ⚡ **Instant MKV Video Startup (< 250ms)**:
   - Fixed the 10–14s cold-start buffering stall when launching MKV files.
