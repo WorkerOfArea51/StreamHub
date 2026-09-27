@@ -478,8 +478,8 @@ class StreamPlayerViewModel : ViewModel() {
                     .setBufferDurationsMs(
                         240_000,        // minBufferMs (4-minute safe buffer floor)
                         300_000,        // maxBufferMs (up to 5 minutes forward buffer ahead)
-                        1_500,          // bufferForPlaybackMs (1.5s healthy cold-start pad)
-                        2_500           // bufferForPlaybackAfterRebufferMs (2.5s safe seek & recovery pad)
+                        250,            // bufferForPlaybackMs (instant 250ms cold-start pad)
+                        2_000           // bufferForPlaybackAfterRebufferMs (2.0s safe seek & recovery pad)
                     )
                     .setBackBuffer(15_000, false)
                     .setPrioritizeTimeOverSizeThresholds(true)

@@ -506,15 +506,16 @@ object StreamPreloadManager {
         totalLength: Long,
         headBytes: Long
     ) {
-        val chunkSize = 512L * 1024L // 512 KB aligned to Telegram MTProto boundary
-        if (totalLength <= headBytes + chunkSize) {
+        val tailBlockBytes = 2560L * 1024L // 2.5 MB covers Matroska Cues, SeekHead, Chapter points & ASS font attachments
+        val alignChunkSize = 512L * 1024L // 512 KB aligned to Telegram MTProto boundary
+        if (totalLength <= headBytes + alignChunkSize) {
             return
         }
 
-        val rawTailStart = (totalLength - chunkSize).coerceAtLeast(headBytes)
-        val alignedTailStart = (rawTailStart / chunkSize) * chunkSize
+        val rawTailStart = (totalLength - tailBlockBytes).coerceAtLeast(headBytes)
+        val alignedTailStart = (rawTailStart / alignChunkSize) * alignChunkSize
         val tailLength = totalLength - alignedTailStart
-        if (tailLength <= 0 || tailLength > 4 * 1024 * 1024L) return
+        if (tailLength <= 0 || tailLength > 6 * 1024 * 1024L) return
 
         val simpleCache = StreamCacheManager.getCache(context.applicationContext)
 
@@ -546,7 +547,7 @@ object StreamPreloadManager {
 
                     if (bytes.size.toLong() == tailLength) {
                         // 100% verified complete — commit to SimpleCache atomically
-                        val sink = CacheDataSink(simpleCache, 4 * 1024 * 1024L)
+                        val sink = CacheDataSink(simpleCache, 6 * 1024 * 1024L)
                         val tailSpec = DataSpec.Builder()
                             .setUri(Uri.parse(sanitizedUrl))
                             .setKey(cacheKey)
