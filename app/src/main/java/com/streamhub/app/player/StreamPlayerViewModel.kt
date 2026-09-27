@@ -945,6 +945,7 @@ class StreamPlayerViewModel : ViewModel() {
         resolutionJob?.cancel()
         resolutionJob = viewModelScope.launch {
             // Await clean release of any active preload cache locks before ExoPlayer touches disk
+            StreamPreloadManager.cancelDetailsPrewarmAwait()
             StreamPreloadManager.cancelBingePrecacheAwait()
             // FIX: If rawUrl is already a local file path, bypass URL resolution entirely.
             // This makes offline playback instant — no network calls, no TelegramLinkResolver.
@@ -1129,6 +1130,7 @@ class StreamPlayerViewModel : ViewModel() {
         isStartupPerfLogged = false
         resolutionJob?.cancel()
         resolutionJob = viewModelScope.launch {
+            StreamPreloadManager.cancelDetailsPrewarmAwait()
             StreamPreloadManager.cancelBingePrecacheAwait()
             exoPlayer?.apply {
                 setMediaItem(mediaItem, startPositionMs)
