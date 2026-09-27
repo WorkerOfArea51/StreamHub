@@ -127,7 +127,6 @@ class StreamPlayerViewModel : ViewModel() {
 
     private var positionTrackerJob: Job? = null
     private var resolutionJob: Job? = null
-    private var tailPrefetchJob: Job? = null
     private var playerListener: Player.Listener? = null
     private var nextEpisodePreloadJob: Job? = null
     var pendingSeekTargetMs: Long? = null
@@ -143,7 +142,6 @@ class StreamPlayerViewModel : ViewModel() {
     private var lastBackgroundTimestampMs: Long = 0L
     private var lastPauseTimestampMs: Long = 0L
     private var stallAccumulatorMs: Long = 0L
-    private var proactiveStallAccumulatorMs: Long = 0L
 
     init {
         viewModelScope.launch {
@@ -1023,22 +1021,6 @@ class StreamPlayerViewModel : ViewModel() {
             prepareStartTimeMs = System.currentTimeMillis()
             isStartupPerfLogged = false
 
-            // Dual-Socket Parallel Launch:
-            // Concurrently download the 2.5MB MKV Cues / seek index tail on Dispatchers.IO
-            // while ExoPlayer reads Byte 0. When ExoPlayer finishes Byte 0 and seeks to EOF,
-            // the Cues are ALREADY on disk, cutting out the entire 4-second remote MTProto wait!
-            if (!isLocal && NetworkMonitor.isOnline.value) {
-                appContext?.let { ctx ->
-                    tailPrefetchJob?.cancel()
-                    tailPrefetchJob = StreamPreloadManager.precacheActiveStreamTailAsync(
-                        ctx,
-                        resolvedUrl,
-                        cacheKey,
-                        viewModelScope
-                    )
-                }
-            }
-
             exoPlayer?.apply {
                 setMediaItem(mediaItem, startPositionMs)
                 prepare()
@@ -1150,17 +1132,6 @@ class StreamPlayerViewModel : ViewModel() {
         resolutionJob = viewModelScope.launch {
             StreamPreloadManager.cancelDetailsPrewarmAwait()
             StreamPreloadManager.cancelBingePrecacheAwait()
-            if (!rawUrl.startsWith("/") && NetworkMonitor.isOnline.value) {
-                appContext?.let { ctx ->
-                    tailPrefetchJob?.cancel()
-                    tailPrefetchJob = StreamPreloadManager.precacheActiveStreamTailAsync(
-                        ctx,
-                        rawUrl,
-                        cacheKey,
-                        viewModelScope
-                    )
-                }
-            }
             exoPlayer?.apply {
                 setMediaItem(mediaItem, startPositionMs)
                 prepare()
@@ -1430,7 +1401,6 @@ class StreamPlayerViewModel : ViewModel() {
         Log.i("StreamPlayerViewModel", "App foregrounded after ${elapsedMs}ms in background")
 
         stallAccumulatorMs = 0L // Reset stall accumulator to prevent false watchdog trigger upon returning
-        proactiveStallAccumulatorMs = 0L
 
         // If the app was in the background for >= 3 seconds, the TCP connection to the streaming
         // server is likely dead or timed out by the server/proxy. Proactively refresh it.
@@ -1455,7 +1425,6 @@ class StreamPlayerViewModel : ViewModel() {
         debouncedSeekJob?.cancel()
         debouncedSeekJob = null
         stallAccumulatorMs = 0L
-        proactiveStallAccumulatorMs = 0L
         val player = exoPlayer ?: return
         val duration = player.duration.coerceAtLeast(0L)
         val target = if (duration > 0L) positionMs.coerceIn(0L, duration) else positionMs.coerceAtLeast(0L)
@@ -1636,7 +1605,6 @@ class StreamPlayerViewModel : ViewModel() {
         var lastProgressSaveMs = 0L
         var watchTimeAccumulatorMs = 0L
         stallAccumulatorMs = 0L
-        proactiveStallAccumulatorMs = 0L
         positionTrackerJob?.cancel()
         positionTrackerJob = viewModelScope.launch {
             while (isActive) {
@@ -1674,7 +1642,7 @@ class StreamPlayerViewModel : ViewModel() {
                         _uiState.update { it.copy(isBuffering = isBuffering) }
                     }
 
-                    // Active Stream Stall Watchdog & Proactive Zero-Freeze Defense:
+                    // Active Stream Stall Watchdog:
                     // Guard: Offline local files (downloads, storage files) are not network streams.
                     // StreamBandwidthTracker has 0 throughput for disk files, and buffer health
                     // naturally drops to 0 at the end of the video. Skip all stall watchdogs for local media.
@@ -1685,56 +1653,30 @@ class StreamPlayerViewModel : ViewModel() {
 
                     if (isLocalStream) {
                         stallAccumulatorMs = 0L
-                        proactiveStallAccumulatorMs = 0L
                     } else {
-                        // Detects if the player is buffering with 0s buffer while trying to play (playWhenReady == true),
-                        // or if the forward buffer has starved to a critical point while throughput is severely throttled.
+                        // Detects if the player is buffering with 0s buffer while trying to play (playWhenReady == true).
                         // Startup grace: 25s before first frame renders, 15s after first frame renders.
                         val timeSincePrepare = if (prepareStartTimeMs > 0L) System.currentTimeMillis() - prepareStartTimeMs else Long.MAX_VALUE
                         val isFirstFrameDone = _uiState.value.isFirstFrameRendered
                         val isPastStartupGrace = if (isFirstFrameDone) timeSincePrepare >= 15_000L else timeSincePrepare >= 25_000L
                         val timeSinceLastByteMs = bandwidthTracker?.timeSinceLastTransferMs ?: Long.MAX_VALUE
 
-                        // At 0s buffer, any throughput below 100 KB/s or byte gap > 2.0s is starvation trickle (cannot sustain 1080p playback)
-                        val isActivelyTransferringAtZeroBuffer = speedKbps >= 100L && timeSinceLastByteMs < 2_000L
+                        // Check if bytes are actively arriving from the server (protects legitimate slow downloads)
+                        val isActivelyTransferring = speedKbps > 20L || timeSinceLastByteMs < 3_000L
                         val isStalledAtZeroBuffer = isBuffering && bufferHealthSec == 0L && player.playWhenReady &&
-                            !isActivelyTransferringAtZeroBuffer &&
+                            !isActivelyTransferring &&
                             pendingSeekTargetMs == null && !_uiState.value.isReconnecting && isPastStartupGrace
 
                         if (isStalledAtZeroBuffer) {
                             stallAccumulatorMs += 200L
-                            // 2.0s threshold: fast recovery from frozen 0s buffer without lingering on dead sockets
-                            if (stallAccumulatorMs >= 2000L) {
+                            // 4.0s threshold: fast recovery from frozen 0s buffer without interrupting active downloads
+                            if (stallAccumulatorMs >= 4000L) {
                                 stallAccumulatorMs = 0L
-                                proactiveStallAccumulatorMs = 0L
-                                Log.w("StreamPlayerViewModel", "Stall watchdog triggered: 0s buffer starved for 2.0s (speed: ${speedKbps} KB/s, last byte: ${timeSinceLastByteMs}ms ago). Reconnecting...")
+                                Log.w("StreamPlayerViewModel", "Stall watchdog triggered: 0s buffer starved for 4.0s (speed: ${speedKbps} KB/s, last byte: ${timeSinceLastByteMs}ms ago). Reconnecting...")
                                 handleStreamStall(playerPos)
                             }
-                        } else if (!isBuffering || bufferHealthSec > 1L || isActivelyTransferringAtZeroBuffer) {
+                        } else if (!isBuffering || bufferHealthSec > 0L || isActivelyTransferring) {
                             stallAccumulatorMs = 0L
-                        }
-
-                        // Proactive Zero-Freeze Defense:
-                        // If video is currently playing but the forward buffer has drained to a critical level (1-4s)
-                        // AND incoming download speed is choked (< 60 KB/s) for 3 continuous seconds,
-                        // proactively refresh the socket connection in-place BEFORE playback runs out of frames and freezes.
-                        val isCriticallyStarved = player.isPlaying && !isBuffering && bufferHealthSec in 1L..4L &&
-                            (speedKbps < 60L || timeSinceLastByteMs > 3_000L) &&
-                            pendingSeekTargetMs == null && !_uiState.value.isReconnecting && isPastStartupGrace
-
-                        if (isCriticallyStarved) {
-                            proactiveStallAccumulatorMs += 200L
-                            if (proactiveStallAccumulatorMs >= 3000L) {
-                                proactiveStallAccumulatorMs = 0L
-                                stallAccumulatorMs = 0L
-                                Log.w("StreamPlayerViewModel", "Proactive silent recovery: Buffer low (${bufferHealthSec}s) and network choked (${speedKbps} KB/s). Evicting socket pool and refreshing connection silently in background...")
-                                try {
-                                    com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
-                                } catch (_: Exception) {}
-                                player.seekTo(playerPos)
-                            }
-                        } else if (bufferHealthSec > 5L || speedKbps >= 100L) {
-                            proactiveStallAccumulatorMs = 0L
                         }
                     }
 
@@ -2023,7 +1965,6 @@ class StreamPlayerViewModel : ViewModel() {
         debouncedSeekJob?.cancel()
         debouncedSeekJob = null
         stallAccumulatorMs = 0L
-        proactiveStallAccumulatorMs = 0L
         autoRetryJob?.cancel()
         autoRetryJob = null
         seekTo(0L)
@@ -2055,8 +1996,6 @@ class StreamPlayerViewModel : ViewModel() {
             positionTrackerJob = null
             resolutionJob?.cancel()
             resolutionJob = null
-            tailPrefetchJob?.cancel()
-            tailPrefetchJob = null
             StreamPreloadManager.cancelBingePrecache()
             nextEpisodePreloadJob?.cancel()
             nextEpisodePreloadJob = null
@@ -2078,8 +2017,6 @@ class StreamPlayerViewModel : ViewModel() {
         positionTrackerJob = null
         resolutionJob?.cancel()
         resolutionJob = null
-        tailPrefetchJob?.cancel()
-        tailPrefetchJob = null
         StreamPreloadManager.cancelDetailsPrewarm()
         StreamPreloadManager.cancelBingePrecache()
         nextEpisodePreloadJob?.cancel()

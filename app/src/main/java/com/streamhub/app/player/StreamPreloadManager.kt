@@ -317,41 +317,6 @@ object StreamPreloadManager {
     }
 
     /**
-     * Dual-Socket Parallel Launch:
-     * Immediately fetches the 2.5MB MKV Cues / seek index (tail) asynchronously while ExoPlayer opens Byte 0.
-     * When ExoPlayer finishes Byte 0 and seeks to EOF, the Cues table is already in local SimpleCache disk cache,
-     * completely eliminating the second sequential 4-second MTProto round-trip!
-     */
-    fun precacheActiveStreamTailAsync(
-        context: Context,
-        rawUrl: String,
-        cacheKey: String,
-        scope: CoroutineScope
-    ): Job {
-        val sanitizedUrl = TelegramLinkResolver.sanitizePlayableUrl(rawUrl)
-        if (sanitizedUrl.isBlank() || sanitizedUrl.startsWith("/")) return Job().apply { complete() }
-
-        return scope.launch(Dispatchers.IO) {
-            try {
-                val appContext = context.applicationContext
-                val simpleCache = StreamCacheManager.getCache(appContext)
-
-                var metaLen = androidx.media3.datasource.cache.ContentMetadata.getContentLength(simpleCache.getContentMetadata(cacheKey))
-                if (metaLen <= 0L) {
-                    metaLen = probeContentLength(sanitizedUrl)
-                }
-                if (metaLen > DETAILS_PREWARM_BYTES) {
-                    precacheTailIndexAtomically(appContext, sanitizedUrl, cacheKey, metaLen, DETAILS_PREWARM_BYTES)
-                }
-            } catch (_: CancellationException) {
-                // Cancelled cleanly
-            } catch (e: Exception) {
-                Log.w(TAG, "Active stream tail prefetch error: ${e.message}")
-            }
-        }
-    }
-
-    /**
      * Gracefully cancels details pre-warm and awaits background writer to release SimpleCache locks.
      */
     suspend fun cancelDetailsPrewarmAwait() {
