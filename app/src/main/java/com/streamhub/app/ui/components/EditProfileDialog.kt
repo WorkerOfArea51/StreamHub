@@ -1,23 +1,18 @@
 package com.streamhub.app.ui.components
 
 import android.net.Uri
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,25 +26,20 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -68,15 +58,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.streamhub.app.data.PresetAvatar
 import com.streamhub.app.data.UserProfileManager
-import com.streamhub.app.ui.theme.AccentGold
-import com.streamhub.app.ui.theme.AccentOrange
-import com.streamhub.app.ui.theme.CardBorderDark
-import com.streamhub.app.ui.theme.PrimaryRed
-import com.streamhub.app.ui.theme.SurfaceDark
-import com.streamhub.app.ui.theme.TextPrimary
-import com.streamhub.app.ui.theme.TextSecondary
+import com.streamhub.app.ui.theme.bouncyClickable
 
 @Composable
 fun EditProfileDialog(
@@ -98,27 +81,61 @@ fun EditProfileDialog(
             val savedPath = UserProfileManager.saveCustomAvatar(context, uri)
             if (savedPath.isNotBlank()) {
                 avatarUriInput = savedPath
-                ToastManager.showToast("Photo selected! 📸")
+                ToastManager.showToast("Photo selected successfully", Icons.Default.Check)
             } else {
-                ToastManager.showToast("Failed to load photo")
+                ToastManager.showToast("Failed to load photo", Icons.Default.Close)
             }
         }
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(28.dp),
         title = {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Default.Edit, contentDescription = null, tint = primaryColor, modifier = Modifier.size(20.dp))
-                    Text("Customize Profile Persona", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = null,
+                            tint = primaryColor,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Text(
+                        text = "Customize Profile Persona",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
-                IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary, modifier = Modifier.size(18.dp))
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
         },
@@ -127,7 +144,7 @@ fun EditProfileDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
                 // ── Live Avatar Preview ──
                 Box(
@@ -137,7 +154,7 @@ fun EditProfileDialog(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(
                             modifier = Modifier
-                                .size(84.dp)
+                                .size(88.dp)
                                 .clip(CircleShape)
                                 .background(
                                     if (avatarUriInput.isBlank()) {
@@ -146,8 +163,7 @@ fun EditProfileDialog(
                                     } else {
                                         Brush.linearGradient(listOf(Color(0xFF1E1E2E), Color(0xFF2D2D44)))
                                     }
-                                )
-                                .border(2.dp, Brush.linearGradient(listOf(primaryColor, Color(0xFF00E5FF))), CircleShape),
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             if (avatarUriInput.isNotBlank()) {
@@ -163,14 +179,22 @@ fun EditProfileDialog(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(6.dp))
-
                         if (avatarUriInput.isNotBlank()) {
-                            TextButton(
-                                onClick = { avatarUriInput = "" },
-                                contentPadding = PaddingValues(0.dp)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f))
+                                    .bouncyClickable { avatarUriInput = "" }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text("Remove Custom Photo", color = Color(0xFFFF5252), fontSize = 11.sp)
+                                Text(
+                                    text = "Remove Custom Photo",
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             }
                         }
                     }
@@ -178,7 +202,13 @@ fun EditProfileDialog(
 
                 // ── Avatar Picker (Presets & Gallery) ──
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("CHOOSE AVATAR OR PHOTO", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text(
+                        text = "CHOOSE AVATAR OR PHOTO",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
 
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -186,21 +216,31 @@ fun EditProfileDialog(
                     ) {
                         // Gallery Upload Button
                         item {
+                            val isCustomActive = avatarUriInput.isNotBlank()
                             Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFF1E1E2E),
-                                border = BorderStroke(1.dp, if (avatarUriInput.isNotBlank()) primaryColor else CardBorderDark),
+                                shape = RoundedCornerShape(18.dp),
+                                color = if (isCustomActive) primaryColor.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceContainerHighest,
                                 modifier = Modifier
-                                    .size(62.dp)
-                                    .clickable { photoPickerLauncher.launch("image/*") }
+                                    .size(64.dp)
+                                    .bouncyClickable { photoPickerLauncher.launch("image/*") }
                             ) {
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.Center
                                 ) {
-                                    Icon(Icons.Default.AddAPhoto, contentDescription = "Gallery", tint = primaryColor, modifier = Modifier.size(20.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.AddAPhoto,
+                                        contentDescription = "Gallery",
+                                        tint = if (isCustomActive) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                     Spacer(modifier = Modifier.height(2.dp))
-                                    Text("Gallery", color = TextPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        text = "Gallery",
+                                        color = if (isCustomActive) primaryColor else MaterialTheme.colorScheme.onSurface,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
                         }
@@ -209,15 +249,11 @@ fun EditProfileDialog(
                         items(UserProfileManager.PRESET_AVATARS) { preset ->
                             val isSelected = avatarUriInput.isBlank() && selectedPresetIdx == preset.id
                             Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = Color(0xFF161626),
-                                border = BorderStroke(
-                                    if (isSelected) 2.dp else 1.dp,
-                                    if (isSelected) primaryColor else CardBorderDark
-                                ),
+                                shape = RoundedCornerShape(18.dp),
+                                color = if (isSelected) primaryColor.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceContainerHighest,
                                 modifier = Modifier
-                                    .size(62.dp)
-                                    .clickable {
+                                    .size(64.dp)
+                                    .bouncyClickable {
                                         avatarUriInput = ""
                                         selectedPresetIdx = preset.id
                                     }
@@ -233,13 +269,18 @@ fun EditProfileDialog(
                                         Box(
                                             modifier = Modifier
                                                 .align(Alignment.TopEnd)
-                                                .padding(3.dp)
-                                                .size(14.dp)
+                                                .padding(4.dp)
+                                                .size(16.dp)
                                                 .clip(CircleShape)
                                                 .background(primaryColor),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(10.dp))
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(10.dp)
+                                            )
                                         }
                                     }
                                 }
@@ -249,43 +290,81 @@ fun EditProfileDialog(
                 }
 
                 // ── Display Name Input ──
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("DISPLAY NAME", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                    OutlinedTextField(
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "DISPLAY NAME",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+                    TextField(
                         value = nameInput,
                         onValueChange = { if (it.length <= 30) nameInput = it },
-                        placeholder = { Text("e.g. Shadow Walker, OtakuKing", color = TextSecondary.copy(alpha = 0.6f)) },
+                        placeholder = {
+                            Text(
+                                text = "e.g. Shadow Walker, OtakuKing",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        },
                         singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = primaryColor,
-                            unfocusedBorderColor = CardBorderDark,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent
                         ),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(16.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Text("${nameInput.length}/30 characters", color = TextSecondary, fontSize = 10.sp, modifier = Modifier.align(Alignment.End))
+                    Text(
+                        text = "${nameInput.length}/30 characters",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp,
+                        modifier = Modifier.align(Alignment.End)
+                    )
                 }
 
                 // ── Bio / Custom Tagline Input ──
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("STATUS / BIO TAGLINE", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                    OutlinedTextField(
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "STATUS / BIO TAGLINE",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+                    TextField(
                         value = taglineInput,
                         onValueChange = { if (it.length <= 60) taglineInput = it },
-                        placeholder = { Text("e.g. Streaming anime into the night 🌙", color = TextSecondary.copy(alpha = 0.6f)) },
+                        placeholder = {
+                            Text(
+                                text = "e.g. Streaming anime into the night",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        },
                         singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = primaryColor,
-                            unfocusedBorderColor = CardBorderDark,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent
                         ),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(16.dp),
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Text("${taglineInput.length}/60 characters", color = TextSecondary, fontSize = 10.sp, modifier = Modifier.align(Alignment.End))
+                    Text(
+                        text = "${taglineInput.length}/60 characters",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp,
+                        modifier = Modifier.align(Alignment.End)
+                    )
                 }
             }
         },
@@ -298,11 +377,11 @@ fun EditProfileDialog(
                         avatarUri = avatarUriInput,
                         presetIndex = selectedPresetIdx
                     )
-                    ToastManager.showToast("Profile updated! ✨")
+                    ToastManager.showToast("Profile updated successfully", Icons.Default.Check)
                     onDismiss()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
-                shape = RoundedCornerShape(12.dp)
+                shape = CircleShape
             ) {
                 Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
@@ -317,15 +396,23 @@ fun EditProfileDialog(
                     taglineInput = ""
                     avatarUriInput = ""
                     selectedPresetIdx = 0
-                    ToastManager.showToast("Profile reset to default")
-                }
+                    ToastManager.showToast("Profile reset to default", Icons.Default.Refresh)
+                },
+                shape = CircleShape
             ) {
-                Icon(Icons.Default.Refresh, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(14.dp))
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(14.dp)
+                )
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Reset", color = TextSecondary, fontSize = 12.sp)
+                Text(
+                    text = "Reset",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp
+                )
             }
-        },
-        containerColor = SurfaceDark,
-        shape = RoundedCornerShape(24.dp)
+        }
     )
 }

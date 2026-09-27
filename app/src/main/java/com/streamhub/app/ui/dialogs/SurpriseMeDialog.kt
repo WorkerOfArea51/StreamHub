@@ -82,34 +82,37 @@ import com.streamhub.app.data.MyListManager
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.ui.theme.AccentGold
 import com.streamhub.app.ui.theme.AccentOrange
-import com.streamhub.app.ui.theme.CardBorderDark
 import com.streamhub.app.ui.theme.PrimaryRed
-import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.streamhub.app.ui.theme.bouncyClickable
 import kotlinx.coroutines.delay
 
 /**
  * Category & Mood Scopes for the Surprise Me Roulette.
  */
-enum class SurpriseFilter(val label: String, val emoji: String) {
-    ALL("All", "🌐"),
-    ANIME("Anime", "🎌"),
-    MOVIES("Movies", "🎬"),
-    SERIES("Series", "📺"),
-    TOP_RATED("Top Rated 8.0+", "⭐")
+enum class SurpriseFilter(val label: String, val icon: ImageVector) {
+    ALL("All", Icons.Default.Explore),
+    ANIME("Anime", Icons.Default.AutoAwesome),
+    MOVIES("Movies", Icons.Default.Movie),
+    SERIES("Series", Icons.Default.Tv),
+    TOP_RATED("Top Rated", Icons.Default.Star)
 }
 
 /**
- * High-End Cinema-Grade "Surprise Me 🎰" Random Show Roulette Modal.
+ * High-End Cinema-Grade "Surprise Me" Random Show Roulette Modal.
  *
  * Features:
  * - Tactile mechanical slot reel animation with rhythmic haptic ticks
  * - Grand Reveal bounce and radiant ambient cinema back-glow
  * - Category / Mood scoping chips (All, Anime, Movies, Series, Top Rated)
  * - Cinema slate winner presentation (High-res poster, genres, synopsis, ratings)
- * - Complete action suite: Direct "Play Now ▶", "Spin Again 🎲", "Add to My List 🔖", "View Details ℹ️"
+ * - Complete action suite: Direct "Play Now", "Spin Again", "Add to My List", "View Details"
  */
 @Composable
 fun SurpriseMeDialog(
@@ -233,23 +236,12 @@ fun SurpriseMeDialog(
             contentAlignment = Alignment.Center
         ) {
             Card(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF14131F)),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
                 modifier = Modifier
                     .fillMaxWidth()
                     .width(360.dp)
                     .clickable(enabled = false) {}
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                AccentOrange.copy(alpha = 0.7f),
-                                Color(0xFFE11D48).copy(alpha = 0.4f),
-                                CardBorderDark
-                            )
-                        ),
-                        shape = RoundedCornerShape(24.dp)
-                    )
             ) {
                 Column(
                     modifier = Modifier
@@ -266,13 +258,9 @@ fun SurpriseMeDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
+                                    .size(38.dp)
                                     .clip(CircleShape)
-                                    .background(
-                                        Brush.linearGradient(
-                                            listOf(AccentOrange.copy(alpha = 0.25f), Color(0xFFE11D48).copy(alpha = 0.25f))
-                                        )
-                                    ),
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
@@ -289,7 +277,7 @@ fun SurpriseMeDialog(
 
                             Column {
                                 Text(
-                                    text = if (isSpinning) "Spinning Reel... 🎰" else "Your Surprise Pick! 🎉",
+                                    text = if (isSpinning) "Spinning Reel..." else "Your Surprise Pick",
                                     color = TextPrimary,
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold
@@ -306,7 +294,7 @@ fun SurpriseMeDialog(
                             modifier = Modifier
                                 .size(32.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFF1E1E2E))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                                 .bouncyClickable { onDismiss() },
                             contentAlignment = Alignment.Center
                         ) {
@@ -314,7 +302,7 @@ fun SurpriseMeDialog(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Close",
                                 tint = TextSecondary,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
@@ -332,14 +320,9 @@ fun SurpriseMeDialog(
                             val isSelected = filter == selectedFilter
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(16.dp))
+                                    .clip(CircleShape)
                                     .background(
-                                        if (isSelected) AccentOrange.copy(alpha = 0.2f) else Color(0xFF1E1E2C)
-                                    )
-                                    .border(
-                                        width = 1.dp,
-                                        color = if (isSelected) AccentOrange else CardBorderDark,
-                                        shape = RoundedCornerShape(16.dp)
+                                        if (isSelected) AccentOrange.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceContainer
                                     )
                                     .bouncyClickable {
                                         if (selectedFilter != filter) {
@@ -347,14 +330,25 @@ fun SurpriseMeDialog(
                                             spinTrigger++
                                         }
                                     }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    .padding(horizontal = 12.dp, vertical = 7.dp)
                             ) {
-                                Text(
-                                    text = "${filter.emoji} ${filter.label}",
-                                    color = if (isSelected) AccentOrange else TextSecondary,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = filter.icon,
+                                        contentDescription = filter.label,
+                                        tint = if (isSelected) AccentOrange else TextSecondary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = filter.label,
+                                        color = if (isSelected) AccentOrange else TextSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                }
                             }
                         }
                     }
@@ -368,14 +362,27 @@ fun SurpriseMeDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(260.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(Color(0xFF1B1A28))
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainer)
                                 .padding(20.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("🎭", fontSize = 36.sp)
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Explore,
+                                        contentDescription = null,
+                                        tint = AccentOrange,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
                                 Text(
                                     text = "No titles found for ${selectedFilter.label}",
                                     color = TextPrimary,
@@ -392,15 +399,15 @@ fun SurpriseMeDialog(
                                 Spacer(modifier = Modifier.height(14.dp))
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .clip(CircleShape)
                                         .background(AccentOrange)
                                         .bouncyClickable {
                                             selectedFilter = SurpriseFilter.ALL
                                             spinTrigger++
                                         }
-                                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                                        .padding(horizontal = 16.dp, vertical = 8.dp)
                                 ) {
-                                    Text("Reset to All 🌐", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text("Reset to All", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -410,13 +417,8 @@ fun SurpriseMeDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(260.dp)
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(Color(0xFF1C1B2A), Color(0xFF13121E))
-                                    )
-                                )
-                                .border(1.dp, AccentOrange.copy(alpha = 0.35f), RoundedCornerShape(18.dp)),
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainer),
                             contentAlignment = Alignment.Center
                         ) {
                             // Pulsing neon circular ring
@@ -511,15 +513,8 @@ fun SurpriseMeDialog(
                                 modifier = Modifier
                                     .width(160.dp)
                                     .height(230.dp)
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(Color(0xFF1E1E2C))
-                                    .border(
-                                        1.5.dp,
-                                        Brush.verticalGradient(
-                                            listOf(AccentOrange.copy(alpha = 0.8f), CardBorderDark)
-                                        ),
-                                        RoundedCornerShape(16.dp)
-                                    )
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerLowest)
                             ) {
                                 AsyncImage(
                                     model = ImageRequest.Builder(context)
@@ -537,9 +532,9 @@ fun SurpriseMeDialog(
                                         modifier = Modifier
                                             .align(Alignment.TopEnd)
                                             .padding(8.dp)
-                                            .clip(RoundedCornerShape(6.dp))
+                                            .clip(CircleShape)
                                             .background(Color(0xCC000000))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
                                     ) {
                                         Text(
                                             text = show.mediaInfo.resolution,
@@ -556,9 +551,9 @@ fun SurpriseMeDialog(
                                         modifier = Modifier
                                             .align(Alignment.BottomStart)
                                             .padding(8.dp)
-                                            .clip(RoundedCornerShape(6.dp))
+                                            .clip(CircleShape)
                                             .background(Color(0xCC000000))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                                            .padding(horizontal = 8.dp, vertical = 3.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(
@@ -626,14 +621,14 @@ fun SurpriseMeDialog(
                                     show.genres.take(3).forEach { genre ->
                                         Box(
                                             modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .background(Color(0xFF222133))
-                                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                                .clip(CircleShape)
+                                                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                                .padding(horizontal = 9.dp, vertical = 4.dp)
                                         ) {
                                             Text(
                                                 text = genre.trim(),
-                                                color = Color(0xFFD1D1E0),
-                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontSize = 11.sp,
                                                 fontWeight = FontWeight.Medium
                                             )
                                         }
@@ -673,9 +668,8 @@ fun SurpriseMeDialog(
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0xFF1E1E2C))
-                                    .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                                     .bouncyClickable(enabled = !isSpinning) {
                                         spinTrigger++
                                     }
@@ -705,7 +699,7 @@ fun SurpriseMeDialog(
                             Box(
                                 modifier = Modifier
                                     .weight(1.2f)
-                                    .clip(RoundedCornerShape(12.dp))
+                                    .clip(RoundedCornerShape(20.dp))
                                     .background(
                                         Brush.horizontalGradient(
                                             listOf(PrimaryRed, Color(0xFFE50914))
@@ -757,13 +751,12 @@ fun SurpriseMeDialog(
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(Color(0xFF1E1E2C).copy(alpha = 0.6f))
-                                        .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceContainer)
                                         .bouncyClickable {
                                             MyListManager.toggleBookmark(activeWinner.id)
                                         }
-                                        .padding(vertical = 9.dp),
+                                        .padding(vertical = 10.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Row(
@@ -789,14 +782,13 @@ fun SurpriseMeDialog(
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(Color(0xFF1E1E2C).copy(alpha = 0.6f))
-                                        .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceContainer)
                                         .bouncyClickable {
                                             onDismiss()
                                             onMediaClick(activeWinner)
                                         }
-                                        .padding(vertical = 9.dp),
+                                        .padding(vertical = 10.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Row(

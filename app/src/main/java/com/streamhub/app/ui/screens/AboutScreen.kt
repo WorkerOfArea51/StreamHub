@@ -1,14 +1,9 @@
 package com.streamhub.app.ui.screens
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
-import com.streamhub.app.ui.components.ToastManager
-import androidx.compose.foundation.BorderStroke
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,8 +13,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -28,35 +25,24 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.HistoryEdu
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -64,22 +50,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.statusBarsPadding
 import com.streamhub.app.BuildConfig
+import com.streamhub.app.ui.components.StreamHubBrandLogo
+import com.streamhub.app.ui.components.ToastManager
+import com.streamhub.app.ui.theme.bouncyClickable
 import com.streamhub.app.ui.theme.AccentGold
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
-import com.streamhub.app.ui.theme.CardBorderDark
 import com.streamhub.app.ui.theme.PrimaryRed
-import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 
 private const val TELEGRAM_BOT_URL = "https://t.me/Fil3Stor3_bot"
 private const val GITHUB_REPO_URL = "https://github.com/WorkerOfArea51/StreamHub"
 private const val GITHUB_ISSUES_URL = "https://github.com/WorkerOfArea51/StreamHub/issues"
-private const val DEVELOPER_URL = "https://github.com/WorkerOfArea51"
 private const val LICENSE_URL = "https://github.com/WorkerOfArea51/StreamHub/blob/main/LICENSE"
 
 @Composable
@@ -87,7 +71,6 @@ fun AboutScreen(
     onBackClick: () -> Unit
 ) {
     val context = LocalContext.current
-    val primaryColor = MaterialTheme.colorScheme.primary
 
     val openUrl: (String) -> Unit = { url ->
         try {
@@ -100,7 +83,7 @@ fun AboutScreen(
         }
     }
 
-    androidx.activity.compose.BackHandler(onBack = onBackClick)
+    BackHandler(onBack = onBackClick)
 
     Box(
         modifier = Modifier
@@ -122,29 +105,39 @@ fun AboutScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onBackClick) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
+                        IconButton(
+                            onClick = onBackClick,
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
                         Text(
                             text = "About StreamHub",
-                            color = TextPrimary,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
 
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0x33E50914),
-                        border = BorderStroke(1.dp, PrimaryRed)
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                     ) {
                         Text(
                             text = "v${BuildConfig.VERSION_NAME}",
-                            color = PrimaryRed,
+                            color = MaterialTheme.colorScheme.primary,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
                         )
                     }
                 }
@@ -153,9 +146,8 @@ fun AboutScreen(
             // Hero Branding Card
             item(key = "about_hero_branding") {
                 Card(
-                    shape = RoundedCornerShape(22.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF141422)),
-                    border = BorderStroke(1.dp, CardBorderDark),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
@@ -165,7 +157,7 @@ fun AboutScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         // Official StreamHub Brand Logo
-                        com.streamhub.app.ui.components.StreamHubBrandLogo(
+                        StreamHubBrandLogo(
                             size = 88.dp
                         )
 
@@ -173,7 +165,7 @@ fun AboutScreen(
 
                         Text(
                             text = "StreamHub",
-                            color = TextPrimary,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Black,
                             letterSpacing = 1.sp
@@ -188,12 +180,12 @@ fun AboutScreen(
                             modifier = Modifier.padding(top = 4.dp)
                         )
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
                         // App Overview Description
                         Text(
                             text = "StreamHub is a cutting-edge Android media streaming platform engineered with Jetpack Compose, Media3 ExoPlayer, and direct multi-range HTTP/HLS streaming for instantaneous, zero-buffering playback across huge libraries.",
-                            color = TextSecondary,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 13.sp,
                             lineHeight = 19.sp,
                             textAlign = TextAlign.Center
@@ -210,13 +202,12 @@ fun AboutScreen(
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp,
-                    modifier = Modifier.padding(start = 4.dp)
+                    modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
                 )
 
                 Card(
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    border = BorderStroke(1.dp, CardBorderDark),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -226,14 +217,20 @@ fun AboutScreen(
                             title = "High-Performance Media3 ExoPlayer Engine",
                             description = "Multi-range OkHttp HTTP/HLS direct streaming pipeline with smart chunk caching and zero-stutter seek recovery."
                         )
-                        HorizontalDivider(color = Color(0xFF222233), thickness = 0.5.dp)
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                            thickness = 0.5.dp
+                        )
                         FeatureHighlightRow(
                             icon = Icons.Default.Code,
                             iconTint = Color(0xFF38BDF8),
                             title = "Pure Jetpack Compose Presentation Layer",
                             description = "State-hoisted immutable unidirectional data flow with Material 3 Expressive aesthetics."
                         )
-                        HorizontalDivider(color = Color(0xFF222233), thickness = 0.5.dp)
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                            thickness = 0.5.dp
+                        )
                         FeatureHighlightRow(
                             icon = Icons.Default.Shield,
                             iconTint = Color(0xFFA855F7),
@@ -252,34 +249,42 @@ fun AboutScreen(
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp,
-                    modifier = Modifier.padding(start = 4.dp)
+                    modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
                 )
 
                 Card(
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    border = BorderStroke(1.dp, CardBorderDark),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Architecture", color = TextSecondary, fontSize = 12.sp)
-                            Text("ARM64-v8a (64-bit Native)", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Architecture", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                            Text("ARM64-v8a (64-bit Native)", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
-                        HorizontalDivider(color = Color(0xFF222233), thickness = 0.5.dp)
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Build Version", color = TextSecondary, fontSize = 12.sp)
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                            thickness = 0.5.dp
+                        )
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Build Version", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                             Text("v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", color = Color(0xFF00E676), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
-                        HorizontalDivider(color = Color(0xFF222233), thickness = 0.5.dp)
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Playback Pipeline", color = TextSecondary, fontSize = 12.sp)
-                            Text("Media3 ExoPlayer • 1080p FHD", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                            thickness = 0.5.dp
+                        )
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Playback Pipeline", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                            Text("Media3 ExoPlayer • 1080p FHD", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
-                        HorizontalDivider(color = Color(0xFF222233), thickness = 0.5.dp)
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Stream Protocol", color = TextSecondary, fontSize = 12.sp)
-                            Text("Direct Multi-Range HTTP/HLS", color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                            thickness = 0.5.dp
+                        )
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Stream Protocol", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                            Text("Direct Multi-Range HTTP/HLS", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -293,13 +298,12 @@ fun AboutScreen(
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp,
-                    modifier = Modifier.padding(start = 4.dp)
+                    modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
                 )
 
                 Card(
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-                    border = BorderStroke(1.dp, CardBorderDark),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -310,7 +314,10 @@ fun AboutScreen(
                             subtitle = "@Fil3Stor3_bot",
                             onClick = { openUrl(TELEGRAM_BOT_URL) }
                         )
-                        HorizontalDivider(color = Color(0xFF222233), thickness = 0.5.dp)
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                            thickness = 0.5.dp
+                        )
                         ExternalLinkRow(
                             icon = Icons.Default.Code,
                             iconTint = Color(0xFFFFD700),
@@ -318,7 +325,10 @@ fun AboutScreen(
                             subtitle = "WorkerOfArea51 / StreamHub",
                             onClick = { openUrl(GITHUB_REPO_URL) }
                         )
-                        HorizontalDivider(color = Color(0xFF222233), thickness = 0.5.dp)
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                            thickness = 0.5.dp
+                        )
                         ExternalLinkRow(
                             icon = Icons.Default.BugReport,
                             iconTint = Color(0xFFFF5252),
@@ -326,7 +336,10 @@ fun AboutScreen(
                             subtitle = "GitHub Issue Tracker",
                             onClick = { openUrl(GITHUB_ISSUES_URL) }
                         )
-                        HorizontalDivider(color = Color(0xFF222233), thickness = 0.5.dp)
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                            thickness = 0.5.dp
+                        )
                         ExternalLinkRow(
                             icon = Icons.Default.HistoryEdu,
                             iconTint = Color(0xFF818CF8),
@@ -346,14 +359,30 @@ fun AboutScreen(
                         .padding(vertical = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        text = "Crafted with ❤️ by WorkerOfArea51",
-                        color = TextSecondary,
-                        fontSize = 12.sp
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "Crafted with",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp
+                        )
+                        Icon(
+                            imageVector = Icons.Default.Favorite,
+                            contentDescription = null,
+                            tint = PrimaryRed,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = "by WorkerOfArea51",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp
+                        )
+                    }
                     Text(
                         text = "StreamHub Android • All Rights Reserved",
-                        color = TextSecondary.copy(alpha = 0.6f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                         fontSize = 10.sp,
                         modifier = Modifier.padding(top = 2.dp)
                     )
@@ -386,8 +415,19 @@ private fun FeatureHighlightRow(
         }
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            Text(text = description, color = TextSecondary, fontSize = 11.sp, lineHeight = 15.sp, modifier = Modifier.padding(top = 2.dp))
+            Text(
+                text = title,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = description,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+                modifier = Modifier.padding(top = 2.dp)
+            )
         }
     }
 }
@@ -403,27 +443,44 @@ private fun ExternalLinkRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
+            .clip(RoundedCornerShape(14.dp))
+            .bouncyClickable(onClick = onClick)
             .padding(horizontal = 6.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.weight(1f)
         ) {
-            Icon(imageVector = icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(iconTint.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(imageVector = icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(18.dp))
+            }
             Column {
-                Text(text = title, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text(text = subtitle, color = TextSecondary, fontSize = 11.sp)
+                Text(
+                    text = title,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = subtitle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp
+                )
             }
         }
         Icon(
             imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
             contentDescription = null,
-            tint = TextSecondary.copy(alpha = 0.5f),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             modifier = Modifier.size(12.dp)
         )
     }
