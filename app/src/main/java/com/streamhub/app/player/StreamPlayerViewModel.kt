@@ -465,8 +465,8 @@ class StreamPlayerViewModel : ViewModel() {
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)
                     .build()
 
-                // Cinema-grade progressive streaming with 4-minute safe floor & 5-minute continuous buffer:
-                // - minBufferMs = 240_000: 4-minute safe buffer floor (wakes network loaders up to refill buffer)
+                // Cinema-grade progressive streaming with 3-minute safe floor & 5-minute continuous buffer:
+                // - minBufferMs = 180_000: 3-minute safe buffer floor (wide 2-minute refill window for multi-worker backend)
                 // - maxBufferMs = 300_000: Up to 5 full minutes aggressive forward buffer ahead (downloads at full line speed)
                 // - bufferForPlaybackMs = 250: Instant 250ms cold-start pad
                 // - bufferForPlaybackAfterRebufferMs = 2_000: 2.0s safe buffer pad after seek or rebuffer (prevents 1s stall trap)
@@ -475,7 +475,7 @@ class StreamPlayerViewModel : ViewModel() {
                 // - backBuffer = 15_000: Purges watched frames from RAM; disk cache handles persistence.
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        240_000,        // minBufferMs (4-minute safe buffer floor)
+                        180_000,        // minBufferMs (3-minute safe buffer floor - 2-minute continuous refill window)
                         300_000,        // maxBufferMs (up to 5 minutes forward buffer ahead)
                         250,            // bufferForPlaybackMs (instant 250ms cold-start pad)
                         2_000           // bufferForPlaybackAfterRebufferMs (2.0s safe seek & recovery pad)

@@ -1,3 +1,11 @@
+### What's New in StreamHub v4.8.372 🚀
+
+- ⚡ **Multi-Worker Backend Alignment & Wide Duty-Cycle Buffering**:
+  - Aligned ExoPlayer `DefaultLoadControl` to the backend's new 4-worker parallel lookahead pipeline (1.2–1.5 MB/s).
+  - Tuned buffer refill floor to a 3-minute safe floor (`minBufferMs = 180_000`) with a 5-minute ceiling (`maxBufferMs = 300_000`), opening a wide 2-minute continuous refill runway.
+  - Prevents premature TCP receive window closing and eliminates 60s buffer ping-pong churn, sustaining 2.0x playback on full 1080p 5.1 movies without draining the buffer.
+  - Smooth Bandwidth Meter: Expanded rolling EMA sampling window to 1.5s with a 2.0s boundary decay window in `StreamBandwidthTracker`, eliminating speed indicator jitter across HTTP 206 chunk boundaries.
+
 ### What's New in StreamHub v4.8.371 🚀
 
 - ⚡ **Aggressive 5-Minute Continuous Forward Buffering Restored**:
