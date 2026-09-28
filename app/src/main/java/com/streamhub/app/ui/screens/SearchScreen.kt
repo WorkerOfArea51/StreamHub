@@ -147,6 +147,141 @@ enum class SortOption(val label: String, val shortLabel: String) {
     }
 }
 
+// Multi-tag & Intelligent Relevance Search Logic
+data class ScoredMediaItem(
+    val item: MediaItem,
+    val relevanceScore: Int
+)
+
+object SearchRelevanceEvaluator {
+    private val STOP_WORDS = setOf(
+        "to", "be", "a", "an", "the", "in", "on", "of", "and", "is", "at", "by", "for", "with", "no"
+    )
+
+    fun computeScore(item: MediaItem, rawQuery: String): Int {
+        val trimmedQuery = rawQuery.trim().lowercase()
+        if (trimmedQuery.isEmpty()) return 0
+
+        val queryTokens = trimmedQuery.split(Regex("[^a-zA-Z0-9]+")).filter { it.isNotBlank() }
+        val normQuery = trimmedQuery.replace(Regex("[^a-z0-9]"), "")
+
+        val titleLower = item.title.trim().lowercase()
+        val synonymsLower = item.synonyms.trim().lowercase()
+        val franchiseLower = item.franchiseTitle.trim().lowercase()
+        val seasonTitleLower = item.seasonTitle.trim().lowercase()
+        val studioLower = item.studio.trim().lowercase()
+        val normTitle = titleLower.replace(Regex("[^a-z0-9]"), "")
+
+        var score = 0
+
+        // 1. Exact 100% Title Match (Punctuation-insensitive)
+        if (titleLower == trimmedQuery || (normQuery.isNotEmpty() && normTitle == normQuery)) {
+            score += 100_000
+        }
+        // 2. Title Starts With Full Query
+        else if (titleLower.startsWith(trimmedQuery) || (normQuery.isNotEmpty() && normTitle.startsWith(normQuery))) {
+            score += 50_000
+        }
+        // 3. Exact Full Query Phrase in Title
+        else if (titleLower.contains(trimmedQuery)) {
+            score += 30_000
+        }
+
+        // 4. Exact match or phrase in Synonyms (Romaji/Alternative English titles)
+        if (synonymsLower == trimmedQuery || (normQuery.isNotEmpty() && synonymsLower.replace(Regex("[^a-z0-9]"), "") == normQuery)) {
+            score += 25_000
+        } else if (synonymsLower.contains(trimmedQuery)) {
+            score += 15_000
+        }
+
+        // 5. Multi-Word Token Matching in Title
+        // Allows word-order flexibility (e.g. "to be x hero" matching "To Be Hero X")
+        if (queryTokens.isNotEmpty()) {
+            val titleTokens = titleLower.split(Regex("[^a-z0-9]+")).filter { it.isNotBlank() }
+            val titleTokensSet = titleTokens.toSet()
+
+            val exactWordMatches = queryTokens.count { token -> titleTokensSet.contains(token) }
+            val prefixMatches = queryTokens.count { token ->
+                token.length >= 3 && titleTokens.any { titleWord -> titleWord.startsWith(token) }
+            }
+            val totalHits = (exactWordMatches + prefixMatches).coerceAtMost(queryTokens.size)
+
+            if (totalHits == queryTokens.size) {
+                // ALL tokens appear in the title!
+                score += 20_000
+
+                // Compactness bonus: favors titles without unnecessary extra filler words
+                if (titleTokens.isNotEmpty()) {
+                    val compactnessRatio = (queryTokens.size.toFloat() / titleTokens.size.toFloat()).coerceAtMost(1f)
+                    score += (compactnessRatio * 5_000).toInt()
+                }
+            } else if (queryTokens.size >= 2 && totalHits >= 2 && (totalHits.toFloat() / queryTokens.size) >= 0.5f) {
+                // Significant partial match: at least 50% of tokens match and has a non-stopword match
+                val hasMeaningfulMatch = queryTokens.any { token ->
+                    token !in STOP_WORDS && token.length >= 3 && (titleTokensSet.contains(token) || titleTokens.any { it.startsWith(token) })
+                }
+                if (hasMeaningfulMatch) {
+                    score += totalHits * 2_500
+                }
+            }
+        }
+
+        // 6. Synonym token matching
+        if (queryTokens.isNotEmpty() && synonymsLower.isNotBlank()) {
+            val synTokens = synonymsLower.split(Regex("[^a-z0-9]+")).filter { it.isNotBlank() }.toSet()
+            val synHits = queryTokens.count { synTokens.contains(it) }
+            if (synHits == queryTokens.size) {
+                score += 12_000
+            } else if (queryTokens.size >= 2 && synHits >= 2 && (synHits.toFloat() / queryTokens.size) >= 0.5f) {
+                val hasMeaningfulMatch = queryTokens.any { it !in STOP_WORDS && it.length >= 3 && synTokens.contains(it) }
+                if (hasMeaningfulMatch) {
+                    score += synHits * 1_500
+                }
+            }
+        }
+
+        // 7. Season Title Match
+        if (seasonTitleLower.isNotBlank()) {
+            if (seasonTitleLower.contains(trimmedQuery)) {
+                score += 8_000
+            } else if (queryTokens.isNotEmpty() && queryTokens.all { seasonTitleLower.contains(it) }) {
+                score += 4_000
+            }
+        }
+
+        // 8. Franchise Title Match (e.g. searching "Avengers" matches all Avengers movies)
+        if (franchiseLower.isNotBlank()) {
+            if (franchiseLower == trimmedQuery) {
+                score += 10_000
+            } else if (franchiseLower.contains(trimmedQuery)) {
+                score += 5_000
+            } else if (queryTokens.isNotEmpty() && queryTokens.all { franchiseLower.contains(it) }) {
+                score += 3_000
+            }
+        }
+
+        // 9. Studio / Producer Match
+        if (studioLower.isNotBlank() && (studioLower == trimmedQuery || studioLower.contains(trimmedQuery))) {
+            score += 2_000
+        }
+
+        // 10. Cast List Match
+        if (item.castList.isNotEmpty() && item.castList.any { castMember ->
+            val castLower = castMember.lowercase()
+            castLower.contains(trimmedQuery) || (queryTokens.size >= 2 && queryTokens.all { castLower.contains(it) })
+        }) {
+            score += 1_500
+        }
+
+        // 11. Genre Match
+        if (item.genres.any { it.equals(trimmedQuery, ignoreCase = true) }) {
+            score += 1_000
+        }
+
+        return score
+    }
+}
+
 @Composable
 fun SearchScreen(
     repository: FirebaseRepository,
@@ -239,8 +374,7 @@ fun SearchScreen(
 
     val primaryColor = MaterialTheme.colorScheme.primary
 
-    // Multi-tag & Multi-word Filter Logic
-    val filteredCatalog = remember(
+    val scoredCatalog = remember(
         catalog,
         debouncedQuery,
         selectedTypeFilter,
@@ -249,18 +383,10 @@ fun SearchScreen(
         selectedYearFilter,
         currentYear
     ) {
-        val queryTokens = debouncedQuery.trim().lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }
+        val trimmedQuery = debouncedQuery.trim()
 
-        catalog.filter { item ->
-            val matchesQuery = queryTokens.isEmpty() || queryTokens.all { token ->
-                item.title.contains(token, ignoreCase = true) ||
-                item.synonyms.contains(token, ignoreCase = true) ||
-                item.category.contains(token, ignoreCase = true) ||
-                item.studio.contains(token, ignoreCase = true) ||
-                item.description.contains(token, ignoreCase = true) ||
-                item.genres.any { it.contains(token, ignoreCase = true) }
-            }
-
+        catalog.mapNotNull { item ->
+            // Category filter
             val matchesType = when (selectedTypeFilter) {
                 "ALL" -> true
                 "ANIME" -> item.category.equals("ANIME", ignoreCase = true)
@@ -268,49 +394,115 @@ fun SearchScreen(
                 "SERIES" -> item.category.equals("WEB_SERIES", ignoreCase = true) || item.category.equals("SERIES", ignoreCase = true)
                 else -> true
             }
+            if (!matchesType) return@mapNotNull null
 
+            // Genre filter
             val matchesGenres = selectedGenres.isEmpty() || selectedGenres.all { selectedGenre ->
                 item.genres.any { it.equals(selectedGenre, ignoreCase = true) }
             }
+            if (!matchesGenres) return@mapNotNull null
 
+            // Rating filter
             val itemRating = item.rating.toDoubleOrNull() ?: 0.0
-            val matchesRating = itemRating >= minRatingFilter
+            if (itemRating < minRatingFilter) return@mapNotNull null
 
+            // Year filter
             val matchesYear = when (selectedYearFilter) {
                 "ALL" -> true
                 "Older" -> (item.releaseYear.toIntOrNull() ?: currentYear) < (currentYear - 2)
                 else -> item.releaseYear == selectedYearFilter
             }
+            if (!matchesYear) return@mapNotNull null
 
-            matchesQuery && matchesType && matchesGenres && matchesRating && matchesYear
+            // Search query evaluation
+            if (trimmedQuery.isEmpty()) {
+                ScoredMediaItem(item, 0)
+            } else {
+                val score = SearchRelevanceEvaluator.computeScore(item, trimmedQuery)
+                if (score > 0) {
+                    ScoredMediaItem(item, score)
+                } else {
+                    null
+                }
+            }
         }
     }
 
-    // Sort Logic
-    val sortedCatalog = remember(filteredCatalog, sortOption) {
-        when (sortOption) {
-            SortOption.LATEST -> filteredCatalog.sortedWith(
-                compareByDescending<MediaItem> { it.createdAt }
-                    .thenByDescending { it.releaseYear.toIntOrNull() ?: 0 }
-                    .thenByDescending { it.id }
-            )
-            SortOption.OLDEST -> filteredCatalog.sortedWith(
-                compareBy<MediaItem> { if (it.createdAt > 0L) it.createdAt else Long.MAX_VALUE }
-                    .thenBy { it.releaseYear.toIntOrNull() ?: 9999 }
-                    .thenBy { it.id }
-            )
-            SortOption.RATING_DESC -> filteredCatalog.sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
-            SortOption.RATING_ASC -> filteredCatalog.sortedWith(
-                compareBy<MediaItem> { val r = it.rating.toDoubleOrNull(); if (r != null && r > 0.0) r else 999.0 }
-                    .thenBy { it.title.lowercase() }
-            )
-            SortOption.TITLE_ASC -> filteredCatalog.sortedBy { it.title.lowercase().trim() }
-            SortOption.TITLE_DESC -> filteredCatalog.sortedByDescending { it.title.lowercase().trim() }
-            SortOption.YEAR_DESC -> filteredCatalog.sortedByDescending { it.releaseYear.toIntOrNull() ?: 0 }
-            SortOption.YEAR_ASC -> filteredCatalog.sortedWith(
-                compareBy<MediaItem> { val y = it.releaseYear.toIntOrNull(); if (y != null && y > 1900) y else 9999 }
-                    .thenBy { it.title.lowercase() }
-            )
+    // Sort Logic: When a search query is active, sort by relevance score first!
+    val sortedCatalog = remember(scoredCatalog, sortOption, debouncedQuery) {
+        val isSearching = debouncedQuery.isNotBlank()
+        if (isSearching && sortOption == SortOption.LATEST) {
+            // Default search view: Relevance-first ranking!
+            scoredCatalog.sortedWith(
+                compareByDescending<ScoredMediaItem> { it.relevanceScore }
+                    .thenByDescending { it.item.rating.toDoubleOrNull() ?: 0.0 }
+                    .thenByDescending { it.item.releaseYear.toIntOrNull() ?: 0 }
+                    .thenByDescending { it.item.id }
+            ).map { it.item }
+        } else if (isSearching) {
+            // If user explicitly chose a non-default sort (e.g. Rating, Year),
+            // group by relevance score first so exact matches stay top, then apply user sort
+            val sorted = when (sortOption) {
+                SortOption.LATEST -> scoredCatalog.sortedWith(
+                    compareByDescending<ScoredMediaItem> { it.relevanceScore }
+                        .thenByDescending { it.item.createdAt }
+                )
+                SortOption.OLDEST -> scoredCatalog.sortedWith(
+                    compareByDescending<ScoredMediaItem> { it.relevanceScore }
+                        .thenBy { if (it.item.createdAt > 0L) it.item.createdAt else Long.MAX_VALUE }
+                )
+                SortOption.RATING_DESC -> scoredCatalog.sortedWith(
+                    compareByDescending<ScoredMediaItem> { it.relevanceScore }
+                        .thenByDescending { it.item.rating.toDoubleOrNull() ?: 0.0 }
+                )
+                SortOption.RATING_ASC -> scoredCatalog.sortedWith(
+                    compareByDescending<ScoredMediaItem> { it.relevanceScore }
+                        .thenBy { val r = it.item.rating.toDoubleOrNull(); if (r != null && r > 0.0) r else 999.0 }
+                )
+                SortOption.TITLE_ASC -> scoredCatalog.sortedWith(
+                    compareByDescending<ScoredMediaItem> { it.relevanceScore }
+                        .thenBy { it.item.title.lowercase().trim() }
+                )
+                SortOption.TITLE_DESC -> scoredCatalog.sortedWith(
+                    compareByDescending<ScoredMediaItem> { it.relevanceScore }
+                        .thenByDescending { it.item.title.lowercase().trim() }
+                )
+                SortOption.YEAR_DESC -> scoredCatalog.sortedWith(
+                    compareByDescending<ScoredMediaItem> { it.relevanceScore }
+                        .thenByDescending { it.item.releaseYear.toIntOrNull() ?: 0 }
+                )
+                SortOption.YEAR_ASC -> scoredCatalog.sortedWith(
+                    compareByDescending<ScoredMediaItem> { it.relevanceScore }
+                        .thenBy { val y = it.item.releaseYear.toIntOrNull(); if (y != null && y > 1900) y else 9999 }
+                )
+            }
+            sorted.map { it.item }
+        } else {
+            val items = scoredCatalog.map { it.item }
+            when (sortOption) {
+                SortOption.LATEST -> items.sortedWith(
+                    compareByDescending<MediaItem> { it.createdAt }
+                        .thenByDescending { it.releaseYear.toIntOrNull() ?: 0 }
+                        .thenByDescending { it.id }
+                )
+                SortOption.OLDEST -> items.sortedWith(
+                    compareBy<MediaItem> { if (it.createdAt > 0L) it.createdAt else Long.MAX_VALUE }
+                        .thenBy { it.releaseYear.toIntOrNull() ?: 9999 }
+                        .thenBy { it.id }
+                )
+                SortOption.RATING_DESC -> items.sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
+                SortOption.RATING_ASC -> items.sortedWith(
+                    compareBy<MediaItem> { val r = it.rating.toDoubleOrNull(); if (r != null && r > 0.0) r else 999.0 }
+                        .thenBy { it.title.lowercase() }
+                )
+                SortOption.TITLE_ASC -> items.sortedBy { it.title.lowercase().trim() }
+                SortOption.TITLE_DESC -> items.sortedByDescending { it.title.lowercase().trim() }
+                SortOption.YEAR_DESC -> items.sortedByDescending { it.releaseYear.toIntOrNull() ?: 0 }
+                SortOption.YEAR_ASC -> items.sortedWith(
+                    compareBy<MediaItem> { val y = it.releaseYear.toIntOrNull(); if (y != null && y > 1900) y else 9999 }
+                        .thenBy { it.title.lowercase() }
+                )
+            }
         }
     }
 

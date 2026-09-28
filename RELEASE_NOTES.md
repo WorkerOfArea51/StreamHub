@@ -1,3 +1,11 @@
+### What's New in StreamHub v4.8.373 🚀
+
+- 🔍 **Intelligent Search Engine & Relevance Ranking Overhaul**:
+  - **Purged Plot Synopsis False Positives**: Excluded noisy narrative plot descriptions from title search matching. Queries like `"infinity"` now return exclusively true *Infinity* titles (*Demon Slayer: Infinity Castle*, *Avengers: Infinity War*) and strictly exclude false matches like *Avengers: Endgame*.
+  - **Scrambled Multi-Token Word-Order Flexibility**: Search now parses individual query tokens with punctuation-insensitive matching. Scrambled queries like `"to be x hero"` or `"to be hero x"` match all title tokens and rank *To Be Hero X* at **Rank #1** at the top of the grid.
+  - **Stopword Guard & Partial Match Filtering**: Multi-word queries filter out single stopword matches (`"to"`, `"be"`, `"a"`, `"the"`, etc.) and require meaningful token overlap, preventing unrelated shows from cluttering results.
+  - **Relevance-First Sorting Architecture**: Integrated `SearchRelevanceEvaluator` with multi-tier scoring (exact title, prefix match, full phrase, multi-token, synonyms, franchise, studio, cast, and genres), ranking results by relevance before secondary sorting.
+
 ### What's New in StreamHub v4.8.372 🚀
 
 - ⚡ **Multi-Worker Backend Alignment & Wide Duty-Cycle Buffering**:
