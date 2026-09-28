@@ -471,7 +471,8 @@ class StreamPlayerViewModel : ViewModel() {
                 // - bufferForPlaybackMs = 250: Instant 250ms cold-start pad
                 // - bufferForPlaybackAfterRebufferMs = 2_000: 2.0s safe buffer pad after seek or rebuffer (prevents 1s stall trap)
                 // - setPrioritizeTimeOverSizeThresholds(true): Ensures aggressive peak-speed downloading to target duration
-                // - setTargetBufferBytes(C.LENGTH_UNSET): Proportional to actual track bitrate, keeping RAM lean at 80-100 MB heap
+                // - targetBufferBytes = 192 MB: Accommodates full 5-minute buffer (300s * 480 KB/s = 144 MB) for 1080p 5.1 movies
+                //   without triggering ExoPlayer's default 64 MB memory choke at 2m 25s. App has 512 MB heap limit (300+ MB free).
                 // - backBuffer = 15_000: Purges watched frames from RAM; disk cache handles persistence.
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
@@ -482,7 +483,7 @@ class StreamPlayerViewModel : ViewModel() {
                     )
                     .setBackBuffer(15_000, false)
                     .setPrioritizeTimeOverSizeThresholds(true)
-                    .setTargetBufferBytes(androidx.media3.common.C.LENGTH_UNSET)
+                    .setTargetBufferBytes(192 * 1024 * 1024)
                     .build()
 
                 // CRITICAL: DO NOT ADD FLAG_DISABLE_SEEK_FOR_CUES.
@@ -1661,8 +1662,11 @@ class StreamPlayerViewModel : ViewModel() {
                         val isPastStartupGrace = if (isFirstFrameDone) timeSincePrepare >= 15_000L else timeSincePrepare >= 25_000L
                         val timeSinceLastByteMs = bandwidthTracker?.timeSinceLastTransferMs ?: Long.MAX_VALUE
 
-                        // Check if bytes are actively arriving from the server (protects legitimate slow downloads)
-                        val isActivelyTransferring = speedKbps > 20L || timeSinceLastByteMs < 3_000L
+                        // Check if bytes are actively arriving from the server.
+                        // When stalled at 0s buffer, a slow trickle (< 250 KB/s) cannot unfreeze a 1080p movie (~450 KB/s).
+                        // Only healthy incoming throughput (>= 250 KB/s with recent packets < 2.5s) counts as active recovery.
+                        val isActivelyTransferring = (speedKbps >= 250L && timeSinceLastByteMs < 2_500L) ||
+                            (speedKbps > 20L && timeSinceLastByteMs < 2_000L && bufferHealthSec > 0L)
                         val isStalledAtZeroBuffer = isBuffering && bufferHealthSec == 0L && player.playWhenReady &&
                             !isActivelyTransferring &&
                             pendingSeekTargetMs == null && !_uiState.value.isReconnecting && isPastStartupGrace

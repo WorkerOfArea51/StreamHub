@@ -1,3 +1,10 @@
+### What's New in StreamHub v4.8.374 🚀
+
+- ⚡ **192MB Buffer Allocation & Unlocked 5-Minute Runway for High-Bitrate Movies**:
+  - **Removed 64MB Memory Choke**: Expanded `targetBufferBytes` to **192 MB** in `DefaultLoadControl`. High-bitrate 1080p 5.1 movies (~480 KB/s) no longer hit ExoPlayer's default 64 MB ceiling at 2m 25s, allowing playback to buffer freely to the full 5-minute ceiling (`maxBufferMs = 300_000`).
+  - **3-Minute Safe Floor & 5-Minute Ceiling Sustained**: Whenever the forward buffer touches 3 minutes, ExoPlayer automatically engages full line speed from the backend's multi-worker pipeline, rapidly recharging back up to 5 minutes so buffer health never drops below 3 minutes.
+  - **Hardened Zombie Stall Watchdog**: When playback freezes at 0s buffer, the stall watchdog now recognizes inadequate trickles (< 250 KB/s) or dead sockets, automatically evicting the OkHttp pool and re-opening fresh connections at full line speed.
+
 ### What's New in StreamHub v4.8.373 🚀
 
 - 🔍 **Intelligent Search Engine & Relevance Ranking Overhaul**:
