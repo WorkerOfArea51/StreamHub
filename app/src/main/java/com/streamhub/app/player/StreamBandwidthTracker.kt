@@ -107,4 +107,16 @@ class StreamBandwidthTracker(context: Context) : TransferListener {
      * Estimated connection bitrate from Media3's internal sliding window in bits per second.
      */
     fun getEstimatedBitrate(): Long = bandwidthMeter.bitrateEstimate
+
+    /**
+     * Clears all sampled bytes and historical averages so the new stream starts fresh.
+     */
+    fun reset() {
+        bytesInWindow.set(0L)
+        lastSampleTimeMs = System.currentTimeMillis()
+        lastTransferTimeMs = 0L
+        smoothedSpeedKBps = 0L
+        currentSpeedKBps = 0L
+        peakSpeedKBps = 0L
+    }
 }

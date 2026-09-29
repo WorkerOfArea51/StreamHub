@@ -554,6 +554,7 @@ object StreamPreloadManager {
             activeBingeWriter?.cancel()
             try {
                 preloadClient.dispatcher.cancelAll()
+                preloadClient.connectionPool.evictAll()
             } catch (_: Exception) {}
             job?.cancel()
             activeBingeWriter = null
@@ -575,6 +576,7 @@ object StreamPreloadManager {
             try {
                 activeBingeWriter?.cancel()
                 preloadClient.dispatcher.cancelAll()
+                preloadClient.connectionPool.evictAll()
             } catch (_: Exception) {}
             activeBingeWriter = null
             activeBingeDataSource = null

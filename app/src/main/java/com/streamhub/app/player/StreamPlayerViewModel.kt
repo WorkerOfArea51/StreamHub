@@ -885,7 +885,13 @@ class StreamPlayerViewModel : ViewModel() {
             pause()
             clearMediaItems()
         }
-        // NOTE: Keep warm TCP/TLS sockets in connectionPool alive across episode boundaries for 0ms transitions.
+        // Force-cancel and evict previous episode's streaming HTTP sockets so the server immediately
+        // terminates the old episode's worker pipeline instead of double-tasking bots in the background!
+        try {
+            com.streamhub.app.data.api.SharedHttpClient.streamingClient.dispatcher.cancelAll()
+            com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+        } catch (_: Exception) {}
+        bandwidthTracker?.reset()
 
         val episode = episodesList[index]
         val rawUrl = episode.streamUrl.ifEmpty { episode.mirrorStreamUrl }
@@ -1078,6 +1084,11 @@ class StreamPlayerViewModel : ViewModel() {
             pause()
             clearMediaItems()
         }
+        try {
+            com.streamhub.app.data.api.SharedHttpClient.streamingClient.dispatcher.cancelAll()
+            com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+        } catch (_: Exception) {}
+        bandwidthTracker?.reset()
         val isPrecached = appContext?.let { ctx ->
             StreamPreloadManager.isStreamPrecached(ctx, rawUrl)
         } ?: false

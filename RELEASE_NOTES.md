@@ -1,3 +1,10 @@
+### What's New in StreamHub v4.8.375 🚀
+
+- ⚡ **Instant Multi-Worker Episode Transitions & Zombie Stream Purge**:
+  - **Eliminated Zombie Stream Contention**: Explicitly cancels all in-flight HTTP calls and evicts the OkHttp streaming connection pool whenever an episode finishes or switches. This signals the server to immediately kill the old episode's worker pipeline, freeing all 6 Telegram bots for the new episode rather than splitting bandwidth and stalling at 18–44 KB/s.
+  - **Isolated Preloader Connections**: Evicts background preloader sockets in `StreamPreloadManager` upon episode launch so pre-cached buffer handoffs transition cleanly into live line-rate downloads.
+  - **Clean Real-Time Bandwidth Reset**: Resets `StreamBandwidthTracker` historical averages between episodes for instantaneous, accurate speed readouts starting from the very first packet.
+
 ### What's New in StreamHub v4.8.374 🚀
 
 - ⚡ **192MB Buffer Allocation & Unlocked 5-Minute Runway for High-Bitrate Movies**:
