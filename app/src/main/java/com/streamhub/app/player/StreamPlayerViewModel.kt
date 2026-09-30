@@ -513,11 +513,9 @@ class StreamPlayerViewModel : ViewModel() {
                 // Disabling seek for cues completely breaks seeking in MKV videos because Matroska video
                 // frames are variable bitrate and require the Cues index to locate keyframes. Without Cues,
                 // ExoPlayer cannot map timestamps to byte offsets and rewinds to 0s on any seek or scrub.
-                val extractorsFactory = androidx.media3.extractor.DefaultExtractorsFactory()
-                    .setConstantBitrateSeekingEnabled(true)
-                    .setMatroskaExtractorFlags(
-                        androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_EMIT_RAW_SUBTITLE_DATA
-                    )
+                // SmartExtractorsFactory integrates SmartMatroskaExtractor which handles both standard MKVs
+                // and Split-SeekHead/HandBrake MKVs with tracks and cues metadata stored near EOF.
+                val extractorsFactory = com.streamhub.app.player.extractor.SmartExtractorsFactory()
 
                 // Pillar 3: Silent Fast In-Place Range Reconnect Policy:
                 // If a remote streaming socket drops or resets, immediately retry in 150ms with HTTP Range.

@@ -99,3 +99,11 @@
 # --- Media3 OkHttp & ExoPlayer ---
 -keep class androidx.media3.datasource.okhttp.** { *; }
 -dontwarn androidx.media3.datasource.okhttp.**
+
+# --- SmartMatroskaExtractor Reflection & Media3 Matroska Extractor ---
+-keep class com.streamhub.app.player.extractor.** { *; }
+-keepclassmembers class androidx.media3.extractor.mkv.MatroskaExtractor {
+    private android.util.SparseArray tracks;
+    private long cuesContentPosition;
+    private long segmentContentPosition;
+}
