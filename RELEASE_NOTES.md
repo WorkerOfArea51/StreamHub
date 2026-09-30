@@ -1,3 +1,17 @@
+### What's New in StreamHub v4.8.384 🚀
+
+- ⚡ **Play / Pause Intent Binding & Zero Inversion**:
+  - Bound the center playback controls, double-tap ripples, and user telemetry directly to `player.playWhenReady`.
+  - Fixed transient buffering drops where `player.isPlaying` dropped to `false`, eliminating bugs where the player falsely displayed the Play icon or treated pausing as resuming.
+  - Telemetry accurately reports `"BUFFERING"` or `"PLAYING"` during stream loads, permanently preventing false `"PAUSED"` reports.
+- ⚡ **Ultra-Fast Startup & Instant Scrub Recovery**:
+  - **150ms Cold-Start Pad**: Lowered `bufferForPlaybackMs` to `150ms`, rendering the first frame near-instantaneously over local Cloudflare Edge connections (10–15ms RTT).
+  - **600ms Scrub Recovery**: Lowered `bufferForPlaybackAfterRebufferMs` from `2,000ms` down to **`600ms`** (3.3x faster unfreeze when seeking/scrubbing into unbuffered regions).
+- ⚡ **Continuous 6-Minute Buffer Charging & High-Bitrate Memory Headroom**:
+  - **288 MB Buffer Memory Ceiling**: Raised `targetBufferBytes` to `288 MB`, allowing high-bitrate 1080p and 4K movies (15–20 Mbps / ~1.9 MB/s) to continuously build a full forward buffer runway without hitting memory ceilings.
+  - **Continuous 4m–6m Charging Window**: Set `minBufferMs = 240_000` (4 min safe floor) and `maxBufferMs = 360_000` (6 min forward ceiling) for uninterrupted line-speed downloading on 1, 2, and 3-hour movies.
+  - **Stats for Nerds Update**: Updated buffer health ceiling indicator and idle threshold to 6m max.
+
 ### What's New in StreamHub v4.8.383 🚀
 
 - ⚡ **Cloudflare Global Anycast Edge Streaming Architecture**:

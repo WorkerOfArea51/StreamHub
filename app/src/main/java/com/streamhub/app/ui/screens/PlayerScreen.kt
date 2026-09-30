@@ -3092,8 +3092,8 @@ private fun StatsForNerdsOverlay(
                         bingePrecacheStatus.isActive -> "${bufferHealthSeconds}s ahead (Caching Next Ep ${bingePrecacheStatus.progressPercent}%)"
                         bingePrecacheStatus.isCompleted && bufferHealthSeconds >= 60L -> "${bufferHealthSeconds / 60}m ${bufferHealthSeconds % 60}s ahead (Next Ep 25MB Ready)"
                         bingePrecacheStatus.isCompleted -> "${bufferHealthSeconds}s ahead (Next Ep 25MB Ready)"
-                        bufferHealthSeconds >= 60L -> "${bufferHealthSeconds / 60}m ${bufferHealthSeconds % 60}s ahead (5m max)"
-                        bufferHealthSeconds > 0L -> "${bufferHealthSeconds}s ahead (5m max)"
+                        bufferHealthSeconds >= 60L -> "${bufferHealthSeconds / 60}m ${bufferHealthSeconds % 60}s ahead (6m max)"
+                        bufferHealthSeconds > 0L -> "${bufferHealthSeconds}s ahead (6m max)"
                         else -> "0s"
                     }
                     StatRowItem("Buffer Health", bufferHealthDisplay)
@@ -3115,7 +3115,7 @@ private fun StatsForNerdsOverlay(
                         isFullyBuffered -> {
                             "Idle (Fully Cached)"
                         }
-                        bufferHealthSeconds >= 285L -> {
+                        bufferHealthSeconds >= 345L -> {
                             "Idle (Buffered)"
                         }
                         else -> "0 KB/s"

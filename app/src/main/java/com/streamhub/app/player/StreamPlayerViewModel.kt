@@ -249,12 +249,27 @@ class StreamPlayerViewModel : ViewModel() {
                 }
             }
 
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                _uiState.update { it.copy(isPlaying = isPlaying) }
-                if (!isPlaying) {
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                _uiState.update { it.copy(isPlaying = playWhenReady) }
+                if (!playWhenReady) {
                     lastPauseTimestampMs = System.currentTimeMillis()
+                    syncTelemetry("PAUSED")
+                } else {
+                    lastPauseTimestampMs = 0L
+                    val isBuffering = exoPlayer?.playbackState == Player.STATE_BUFFERING
+                    syncTelemetry(if (isBuffering) "BUFFERING" else "PLAYING")
                 }
-                syncTelemetry(if (isPlaying) "PLAYING" else "PAUSED")
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                val pwr = exoPlayer?.playWhenReady ?: isPlaying
+                _uiState.update { it.copy(isPlaying = pwr) }
+                if (pwr) {
+                    val isBuffering = exoPlayer?.playbackState == Player.STATE_BUFFERING
+                    syncTelemetry(if (isBuffering) "BUFFERING" else "PLAYING")
+                } else {
+                    syncTelemetry("PAUSED")
+                }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -282,11 +297,12 @@ class StreamPlayerViewModel : ViewModel() {
                     resetRetryCounter()  // NEW: clear retry counter on successful playback
                 }
 
+                val isPaused = exoPlayer?.playWhenReady == false
                 val state = when {
+                    isPaused -> "PAUSED"
                     isBuffering -> "BUFFERING"
                     playbackState == Player.STATE_ENDED -> "IDLE"
-                    exoPlayer?.isPlaying == true -> "PLAYING"
-                    else -> "PAUSED"
+                    else -> "PLAYING"
                 }
                 syncTelemetry(state)
 
@@ -472,25 +488,25 @@ class StreamPlayerViewModel : ViewModel() {
                     .setUsage(androidx.media3.common.C.USAGE_MEDIA)
                     .build()
 
-                // Cinema-grade progressive streaming with 5-minute continuous buffer charging:
-                // - minBufferMs = 300_000: Continuous aggressive charging floor. Never duty-cycles or pauses until full 5m buffer is achieved!
-                // - maxBufferMs = 300_000: Up to 5 full minutes aggressive forward buffer ahead (downloads at full line speed)
-                // - bufferForPlaybackMs = 250: Instant 250ms cold-start pad
-                // - bufferForPlaybackAfterRebufferMs = 2_000: 2.0s safe buffer pad after seek or rebuffer (prevents 1s stall trap)
+                // Cinema-grade progressive streaming with 6-minute continuous buffer charging:
+                // - minBufferMs = 240_000: 4-minute continuous aggressive charging floor. Never duty-cycles or pauses until full buffer is achieved!
+                // - maxBufferMs = 360_000: Up to 6 full minutes aggressive forward buffer ahead (downloads at full line speed)
+                // - bufferForPlaybackMs = 150: Instant 150ms cold-start pad
+                // - bufferForPlaybackAfterRebufferMs = 600: Rapid 600ms safe buffer pad after seek or rebuffer (3.3x faster unfreeze)
                 // - setPrioritizeTimeOverSizeThresholds(true): Ensures aggressive peak-speed downloading to target duration
-                // - targetBufferBytes = 192 MB: Accommodates full 5-minute buffer (300s * 480 KB/s = 144 MB) for 1080p 5.1 movies
-                //   without triggering ExoPlayer's default 64 MB memory choke at 2m 25s. App has 512 MB heap limit (300+ MB free).
+                // - targetBufferBytes = 288 MB: Accommodates full 6-minute buffer even for high-bitrate 1080p movies
+                //   without triggering ExoPlayer's default memory choke. App has 512 MB heap limit (300+ MB free).
                 // - backBuffer = 15_000: Purges watched frames from RAM; disk cache handles persistence.
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        300_000,        // minBufferMs (Aggressive 5-minute continuous buffer floor: never throttles down)
-                        300_000,        // maxBufferMs (up to 5 minutes forward buffer ahead)
-                        250,            // bufferForPlaybackMs (instant 250ms cold-start pad)
-                        2_000           // bufferForPlaybackAfterRebufferMs (2.0s safe seek & recovery pad)
+                        240_000,        // minBufferMs (Aggressive 4-minute continuous buffer floor: never throttles down)
+                        360_000,        // maxBufferMs (up to 6 minutes forward buffer ahead)
+                        150,            // bufferForPlaybackMs (instant 150ms cold-start pad)
+                        600             // bufferForPlaybackAfterRebufferMs (600ms rapid seek & scrub recovery pad)
                     )
                     .setBackBuffer(15_000, false)
                     .setPrioritizeTimeOverSizeThresholds(true)
-                    .setTargetBufferBytes(192 * 1024 * 1024)
+                    .setTargetBufferBytes(288 * 1024 * 1024)
                     .build()
 
                 // CRITICAL: DO NOT ADD FLAG_DISABLE_SEEK_FOR_CUES.
@@ -1389,7 +1405,7 @@ class StreamPlayerViewModel : ViewModel() {
 
     fun togglePlayPause() {
         val player = exoPlayer ?: return
-        if (player.isPlaying) {
+        if (player.playWhenReady) {
             lastPauseTimestampMs = System.currentTimeMillis()
             player.pause()
         } else {
@@ -1411,7 +1427,7 @@ class StreamPlayerViewModel : ViewModel() {
 
     fun pause() {
         val player = exoPlayer ?: return
-        if (player.isPlaying) {
+        if (player.playWhenReady) {
             lastPauseTimestampMs = System.currentTimeMillis()
             player.pause()
         }
