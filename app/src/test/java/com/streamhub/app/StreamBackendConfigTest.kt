@@ -9,36 +9,37 @@ import org.junit.Test
 class StreamBackendConfigTest {
 
     @Test
-    fun migrateUrl_legacyAlwaysdataStream_migratesToServ00Dl() {
+    fun migrateUrl_legacyAlwaysdataStream_migratesToCloudflareDl() {
         val legacyStream = "https://streamhub69.alwaysdata.net/stream/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc"
-        val expected = "https://midnighthawk.serv00.net/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc"
+        val expected = "https://stream-proxy.area-51-ancientworkers.workers.dev/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc"
         assertEquals(expected, StreamBackendConfig.migrateUrl(legacyStream))
     }
 
     @Test
-    fun migrateUrl_legacyAlwaysdataDl_migratesToServ00Dl() {
+    fun migrateUrl_legacyAlwaysdataDl_migratesToCloudflareDl() {
         val legacyDl = "https://streamhub69.alwaysdata.net/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc"
-        val expected = "https://midnighthawk.serv00.net/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc"
+        val expected = "https://stream-proxy.area-51-ancientworkers.workers.dev/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc"
         assertEquals(expected, StreamBackendConfig.migrateUrl(legacyDl))
     }
 
     @Test
-    fun migrateUrl_serv00Stream_rewritesToServ00Dl() {
+    fun migrateUrl_serv00Stream_rewritesToCloudflareDl() {
         val serv00Stream = "https://midnighthawk.serv00.net/stream/test_hash_123"
-        val expected = "https://midnighthawk.serv00.net/dl/test_hash_123"
+        val expected = "https://stream-proxy.area-51-ancientworkers.workers.dev/dl/test_hash_123"
         assertEquals(expected, StreamBackendConfig.migrateUrl(serv00Stream))
     }
 
     @Test
-    fun migrateUrl_serv00Dl_retainsServ00Dl() {
+    fun migrateUrl_serv00Dl_rewritesToCloudflareDl() {
         val serv00Dl = "https://midnighthawk.serv00.net/dl/test_hash_123"
-        assertEquals(serv00Dl, StreamBackendConfig.migrateUrl(serv00Dl))
+        val expected = "https://stream-proxy.area-51-ancientworkers.workers.dev/dl/test_hash_123"
+        assertEquals(expected, StreamBackendConfig.migrateUrl(serv00Dl))
     }
 
     @Test
-    fun migrateUrl_httpLegacy_upgradesToHttpsServ00Dl() {
+    fun migrateUrl_httpLegacy_upgradesToHttpsCloudflareDl() {
         val httpLegacy = "http://streamhub69.alwaysdata.net/stream/xyz"
-        val expected = "https://midnighthawk.serv00.net/dl/xyz"
+        val expected = "https://stream-proxy.area-51-ancientworkers.workers.dev/dl/xyz"
         assertEquals(expected, StreamBackendConfig.migrateUrl(httpLegacy))
     }
 

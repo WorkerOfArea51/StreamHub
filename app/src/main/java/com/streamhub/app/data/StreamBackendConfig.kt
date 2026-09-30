@@ -9,8 +9,11 @@ package com.streamhub.app.data
  */
 object StreamBackendConfig {
 
-    /** The active production Serv00 VPS streaming domain */
-    const val DEFAULT_STREAMING_HOST = "midnighthawk.serv00.net"
+    /** The active production Cloudflare Edge Proxy streaming domain */
+    const val DEFAULT_STREAMING_HOST = "stream-proxy.area-51-ancientworkers.workers.dev"
+
+    /** Direct Serv00 VPS host (origin) */
+    const val SERV00_ORIGIN_HOST = "midnighthawk.serv00.net"
 
     /** Legacy Alwaysdata domain being migrated */
     const val LEGACY_STREAMING_HOST = "streamhub69.alwaysdata.net"
@@ -28,12 +31,19 @@ object StreamBackendConfig {
     private val LEGACY_HOST_REGEX = Regex("""(?i)\b[a-z0-9_.-]*alwaysdata\.net\b""")
 
     /**
+     * Regex matching any variant of the Serv00 host, e.g.:
+     * midnighthawk.serv00.net or *.serv00.net
+     */
+    private val SERV00_HOST_REGEX = Regex("""(?i)\b[a-z0-9_.-]*serv00\.net\b""")
+
+    /**
      * Checks if a URL or host belongs to our Telegram streaming backend
-     * (either the current Serv00 VPS or legacy Alwaysdata).
+     * (Cloudflare Edge Worker, Serv00 VPS, or legacy Alwaysdata).
      */
     fun isBackendHost(urlOrHost: String): Boolean {
         if (urlOrHost.isBlank()) return false
-        return urlOrHost.contains("serv00.net", ignoreCase = true) ||
+        return urlOrHost.contains("workers.dev", ignoreCase = true) ||
+               urlOrHost.contains("serv00.net", ignoreCase = true) ||
                urlOrHost.contains("alwaysdata.net", ignoreCase = true)
     }
 
@@ -46,8 +56,8 @@ object StreamBackendConfig {
     }
 
     /**
-     * Migrates a URL pointing to the legacy backend (alwaysdata.net) to the new
-     * Serv00 VPS domain (midnighthawk.serv00.net).
+     * Migrates a URL pointing to the legacy backend (alwaysdata.net) or origin Serv00
+     * to the production Cloudflare Edge Proxy domain (stream-proxy.area-51-ancientworkers.workers.dev).
      *
      * - Preserves path (/dl/...), query params, and anchors.
      * - Normalizes `/stream/<hash>` to `/dl/<hash>` for backend direct playback.
@@ -63,6 +73,12 @@ object StreamBackendConfig {
         var migrated = url.trim()
         if (migrated.contains("alwaysdata.net", ignoreCase = true)) {
             migrated = migrated.replace(LEGACY_HOST_REGEX, targetHost)
+            if (migrated.startsWith("http://", ignoreCase = true)) {
+                migrated = "https://" + migrated.substring(7)
+            }
+        }
+        if (migrated.contains("serv00.net", ignoreCase = true) && !targetHost.contains("serv00.net", ignoreCase = true)) {
+            migrated = migrated.replace(SERV00_HOST_REGEX, targetHost)
             if (migrated.startsWith("http://", ignoreCase = true)) {
                 migrated = "https://" + migrated.substring(7)
             }

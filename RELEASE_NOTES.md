@@ -1,3 +1,11 @@
+### What's New in StreamHub v4.8.383 🚀
+
+- ⚡ **Cloudflare Global Anycast Edge Streaming Architecture**:
+  - Integrated dedicated Cloudflare Worker Edge Proxy (`stream-proxy.area-51-ancientworkers.workers.dev`) directly into the player and link resolution pipeline.
+  - **10–15ms Local Edge Latency**: Replaced the 200ms Poland transit route with local Cloudflare edge nodes (Singapore/South Asia), terminating TCP connections right in your region for rapid TCP window expansion.
+  - **Dynamic Legacy & Origin Migration**: Automatically migrates all existing library and Firebase streams from `midnighthawk.serv00.net` and `alwaysdata.net` to the Cloudflare Edge without requiring library re-imports.
+  - **Instant HTTP 206 Partial Content**: Full streaming and range-seeking support with open CORS, zero disk locking, and zero-stall buffering.
+
 ### What's New in StreamHub v4.8.382 🚀
 
 - ⚡ **100% Dedicated Line Bandwidth Restored to ExoPlayer**:

@@ -42,8 +42,8 @@ class TelegramLinkResolverTest {
         assertEquals(1, episodes[0].episodeNumber)
         assertEquals("EP - 01 - Undertaker", episodes[0].title)
         assertEquals("447.4 MB", episodes[0].fileSize)
-        assertEquals("https://midnighthawk.serv00.net/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc", episodes[0].streamUrl)
-        assertEquals("https://midnighthawk.serv00.net/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc", episodes[0].mirrorStreamUrl)
+        assertEquals("https://stream-proxy.area-51-ancientworkers.workers.dev/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc", episodes[0].streamUrl)
+        assertEquals("https://stream-proxy.area-51-ancientworkers.workers.dev/dl/0d07b93b37770e5c2f3ea796cb43268dba85886553895acc", episodes[0].mirrorStreamUrl)
 
         // Ep 2
         assertEquals(2, episodes[1].episodeNumber)
@@ -94,27 +94,27 @@ class TelegramLinkResolverTest {
 
         assertEquals(2, episodes.size)
         assertEquals(1, episodes[0].episodeNumber)
-        assertEquals("https://midnighthawk.serv00.net/dl/eb76ab1", episodes[0].streamUrl)
-        assertEquals("https://midnighthawk.serv00.net/dl/eb76ab1", episodes[0].mirrorStreamUrl)
+        assertEquals("https://stream-proxy.area-51-ancientworkers.workers.dev/dl/eb76ab1", episodes[0].streamUrl)
+        assertEquals("https://stream-proxy.area-51-ancientworkers.workers.dev/dl/eb76ab1", episodes[0].mirrorStreamUrl)
         assertEquals(2, episodes[1].episodeNumber)
     }
 
     @Test
     fun sanitizePlayableUrl_resolvesStreamToDirectMediaDlRoute() {
         val stream = "https://streamhub69.alwaysdata.net/stream/abc123"
-        val expectedDl = "https://midnighthawk.serv00.net/dl/abc123"
+        val expectedDl = "https://stream-proxy.area-51-ancientworkers.workers.dev/dl/abc123"
         val serv00Stream = "https://midnighthawk.serv00.net/stream/abc123"
         val serv00Dl = "https://midnighthawk.serv00.net/dl/abc123"
 
-        // /stream/ web landing page must be sanitized to /dl/ direct media stream for ExoPlayer and migrated to Serv00
+        // /stream/ web landing page must be sanitized to /dl/ direct media stream for ExoPlayer and migrated to Cloudflare
         assertEquals(expectedDl, TelegramLinkResolver.sanitizePlayableUrl(stream))
-        assertEquals(serv00Dl, TelegramLinkResolver.sanitizePlayableUrl(serv00Stream))
-        assertEquals(serv00Dl, TelegramLinkResolver.sanitizePlayableUrl(serv00Dl))
+        assertEquals(expectedDl, TelegramLinkResolver.sanitizePlayableUrl(serv00Stream))
+        assertEquals(expectedDl, TelegramLinkResolver.sanitizePlayableUrl(serv00Dl))
 
         // Downloads also target the /dl/ twin
         assertEquals(expectedDl, TelegramLinkResolver.toDownloadUrl(stream))
-        assertEquals(serv00Dl, TelegramLinkResolver.toDownloadUrl(serv00Stream))
-        assertEquals(serv00Dl, TelegramLinkResolver.toDownloadUrl(serv00Dl))
+        assertEquals(expectedDl, TelegramLinkResolver.toDownloadUrl(serv00Stream))
+        assertEquals(expectedDl, TelegramLinkResolver.toDownloadUrl(serv00Dl))
 
         // Non-F2L URLs are never rewritten
         val foreign = "https://example.com/stream/video.mkv"
