@@ -1,3 +1,10 @@
+### What's New in StreamHub v4.8.378 🚀
+
+- ⚡ **Preserved Exact Playback Timestamp on Manual Retry Failover (`StreamPlayerViewModel.kt`)**:
+  - Replaced the hardcoded `0L` restart in `retryCurrentEpisode()` with `retryPositionMs`. When retrying after a network interruption or failover, playback resumes seamlessly from the exact stopped millisecond instead of restarting the movie from 0:00.
+- ⚡ **Multi-Worker MTProto Bot Alignment (`OmniArchiver-F2L`)**:
+  - Aligned the player pipeline with the restored multi-worker bot pool on the backend, allowing all 11 Telegram bots to stream concurrently in parallel at full 2.5–3.0 MB/s line throughput.
+
 ### What's New in StreamHub v4.8.377 🚀
 
 - ⚡ **Eliminated 45-Second OkHttp Socket Timeout & Stream Freeze**:
