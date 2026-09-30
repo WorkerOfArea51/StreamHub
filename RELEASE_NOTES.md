@@ -1,3 +1,12 @@
+### What's New in StreamHub v4.8.379 🚀
+
+- ⚡ **Zero-Reset Failover & Network Recovery Engine**:
+  - Replaced stale `_uiState` snapshot reads in `retryCurrentEpisode()` and `NetworkMonitor` auto-reconnect with live position fallbacks from `_playbackProgress`, `exoPlayer`, and `WatchHistoryManager`. Manual retry or auto-heal will **always** resume from the exact stopped millisecond instead of restarting from 0:00.
+- ⚡ **Fluid Rapid Double-Tap Seeking**:
+  - Double-tap forward and backward (`seekForward`/`seekBackward`) now uses `seekDebounced(target, 350L)`. Rapid tapping (+10s, +20s, +30s, +40s) updates the seek preview instantaneously at 0ms, while executing a single clean hardware seek on release. Completely prevents decoder flushes and network socket cancellations.
+- ⚡ **Accurate Stats for Nerds Speed Reporting**:
+  - Refined the `"Idle (Buffered)"` readout in Stats for Nerds to trigger only when buffer health is genuinely at the 5-minute wall ($\ge 285\text{s}$) or fully cached. If forward buffer is under 285s and 0 bytes are arriving, it accurately reports `0 KB/s` instead of masking a dead connection.
+
 ### What's New in StreamHub v4.8.378 🚀
 
 - ⚡ **Preserved Exact Playback Timestamp on Manual Retry Failover (`StreamPlayerViewModel.kt`)**:

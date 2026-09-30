@@ -155,7 +155,14 @@ class StreamPlayerViewModel : ViewModel() {
                     if (isNetworkIssue && !snapshot.isPlaying && exoPlayer != null && !isLocalStream) {
                         Log.i("StreamPlayerViewModel", "Network restored ($timestamp). Auto-healing player connection immediately.")
                         autoRetryCount = 0
-                        val resumePos = pendingSeekTargetMs ?: snapshot.currentPositionMs
+                        val lastProgressPos = _playbackProgress.value.currentPositionMs
+                        val playerPos = exoPlayer?.currentPosition?.takeIf { it > 0L }
+                        val historyPos = WatchHistoryManager.getProgress(currentMediaItem?.id ?: "")?.positionMs ?: 0L
+                        val resumePos = pendingSeekTargetMs
+                            ?: playerPos
+                            ?: (if (lastProgressPos > 0L) lastProgressPos else null)
+                            ?: (if (historyPos > 0L) historyPos else null)
+                            ?: snapshot.currentPositionMs
                         _uiState.update { 
                             it.copy(
                                 isBuffering = true, 
@@ -1069,7 +1076,14 @@ class StreamPlayerViewModel : ViewModel() {
         reconnectWatchdogJob?.cancel()
         reconnectWatchdogJob = null
 
-        val retryPositionMs = pendingSeekTargetMs ?: snapshot.currentPositionMs
+        val lastProgressPos = _playbackProgress.value.currentPositionMs
+        val playerPos = exoPlayer?.currentPosition?.takeIf { it > 0L }
+        val historyPos = WatchHistoryManager.getProgress(currentMediaItem?.id ?: "")?.positionMs ?: 0L
+        val retryPositionMs = pendingSeekTargetMs
+            ?: playerPos
+            ?: (if (lastProgressPos > 0L) lastProgressPos else null)
+            ?: (if (historyPos > 0L) historyPos else null)
+            ?: snapshot.currentPositionMs
 
         if (ep != null) {
             val currentUrl = snapshot.resolvedStreamUrl
@@ -1528,7 +1542,7 @@ class StreamPlayerViewModel : ViewModel() {
         val current = pendingSeekTargetMs ?: player.currentPosition.coerceAtLeast(0L)
         val target = if (duration > 0L) (current + offsetMs).coerceAtMost(duration) else current + offsetMs
         Log.i("StreamPlayerViewModel", "seekForward: from $current + $offsetMs -> $target (pending=$pendingSeekTargetMs)")
-        seekTo(target)
+        seekDebounced(target, 350L)
     }
 
     fun seekBackward(offsetMs: Long = 10000L) {
@@ -1537,7 +1551,7 @@ class StreamPlayerViewModel : ViewModel() {
         val current = pendingSeekTargetMs ?: player.currentPosition.coerceAtLeast(0L)
         val target = (current - offsetMs).coerceAtLeast(0L)
         Log.i("StreamPlayerViewModel", "seekBackward: from $current - $offsetMs -> $target (pending=$pendingSeekTargetMs)")
-        seekTo(target)
+        seekDebounced(target, 350L)
     }
 
     fun setPlaybackSpeed(speed: Float, pitchCorrection: Boolean = _uiState.value.pitchCorrection) {

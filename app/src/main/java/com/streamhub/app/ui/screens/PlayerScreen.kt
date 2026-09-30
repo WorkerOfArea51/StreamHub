@@ -3115,7 +3115,7 @@ private fun StatsForNerdsOverlay(
                         isFullyBuffered -> {
                             "Idle (Fully Cached)"
                         }
-                        bufferHealthSeconds >= 15L -> {
+                        bufferHealthSeconds >= 285L -> {
                             "Idle (Buffered)"
                         }
                         else -> "0 KB/s"
