@@ -1069,18 +1069,19 @@ class StreamPlayerViewModel : ViewModel() {
         reconnectWatchdogJob?.cancel()
         reconnectWatchdogJob = null
 
+        val retryPositionMs = pendingSeekTargetMs ?: snapshot.currentPositionMs
+
         if (ep != null) {
             val currentUrl = snapshot.resolvedStreamUrl
             val mirrorUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.mirrorStreamUrl)
             if (mirrorUrl.isNotBlank() && mirrorUrl.startsWith("http") && mirrorUrl != currentUrl) {
-                Log.i("StreamPlayerViewModel", "Retrying with failover mirror URL: $mirrorUrl")
-                playEpisodeWithExplicitUrl(snapshot.currentEpisodeIndex, mirrorUrl, 0L)
+                Log.i("StreamPlayerViewModel", "Retrying with failover mirror URL at ${retryPositionMs}ms: $mirrorUrl")
+                playEpisodeWithExplicitUrl(snapshot.currentEpisodeIndex, mirrorUrl, retryPositionMs)
                 return
             }
         }
 
-        // Same-URL retry: resume from where playback stopped.
-        val retryPositionMs = pendingSeekTargetMs ?: snapshot.currentPositionMs
+        // Same-URL retry: resume from exact stopped timestamp
         playEpisode(snapshot.currentEpisodeIndex, retryPositionMs)
     }
 
