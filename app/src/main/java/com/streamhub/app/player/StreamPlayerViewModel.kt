@@ -946,6 +946,8 @@ class StreamPlayerViewModel : ViewModel() {
         // Fresh episode transition: cancel pending auto-reconnect and reset retry budget
         autoRetryJob?.cancel()
         autoRetryJob = null
+        reconnectWatchdogJob?.cancel()
+        reconnectWatchdogJob = null
         autoRetryCount = 0
 
         resolutionJob?.cancel()
@@ -1062,6 +1064,10 @@ class StreamPlayerViewModel : ViewModel() {
 
         // Manual retry replays the full failover cycle (primary -> mirror)
         autoRetryCount = 0
+        autoRetryJob?.cancel()
+        autoRetryJob = null
+        reconnectWatchdogJob?.cancel()
+        reconnectWatchdogJob = null
 
         if (ep != null) {
             val currentUrl = snapshot.resolvedStreamUrl
@@ -1100,6 +1106,8 @@ class StreamPlayerViewModel : ViewModel() {
         // Fresh episode transition: cancel pending auto-reconnect and reset retry budget
         autoRetryJob?.cancel()
         autoRetryJob = null
+        reconnectWatchdogJob?.cancel()
+        reconnectWatchdogJob = null
         autoRetryCount = 0
         val episode = episodesList.getOrNull(index)
         val savedDuration = WatchHistoryManager.getProgress(currentMediaItem?.id ?: "")?.durationMs ?: 0L
@@ -1798,9 +1806,49 @@ class StreamPlayerViewModel : ViewModel() {
 
     private var autoRetryCount: Int = 0
     private var autoRetryJob: Job? = null
+    private var reconnectWatchdogJob: Job? = null
 
     /** Hard cap for automatic reconnect attempts before the error overlay is shown. */
     private val maxAutoRetries: Int = 3
+
+    /**
+     * Seamless stream reload preserving exact playback timestamp with a fresh HTTP Range request.
+     * Bypasses slow URL re-resolution and guarantees stale sockets are purged.
+     */
+    private fun reloadStreamAtPosition(savedPositionMs: Long, customUrl: String? = null) {
+        debouncedSeekJob?.cancel()
+        debouncedSeekJob = null
+        val snapshot = _uiState.value
+        val urlToUse = (customUrl ?: snapshot.resolvedStreamUrl).trim()
+        if (urlToUse.isBlank()) return
+
+        exoPlayer?.apply {
+            pause()
+            clearMediaItems()
+        }
+        try {
+            com.streamhub.app.data.api.SharedHttpClient.streamingClient.dispatcher.cancelAll()
+            com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+        } catch (_: Exception) {}
+        bandwidthTracker?.reset()
+
+        val uri = if (urlToUse.startsWith("/")) android.net.Uri.fromFile(java.io.File(urlToUse)) else android.net.Uri.parse(urlToUse)
+        val cacheKey = StreamDataSourceFactory.sanitizeCacheKey(uri)
+        val mediaItem = ExoMediaItem.fromUri(uri)
+            .buildUpon()
+            .setTag(currentMediaItem?.id)
+            .setCustomCacheKey(cacheKey)
+            .build()
+
+        prepareStartTimeMs = System.currentTimeMillis()
+        isStartupPerfLogged = false
+
+        exoPlayer?.apply {
+            setMediaItem(mediaItem, savedPositionMs)
+            prepare()
+            playWhenReady = true
+        }
+    }
 
     private fun handleStreamStall(stalledPositionMs: Long) {
         val snapshot = _uiState.value
@@ -1841,9 +1889,10 @@ class StreamPlayerViewModel : ViewModel() {
             // A stalled or throttled proxy socket is poisoned/choked. Re-using it from the pool causes
             // a guaranteed second stall. Evicting forces a fresh TCP handshake, immediately restoring 1-2 MB/s line speed.
             try {
+                com.streamhub.app.data.api.SharedHttpClient.streamingClient.dispatcher.cancelAll()
                 com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
             } catch (e: Exception) {
-                Log.w("StreamPlayerViewModel", "Failed to evict streaming connection pool on stall", e)
+                Log.w("StreamPlayerViewModel", "Failed to cancel and evict streaming connection pool on stall", e)
             }
             StreamPreloadManager.cancelDetailsPrewarm()
             StreamPreloadManager.cancelBingePrecache()
@@ -1863,6 +1912,10 @@ class StreamPlayerViewModel : ViewModel() {
             scheduleAutoReconnect(stalledPositionMs, serverDown = false)
         } else {
             Log.e("StreamPlayerViewModel", "Stream stall watchdog exhausted $maxAutoRetries attempts at ${stalledPositionMs}ms")
+            autoRetryJob?.cancel()
+            autoRetryJob = null
+            reconnectWatchdogJob?.cancel()
+            reconnectWatchdogJob = null
             val errorMsg = "Stream connection stalled. The server may be busy or your connection was interrupted."
             val errorInfo = PlayerErrorInfo(
                 type = PlayerErrorType.NETWORK,
@@ -1884,6 +1937,7 @@ class StreamPlayerViewModel : ViewModel() {
 
     private fun scheduleAutoReconnect(savedPositionMs: Long, serverDown: Boolean = false) {
         autoRetryJob?.cancel()
+        reconnectWatchdogJob?.cancel()
         if (!NetworkMonitor.isOnline.value) {
             Log.i("StreamPlayerViewModel", "Network offline; suspending auto-reconnect until connection returns.")
             _uiState.update {
@@ -1921,32 +1975,42 @@ class StreamPlayerViewModel : ViewModel() {
 
             _uiState.update { it.copy(isBuffering = true, playerError = null, playerErrorInfo = null) }
 
-            // Ensure stale/hung TCP sockets are evicted from OkHttp pool on every reconnect
+            // Ensure stale/hung TCP sockets are cancelled and evicted on every reconnect
             try {
+                com.streamhub.app.data.api.SharedHttpClient.streamingClient.dispatcher.cancelAll()
                 com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
             } catch (_: Exception) {}
 
-            // Attempt 1: In-place seamless reconnection without tearing down decoders or screen blacking
-            if (autoRetryCount == 1 && exoPlayer != null && (exoPlayer?.mediaItemCount ?: 0) > 0) {
-                Log.i("StreamPlayerViewModel", "In-place stream reconnection at ${savedPositionMs}ms")
-                exoPlayer?.seekTo(savedPositionMs)
-                exoPlayer?.play()
-                return@launch
-            }
-
+            var targetUrl: String? = null
             // Failover: from the 2nd attempt onward, switch to alternative mirror if available
             if (autoRetryCount >= 2 && ep != null) {
                 val currentUrl = snapshot.resolvedStreamUrl
                 val mirrorUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.mirrorStreamUrl)
                 if (mirrorUrl.isNotBlank() && mirrorUrl.startsWith("http") && mirrorUrl != currentUrl) {
                     Log.i("StreamPlayerViewModel", "Auto-reconnecting using failover mirror URL: $mirrorUrl")
-                    playEpisodeWithExplicitUrl(snapshot.currentEpisodeIndex, mirrorUrl, savedPositionMs)
-                    return@launch
+                    targetUrl = mirrorUrl
+                    _uiState.update { it.copy(resolvedStreamUrl = mirrorUrl) }
                 }
             }
 
-            // Reconnect stream preserving exact playback timestamp
-            playEpisode(snapshot.currentEpisodeIndex, savedPositionMs)
+            // Cleanly reload stream from exact saved position with fresh HTTP Range request
+            Log.i("StreamPlayerViewModel", "Re-establishing clean stream pipeline at ${savedPositionMs}ms (attempt #$autoRetryCount)")
+            reloadStreamAtPosition(savedPositionMs, targetUrl)
+
+            // Reconnect escalation watchdog: If playback does not transition to STATE_READY or acquire forward buffer within 8.5s,
+            // automatically force escalation to the next attempt (or fail gracefully).
+            // This prevents EVER getting stuck on "Reconnecting stream... (1/3)"!
+            reconnectWatchdogJob?.cancel()
+            reconnectWatchdogJob = viewModelScope.launch {
+                delay(8_500L)
+                val currentSnapshot = _uiState.value
+                val isPlayingNow = exoPlayer?.isPlaying == true
+                val hasForwardBuffer = ((exoPlayer?.bufferedPosition ?: 0L) - (exoPlayer?.currentPosition ?: 0L)) > 1500L
+                if (currentSnapshot.isReconnecting && !isPlayingNow && !hasForwardBuffer) {
+                    Log.w("StreamPlayerViewModel", "Reconnect attempt #$autoRetryCount timed out after 8.5s without resuming playback. Escalating...")
+                    handleStreamStall(savedPositionMs)
+                }
+            }
         }
     }
 
@@ -1958,6 +2022,8 @@ class StreamPlayerViewModel : ViewModel() {
         autoRetryCount = 0
         autoRetryJob?.cancel()
         autoRetryJob = null
+        reconnectWatchdogJob?.cancel()
+        reconnectWatchdogJob = null
         _uiState.update {
             it.copy(
                 isReconnecting = false,
@@ -2006,6 +2072,8 @@ class StreamPlayerViewModel : ViewModel() {
             // Cancel all our jobs but keep the player running
             autoRetryJob?.cancel()
             autoRetryJob = null
+            reconnectWatchdogJob?.cancel()
+            reconnectWatchdogJob = null
             autoRetryCount = 0
             positionTrackerJob?.cancel()
             positionTrackerJob = null
@@ -2027,6 +2095,8 @@ class StreamPlayerViewModel : ViewModel() {
 
         autoRetryJob?.cancel()
         autoRetryJob = null
+        reconnectWatchdogJob?.cancel()
+        reconnectWatchdogJob = null
         autoRetryCount = 0  // FIX: Reset retry budget for next playback session
         positionTrackerJob?.cancel()
         positionTrackerJob = null

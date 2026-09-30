@@ -1,3 +1,10 @@
+### What's New in StreamHub v4.8.377 🚀
+
+- ⚡ **Eliminated 45-Second OkHttp Socket Timeout & Stream Freeze**:
+  - **Infinite Streaming Socket Read Timeout**: Set `readTimeout(0, TimeUnit.MILLISECONDS)` on `SharedHttpClient.streamingClient`. Previously, when ExoPlayer filled the 5-minute forward buffer and paused network reads, OkHttp's 45-second timeout silently killed the TCP socket. When playback drained the buffer down to 0s, ExoPlayer was left with a dead connection. Disabling the read timeout allows sockets to safely pause and resume indefinitely without premature termination.
+  - **Deadlock-Proof Reconnection Engine (`reloadStreamAtPosition`)**: Replaced sluggish episode reload with a dedicated Range request pipeline that cancels hanging calls (`dispatcher.cancelAll()`), evicts dead sockets (`connectionPool.evictAll()`), and immediately fires a fresh `Range: bytes=<pos>-` request directly to the server.
+  - **8.5s Auto-Escalation Reconnect Watchdog**: Added a dedicated escalation watchdog (`reconnectWatchdogJob`). If Attempt 1 does not restore playback within 8.5 seconds, the player automatically escalates to Attempt 2 (switching to mirror source if available) and Attempt 3, permanently preventing the player from getting frozen on `Reconnecting stream... (1/3)`.
+
 ### What's New in StreamHub v4.8.375 🚀
 
 - ⚡ **Instant Multi-Worker Episode Transitions & Zombie Stream Purge**:

@@ -70,12 +70,12 @@ object SharedHttpClient {
         OkHttpClient.Builder()
             .socketFactory(HighThroughputSocketFactory())
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(45, TimeUnit.SECONDS) // 45s read timeout: ample time for Telegram MTProto chunk delivery
+            .readTimeout(0, TimeUnit.MILLISECONDS) // 0 = Infinite / No Timeout: Prevents socket suicide while playing from 5m forward buffer
             .writeTimeout(30, TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
             .retryOnConnectionFailure(true)
-            .connectionPool(okhttp3.ConnectionPool(10, 5, TimeUnit.MINUTES)) // 5 minutes keep-alive for instant warm socket reuse
+            .connectionPool(okhttp3.ConnectionPool(10, 10, TimeUnit.MINUTES)) // 10 minutes keep-alive
             .build()
     }
 }
