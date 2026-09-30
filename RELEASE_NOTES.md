@@ -1,3 +1,8 @@
+### What's New in StreamHub v4.8.380 🚀
+
+- ⚡ **Kernel Dynamic TCP Auto-Tuning Unlocked**:
+  - Removed fixed socket receive buffer override on streaming client, allowing Android Linux kernel's native TCP window auto-tuning to dynamically expand receive windows up to 4MB–8MB. Eliminates client-side throughput bottlenecks over international streaming routes.
+
 ### What's New in StreamHub v4.8.379 🚀
 
 - ⚡ **Zero-Reset Failover & Network Recovery Engine**:

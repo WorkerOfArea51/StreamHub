@@ -18,7 +18,6 @@ class HighThroughputSocketFactory(
 
     private fun configureSocket(socket: Socket): Socket {
         try {
-            socket.receiveBufferSize = bufferSizeBytes
             socket.tcpNoDelay = true
             socket.keepAlive = true
         } catch (_: Exception) {}
