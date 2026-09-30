@@ -137,6 +137,7 @@ class StreamPlayerViewModel : ViewModel() {
     private val triedMirrorUrls = mutableSetOf<String>()
 
     private var bandwidthTracker: StreamBandwidthTracker? = null
+    private var parallelSliceEngine: ParallelSliceBufferEngine? = null
     private var prepareStartTimeMs: Long = 0L
     private var isStartupPerfLogged: Boolean = false
     private var lastBackgroundTimestampMs: Long = 0L
@@ -1042,6 +1043,16 @@ class StreamPlayerViewModel : ViewModel() {
                 prepare()
                 playWhenReady = true
             }
+
+            val isStreamLocal = isLocal || resolvedUrl.startsWith("/") || resolvedUrl.startsWith("file://") || resolvedUrl.startsWith("content://")
+            if (!isStreamLocal) {
+                if (parallelSliceEngine == null) {
+                    parallelSliceEngine = appContext?.let { ParallelSliceBufferEngine(it, bandwidthTracker) }
+                }
+                parallelSliceEngine?.start(resolvedUrl)
+            } else {
+                parallelSliceEngine?.stop()
+            }
         }
     }
 
@@ -1171,6 +1182,15 @@ class StreamPlayerViewModel : ViewModel() {
                 setMediaItem(mediaItem, startPositionMs)
                 prepare()
                 playWhenReady = true
+            }
+            val isLocal = rawUrl.startsWith("/") || rawUrl.startsWith("file://") || rawUrl.startsWith("content://")
+            if (!isLocal) {
+                if (parallelSliceEngine == null) {
+                    parallelSliceEngine = appContext?.let { ParallelSliceBufferEngine(it, bandwidthTracker) }
+                }
+                parallelSliceEngine?.start(rawUrl)
+            } else {
+                parallelSliceEngine?.stop()
             }
         }
     }
@@ -1424,6 +1444,7 @@ class StreamPlayerViewModel : ViewModel() {
         StreamPreloadManager.cancelBingePrecache()
         nextEpisodePreloadJob?.cancel()
         nextEpisodePreloadJob = null
+        parallelSliceEngine?.pause()
         if (!isInPip && !_uiState.value.isBackgroundAudioEnabled) {
             pause()
         }
@@ -1436,6 +1457,7 @@ class StreamPlayerViewModel : ViewModel() {
         Log.i("StreamPlayerViewModel", "App foregrounded after ${elapsedMs}ms in background")
 
         stallAccumulatorMs = 0L // Reset stall accumulator to prevent false watchdog trigger upon returning
+        parallelSliceEngine?.resume()
 
         // If the app was in the background for >= 3 seconds, the TCP connection to the streaming
         // server is likely dead or timed out by the server/proxy. Proactively refresh it.
@@ -1466,6 +1488,7 @@ class StreamPlayerViewModel : ViewModel() {
         Log.i("StreamPlayerViewModel", "seekTo: requested $positionMs ms -> target $target ms (duration: $duration ms)")
         pendingSeekTargetMs = target
         player.seekTo(target)
+        parallelSliceEngine?.onSeek(target, duration)
         _playbackProgress.value = _playbackProgress.value.copy(
             currentPositionMs = target,
             bufferedPositionMs = player.bufferedPosition.coerceAtLeast(target)
@@ -1671,6 +1694,7 @@ class StreamPlayerViewModel : ViewModel() {
                         bufferHealthSeconds = bufferHealthSec,
                         networkSpeedKbps = speedKbps
                     )
+                    parallelSliceEngine?.updatePlaybackPosition(currentPos, effectiveDur)
 
                     // Only update _uiState if buffering state actually changed to avoid 200ms recomposition storms
                     if (_uiState.value.isBuffering != isBuffering) {
@@ -2105,6 +2129,8 @@ class StreamPlayerViewModel : ViewModel() {
             pendingSeekTimeoutJob = null
             pendingSeekTargetMs = null
             volumeBoostManager.release()
+            parallelSliceEngine?.stop()
+            parallelSliceEngine = null
             return
         }
 
@@ -2117,6 +2143,8 @@ class StreamPlayerViewModel : ViewModel() {
         positionTrackerJob = null
         resolutionJob?.cancel()
         resolutionJob = null
+        parallelSliceEngine?.stop()
+        parallelSliceEngine = null
         StreamPreloadManager.cancelDetailsPrewarm()
         StreamPreloadManager.cancelBingePrecache()
         nextEpisodePreloadJob?.cancel()

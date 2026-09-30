@@ -1,3 +1,12 @@
+### What's New in StreamHub v4.8.381 🚀
+
+- ⚡ **Multi-Connection Parallel Slice Buffer Engine (ABDM/IDM-Parity)**:
+  - **4 Concurrent Chunk Slices**: Downloads the forward 5-minute buffer tank in parallel 4 MB slices across 4 concurrent OkHttp connections, fully saturating Serv00's 11-worker Telegram bot pipeline (~3.0 to 4.5 MB/s throughput).
+  - **Exact 4 MB Alignment**: Slices align to exact 4,194,304-byte boundaries, pulling 4 full MTProto chunks without fractional trimming.
+  - **Ahead-Of-ExoPlayer Strategy**: Pre-caching begins at `(currentSlice + 1)`, leaving the active playback slice unhindered for ExoPlayer's live playback.
+  - **Instant Seek Re-alignment**: Seeking automatically cancels in-flight workers, immediately signaling `GeneratorExit` to the backend to free worker bots and re-aligning the 4-worker window to the new timestamp in <10ms.
+  - **Combined Throughput Telemetry**: All downloaded slice bytes are piped through `TransferListener` directly into `StreamBandwidthTracker`, displaying true multi-MB/s aggregate network speed in Stats for Nerds.
+
 ### What's New in StreamHub v4.8.380 🚀
 
 - ⚡ **Kernel Dynamic TCP Auto-Tuning Unlocked**:
