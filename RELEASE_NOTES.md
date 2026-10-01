@@ -1,3 +1,11 @@
+### What's New in StreamHub v4.8.386 🚀
+
+- ⚡ **Zero-Reflection Resilient Split-SeekHead MKV Engine (`SmartMatroskaExtractor`)**:
+  - **Fixed Release APK R8 Obfuscation Freeze**: Solved the issue where *Mission: Impossible* and *Mission: Impossible II* remained stuck at `Buffer: 0s` in release APK builds due to Android's R8 optimizer renaming internal Media3 extractor fields.
+  - **Zero-Reflection Track Discovery (`InterceptingExtractorOutput`)**: Wrapped `ExtractorOutput` to capture track definitions and `endTracks()` directly through official Media3 public callbacks with **zero reflection**, completely immune to ProGuard, R8, or code shrinking.
+  - **Hardened ProGuard Rules (`-keep class androidx.media3.extractor.mkv.** { *; }`)**: Kept all Media3 Matroska parser classes and member fields unobfuscated in release APKs, verified directly in the release DEX bytecode.
+  - **Loop Safety Guard**: Added a step limit to prevent any possible infinite looping during EOF metadata probing.
+
 ### What's New in StreamHub v4.8.385 🚀
 
 - ⚡ **Split-SeekHead HandBrake MKV Playback Engine (`SmartMatroskaExtractor`)**:

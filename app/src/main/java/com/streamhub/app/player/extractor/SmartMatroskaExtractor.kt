@@ -11,6 +11,8 @@ import androidx.media3.extractor.ExtractorInput
 import androidx.media3.extractor.ExtractorOutput
 import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.extractor.PositionHolder
+import androidx.media3.extractor.SeekMap
+import androidx.media3.extractor.TrackOutput
 import androidx.media3.extractor.mkv.MatroskaExtractor
 import java.lang.reflect.Field
 
@@ -64,24 +66,22 @@ class SmartMatroskaExtractor(
 
         private const val PEEK_BUFFER_SIZE = 4096
 
-        // Cached reflection fields on MatroskaExtractor
-        private val tracksField: Field? = try {
-            MatroskaExtractor::class.java.getDeclaredField("tracks").apply { isAccessible = true }
-        } catch (_: Exception) {
-            null
+        private fun findField(fieldName: String): Field? {
+            return try {
+                MatroskaExtractor::class.java.getDeclaredField(fieldName).apply { isAccessible = true }
+            } catch (_: Exception) {
+                try {
+                    MatroskaExtractor::class.java.declaredFields.firstOrNull {
+                        it.name.equals(fieldName, ignoreCase = true)
+                    }?.apply { isAccessible = true }
+                } catch (_: Exception) {
+                    null
+                }
+            }
         }
 
-        private val cuesContentPositionField: Field? = try {
-            MatroskaExtractor::class.java.getDeclaredField("cuesContentPosition").apply { isAccessible = true }
-        } catch (_: Exception) {
-            null
-        }
-
-        private val segmentContentPositionField: Field? = try {
-            MatroskaExtractor::class.java.getDeclaredField("segmentContentPosition").apply { isAccessible = true }
-        } catch (_: Exception) {
-            null
-        }
+        private val cuesContentPositionField: Field? = findField("cuesContentPosition")
+        private val segmentContentPositionField: Field? = findField("segmentContentPosition")
 
         /**
          * Parses an EBML Variable-Length Integer (vint).
@@ -138,16 +138,41 @@ class SmartMatroskaExtractor(
         }
     }
 
+    private class InterceptingExtractorOutput(
+        private val target: ExtractorOutput
+    ) : ExtractorOutput {
+        val registeredTrackIds = mutableSetOf<Int>()
+        var tracksEndedCalled = false
+
+        override fun track(id: Int, type: Int): TrackOutput {
+            registeredTrackIds.add(id)
+            return target.track(id, type)
+        }
+
+        override fun endTracks() {
+            tracksEndedCalled = true
+            target.endTracks()
+        }
+
+        override fun seekMap(seekMap: androidx.media3.extractor.SeekMap) {
+            target.seekMap(seekMap)
+        }
+    }
+
     private var state = STATE_PROBE_HEAD
     private var segmentContentPosition: Long = -1L
     private var targetSecondarySeekHeadOffset: Long = -1L
     private var targetTracksOffset: Long = -1L
     private var cachedCuesOffset: Long = -1L
     private var extractorOutput: ExtractorOutput? = null
+    private var wrappedOutput: InterceptingExtractorOutput? = null
+    private var seekTracksStepCount = 0
 
     override fun init(output: ExtractorOutput) {
         this.extractorOutput = output
-        delegate.init(output)
+        val intercepted = InterceptingExtractorOutput(output)
+        this.wrappedOutput = intercepted
+        delegate.init(intercepted)
     }
 
     override fun sniff(input: ExtractorInput): Boolean {
@@ -195,6 +220,7 @@ class SmartMatroskaExtractor(
 
                     if (tracksAbsPos > 0L) {
                         targetTracksOffset = tracksAbsPos
+                        seekTracksStepCount = 0
                         state = STATE_SEEKING_TRACKS
                         seekPosition.position = tracksAbsPos
                         return Extractor.RESULT_SEEK
@@ -208,12 +234,17 @@ class SmartMatroskaExtractor(
             }
 
             STATE_SEEKING_TRACKS -> {
-                // Delegate reading of the ID_TRACKS element
-                delegate.read(input, seekPosition)
-                val count = getTracksCount()
-                if (count > 0) {
-                    Log.i(TAG, "Successfully parsed $count tracks at EOF! Re-injecting Cues and seeking back to 0L for instant playback...")
-                    extractorOutput?.endTracks()
+                seekTracksStepCount++
+                try {
+                    delegate.read(input, seekPosition)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Exception during tracks parse at EOF: ${e.message}")
+                }
+                val count = wrappedOutput?.registeredTrackIds?.size ?: 0
+                val tracksEnded = wrappedOutput?.tracksEndedCalled ?: false
+
+                if (count > 0 || tracksEnded || seekTracksStepCount > 40) {
+                    Log.i(TAG, "Tracks parsed at EOF (count=$count, tracksEnded=$tracksEnded, steps=$seekTracksStepCount)! Re-injecting Cues and seeking back to 0L...")
                     injectCuesAndSegment(cachedCuesOffset, segmentContentPosition)
                     state = STATE_SEEKING_START
                     seekPosition.position = 0L
@@ -429,14 +460,6 @@ class SmartMatroskaExtractor(
         return Pair(absTracksPos, absCuesPos)
     }
 
-    private fun getTracksCount(): Int {
-        return try {
-            val tracks = tracksField?.get(delegate) as? SparseArray<*>
-            tracks?.size() ?: 0
-        } catch (_: Exception) {
-            0
-        }
-    }
 
     /**
      * Injects the discovered Cues and Segment byte positions into the delegate [MatroskaExtractor]

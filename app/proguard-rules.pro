@@ -102,8 +102,8 @@
 
 # --- SmartMatroskaExtractor Reflection & Media3 Matroska Extractor ---
 -keep class com.streamhub.app.player.extractor.** { *; }
--keepclassmembers class androidx.media3.extractor.mkv.MatroskaExtractor {
-    private android.util.SparseArray tracks;
-    private long cuesContentPosition;
-    private long segmentContentPosition;
+-keep class androidx.media3.extractor.mkv.** {
+    *;
 }
+-dontwarn androidx.media3.extractor.mkv.**
+
