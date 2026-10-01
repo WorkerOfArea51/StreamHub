@@ -2,19 +2,16 @@ package com.streamhub.app.player.extractor
 
 import android.net.Uri
 import android.util.Log
-import android.util.SparseArray
 import androidx.annotation.OptIn
-import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.extractor.Extractor
 import androidx.media3.extractor.ExtractorInput
 import androidx.media3.extractor.ExtractorOutput
 import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.extractor.PositionHolder
-import androidx.media3.extractor.SeekMap
-import androidx.media3.extractor.TrackOutput
 import androidx.media3.extractor.mkv.MatroskaExtractor
-import java.lang.reflect.Field
+import com.streamhub.app.data.api.SharedHttpClient
+import okhttp3.Request
 
 /**
  * High-Performance Resilient Matroska (MKV) Extractor for Media3 ExoPlayer.
@@ -29,20 +26,25 @@ import java.lang.reflect.Field
  * standard ExoPlayer treats all incoming video/audio blocks as unknown (`tracks.get(blockTrackNumber) == null`)
  * and silently discards gigabytes of movie frames over HTTP, freezing the player on "Buffer: 0s" for minutes.
  *
- * [SmartMatroskaExtractor]:
+ * [SmartMatroskaExtractor] solves this with Synthetic Stream Concatenation:
  * 1. Peeks the root SeekHead in the first 4KB without consuming stream bytes.
  * 2. If a normal MKV contains [Tracks] at the head, delegates immediately with 0ms overhead.
  * 3. If a Split-SeekHead MKV is detected:
- *    a. Jumps to EOF to read the Secondary SeekHead.
- *    b. Jumps to the exact [Tracks] offset and delegates to [MatroskaExtractor] to parse all track definitions and codecs.
- *    c. Injects [cuesContentPosition] into [MatroskaExtractor] so the native seek map is built.
- *    d. Seeks back to byte 0.
- * 4. When [MatroskaExtractor] resumes from byte 0, all tracks and codecs are already populated,
- *    and playback starts in < 250ms!
+ *    a. Fetches the 64 KB tail slice containing [Tracks] and [Cues] in a single fast Range call (~30ms)
+ *       without dropping ExoPlayer's live streaming connection at byte 0.
+ *    b. Transparently splices the exact [ID_TRACKS] and [ID_CUES] metadata elements into a
+ *       [SyntheticTracksExtractorInput] directly between the EBML Info header and Cluster 0.
+ *    c. Native [MatroskaExtractor] reads the stream linearly from byte 0, parses all tracks and codecs,
+ *       builds the frame-accurate seek map, and immediately begins decoding Cluster 0 frames.
+ * 4. Playback starts in < 250ms with ZERO reflection, ZERO socket resets, and ZERO Telegram bot worker floods!
  */
 @OptIn(UnstableApi::class)
 class SmartMatroskaExtractor(
-    private val delegate: MatroskaExtractor = MatroskaExtractor(MatroskaExtractor.FLAG_EMIT_RAW_SUBTITLE_DATA)
+    private val delegate: MatroskaExtractor = MatroskaExtractor(
+        androidx.media3.extractor.text.SubtitleParser.Factory.UNSUPPORTED,
+        MatroskaExtractor.FLAG_EMIT_RAW_SUBTITLE_DATA
+    ),
+    private val streamUri: Uri? = null
 ) : Extractor {
 
     companion object {
@@ -57,31 +59,10 @@ class SmartMatroskaExtractor(
         private const val ID_SEEK_POSITION = 0x53AC
         private const val ID_TRACKS = 0x1654AE6B
         private const val ID_CUES = 0x1C53BB6B
-
-        private const val STATE_PROBE_HEAD = 0
-        private const val STATE_SEEKING_SECONDARY_SEEKHEAD = 1
-        private const val STATE_SEEKING_TRACKS = 2
-        private const val STATE_SEEKING_START = 3
-        private const val STATE_DELEGATING = 4
+        private const val ID_CLUSTER = 0x1F43B675
 
         private const val PEEK_BUFFER_SIZE = 4096
-
-        private fun findField(fieldName: String): Field? {
-            return try {
-                MatroskaExtractor::class.java.getDeclaredField(fieldName).apply { isAccessible = true }
-            } catch (_: Exception) {
-                try {
-                    MatroskaExtractor::class.java.declaredFields.firstOrNull {
-                        it.name.equals(fieldName, ignoreCase = true)
-                    }?.apply { isAccessible = true }
-                } catch (_: Exception) {
-                    null
-                }
-            }
-        }
-
-        private val cuesContentPositionField: Field? = findField("cuesContentPosition")
-        private val segmentContentPositionField: Field? = findField("segmentContentPosition")
+        private const val TAIL_SLICE_BYTES = 65536L
 
         /**
          * Parses an EBML Variable-Length Integer (vint).
@@ -138,41 +119,23 @@ class SmartMatroskaExtractor(
         }
     }
 
-    private class InterceptingExtractorOutput(
-        private val target: ExtractorOutput
-    ) : ExtractorOutput {
-        val registeredTrackIds = mutableSetOf<Int>()
-        var tracksEndedCalled = false
+    private data class SplitSeekHeadInfo(
+        val cluster0Offset: Long,
+        val secondarySeekHeadAbsPos: Long,
+        val fileLength: Long
+    )
 
-        override fun track(id: Int, type: Int): TrackOutput {
-            registeredTrackIds.add(id)
-            return target.track(id, type)
-        }
+    private data class ExtractedMetadata(
+        val tracksBytes: ByteArray,
+        val cuesBytes: ByteArray?
+    )
 
-        override fun endTracks() {
-            tracksEndedCalled = true
-            target.endTracks()
-        }
-
-        override fun seekMap(seekMap: androidx.media3.extractor.SeekMap) {
-            target.seekMap(seekMap)
-        }
-    }
-
-    private var state = STATE_PROBE_HEAD
-    private var segmentContentPosition: Long = -1L
-    private var targetSecondarySeekHeadOffset: Long = -1L
-    private var targetTracksOffset: Long = -1L
-    private var cachedCuesOffset: Long = -1L
-    private var extractorOutput: ExtractorOutput? = null
-    private var wrappedOutput: InterceptingExtractorOutput? = null
-    private var seekTracksStepCount = 0
+    private var syntheticInput: SyntheticTracksExtractorInput? = null
+    private var isFirstRead = true
+    private var detectedSplitInfo: SplitSeekHeadInfo? = null
 
     override fun init(output: ExtractorOutput) {
-        this.extractorOutput = output
-        val intercepted = InterceptingExtractorOutput(output)
-        this.wrappedOutput = intercepted
-        delegate.init(intercepted)
+        delegate.init(output)
     }
 
     override fun sniff(input: ExtractorInput): Boolean {
@@ -180,11 +143,11 @@ class SmartMatroskaExtractor(
     }
 
     override fun seek(position: Long, timeUs: Long) {
-        if (state == STATE_SEEKING_START) {
-            delegate.seek(0L, 0L)
-            injectCuesAndSegment(cachedCuesOffset, segmentContentPosition)
-            state = STATE_DELEGATING
-        } else if (state == STATE_DELEGATING) {
+        val activeSynth = syntheticInput
+        if (activeSynth != null) {
+            activeSynth.resetToPhysicalPosition(position)
+            delegate.seek(activeSynth.position, timeUs)
+        } else {
             delegate.seek(position, timeUs)
         }
     }
@@ -194,86 +157,60 @@ class SmartMatroskaExtractor(
     }
 
     override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int {
-        when (state) {
-            STATE_PROBE_HEAD -> {
-                if (input.position == 0L) {
-                    val secondarySeekHeadPos = probeForSecondarySeekHead(input)
-                    if (secondarySeekHeadPos != null && secondarySeekHeadPos > 0L) {
-                        Log.i(TAG, "Detected Split-SeekHead MKV. Secondary SeekHead at EOF ($secondarySeekHeadPos). Jumping to EOF...")
-                        targetSecondarySeekHeadOffset = secondarySeekHeadPos
-                        state = STATE_SEEKING_SECONDARY_SEEKHEAD
-                        seekPosition.position = secondarySeekHeadPos
-                        return Extractor.RESULT_SEEK
-                    }
-                }
-                state = STATE_DELEGATING
-                return delegate.read(input, seekPosition)
-            }
-
-            STATE_SEEKING_SECONDARY_SEEKHEAD -> {
-                val metadata = parseSecondarySeekHead(input)
-                if (metadata != null) {
-                    val (tracksAbsPos, cuesAbsPos) = metadata
-                    Log.i(TAG, "Secondary SeekHead parsed: Tracks at $tracksAbsPos, Cues at $cuesAbsPos")
-                    cachedCuesOffset = cuesAbsPos
-                    injectCuesAndSegment(cuesAbsPos, segmentContentPosition)
-
-                    if (tracksAbsPos > 0L) {
-                        targetTracksOffset = tracksAbsPos
-                        seekTracksStepCount = 0
-                        state = STATE_SEEKING_TRACKS
-                        seekPosition.position = tracksAbsPos
-                        return Extractor.RESULT_SEEK
+        if (syntheticInput == null && isFirstRead && input.position == 0L) {
+            isFirstRead = false
+            val splitInfo = probeForSplitSeekHead(input)
+            if (splitInfo != null) {
+                detectedSplitInfo = splitInfo
+                Log.i(TAG, "Split-SeekHead MKV detected! Cluster 0 at ${splitInfo.cluster0Offset}, SecSeekHead at ${splitInfo.secondarySeekHeadAbsPos}. Fetching tail metadata slice...")
+                val tailBytes = fetchTailSlice(splitInfo.fileLength)
+                if (tailBytes != null) {
+                    val metadata = extractTracksAndCues(tailBytes)
+                    if (metadata != null) {
+                        val syntheticPayload = if (metadata.cuesBytes != null) {
+                            metadata.tracksBytes + metadata.cuesBytes
+                        } else {
+                            metadata.tracksBytes
+                        }
+                        Log.i(TAG, "Synthetic stream spliced! Splicing Tracks (${metadata.tracksBytes.size} bytes) + Cues (${metadata.cuesBytes?.size ?: 0} bytes) before Cluster 0 at ${splitInfo.cluster0Offset}")
+                        syntheticInput = SyntheticTracksExtractorInput(
+                            originalInput = input,
+                            cluster0Offset = splitInfo.cluster0Offset,
+                            syntheticData = syntheticPayload
+                        )
+                    } else {
+                        Log.w(TAG, "Could not extract Tracks/Cues from tail slice — falling back to standard extractor.")
                     }
                 } else {
-                    Log.w(TAG, "Could not parse Secondary SeekHead at $targetSecondarySeekHeadOffset — falling back to normal streaming.")
+                    Log.w(TAG, "Could not fetch tail slice — falling back to standard extractor.")
                 }
-                state = STATE_DELEGATING
-                seekPosition.position = 0L
-                return Extractor.RESULT_SEEK
-            }
-
-            STATE_SEEKING_TRACKS -> {
-                seekTracksStepCount++
-                try {
-                    delegate.read(input, seekPosition)
-                } catch (e: Exception) {
-                    Log.w(TAG, "Exception during tracks parse at EOF: ${e.message}")
-                }
-                val count = wrappedOutput?.registeredTrackIds?.size ?: 0
-                val tracksEnded = wrappedOutput?.tracksEndedCalled ?: false
-
-                if (count > 0 || tracksEnded || seekTracksStepCount > 40) {
-                    Log.i(TAG, "Tracks parsed at EOF (count=$count, tracksEnded=$tracksEnded, steps=$seekTracksStepCount)! Re-injecting Cues and seeking back to 0L...")
-                    injectCuesAndSegment(cachedCuesOffset, segmentContentPosition)
-                    state = STATE_SEEKING_START
-                    seekPosition.position = 0L
-                    return Extractor.RESULT_SEEK
-                }
-                // Continue reading tracks slice if not yet finished
-                return Extractor.RESULT_CONTINUE
-            }
-
-            STATE_SEEKING_START -> {
-                // Player has seeked back to 0L. Reset parser state while preserving parsed tracks
-                delegate.seek(0L, 0L)
-                injectCuesAndSegment(cachedCuesOffset, segmentContentPosition)
-                state = STATE_DELEGATING
-                return delegate.read(input, seekPosition)
-            }
-
-            STATE_DELEGATING -> {
-                return delegate.read(input, seekPosition)
             }
         }
-        return delegate.read(input, seekPosition)
+
+        val activeInput = syntheticInput ?: input
+        val result = delegate.read(activeInput, seekPosition)
+
+        // If native extractor requested a seek while using synthetic stream, map virtual position back to physical
+        if (result == Extractor.RESULT_SEEK && syntheticInput != null) {
+            val virtualTarget = seekPosition.position
+            val split = detectedSplitInfo
+            val synth = syntheticInput
+            if (split != null && synth != null) {
+                val synthLen = synth.length - input.length
+                if (synthLen > 0 && virtualTarget >= split.cluster0Offset + synthLen) {
+                    seekPosition.position = virtualTarget - synthLen
+                }
+            }
+        }
+
+        return result
     }
 
     /**
      * Peeks the root SeekHead in the first 4KB of the file.
-     * Returns the absolute file offset of the Secondary SeekHead if present and Tracks is missing, or null.
+     * Returns [SplitSeekHeadInfo] if a Secondary SeekHead at EOF exists and Tracks is missing from head.
      */
-    private fun probeForSecondarySeekHead(input: ExtractorInput): Long? {
+    private fun probeForSplitSeekHead(input: ExtractorInput): SplitSeekHeadInfo? {
         val peekBuffer = ByteArray(PEEK_BUFFER_SIZE)
         val bytesRead = try {
             input.peek(peekBuffer, 0, PEEK_BUFFER_SIZE)
@@ -297,7 +234,7 @@ class SmartMatroskaExtractor(
         if (segHeaderOffset == -1) return null
 
         val segHeader = readElementHeader(peekBuffer, segHeaderOffset, bytesRead) ?: return null
-        segmentContentPosition = (segHeaderOffset + segHeader.second).toLong()
+        val segmentContentPosition = (segHeaderOffset + segHeader.second).toLong()
 
         // 2. Locate Root SeekHead (0x114D9B74)
         var seekHeadOffset = -1
@@ -365,118 +302,136 @@ class SmartMatroskaExtractor(
             }
         }
 
-        // If tracks are already indexed in the root SeekHead, normal MatroskaExtractor handles it natively
+        // If tracks are already indexed in the root SeekHead, standard MatroskaExtractor handles it natively
         if (hasTracksInRootSeekHead || secondarySeekHeadRelPos == null) {
             return null
         }
 
-        return segmentContentPosition + secondarySeekHeadRelPos
-    }
-
-    /**
-     * Peeks and parses the Secondary SeekHead at EOF.
-     * Returns Pair(tracksAbsolutePosition, cuesAbsolutePosition).
-     */
-    private fun parseSecondarySeekHead(input: ExtractorInput): Pair<Long, Long>? {
-        val peekBuffer = ByteArray(PEEK_BUFFER_SIZE)
-        val bytesRead = try {
-            input.peek(peekBuffer, 0, PEEK_BUFFER_SIZE)
-        } catch (_: Exception) {
-            return null
-        }
-        if (bytesRead < 32) return null
-
-        var seekHeadOffset = -1
-        for (i in 0 until bytesRead - 8) {
-            if (peekBuffer[i] == 0x11.toByte() &&
-                peekBuffer[i + 1] == 0x4D.toByte() &&
-                peekBuffer[i + 2] == 0x9B.toByte() &&
-                peekBuffer[i + 3] == 0x74.toByte()
+        // 3. Locate Cluster 0 offset (0x1F43B675)
+        var cluster0Offset = -1L
+        for (i in 0 until bytesRead - 4) {
+            if (peekBuffer[i] == 0x1F.toByte() &&
+                peekBuffer[i + 1] == 0x43.toByte() &&
+                peekBuffer[i + 2] == 0xB6.toByte() &&
+                peekBuffer[i + 3] == 0x75.toByte()
             ) {
-                seekHeadOffset = i
+                cluster0Offset = i.toLong()
                 break
             }
         }
-        if (seekHeadOffset == -1) return null
-
-        val seekHeadHeader = readElementHeader(peekBuffer, seekHeadOffset, bytesRead) ?: return null
-        val seekHeadContentStart = seekHeadOffset + seekHeadHeader.second
-        val seekHeadContentEnd = minOf(seekHeadContentStart + seekHeadHeader.third.toInt(), bytesRead)
-
-        var tracksRelPos: Long? = null
-        var cuesRelPos: Long? = null
-
-        var curr = seekHeadContentStart
-        while (curr < seekHeadContentEnd) {
-            val seekElem = readElementHeader(peekBuffer, curr, seekHeadContentEnd) ?: break
-            if (seekElem.first == ID_SEEK) {
-                val seekEnd = minOf(curr + seekElem.second + seekElem.third.toInt(), seekHeadContentEnd)
-                var subCurr = curr + seekElem.second
-                var seekId: Int? = null
-                var seekPos: Long? = null
-
-                while (subCurr < seekEnd) {
-                    val subElem = readElementHeader(peekBuffer, subCurr, seekEnd) ?: break
-                    val subContentStart = subCurr + subElem.second
-                    val subContentLen = subElem.third.toInt()
-                    if (subContentStart + subContentLen > seekEnd) break
-
-                    when (subElem.first) {
-                        ID_SEEK_ID -> {
-                            var idVal = 0
-                            for (b in 0 until minOf(subContentLen, 4)) {
-                                idVal = (idVal shl 8) or (peekBuffer[subContentStart + b].toInt() and 0xFF)
-                            }
-                            seekId = idVal
-                        }
-                        ID_SEEK_POSITION -> {
-                            var posVal = 0L
-                            for (b in 0 until minOf(subContentLen, 8)) {
-                                posVal = (posVal shl 8) or (peekBuffer[subContentStart + b].toInt() and 0xFF).toLong()
-                            }
-                            seekPos = posVal
-                        }
-                    }
-                    subCurr = subContentStart + subContentLen
-                }
-
-                if (seekId == ID_TRACKS && seekPos != null) {
-                    tracksRelPos = seekPos
-                } else if (seekId == ID_CUES && seekPos != null) {
-                    cuesRelPos = seekPos
-                }
-                curr = seekEnd
-            } else {
-                curr += seekElem.second + seekElem.third.toInt()
-            }
+        if (cluster0Offset == -1L) {
+            // Default HandBrake cluster 0 offset fallback
+            cluster0Offset = minOf(bytesRead.toLong(), 2966L)
         }
 
-        if (tracksRelPos == null) return null
+        val fileLength = input.length
+        if (fileLength <= 0L) return null
 
-        val basePos = if (segmentContentPosition > 0L) segmentContentPosition else 0L
-        val absTracksPos = basePos + tracksRelPos
-        val absCuesPos = if (cuesRelPos != null) basePos + cuesRelPos else -1L
-
-        return Pair(absTracksPos, absCuesPos)
+        return SplitSeekHeadInfo(
+            cluster0Offset = cluster0Offset,
+            secondarySeekHeadAbsPos = segmentContentPosition + secondarySeekHeadRelPos,
+            fileLength = fileLength
+        )
     }
 
+    /**
+     * Fetches the last 64 KB of the file over HTTP Range or from local storage.
+     */
+    private fun fetchTailSlice(fileLength: Long): ByteArray? {
+        val tailLen = minOf(TAIL_SLICE_BYTES, fileLength)
+        val startByte = fileLength - tailLen
+        val endByte = fileLength - 1
+
+        // 1. HTTP/HTTPS stream
+        if (streamUri != null && (streamUri.scheme == "http" || streamUri.scheme == "https")) {
+            try {
+                val req = Request.Builder()
+                    .url(streamUri.toString())
+                    .header("Range", "bytes=$startByte-$endByte")
+                    .header("User-Agent", "StreamHub/1.0 (Android; ExoPlayer)")
+                    .build()
+                SharedHttpClient.streamingClient.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful || resp.code == 206) {
+                        val bodyBytes = resp.body?.bytes()
+                        if (bodyBytes != null && bodyBytes.size >= 128) {
+                            return bodyBytes
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to fetch tail slice over HTTP: ${e.message}")
+            }
+        }
+
+        // 2. Local file stream
+        if (streamUri != null && (streamUri.scheme == "file" || streamUri.scheme == null)) {
+            try {
+                val path = streamUri.path ?: streamUri.toString()
+                val file = java.io.File(path)
+                if (file.exists()) {
+                    val buf = ByteArray(tailLen.toInt())
+                    java.io.RandomAccessFile(file, "r").use { raf ->
+                        raf.seek(startByte)
+                        raf.readFully(buf)
+                    }
+                    return buf
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to fetch tail slice from local file: ${e.message}")
+            }
+        }
+
+        return null
+    }
 
     /**
-     * Injects the discovered Cues and Segment byte positions into the delegate [MatroskaExtractor]
-     * so that native seek map construction succeeds.
+     * Extracts [ID_TRACKS] and [ID_CUES] byte slices from the tail buffer.
      */
-    private fun injectCuesAndSegment(cuesAbsPos: Long, segmentPos: Long) {
-        try {
-            if (cuesAbsPos > 0L) {
-                cuesContentPositionField?.setLong(delegate, cuesAbsPos)
+    private fun extractTracksAndCues(tailBytes: ByteArray): ExtractedMetadata? {
+        // 1. Find ID_TRACKS (0x1654AE6B)
+        var tracksIdx = -1
+        for (i in 0 until tailBytes.size - 4) {
+            if (tailBytes[i] == 0x16.toByte() &&
+                tailBytes[i + 1] == 0x54.toByte() &&
+                tailBytes[i + 2] == 0xAE.toByte() &&
+                tailBytes[i + 3] == 0x6B.toByte()
+            ) {
+                tracksIdx = i
+                break
             }
-            if (segmentPos > 0L) {
-                segmentContentPositionField?.setLong(delegate, segmentPos)
-            }
-            Log.d(TAG, "Injected cuesContentPosition=$cuesAbsPos, segmentContentPosition=$segmentPos into MatroskaExtractor")
-        } catch (e: Exception) {
-            Log.w(TAG, "Reflection error injecting cues/segment: ${e.message}", e)
         }
+        if (tracksIdx == -1) return null
+
+        val tracksHeader = readElementHeader(tailBytes, tracksIdx, tailBytes.size) ?: return null
+        val tracksLen = tracksHeader.second + tracksHeader.third.toInt()
+        if (tracksIdx + tracksLen > tailBytes.size) return null
+        val tracksBytes = tailBytes.copyOfRange(tracksIdx, tracksIdx + tracksLen)
+
+        // 2. Find ID_CUES (0x1C53BB6B)
+        var cuesIdx = -1
+        for (i in 0 until tailBytes.size - 4) {
+            if (tailBytes[i] == 0x1C.toByte() &&
+                tailBytes[i + 1] == 0x53.toByte() &&
+                tailBytes[i + 2] == 0xBB.toByte() &&
+                tailBytes[i + 3] == 0x6B.toByte()
+            ) {
+                cuesIdx = i
+                break
+            }
+        }
+
+        var cuesBytes: ByteArray? = null
+        if (cuesIdx != -1) {
+            val cuesHeader = readElementHeader(tailBytes, cuesIdx, tailBytes.size)
+            if (cuesHeader != null) {
+                val cuesLen = cuesHeader.second + cuesHeader.third.toInt()
+                if (cuesIdx + cuesLen <= tailBytes.size) {
+                    cuesBytes = tailBytes.copyOfRange(cuesIdx, cuesIdx + cuesLen)
+                }
+            }
+        }
+
+        return ExtractedMetadata(tracksBytes, cuesBytes)
     }
 }
 
@@ -507,7 +462,7 @@ class SmartExtractorsFactory(
         val extractors = baseFactory.createExtractors(uri, responseHeaders)
         return extractors.map { extractor ->
             if (extractor is MatroskaExtractor) {
-                SmartMatroskaExtractor(extractor)
+                SmartMatroskaExtractor(extractor, uri)
             } else {
                 extractor
             }
