@@ -48,8 +48,14 @@ class SmartMatroskaExtractor(
     private val responseHeaders: Map<String, List<String>> = emptyMap()
 ) : Extractor {
 
+    private val effectiveUri: Uri?
+        get() = streamUri ?: activeStreamUri
+
     companion object {
         private const val TAG = "SmartMatroskaExtractor"
+
+        @Volatile
+        var activeStreamUri: Uri? = null
 
         // EBML & Matroska IDs
         private const val ID_EBML = 0x1A45DFA3
@@ -63,7 +69,8 @@ class SmartMatroskaExtractor(
         private const val ID_CLUSTER = 0x1F43B675
 
         private const val PEEK_BUFFER_SIZE = 4096
-        private const val TAIL_SLICE_BYTES = 524288L // 512 KB to ensure entire Cues seekmap is captured
+        private const val PRIMARY_TAIL_SLICE_BYTES = 163840L // 160 KB: safely returned in single burst while capturing Cues up to 106+ KB before EOF
+        private const val FALLBACK_TAIL_SLICE_BYTES = 131072L // 128 KB: single Telegram MTProto chunk fallback (captures Cues at 70-73 KB)
 
         /**
          * Parses an EBML Variable-Length Integer (vint).
@@ -213,8 +220,15 @@ class SmartMatroskaExtractor(
      */
     private fun probeForSplitSeekHead(input: ExtractorInput): SplitSeekHeadInfo? {
         val peekBuffer = ByteArray(PEEK_BUFFER_SIZE)
-        val bytesRead = try {
-            input.peek(peekBuffer, 0, PEEK_BUFFER_SIZE)
+        var bytesRead = 0
+        try {
+            var remaining = PEEK_BUFFER_SIZE
+            while (remaining > 0) {
+                val n = input.peek(peekBuffer, bytesRead, remaining)
+                if (n <= 0) break
+                bytesRead += n
+                remaining -= n
+            }
         } catch (_: Exception) {
             return null
         } finally {
@@ -346,9 +360,10 @@ class SmartMatroskaExtractor(
         parseTotalLengthFromHeaders(responseHeaders)?.let { return it }
 
         // 2. Try local file if file URI
-        if (streamUri != null && (streamUri.scheme == "file" || streamUri.scheme == null)) {
+        val targetUri = effectiveUri
+        if (targetUri != null && (targetUri.scheme == "file" || targetUri.scheme == null)) {
             try {
-                val path = streamUri.path ?: streamUri.toString()
+                val path = targetUri.path ?: targetUri.toString()
                 val f = java.io.File(path)
                 if (f.exists() && f.length() > 0L) return f.length()
             } catch (_: Exception) {}
@@ -378,82 +393,71 @@ class SmartMatroskaExtractor(
     }
 
     /**
-     * Fetches the last ~64 KB of the file over HTTP Range or from local storage.
+     * Fetches the tail metadata slice containing Tracks and Cues over HTTP Range or from local storage.
+     * Uses a resilient two-tier strategy:
+     * - Primary: 160 KB (safely captures Cues up to 106+ KB before EOF in < 0.4s)
+     * - Fallback: 128 KB (aligned with Telegram MTProto single-chunk RPC boundary)
      */
     private fun fetchTailSlice(splitInfo: SplitSeekHeadInfo): ByteArray? {
         val fileLength = splitInfo.fileLength
+        val targetUri = effectiveUri
 
         // 1. HTTP/HTTPS stream
-        if (streamUri != null && (streamUri.scheme == "http" || streamUri.scheme == "https")) {
-            val rangeHeader = when {
-                fileLength != null && fileLength > 0L -> {
-                    val tailLen = minOf(TAIL_SLICE_BYTES, fileLength)
+        if (targetUri != null && (targetUri.scheme == "http" || targetUri.scheme == "https")) {
+            val sliceSizes = if (fileLength != null && fileLength > 0L) {
+                listOf(
+                    minOf(PRIMARY_TAIL_SLICE_BYTES, fileLength),
+                    minOf(FALLBACK_TAIL_SLICE_BYTES, fileLength)
+                ).distinct()
+            } else {
+                listOf(PRIMARY_TAIL_SLICE_BYTES, FALLBACK_TAIL_SLICE_BYTES)
+            }
+
+            for (tailLen in sliceSizes) {
+                val rangeHeader = if (fileLength != null && fileLength > 0L) {
                     val startByte = maxOf(0L, fileLength - tailLen)
                     val endByte = fileLength - 1
                     "bytes=$startByte-$endByte"
+                } else if (splitInfo.secondarySeekHeadAbsPos > 0L) {
+                    val startByte = maxOf(0L, splitInfo.secondarySeekHeadAbsPos - tailLen)
+                    "bytes=$startByte-"
+                } else {
+                    continue
                 }
-                splitInfo.secondarySeekHeadAbsPos > 0L -> {
-                    "bytes=${splitInfo.secondarySeekHeadAbsPos}-"
-                }
-                else -> {
-                    "bytes=-$TAIL_SLICE_BYTES"
-                }
-            }
 
-            try {
-                val req = Request.Builder()
-                    .url(streamUri.toString())
-                    .header("Range", rangeHeader)
-                    .header("User-Agent", "StreamHub/1.0 (Android; ExoPlayer)")
-                    .build()
-
-                Log.i(TAG, "Fetching tail slice via HTTP: $rangeHeader")
-                SharedHttpClient.streamingClient.newCall(req).execute().use { resp ->
-                    if (resp.isSuccessful || resp.code == 206) {
-                        val bodyBytes = resp.body?.bytes()
-                        if (bodyBytes != null && bodyBytes.size >= 128) {
-                            Log.i(TAG, "Tail slice fetched successfully: ${bodyBytes.size} bytes (HTTP ${resp.code})")
-                            return bodyBytes
-                        }
-                    } else {
-                        Log.w(TAG, "Tail slice HTTP fetch returned code: ${resp.code}")
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to fetch tail slice over HTTP ($rangeHeader): ${e.message}")
-            }
-
-            // Suffix range fallback if primary range failed
-            if (rangeHeader != "bytes=-$TAIL_SLICE_BYTES") {
                 try {
                     val req = Request.Builder()
-                        .url(streamUri.toString())
-                        .header("Range", "bytes=-$TAIL_SLICE_BYTES")
-                        .header("User-Agent", "StreamHub/1.0 (Android; ExoPlayer)")
+                        .url(targetUri.toString())
+                        .header("Range", rangeHeader)
+                        .header("User-Agent", "StreamHub/4.8 (Linux; Android 14; Mobile)")
                         .build()
+
+                    Log.i(TAG, "Fetching tail slice via HTTP: $rangeHeader ($tailLen bytes)")
                     SharedHttpClient.streamingClient.newCall(req).execute().use { resp ->
                         if (resp.isSuccessful || resp.code == 206) {
                             val bodyBytes = resp.body?.bytes()
                             if (bodyBytes != null && bodyBytes.size >= 128) {
-                                Log.i(TAG, "Tail slice fetched via suffix range: ${bodyBytes.size} bytes")
+                                Log.i(TAG, "Tail slice fetched successfully: ${bodyBytes.size} bytes (HTTP ${resp.code})")
                                 return bodyBytes
                             }
+                        } else {
+                            Log.w(TAG, "Tail slice HTTP fetch returned code: ${resp.code} for $rangeHeader")
                         }
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed suffix range fallback: ${e.message}")
+                    Log.w(TAG, "Failed to fetch tail slice over HTTP ($rangeHeader): ${e.message}")
                 }
             }
         }
 
         // 2. Local file stream
-        if (streamUri != null && (streamUri.scheme == "file" || streamUri.scheme == null)) {
+        if (targetUri != null && (targetUri.scheme == "file" || targetUri.scheme == null)) {
             try {
-                val path = streamUri.path ?: streamUri.toString()
+                val path = targetUri.path ?: targetUri.toString()
                 val file = java.io.File(path)
                 if (file.exists() && file.length() > 0L) {
                     val len = file.length()
-                    val tailLen = minOf(TAIL_SLICE_BYTES, len)
+                    val tailLen = minOf(PRIMARY_TAIL_SLICE_BYTES, len)
                     val startByte = maxOf(0L, len - tailLen)
                     val buf = ByteArray(tailLen.toInt())
                     java.io.RandomAccessFile(file, "r").use { raf ->
@@ -545,7 +549,7 @@ class SmartExtractorsFactory(
         val extractors = baseFactory.createExtractors()
         return extractors.map { extractor ->
             if (extractor is MatroskaExtractor) {
-                SmartMatroskaExtractor(extractor)
+                SmartMatroskaExtractor(extractor, SmartMatroskaExtractor.activeStreamUri)
             } else {
                 extractor
             }

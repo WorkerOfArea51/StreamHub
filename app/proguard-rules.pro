@@ -100,10 +100,8 @@
 -keep class androidx.media3.datasource.okhttp.** { *; }
 -dontwarn androidx.media3.datasource.okhttp.**
 
-# --- SmartMatroskaExtractor Reflection & Media3 Matroska Extractor ---
+# --- SmartMatroskaExtractor Reflection & Media3 Extractor Package ---
 -keep class com.streamhub.app.player.extractor.** { *; }
--keep class androidx.media3.extractor.mkv.** {
-    *;
-}
--dontwarn androidx.media3.extractor.mkv.**
+-keep class androidx.media3.extractor.** { *; }
+-dontwarn androidx.media3.extractor.**
 

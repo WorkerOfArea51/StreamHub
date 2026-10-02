@@ -1024,6 +1024,7 @@ class StreamPlayerViewModel : ViewModel() {
                 )
             }
             val uri = if (resolvedUrl.startsWith("/")) android.net.Uri.fromFile(java.io.File(resolvedUrl)) else android.net.Uri.parse(resolvedUrl)
+            com.streamhub.app.player.extractor.SmartMatroskaExtractor.activeStreamUri = uri
             val cacheKey = StreamDataSourceFactory.sanitizeCacheKey(uri)
             val mediaItem = ExoMediaItem.fromUri(uri)
                 .buildUpon()
@@ -1862,6 +1863,7 @@ class StreamPlayerViewModel : ViewModel() {
         bandwidthTracker?.reset()
 
         val uri = if (urlToUse.startsWith("/")) android.net.Uri.fromFile(java.io.File(urlToUse)) else android.net.Uri.parse(urlToUse)
+        com.streamhub.app.player.extractor.SmartMatroskaExtractor.activeStreamUri = uri
         val cacheKey = StreamDataSourceFactory.sanitizeCacheKey(uri)
         val mediaItem = ExoMediaItem.fromUri(uri)
             .buildUpon()
