@@ -44,7 +44,8 @@ class SmartMatroskaExtractor(
         androidx.media3.extractor.text.SubtitleParser.Factory.UNSUPPORTED,
         MatroskaExtractor.FLAG_EMIT_RAW_SUBTITLE_DATA
     ),
-    private val streamUri: Uri? = null
+    private val streamUri: Uri? = null,
+    private val responseHeaders: Map<String, List<String>> = emptyMap()
 ) : Extractor {
 
     companion object {
@@ -62,7 +63,7 @@ class SmartMatroskaExtractor(
         private const val ID_CLUSTER = 0x1F43B675
 
         private const val PEEK_BUFFER_SIZE = 4096
-        private const val TAIL_SLICE_BYTES = 65536L
+        private const val TAIL_SLICE_BYTES = 524288L // 512 KB to ensure entire Cues seekmap is captured
 
         /**
          * Parses an EBML Variable-Length Integer (vint).
@@ -122,7 +123,7 @@ class SmartMatroskaExtractor(
     private data class SplitSeekHeadInfo(
         val cluster0Offset: Long,
         val secondarySeekHeadAbsPos: Long,
-        val fileLength: Long
+        val fileLength: Long?
     )
 
     private data class ExtractedMetadata(
@@ -133,6 +134,9 @@ class SmartMatroskaExtractor(
     private var syntheticInput: SyntheticTracksExtractorInput? = null
     private var isFirstRead = true
     private var detectedSplitInfo: SplitSeekHeadInfo? = null
+    private var syntheticDataSize: Long = 0L
+
+    private var hasResetPeekAfterSplicing = false
 
     override fun init(output: ExtractorOutput) {
         delegate.init(output)
@@ -143,16 +147,12 @@ class SmartMatroskaExtractor(
     }
 
     override fun seek(position: Long, timeUs: Long) {
-        val activeSynth = syntheticInput
-        if (activeSynth != null) {
-            activeSynth.resetToPhysicalPosition(position)
-            delegate.seek(activeSynth.position, timeUs)
-        } else {
-            delegate.seek(position, timeUs)
-        }
+        syntheticInput?.markDone()
+        delegate.seek(position, timeUs)
     }
 
     override fun release() {
+        syntheticInput = null
         delegate.release()
     }
 
@@ -162,8 +162,8 @@ class SmartMatroskaExtractor(
             val splitInfo = probeForSplitSeekHead(input)
             if (splitInfo != null) {
                 detectedSplitInfo = splitInfo
-                Log.i(TAG, "Split-SeekHead MKV detected! Cluster 0 at ${splitInfo.cluster0Offset}, SecSeekHead at ${splitInfo.secondarySeekHeadAbsPos}. Fetching tail metadata slice...")
-                val tailBytes = fetchTailSlice(splitInfo.fileLength)
+                Log.i(TAG, "Split-SeekHead MKV detected! Cluster 0 at ${splitInfo.cluster0Offset}, SecSeekHead at ${splitInfo.secondarySeekHeadAbsPos}, fileLength=${splitInfo.fileLength}. Fetching tail metadata slice...")
+                val tailBytes = fetchTailSlice(splitInfo)
                 if (tailBytes != null) {
                     val metadata = extractTracksAndCues(tailBytes)
                     if (metadata != null) {
@@ -172,6 +172,7 @@ class SmartMatroskaExtractor(
                         } else {
                             metadata.tracksBytes
                         }
+                        syntheticDataSize = syntheticPayload.size.toLong()
                         Log.i(TAG, "Synthetic stream spliced! Splicing Tracks (${metadata.tracksBytes.size} bytes) + Cues (${metadata.cuesBytes?.size ?: 0} bytes) before Cluster 0 at ${splitInfo.cluster0Offset}")
                         syntheticInput = SyntheticTracksExtractorInput(
                             originalInput = input,
@@ -187,22 +188,22 @@ class SmartMatroskaExtractor(
             }
         }
 
-        val activeInput = syntheticInput ?: input
-        val result = delegate.read(activeInput, seekPosition)
-
-        // If native extractor requested a seek while using synthetic stream, map virtual position back to physical
-        if (result == Extractor.RESULT_SEEK && syntheticInput != null) {
-            val virtualTarget = seekPosition.position
-            val split = detectedSplitInfo
-            val synth = syntheticInput
-            if (split != null && synth != null) {
-                val synthLen = synth.length - input.length
-                if (synthLen > 0 && virtualTarget >= split.cluster0Offset + synthLen) {
-                    seekPosition.position = virtualTarget - synthLen
-                }
+        val synth = syntheticInput
+        val activeInput = if (synth != null && !synth.isDone) {
+            synth
+        } else {
+            if (synth != null && synth.isDone && !hasResetPeekAfterSplicing) {
+                hasResetPeekAfterSplicing = true
+                input.resetPeekPosition()
+                Log.i(TAG, "Synthetic splicing complete. Direct physical streaming engaged at position ${input.position}.")
             }
+            input
         }
 
+        val result = delegate.read(activeInput, seekPosition)
+        if (result == Extractor.RESULT_SEEK) {
+            Log.d(TAG, "delegate.read requested seek to physical position ${seekPosition.position}")
+        }
         return result
     }
 
@@ -216,6 +217,8 @@ class SmartMatroskaExtractor(
             input.peek(peekBuffer, 0, PEEK_BUFFER_SIZE)
         } catch (_: Exception) {
             return null
+        } finally {
+            input.resetPeekPosition()
         }
         if (bytesRead < 64) return null
 
@@ -307,59 +310,139 @@ class SmartMatroskaExtractor(
             return null
         }
 
-        // 3. Locate Cluster 0 offset (0x1F43B675)
+        // 3. Locate Cluster 0 offset by walking top-level EBML elements inside Segment
+        var scanPos = segmentContentPosition.toInt()
         var cluster0Offset = -1L
-        for (i in 0 until bytesRead - 4) {
-            if (peekBuffer[i] == 0x1F.toByte() &&
-                peekBuffer[i + 1] == 0x43.toByte() &&
-                peekBuffer[i + 2] == 0xB6.toByte() &&
-                peekBuffer[i + 3] == 0x75.toByte()
-            ) {
-                cluster0Offset = i.toLong()
+        while (scanPos < bytesRead - 4) {
+            val elem = readElementHeader(peekBuffer, scanPos, bytesRead) ?: break
+            if (elem.first == ID_CLUSTER) {
+                cluster0Offset = scanPos.toLong()
                 break
             }
+            scanPos += elem.second + elem.third.toInt()
         }
         if (cluster0Offset == -1L) {
-            // Default HandBrake cluster 0 offset fallback
-            cluster0Offset = minOf(bytesRead.toLong(), 2966L)
+            // Cluster starts immediately after the last parsed header/void element
+            cluster0Offset = scanPos.toLong()
         }
+        Log.i(TAG, "Located true Cluster 0 offset at byte $cluster0Offset")
 
-        val fileLength = input.length
-        if (fileLength <= 0L) return null
+        val resolvedLength = resolveFileLength(input)
 
         return SplitSeekHeadInfo(
             cluster0Offset = cluster0Offset,
             secondarySeekHeadAbsPos = segmentContentPosition + secondarySeekHeadRelPos,
-            fileLength = fileLength
+            fileLength = resolvedLength
         )
     }
 
     /**
-     * Fetches the last 64 KB of the file over HTTP Range or from local storage.
+     * Resolves the total file length across input length, HTTP response headers, or local files.
      */
-    private fun fetchTailSlice(fileLength: Long): ByteArray? {
-        val tailLen = minOf(TAIL_SLICE_BYTES, fileLength)
-        val startByte = fileLength - tailLen
-        val endByte = fileLength - 1
+    private fun resolveFileLength(input: ExtractorInput): Long? {
+        if (input.length > 0L) return input.length
+
+        // 1. Try parsing from responseHeaders (Content-Range or Content-Length)
+        parseTotalLengthFromHeaders(responseHeaders)?.let { return it }
+
+        // 2. Try local file if file URI
+        if (streamUri != null && (streamUri.scheme == "file" || streamUri.scheme == null)) {
+            try {
+                val path = streamUri.path ?: streamUri.toString()
+                val f = java.io.File(path)
+                if (f.exists() && f.length() > 0L) return f.length()
+            } catch (_: Exception) {}
+        }
+
+        return null
+    }
+
+    /**
+     * Parses the total length from HTTP headers (Content-Range or Content-Length).
+     */
+    private fun parseTotalLengthFromHeaders(headers: Map<String, List<String>>): Long? {
+        // Try Content-Range (e.g. "bytes 0-1048575/2515331294")
+        headers.entries.firstOrNull { it.key.equals("Content-Range", ignoreCase = true) }
+            ?.value?.firstOrNull()?.let { cr ->
+                val totalStr = cr.substringAfterLast('/', "").trim()
+                val total = totalStr.toLongOrNull()
+                if (total != null && total > 0L) return total
+            }
+        // Try Content-Length
+        headers.entries.firstOrNull { it.key.equals("Content-Length", ignoreCase = true) }
+            ?.value?.firstOrNull()?.let { cl ->
+                val len = cl.trim().toLongOrNull()
+                if (len != null && len > 0L) return len
+            }
+        return null
+    }
+
+    /**
+     * Fetches the last ~64 KB of the file over HTTP Range or from local storage.
+     */
+    private fun fetchTailSlice(splitInfo: SplitSeekHeadInfo): ByteArray? {
+        val fileLength = splitInfo.fileLength
 
         // 1. HTTP/HTTPS stream
         if (streamUri != null && (streamUri.scheme == "http" || streamUri.scheme == "https")) {
+            val rangeHeader = when {
+                fileLength != null && fileLength > 0L -> {
+                    val tailLen = minOf(TAIL_SLICE_BYTES, fileLength)
+                    val startByte = maxOf(0L, fileLength - tailLen)
+                    val endByte = fileLength - 1
+                    "bytes=$startByte-$endByte"
+                }
+                splitInfo.secondarySeekHeadAbsPos > 0L -> {
+                    "bytes=${splitInfo.secondarySeekHeadAbsPos}-"
+                }
+                else -> {
+                    "bytes=-$TAIL_SLICE_BYTES"
+                }
+            }
+
             try {
                 val req = Request.Builder()
                     .url(streamUri.toString())
-                    .header("Range", "bytes=$startByte-$endByte")
+                    .header("Range", rangeHeader)
                     .header("User-Agent", "StreamHub/1.0 (Android; ExoPlayer)")
                     .build()
+
+                Log.i(TAG, "Fetching tail slice via HTTP: $rangeHeader")
                 SharedHttpClient.streamingClient.newCall(req).execute().use { resp ->
                     if (resp.isSuccessful || resp.code == 206) {
                         val bodyBytes = resp.body?.bytes()
                         if (bodyBytes != null && bodyBytes.size >= 128) {
+                            Log.i(TAG, "Tail slice fetched successfully: ${bodyBytes.size} bytes (HTTP ${resp.code})")
                             return bodyBytes
                         }
+                    } else {
+                        Log.w(TAG, "Tail slice HTTP fetch returned code: ${resp.code}")
                     }
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to fetch tail slice over HTTP: ${e.message}")
+                Log.w(TAG, "Failed to fetch tail slice over HTTP ($rangeHeader): ${e.message}")
+            }
+
+            // Suffix range fallback if primary range failed
+            if (rangeHeader != "bytes=-$TAIL_SLICE_BYTES") {
+                try {
+                    val req = Request.Builder()
+                        .url(streamUri.toString())
+                        .header("Range", "bytes=-$TAIL_SLICE_BYTES")
+                        .header("User-Agent", "StreamHub/1.0 (Android; ExoPlayer)")
+                        .build()
+                    SharedHttpClient.streamingClient.newCall(req).execute().use { resp ->
+                        if (resp.isSuccessful || resp.code == 206) {
+                            val bodyBytes = resp.body?.bytes()
+                            if (bodyBytes != null && bodyBytes.size >= 128) {
+                                Log.i(TAG, "Tail slice fetched via suffix range: ${bodyBytes.size} bytes")
+                                return bodyBytes
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed suffix range fallback: ${e.message}")
+                }
             }
         }
 
@@ -368,7 +451,10 @@ class SmartMatroskaExtractor(
             try {
                 val path = streamUri.path ?: streamUri.toString()
                 val file = java.io.File(path)
-                if (file.exists()) {
+                if (file.exists() && file.length() > 0L) {
+                    val len = file.length()
+                    val tailLen = minOf(TAIL_SLICE_BYTES, len)
+                    val startByte = maxOf(0L, len - tailLen)
                     val buf = ByteArray(tailLen.toInt())
                     java.io.RandomAccessFile(file, "r").use { raf ->
                         raf.seek(startByte)
@@ -425,10 +511,18 @@ class SmartMatroskaExtractor(
             val cuesHeader = readElementHeader(tailBytes, cuesIdx, tailBytes.size)
             if (cuesHeader != null) {
                 val cuesLen = cuesHeader.second + cuesHeader.third.toInt()
+                Log.i(TAG, "Found ID_CUES at index $cuesIdx: headerLen=${cuesHeader.second}, contentSize=${cuesHeader.third}, totalLen=$cuesLen (available=${tailBytes.size - cuesIdx})")
                 if (cuesIdx + cuesLen <= tailBytes.size) {
                     cuesBytes = tailBytes.copyOfRange(cuesIdx, cuesIdx + cuesLen)
+                    Log.i(TAG, "Extracted full Cues element: ${cuesBytes.size} bytes")
+                } else {
+                    Log.w(TAG, "Cues element truncated in tail buffer! cuesLen=$cuesLen > available=${tailBytes.size - cuesIdx}")
                 }
+            } else {
+                Log.w(TAG, "Failed to read Cues element header at index $cuesIdx")
             }
+        } else {
+            Log.w(TAG, "ID_CUES not found in ${tailBytes.size} bytes tail buffer")
         }
 
         return ExtractedMetadata(tracksBytes, cuesBytes)
@@ -462,10 +556,11 @@ class SmartExtractorsFactory(
         val extractors = baseFactory.createExtractors(uri, responseHeaders)
         return extractors.map { extractor ->
             if (extractor is MatroskaExtractor) {
-                SmartMatroskaExtractor(extractor, uri)
+                SmartMatroskaExtractor(extractor, uri, responseHeaders)
             } else {
                 extractor
             }
         }.toTypedArray()
     }
 }
+

@@ -37,51 +37,59 @@ class SyntheticTracksExtractorInput(
     private var virtualPos = originalInput.position
     private var virtualPeekPos = originalInput.peekPosition
     private val scratch = ByteArray(4096)
+    private var isSplicingDone = false
+
+    val isDone: Boolean
+        get() = isSplicingDone
+
+    fun markDone() {
+        isSplicingDone = true
+    }
 
     fun resetToPhysicalPosition(physicalPos: Long) {
-        if (physicalPos < cluster0Offset) {
-            virtualPos = physicalPos
-        } else {
-            virtualPos = physicalPos + syntheticLength
-        }
-        virtualPeekPos = virtualPos
+        isSplicingDone = true
+        virtualPos = physicalPos
+        virtualPeekPos = physicalPos
         originalInput.resetPeekPosition()
     }
 
-    override fun getPosition(): Long = virtualPos
+    override fun getPosition(): Long = if (isSplicingDone) originalInput.position else virtualPos
 
-    override fun getPeekPosition(): Long = virtualPeekPos
+    override fun getPeekPosition(): Long = if (isSplicingDone) originalInput.peekPosition else virtualPeekPos
 
-    override fun getLength(): Long {
-        val origLen = originalInput.length
-        return if (origLen == C.LENGTH_UNSET.toLong()) C.LENGTH_UNSET.toLong() else origLen + syntheticLength
-    }
+    override fun getLength(): Long = originalInput.length
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         if (length <= 0) return 0
-        if (virtualPos < cluster0Offset) {
-            val maxCanRead = minOf(length.toLong(), cluster0Offset - virtualPos).toInt()
-            val readBytes = originalInput.read(buffer, offset, maxCanRead)
-            if (readBytes > 0) {
-                virtualPos += readBytes
+        if (!isSplicingDone) {
+            if (virtualPos < cluster0Offset) {
+                val maxCanRead = minOf(length.toLong(), cluster0Offset - virtualPos).toInt()
+                val readBytes = originalInput.read(buffer, offset, maxCanRead)
+                if (readBytes > 0) {
+                    virtualPos += readBytes
+                    virtualPeekPos = virtualPos
+                }
+                return readBytes
+            } else if (virtualPos < syntheticEndOffset) {
+                val offsetInSynthetic = (virtualPos - cluster0Offset).toInt()
+                val available = minOf(length, (syntheticLength - (virtualPos - cluster0Offset)).toInt())
+                System.arraycopy(syntheticData, offsetInSynthetic, buffer, offset, available)
+                virtualPos += available
                 virtualPeekPos = virtualPos
+                if (virtualPos >= syntheticEndOffset) {
+                    isSplicingDone = true
+                }
+                return available
+            } else {
+                isSplicingDone = true
             }
-            return readBytes
-        } else if (virtualPos < syntheticEndOffset) {
-            val offsetInSynthetic = (virtualPos - cluster0Offset).toInt()
-            val available = minOf(length, (syntheticLength - (virtualPos - cluster0Offset)).toInt())
-            System.arraycopy(syntheticData, offsetInSynthetic, buffer, offset, available)
-            virtualPos += available
-            virtualPeekPos = virtualPos
-            return available
-        } else {
-            val readBytes = originalInput.read(buffer, offset, length)
-            if (readBytes > 0) {
-                virtualPos += readBytes
-                virtualPeekPos = virtualPos
-            }
-            return readBytes
         }
+        val readBytes = originalInput.read(buffer, offset, length)
+        if (readBytes > 0) {
+            virtualPos = originalInput.position
+            virtualPeekPos = originalInput.peekPosition
+        }
+        return readBytes
     }
 
     override fun readFully(buffer: ByteArray, offset: Int, length: Int, allowEndOfInput: Boolean): Boolean {
@@ -129,26 +137,27 @@ class SyntheticTracksExtractorInput(
 
     override fun peek(buffer: ByteArray, offset: Int, length: Int): Int {
         if (length <= 0) return 0
-        if (virtualPeekPos < cluster0Offset) {
-            val maxCanPeek = minOf(length.toLong(), cluster0Offset - virtualPeekPos).toInt()
-            val peeked = originalInput.peek(buffer, offset, maxCanPeek)
-            if (peeked > 0) {
-                virtualPeekPos += peeked
+        if (!isSplicingDone) {
+            if (virtualPeekPos < cluster0Offset) {
+                val maxCanPeek = minOf(length.toLong(), cluster0Offset - virtualPeekPos).toInt()
+                val peeked = originalInput.peek(buffer, offset, maxCanPeek)
+                if (peeked > 0) {
+                    virtualPeekPos += peeked
+                }
+                return peeked
+            } else if (virtualPeekPos < syntheticEndOffset) {
+                val offsetInSynthetic = (virtualPeekPos - cluster0Offset).toInt()
+                val available = minOf(length, (syntheticLength - (virtualPeekPos - cluster0Offset)).toInt())
+                System.arraycopy(syntheticData, offsetInSynthetic, buffer, offset, available)
+                virtualPeekPos += available
+                return available
             }
-            return peeked
-        } else if (virtualPeekPos < syntheticEndOffset) {
-            val offsetInSynthetic = (virtualPeekPos - cluster0Offset).toInt()
-            val available = minOf(length, (syntheticLength - (virtualPeekPos - cluster0Offset)).toInt())
-            System.arraycopy(syntheticData, offsetInSynthetic, buffer, offset, available)
-            virtualPeekPos += available
-            return available
-        } else {
-            val peeked = originalInput.peek(buffer, offset, length)
-            if (peeked > 0) {
-                virtualPeekPos += peeked
-            }
-            return peeked
         }
+        val peeked = originalInput.peek(buffer, offset, length)
+        if (peeked > 0) {
+            virtualPeekPos = originalInput.peekPosition
+        }
+        return peeked
     }
 
     override fun peekFully(buffer: ByteArray, offset: Int, length: Int, allowEndOfInput: Boolean): Boolean {
@@ -189,8 +198,13 @@ class SyntheticTracksExtractorInput(
     }
 
     override fun resetPeekPosition() {
-        virtualPeekPos = virtualPos
-        originalInput.resetPeekPosition()
+        if (isSplicingDone) {
+            originalInput.resetPeekPosition()
+            virtualPeekPos = originalInput.peekPosition
+        } else {
+            virtualPeekPos = virtualPos
+            originalInput.resetPeekPosition()
+        }
     }
 
     override fun <E : Throwable> setRetryPosition(position: Long, e: E) {
