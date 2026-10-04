@@ -55,6 +55,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.Equalizer
+import androidx.compose.material.icons.filled.NightlightRound
+import androidx.compose.material.icons.filled.RecordVoiceOver
+import com.streamhub.app.data.AudioProfile
 import com.streamhub.app.ui.theme.TextSecondary
 
 @Composable
@@ -66,6 +70,8 @@ fun MpvAudioTracksSheet(
     audioDelayMs: Long = 0L,
     onAudioDelayChange: (Long) -> Unit = {},
     onOpenAudioDelaySheet: () -> Unit = {},
+    selectedAudioProfile: AudioProfile = AudioProfile.STANDARD,
+    onSelectAudioProfile: (AudioProfile) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val audioPicker = rememberLauncherForActivityResult(
@@ -255,6 +261,56 @@ fun MpvAudioTracksSheet(
                                     color = Color.White,
                                     fontSize = 12.sp,
                                     fontWeight = if (isModeSelected) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Audio Enhancement & Night Mode Profiles
+                Text("Vocal Enhancement & Night Mode", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    AudioProfile.values().forEach { profile ->
+                        val isProfileSelected = selectedAudioProfile == profile
+                        val profileIcon = when (profile) {
+                            AudioProfile.STANDARD -> Icons.Default.Equalizer
+                            AudioProfile.CLEAR_DIALOGUE -> Icons.Default.RecordVoiceOver
+                            AudioProfile.NIGHT_CINEMA -> Icons.Default.NightlightRound
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isProfileSelected) Color(0xFF6750A4) else Color(0x1EFFFFFF),
+                            border = BorderStroke(1.dp, if (isProfileSelected) Color(0xFFD0BCFF) else Color(0x1AFFFFFF)),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onSelectAudioProfile(profile) }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.padding(horizontal = 6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = profileIcon,
+                                    contentDescription = null,
+                                    tint = if (isProfileSelected) Color.White else Color(0xAAFFFFFF),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = profile.title,
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isProfileSelected) FontWeight.Bold else FontWeight.Medium,
+                                    maxLines = 1
                                 )
                             }
                         }

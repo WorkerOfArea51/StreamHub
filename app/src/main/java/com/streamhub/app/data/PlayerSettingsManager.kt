@@ -8,6 +8,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
+enum class AudioProfile(val id: String, val title: String, val subtitle: String) {
+    STANDARD("STANDARD", "Standard", "Untouched pure audio passthrough"),
+    CLEAR_DIALOGUE("CLEAR_DIALOGUE", "Clear Voice", "Boosts speech & dialogue frequencies (+5 dB)"),
+    NIGHT_CINEMA("NIGHT_CINEMA", "Night Cinema", "Suppresses explosions & bass rumble while clarifying voices")
+}
+
 data class PlayerSettings(
     val skipIntroSeconds: Int = 90,
     val nextEpisodeThresholdSeconds: Int = -1, // -1 (Smart Auto), 90s, 180s (3m), 300s (5m), 420s (7m), 0 (Disabled)
@@ -31,7 +37,8 @@ data class PlayerSettings(
     val pinchToZoomEnabled: Boolean = true,
     val subtitleVerticalDragEnabled: Boolean = true,
     val maxVolumeBoostPercent: Int = 200,
-    val defaultAudioDelayMs: Int = 0
+    val defaultAudioDelayMs: Int = 0,
+    val audioProfile: AudioProfile = AudioProfile.STANDARD
 )
 
 /**
@@ -69,6 +76,7 @@ object PlayerSettingsManager {
     private const val KEY_SUBTITLE_DRAG = "subtitle_vertical_drag_enabled"
     private const val KEY_MAX_VOLUME_BOOST = "max_volume_boost_percent"
     private const val KEY_DEFAULT_AUDIO_DELAY = "default_audio_delay_ms"
+    private const val KEY_AUDIO_PROFILE = "audio_profile_id"
 
     private lateinit var appContext: Context
 
@@ -110,7 +118,12 @@ object PlayerSettingsManager {
                 pinchToZoomEnabled = prefs.getBoolean(KEY_PINCH_ZOOM, true),
                 subtitleVerticalDragEnabled = prefs.getBoolean(KEY_SUBTITLE_DRAG, true),
                 maxVolumeBoostPercent = prefs.getInt(KEY_MAX_VOLUME_BOOST, 200),
-                defaultAudioDelayMs = prefs.getInt(KEY_DEFAULT_AUDIO_DELAY, 0)
+                defaultAudioDelayMs = prefs.getInt(KEY_DEFAULT_AUDIO_DELAY, 0),
+                audioProfile = when (prefs.getString(KEY_AUDIO_PROFILE, "STANDARD")?.uppercase()) {
+                    "CLEAR_DIALOGUE" -> AudioProfile.CLEAR_DIALOGUE
+                    "NIGHT_CINEMA" -> AudioProfile.NIGHT_CINEMA
+                    else -> AudioProfile.STANDARD
+                }
             )
         } catch (e: Exception) {
             prefs.edit().clear().apply()
@@ -339,6 +352,13 @@ object PlayerSettingsManager {
         getPrefs().edit().putInt(KEY_DEFAULT_AUDIO_DELAY, clamped).apply()
     }
 
+    @Synchronized
+    fun updateAudioProfile(profile: AudioProfile) {
+        if (!::appContext.isInitialized) return
+        _settingsFlow.update { it.copy(audioProfile = profile) }
+        getPrefs().edit().putString(KEY_AUDIO_PROFILE, profile.name).apply()
+    }
+
     /**
      * Atomically restores all player settings from a backup in a single transaction.
      */
@@ -369,6 +389,7 @@ object PlayerSettingsManager {
             putBoolean(KEY_SUBTITLE_DRAG, settings.subtitleVerticalDragEnabled)
             putInt(KEY_MAX_VOLUME_BOOST, settings.maxVolumeBoostPercent)
             putInt(KEY_DEFAULT_AUDIO_DELAY, settings.defaultAudioDelayMs)
+            putString(KEY_AUDIO_PROFILE, settings.audioProfile.name)
             apply()
         }
         _settingsFlow.value = settings

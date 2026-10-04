@@ -21,11 +21,12 @@ class VolumeBoostManager {
     }
 
     private var loudnessEnhancer: LoudnessEnhancer? = null
+    private val dialogueEnhancer = DialogueEnhancerManager()
     private var currentBoostPercent: Int = 0
     private var isNormalizationEnabled: Boolean = false
 
     /**
-     * Attach the LoudnessEnhancer to the player's active audio session ID.
+     * Attach the LoudnessEnhancer and DialogueEnhancer to the player's active audio session ID.
      */
     fun attachToAudioSession(audioSessionId: Int) {
         release()
@@ -38,8 +39,19 @@ class VolumeBoostManager {
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to initialize LoudnessEnhancer: ${e.message}")
             }
+            dialogueEnhancer.attachToAudioSession(audioSessionId)
         }
     }
+
+    /**
+     * Configures the active AudioProfile (Standard, Clear Voice, Night Cinema).
+     */
+    fun setAudioProfile(profile: com.streamhub.app.data.AudioProfile) {
+        dialogueEnhancer.setProfile(profile)
+        applyGain(currentBoostPercent)
+    }
+
+    fun getAudioProfile(): com.streamhub.app.data.AudioProfile = dialogueEnhancer.getProfile()
 
     /**
      * Set the volume boost percentage (0% to 100% boost above max system volume).
@@ -69,8 +81,8 @@ class VolumeBoostManager {
                     val gainMb = (percent.toFloat() / 100f * MAX_GAIN_MB).toInt()
                     enhancer.setTargetGain(gainMb)
                     enhancer.enabled = true
-                } else if (isNormalizationEnabled) {
-                    // Normalization compression baseline (+3 dB) to lift quiet dialogue
+                } else if (isNormalizationEnabled || dialogueEnhancer.getProfile() == com.streamhub.app.data.AudioProfile.NIGHT_CINEMA) {
+                    // Normalization or Night Cinema compression baseline (+3 dB) to lift quiet dialogue
                     enhancer.setTargetGain(300)
                     enhancer.enabled = true
                 } else {
@@ -86,6 +98,7 @@ class VolumeBoostManager {
      * Release audio effect resources on player teardown.
      */
     fun release() {
+        dialogueEnhancer.release()
         try {
             loudnessEnhancer?.enabled = false
             loudnessEnhancer?.release()

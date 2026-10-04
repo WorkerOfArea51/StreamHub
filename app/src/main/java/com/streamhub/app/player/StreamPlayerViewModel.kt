@@ -83,7 +83,8 @@ data class PlayerUiState(
     val reconnectAttempt: Int = 0,
     val streamRestoredToast: Boolean = false,
     val isFirstFrameRendered: Boolean = false,
-    val isStreamPrecached: Boolean = false
+    val isStreamPrecached: Boolean = false,
+    val audioProfile: com.streamhub.app.data.AudioProfile = com.streamhub.app.data.AudioProfile.STANDARD
 )
 
 data class PlaybackProgress(
@@ -112,7 +113,11 @@ class StreamPlayerViewModel : ViewModel() {
     private var trackSelector: DefaultTrackSelector? = null
     private val volumeBoostManager = VolumeBoostManager()
 
-    private val _uiState = MutableStateFlow(PlayerUiState())
+    private val _uiState = MutableStateFlow(
+        PlayerUiState(
+            audioProfile = com.streamhub.app.data.PlayerSettingsManager.settingsFlow.value.audioProfile
+        )
+    )
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
 
     private val _playbackProgress = MutableStateFlow(PlaybackProgress())
@@ -1635,6 +1640,12 @@ class StreamPlayerViewModel : ViewModel() {
         val clamped = percent.coerceIn(0, 100)
         volumeBoostManager.setBoostPercent(clamped)
         _uiState.update { it.copy(volumeBoostPercent = clamped) }
+    }
+
+    fun setAudioProfile(profile: com.streamhub.app.data.AudioProfile) {
+        volumeBoostManager.setAudioProfile(profile)
+        _uiState.update { it.copy(audioProfile = profile) }
+        com.streamhub.app.data.PlayerSettingsManager.updateAudioProfile(profile)
     }
 
     fun setBackgroundAudio(enabled: Boolean) {

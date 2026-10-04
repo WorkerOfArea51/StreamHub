@@ -12,6 +12,7 @@ import android.util.Rational
 import android.view.WindowManager
 import android.widget.Toast
 import com.streamhub.app.ui.components.ToastManager
+import com.streamhub.app.ui.screens.player.sheets.CastDeviceSheet
 import kotlin.OptIn
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -93,6 +94,7 @@ import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Fullscreen
@@ -395,11 +397,12 @@ fun PlayerScreen(
     var showMoreSheet by remember { mutableStateOf(false) }
     var showStatsForNerds by remember { mutableStateOf(false) }
     var showAmbientSheet by remember { mutableStateOf(false) }
+    var showCastSheet by remember { mutableStateOf(false) }
 
     val isAnySheetOpen = showAspectRatioSheet || showSpeedSheet || showZoomSheet ||
                          showPlaylistSheet || showAudioSheet || showSubtitleSheet ||
                          showSubtitleSettingsDrawer || showMoreSheet ||
-                         showAmbientSheet ||
+                         showAmbientSheet || showCastSheet ||
                          uiState.showAudioDialog || uiState.showSubtitleDialog || uiState.playerErrorInfo != null
 
     var showFrameNavSheet by remember { mutableStateOf(false) }
@@ -435,7 +438,7 @@ fun PlayerScreen(
                   showPlaylistSheet || showAudioSheet || showSubtitleSheet ||
                   showSubtitleSettingsDrawer || showMoreSheet || showStatsForNerds ||
                   showFrameNavSheet || showAudioDelaySheet || showSubtitleDelaySheet ||
-                  showOnlineSubSearchSheet || showAmbientSheet
+                  showOnlineSubSearchSheet || showAmbientSheet || showCastSheet
     ) {
         if (showStatsForNerds) {
             showStatsForNerds = false
@@ -454,6 +457,7 @@ fun PlayerScreen(
         showSubtitleDelaySheet = false
         showOnlineSubSearchSheet = false
         showAmbientSheet = false
+        showCastSheet = false
     }
 
     // Pro Feature States
@@ -1814,12 +1818,11 @@ fun PlayerScreen(
                         ) {
                             // Cast Button
                             ControlsButton(
-                                icon = Icons.Default.Cast,
-                                onClick = {
-                                    ToastManager.showToast("Scanning for Cast devices... 📡")
-                                },
-                                title = "Cast",
-                                size = 45.dp
+                                icon = if (com.streamhub.app.data.cast.SmartCastManager.isCasting.value) Icons.Default.CastConnected else Icons.Default.Cast,
+                                onClick = { showCastSheet = true },
+                                title = "Cast to TV",
+                                size = 45.dp,
+                                color = if (com.streamhub.app.data.cast.SmartCastManager.isCasting.value) Color(0xFF4CAF50) else Color.White
                             )
 
                             if (!isPortrait) {
@@ -2611,6 +2614,8 @@ fun PlayerScreen(
                     showAudioSheet = false
                     showAudioDelaySheet = true
                 },
+                selectedAudioProfile = uiState.audioProfile,
+                onSelectAudioProfile = { viewModel.setAudioProfile(it) },
                 onDismiss = { showAudioSheet = false }
             )
         }
@@ -2784,6 +2789,18 @@ fun PlayerScreen(
         if (showAmbientSheet) {
             MpvAmbientMoodSheet(
                 onDismiss = { showAmbientSheet = false }
+            )
+        }
+
+        // 15. Smart TV & DLNA Cast Sheet
+        if (showCastSheet) {
+            val castTitle = currentEpisode?.title?.ifBlank { mediaItem?.title } ?: (mediaItem?.title ?: "StreamHub Video")
+            CastDeviceSheet(
+                videoUrl = uiState.resolvedStreamUrl,
+                mediaTitle = castTitle,
+                currentPositionMs = playbackProgress.currentPositionMs,
+                onPausePhonePlayer = { viewModel.pause() },
+                onDismiss = { showCastSheet = false }
             )
         }
 
