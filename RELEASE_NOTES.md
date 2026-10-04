@@ -1,3 +1,30 @@
+### What's New in StreamHub v4.8.390 🚀
+
+- 🎨 **Material 3 Expressive (M3 Expressive) Video Player & Sheet Overhaul**:
+  - **Fluid Expressive Motion Physics & Sheet Springs (`MpvPlayerSheet.kt`, `MpvDraggablePanel.kt`)**:
+    - Upgraded all bottom sheets to high-response M3 Expressive physics using `sheetSpringSpec = spring(dampingRatio = 0.82f, stiffness = 380f)` and soft scrim transitions (`scrimFadeSpec = tween(240, easing = FastOutSlowInEasing)`).
+    - Resolved initial anchored draggable dismissal race condition with `.drop(1)` on state change observation, guaranteeing reliable opening animations.
+    - Docked landscape sheets cleanly at bottom center with `RoundedCornerShape(28.dp)` floating containers and subtle edge lighting.
+    - Introduced standardized `ExpressiveSheetDragHandle()` featuring a smooth `36.dp x 4.5.dp CircleShape` pill handle across all modals.
+  - **Tactile Bouncy Spring Physics & Haptic Micro-Interactions (`ControlsButton.kt`)**:
+    - Player controls buttons, pills, chips, and cards respond to touch with bouncy spring press scale (`0.88f` – `0.96f` via `Spring.DampingRatioMediumBouncy`, `Spring.StiffnessLow`).
+    - Added tactile haptic feedback (`LocalHapticFeedback` `TextHandleMove` and `LongPress`) across player HUD toggles, steppers, and selection chips.
+    - Upgraded status badges and indicators to borderless `CircleShape` pills.
+  - **Material 3 Expressive Play Queue & Episode Selector (`MpvPlaylistSheet.kt`)**:
+    - Segmented capsule view switcher toggling seamlessly between List and 3-column Grid layouts with `CircleShape` indicator tabs.
+    - Borderless `RoundedCornerShape(20.dp)` episode cards with bouncy scale, `CircleShape` file size / duration badges, and animated equalizer playing pill.
+  - **Modernized Playback Speed, Aspect Ratio & Zoom Panels**:
+    - **Playback Speed (`MpvPlaybackSpeedSheet.kt`)**: 32.sp expressive purple accent speed readout, tactile `42.dp CircleShape` +/- steppers, `CircleShape` quick preset chips (0.5x..3.0x), and borderless pitch correction switch container.
+    - **Aspect Ratio (`MpvAspectRatioSheet.kt`)**: `RoundedCornerShape(20.dp)` borderless "Remember ratio" container, `CircleShape` preset chips with wireframe silhouettes (Fit, Stretch, Crop, 16:9, 21:9, 4:3), `RoundedCornerShape(16.dp)` custom ratio input fields, and `52.dp CircleShape` add button.
+    - **Zoom & Pan (`MpvVideoZoomSheet.kt`)**: 32.sp zoom display, tactile steppers, quick snap chips, and borderless Pan & Zoom switch container.
+  - **Smart TV Cast & Ambient Cinema Mode Sheets**:
+    - **Cast to Smart TV (`CastDeviceSheet.kt`)**: `RoundedCornerShape(20.dp)` active remote control card with `CircleShape` playback/stop pills, and borderless discovered device cards with `CircleShape` "Cast" action pills.
+    - **Ambient Lighting Moods (`MpvAmbientMoodSheet.kt`)**: Borderless `RoundedCornerShape(20.dp)` intensity container, mood cards with spring scale, and `CircleShape` multi-stop gradient swatches.
+  - **Audio, Subtitles & Frame Navigation Sheets**:
+    - **Audio Tracks & Vocal Profiles (`MpvAudioTracksSheet.kt`, `MpvDelayPanels.kt`)**: `CircleShape` external audio button, borderless `RoundedCornerShape(20.dp)` track cards, `CircleShape` vocal profile chips, and tactile delay sync steppers (`DelayStepperPill`).
+    - **Subtitle Search & Styling (`MpvSubtitleSheets.kt`, `MpvOnlineSubtitleSearchSheet.kt`)**: `CircleShape` online search and external subtitle pills, borderless track cards, `CircleShape` typography buttons and edge style chips, and `CircleShape` color swatches.
+    - **Frame Navigation Capsule & Sheet (`MpvFrameNavigation.kt`)**: `CircleShape` floating frame navigation capsule in dark obsidian with bouncy controls, `RoundedCornerShape(20.dp)` timecode card, `CircleShape` fine-tuning steppers, and `RoundedCornerShape(24.dp)` snapshot camera button.
+
 ### What's New in StreamHub v4.8.389 🚀
 
 - ⚡ **Release APK Two-Tier Tail Engine & Complete R8 Media3 Protection (`SmartMatroskaExtractor` & ProGuard)**:

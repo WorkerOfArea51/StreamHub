@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -72,18 +73,17 @@ fun MpvDraggablePanel(
                 .onSizeChanged { panelWidth = it.width }
                 .widthIn(max = 400.dp)
                 .heightIn(max = panelMaxHeight),
-            shape = RoundedCornerShape(24.dp),
-            color = Color(0xF212121A),
-            border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+            shape = RoundedCornerShape(28.dp),
+            color = Color(0xF2101018),
+            border = BorderStroke(1.dp, Color(0x1FFFFFFF)),
             tonalElevation = 0.dp,
-            shadowElevation = 16.dp
+            shadowElevation = 24.dp
         ) {
             Column {
-                // Drag Handle & Indicator
+                // M3 Expressive Drag Handle & Gesture Detector
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(24.dp)
                         .pointerInput(maxOffset, minOffset) {
                             detectDragGestures { change, dragAmount ->
                                 change.consume()
@@ -93,13 +93,7 @@ fun MpvDraggablePanel(
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .width(36.dp)
-                            .height(4.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x44FFFFFF))
-                    )
+                    ExpressiveSheetDragHandle(modifier = Modifier.padding(top = 10.dp, bottom = 6.dp))
                 }
 
                 // Fixed header (if provided)

@@ -23,14 +23,19 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -61,11 +66,44 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-private val sheetAnimationSpec = tween<Float>(350)
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+
+private val sheetSpringSpec = spring<Float>(
+    dampingRatio = 0.82f,
+    stiffness = 380f
+)
+
+private val scrimFadeSpec = spring<Float>(
+    dampingRatio = Spring.DampingRatioNoBouncy,
+    stiffness = Spring.StiffnessMedium
+)
 
 /**
- * Base bottom sheet component matching mpvEx PlayerSheet with AnchoredDraggable physics,
- * nested scrolling, background alpha fade, and adaptive landscape (640dp) / portrait (420dp) bounds.
+ * Material 3 Expressive drag handle pill with tactile geometry and soft translucent styling.
+ */
+@Composable
+fun ExpressiveSheetDragHandle(
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp, bottom = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = 36.dp, height = 4.5.dp)
+                .clip(CircleShape)
+                .background(Color(0x55FFFFFF))
+        )
+    }
+}
+
+/**
+ * Base bottom sheet component matching Material 3 Expressive standards with Spring physics,
+ * nested scrolling, background alpha fade, 28dp curvature, and adaptive landscape / portrait bounds.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @SuppressLint("ConfigurationScreenWidthHeight")
@@ -76,29 +114,30 @@ fun MpvPlayerSheet(
     tonalElevation: Dp = 0.dp,
     customMaxWidth: Dp? = null,
     customMaxHeight: Dp? = null,
-    surfaceColor: Color = Color(0xF212121A),
+    surfaceColor: Color = Color(0xF2101018),
     content: @Composable () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val latestOnDismissRequest by rememberUpdatedState(onDismissRequest)
-    val maxWidth = customMaxWidth ?: if (LocalConfiguration.current.orientation == ORIENTATION_LANDSCAPE) {
-        640.dp
+    val isLandscape = LocalConfiguration.current.orientation == ORIENTATION_LANDSCAPE
+    val maxWidth = customMaxWidth ?: if (isLandscape) {
+        660.dp
     } else {
-        420.dp
+        440.dp
     }
     val isImeVisible = WindowInsets.ime.getBottom(density) > 0
     val maxHeight = customMaxHeight ?: when {
         isImeVisible -> LocalConfiguration.current.screenHeightDp.dp
         LocalConfiguration.current.orientation == ORIENTATION_PORTRAIT ->
             LocalConfiguration.current.screenHeightDp.dp * 0.90f
-        else -> LocalConfiguration.current.screenHeightDp.dp * 0.95f
+        else -> LocalConfiguration.current.screenHeightDp.dp * 0.94f
     }
 
     var backgroundAlpha by remember { mutableFloatStateOf(0f) }
     val alpha by animateFloatAsState(
         backgroundAlpha,
-        animationSpec = sheetAnimationSpec,
+        animationSpec = scrimFadeSpec,
         label = "alpha"
     )
 
@@ -106,7 +145,7 @@ fun MpvPlayerSheet(
     val anchoredDraggableState = remember {
         AnchoredDraggableState(
             initialValue = 1,
-            snapAnimationSpec = sheetAnimationSpec,
+            snapAnimationSpec = sheetSpringSpec,
             decayAnimationSpec = decayAnimationSpec,
             positionalThreshold = { with(density) { 56.dp.toPx() } },
             velocityThreshold = { with(density) { 125.dp.toPx() } }
@@ -140,9 +179,17 @@ fun MpvPlayerSheet(
             },
         contentAlignment = Alignment.BottomCenter
     ) {
+        val sheetShape = RoundedCornerShape(
+            topStart = 28.dp,
+            topEnd = 28.dp,
+            bottomStart = if (isLandscape) 28.dp else 0.dp,
+            bottomEnd = if (isLandscape) 28.dp else 0.dp
+        )
+
         Surface(
             modifier = Modifier
                 .sizeIn(maxWidth = maxWidth, maxHeight = maxHeight)
+                .then(if (isLandscape) Modifier.padding(horizontal = 16.dp, vertical = 12.dp) else Modifier)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -172,9 +219,9 @@ fun MpvPlayerSheet(
                         .only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
                 )
                 .imePadding(),
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 0.dp, bottomEnd = 0.dp),
+            shape = sheetShape,
             color = surfaceColor,
-            border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+            border = BorderStroke(1.dp, Color(0x1FFFFFFF)),
             tonalElevation = tonalElevation,
             content = {
                 BackHandler(
@@ -186,9 +233,13 @@ fun MpvPlayerSheet(
         )
 
         LaunchedEffect(Unit) {
-            backgroundAlpha = 0.6f
-            anchoredDraggableState.animateTo(0)
-            snapshotFlow { anchoredDraggableState.settledValue }
+            backgroundAlpha = 0.65f
+        }
+
+        LaunchedEffect(anchoredDraggableState) {
+            scope.launch { anchoredDraggableState.animateTo(0) }
+            snapshotFlow { anchoredDraggableState.currentValue }
+                .drop(1)
                 .filter { it == 1 }
                 .collectLatest { latestOnDismissRequest() }
         }

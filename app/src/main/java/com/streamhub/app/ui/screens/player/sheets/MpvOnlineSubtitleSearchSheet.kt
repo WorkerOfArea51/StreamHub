@@ -45,6 +45,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
@@ -60,7 +65,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -71,6 +79,7 @@ import androidx.compose.ui.unit.sp
 import com.streamhub.app.data.api.OnlineSubtitle
 import com.streamhub.app.data.api.OnlineSubtitleService
 import com.streamhub.app.ui.components.ToastManager
+import com.streamhub.app.ui.screens.player.controls.ExpressiveSheetDragHandle
 import com.streamhub.app.ui.screens.player.controls.MpvPlayerSheet
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.CardBorderDark
@@ -195,26 +204,16 @@ fun MpvOnlineSubtitleSearchSheet(
         }
     }
 
+    val haptic = LocalHapticFeedback.current
+
     MpvPlayerSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 10.dp)
+                .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
-            // Drag Handle
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 6.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(width = 38.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x44FFFFFF))
-                )
-            }
+            // M3 Expressive Drag Handle
+            ExpressiveSheetDragHandle(modifier = Modifier.padding(bottom = 6.dp))
 
             // Header Row
             Row(
@@ -239,7 +238,7 @@ fun MpvOnlineSubtitleSearchSheet(
                     if (allSubtitles.isNotEmpty()) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
+                            shape = CircleShape,
                             color = Color(0x336750A4),
                             border = BorderStroke(1.dp, Color(0x556750A4))
                         ) {
@@ -248,43 +247,58 @@ fun MpvOnlineSubtitleSearchSheet(
                                 color = Color(0xFFD0BCFF),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
                             )
                         }
                     }
                 }
 
+                val closeInteractionSource = remember { MutableInteractionSource() }
+                val isClosePressed by closeInteractionSource.collectIsPressedAsState()
+                val closeScale by animateFloatAsState(
+                    targetValue = if (isClosePressed) 0.88f else 1f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                    label = "OnlineSubCloseScale"
+                )
                 IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.size(36.dp)
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onDismiss()
+                    },
+                    interactionSource = closeInteractionSource,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .graphicsLayer { scaleX = closeScale; scaleY = closeScale }
+                        .clip(CircleShape)
+                        .background(Color(0x22FFFFFF))
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Close",
-                        tint = TextSecondary,
-                        modifier = Modifier.size(20.dp)
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Search Bar & Episode Selector
+            // Search Bar & Episode Selector (M3 Expressive 20dp container)
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("Search movie or anime title...", color = TextSecondary, fontSize = 13.sp) },
                 singleLine = true,
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = TextFieldDefaults.colors(
-                    focusedContainerColor = SurfaceDark,
-                    unfocusedContainerColor = SurfaceDark,
+                    focusedContainerColor = Color(0x14FFFFFF),
+                    unfocusedContainerColor = Color(0x14FFFFFF),
                     focusedTextColor = TextPrimary,
                     unfocusedTextColor = TextPrimary,
                     cursorColor = Color(0xFFD0BCFF),
                     focusedIndicatorColor = Color(0xFFD0BCFF),
-                    unfocusedIndicatorColor = CardBorderDark
+                    unfocusedIndicatorColor = Color.Transparent
                 ),
                 leadingIcon = {
                     Icon(
@@ -298,7 +312,10 @@ fun MpvOnlineSubtitleSearchSheet(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (searchQuery.isNotBlank()) {
                             IconButton(
-                                onClick = { searchQuery = "" },
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    searchQuery = ""
+                                },
                                 modifier = Modifier.size(32.dp)
                             ) {
                                 Icon(
@@ -310,7 +327,10 @@ fun MpvOnlineSubtitleSearchSheet(
                             }
                         }
                         IconButton(
-                            onClick = performSearch,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                performSearch()
+                            },
                             enabled = !isSearching && searchQuery.isNotBlank(),
                             modifier = Modifier.size(36.dp)
                         ) {
@@ -335,7 +355,7 @@ fun MpvOnlineSubtitleSearchSheet(
                 keyboardActions = KeyboardActions(onSearch = { performSearch() })
             )
 
-            // Series Season & Episode Steppers
+            // Series Season & Episode Steppers (M3 Expressive Borderless Cards)
             if (!isMovie) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
@@ -345,13 +365,12 @@ fun MpvOnlineSubtitleSearchSheet(
                 ) {
                     // Season Stepper
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = SurfaceDark,
-                        border = BorderStroke(1.dp, CardBorderDark),
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0x14FFFFFF),
                         modifier = Modifier.weight(1f)
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -361,33 +380,48 @@ fun MpvOnlineSubtitleSearchSheet(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp
                             )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                val sMinusInteraction = remember { MutableInteractionSource() }
+                                val isSMinusPressed by sMinusInteraction.collectIsPressedAsState()
+                                val sMinusScale by animateFloatAsState(if (isSMinusPressed) 0.88f else 1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow), label = "SMinus")
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
+                                        .size(28.dp)
+                                        .graphicsLayer { scaleX = sMinusScale; scaleY = sMinusScale }
+                                        .clip(CircleShape)
                                         .background(Color(0x22FFFFFF))
-                                        .clickable {
+                                        .clickable(interactionSource = sMinusInteraction, indication = null) {
                                             if (currentSeason > 1) {
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                                 currentSeason--
                                                 performSearch()
                                             }
-                                        }
-                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                        },
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Text("-", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text("-", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 }
-                                Spacer(modifier = Modifier.width(6.dp))
+
+                                val sPlusInteraction = remember { MutableInteractionSource() }
+                                val isSPlusPressed by sPlusInteraction.collectIsPressedAsState()
+                                val sPlusScale by animateFloatAsState(if (isSPlusPressed) 0.88f else 1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow), label = "SPlus")
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
+                                        .size(28.dp)
+                                        .graphicsLayer { scaleX = sPlusScale; scaleY = sPlusScale }
+                                        .clip(CircleShape)
                                         .background(Color(0x22FFFFFF))
-                                        .clickable {
+                                        .clickable(interactionSource = sPlusInteraction, indication = null) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                             currentSeason++
                                             performSearch()
-                                        }
-                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                        },
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Text("+", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text("+", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 }
                             }
                         }
@@ -395,13 +429,12 @@ fun MpvOnlineSubtitleSearchSheet(
 
                     // Episode Stepper
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = SurfaceDark,
-                        border = BorderStroke(1.dp, CardBorderDark),
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color(0x14FFFFFF),
                         modifier = Modifier.weight(1f)
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -411,33 +444,48 @@ fun MpvOnlineSubtitleSearchSheet(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp
                             )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                val epMinusInteraction = remember { MutableInteractionSource() }
+                                val isEpMinusPressed by epMinusInteraction.collectIsPressedAsState()
+                                val epMinusScale by animateFloatAsState(if (isEpMinusPressed) 0.88f else 1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow), label = "EpMinus")
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
+                                        .size(28.dp)
+                                        .graphicsLayer { scaleX = epMinusScale; scaleY = epMinusScale }
+                                        .clip(CircleShape)
                                         .background(Color(0x22FFFFFF))
-                                        .clickable {
+                                        .clickable(interactionSource = epMinusInteraction, indication = null) {
                                             if (currentEpisode > 1) {
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                                 currentEpisode--
                                                 performSearch()
                                             }
-                                        }
-                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                        },
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Text("-", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text("-", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 }
-                                Spacer(modifier = Modifier.width(6.dp))
+
+                                val epPlusInteraction = remember { MutableInteractionSource() }
+                                val isEpPlusPressed by epPlusInteraction.collectIsPressedAsState()
+                                val epPlusScale by animateFloatAsState(if (isEpPlusPressed) 0.88f else 1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow), label = "EpPlus")
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
+                                        .size(28.dp)
+                                        .graphicsLayer { scaleX = epPlusScale; scaleY = epPlusScale }
+                                        .clip(CircleShape)
                                         .background(Color(0x22FFFFFF))
-                                        .clickable {
+                                        .clickable(interactionSource = epPlusInteraction, indication = null) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                             currentEpisode++
                                             performSearch()
-                                        }
-                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                        },
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Text("+", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text("+", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                 }
                             }
                         }
@@ -447,7 +495,7 @@ fun MpvOnlineSubtitleSearchSheet(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Horizontally Scrollable Language Filter Chips
+            // Horizontally Scrollable Language Filter Chips (M3 Expressive CircleShape Pills)
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -460,17 +508,28 @@ fun MpvOnlineSubtitleSearchSheet(
                     } else {
                         allSubtitles.count { it.languageCode.equals(lang.code, ignoreCase = true) }
                     }
+                    val langInteraction = remember { MutableInteractionSource() }
+                    val isLangPressed by langInteraction.collectIsPressedAsState()
+                    val langScale by animateFloatAsState(
+                        targetValue = if (isLangPressed) 0.92f else 1f,
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                        label = "LangChipScale_${lang.code}"
+                    )
 
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = if (isSelected) Color(0xFF6750A4) else SurfaceDark,
-                        border = BorderStroke(1.dp, if (isSelected) Color(0xFFD0BCFF) else CardBorderDark),
+                        shape = CircleShape,
+                        color = if (isSelected) Color(0xFF6750A4) else Color(0x14FFFFFF),
+                        border = if (isSelected) BorderStroke(1.dp, Color(0xFFD0BCFF)) else null,
                         modifier = Modifier
-                            .clickable { selectedLanguageCode = lang.code }
-                            .bouncyTouch()
+                            .graphicsLayer { scaleX = langScale; scaleY = langScale }
+                            .clip(CircleShape)
+                            .clickable(interactionSource = langInteraction, indication = null) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                selectedLanguageCode = lang.code
+                            }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
@@ -494,7 +553,7 @@ fun MpvOnlineSubtitleSearchSheet(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Subtitle Results List
+            // Subtitle Results List (M3 Expressive Borderless Cards)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -529,19 +588,34 @@ fun MpvOnlineSubtitleSearchSheet(
                         ) {
                             items(filteredSubtitles, key = { it.id }) { sub ->
                                 val isDownloading = downloadingSubtitleId == sub.id
+                                val cardInteraction = remember { MutableInteractionSource() }
+                                val isCardPressed by cardInteraction.collectIsPressedAsState()
+                                val cardScale by animateFloatAsState(
+                                    targetValue = if (isCardPressed) 0.96f else 1f,
+                                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                                    label = "OnlineSubCard_${sub.id}"
+                                )
 
                                 Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = SurfaceDark,
-                                    border = BorderStroke(1.dp, CardBorderDark),
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = Color(0x14FFFFFF),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable(enabled = !isDownloading) { handleDownloadAndApply(sub) }
+                                        .graphicsLayer { scaleX = cardScale; scaleY = cardScale }
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .clickable(
+                                            interactionSource = cardInteraction,
+                                            indication = null,
+                                            enabled = !isDownloading
+                                        ) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            handleDownloadAndApply(sub)
+                                        }
                                 ) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(12.dp),
+                                            .padding(14.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
@@ -552,10 +626,10 @@ fun MpvOnlineSubtitleSearchSheet(
                                             // Language Badge Pill
                                             Box(
                                                 modifier = Modifier
-                                                    .clip(RoundedCornerShape(8.dp))
-                                                    .background(Color(0xFF6750A4).copy(alpha = 0.25f))
-                                                    .border(1.dp, Color(0xFFD0BCFF).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFF6750A4).copy(alpha = 0.3f))
+                                                    .border(1.dp, Color(0xFFD0BCFF).copy(alpha = 0.5f), CircleShape)
+                                                    .padding(horizontal = 10.dp, vertical = 4.dp),
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Text(
@@ -605,14 +679,27 @@ fun MpvOnlineSubtitleSearchSheet(
 
                                         Spacer(modifier = Modifier.width(10.dp))
 
-                                        // 1-Tap Download & Apply Button
+                                        // 1-Tap Download & Apply Button (CircleShape Pill with Spring Scale)
+                                        val applyInteraction = remember { MutableInteractionSource() }
+                                        val isApplyPressed by applyInteraction.collectIsPressedAsState()
+                                        val applyScale by animateFloatAsState(
+                                            targetValue = if (isApplyPressed) 0.92f else 1f,
+                                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                                            label = "ApplyBtn_${sub.id}"
+                                        )
                                         Button(
-                                            onClick = { handleDownloadAndApply(sub) },
+                                            onClick = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                handleDownloadAndApply(sub)
+                                            },
                                             enabled = !isDownloading,
+                                            interactionSource = applyInteraction,
                                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4)),
-                                            shape = RoundedCornerShape(10.dp),
-                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                            modifier = Modifier.height(34.dp)
+                                            shape = CircleShape,
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                            modifier = Modifier
+                                                .height(36.dp)
+                                                .graphicsLayer { scaleX = applyScale; scaleY = applyScale }
                                         ) {
                                             if (isDownloading) {
                                                 CircularProgressIndicator(
@@ -659,9 +746,12 @@ fun MpvOnlineSubtitleSearchSheet(
                             )
                             Spacer(modifier = Modifier.height(10.dp))
                             OutlinedButton(
-                                onClick = performSearch,
-                                shape = RoundedCornerShape(8.dp),
-                                border = BorderStroke(1.dp, CardBorderDark)
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    performSearch()
+                                },
+                                shape = CircleShape,
+                                border = BorderStroke(1.dp, Color(0x33FFFFFF))
                             ) {
                                 Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -673,23 +763,33 @@ fun MpvOnlineSubtitleSearchSheet(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-            HorizontalDivider(color = CardBorderDark)
+            HorizontalDivider(color = Color(0x1FFFFFFF))
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Action Row: Add Local Subtitle & Done
+            // Action Row: Add Local Subtitle & Done (M3 Expressive Pills)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                val pickInteraction = remember { MutableInteractionSource() }
+                val isPickPressed by pickInteraction.collectIsPressedAsState()
+                val pickScale by animateFloatAsState(
+                    targetValue = if (isPickPressed) 0.96f else 1f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                    label = "PickLocalScale"
+                )
                 OutlinedButton(
                     onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         subtitlePicker.launch(arrayOf("text/*", "application/x-subrip", "*/*"))
                     },
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, CardBorderDark),
+                    interactionSource = pickInteraction,
+                    shape = RoundedCornerShape(24.dp),
+                    border = BorderStroke(1.dp, Color(0x33FFFFFF)),
                     modifier = Modifier
                         .weight(1f)
-                        .height(44.dp)
+                        .height(46.dp)
+                        .graphicsLayer { scaleX = pickScale; scaleY = pickScale }
                 ) {
                     Icon(
                         imageVector = Icons.Default.FolderOpen,
@@ -701,11 +801,24 @@ fun MpvOnlineSubtitleSearchSheet(
                     Text("Pick Local File", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                 }
 
+                val closeBottomInteraction = remember { MutableInteractionSource() }
+                val isCloseBottomPressed by closeBottomInteraction.collectIsPressedAsState()
+                val closeBottomScale by animateFloatAsState(
+                    targetValue = if (isCloseBottomPressed) 0.96f else 1f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                    label = "CloseBottomScale"
+                )
                 Button(
-                    onClick = onDismiss,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onDismiss()
+                    },
+                    interactionSource = closeBottomInteraction,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0x22FFFFFF)),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.height(44.dp)
+                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier
+                        .height(46.dp)
+                        .graphicsLayer { scaleX = closeBottomScale; scaleY = closeBottomScale }
                 ) {
                     Text("Close", color = Color.White, fontSize = 12.sp)
                 }

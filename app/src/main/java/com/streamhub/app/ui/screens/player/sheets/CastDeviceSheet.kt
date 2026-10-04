@@ -66,6 +66,16 @@ import com.streamhub.app.ui.screens.player.controls.MpvPlayerSheet
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.TextSecondary
 
+import com.streamhub.app.ui.screens.player.controls.ExpressiveSheetDragHandle
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+
 @Composable
 fun CastDeviceSheet(
     videoUrl: String,
@@ -79,6 +89,7 @@ fun CastDeviceSheet(
     val isScanning by SmartCastManager.isScanning.collectAsState()
     val activeDevice by SmartCastManager.activeDevice.collectAsState()
     val isCasting by SmartCastManager.isCasting.collectAsState()
+    val haptic = LocalHapticFeedback.current
 
     var isPausedOnTv by remember { mutableStateOf(false) }
 
@@ -105,26 +116,16 @@ fun CastDeviceSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 10.dp)
+                .padding(horizontal = 24.dp, vertical = 6.dp)
         ) {
-            // Drag Handle
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(width = 38.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x44FFFFFF))
-                )
-            }
+            // Material 3 Expressive Drag Handle
+            ExpressiveSheetDragHandle()
 
             // Header
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -154,7 +155,10 @@ fun CastDeviceSheet(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
-                        onClick = { SmartCastManager.startDiscovery(context) },
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            SmartCastManager.startDiscovery(context)
+                        },
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -172,13 +176,13 @@ fun CastDeviceSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Active Casting Remote Banner
+            // Active Casting Remote Banner (20.dp card)
             AnimatedVisibility(visible = isCasting && activeDevice != null) {
                 activeDevice?.let { device ->
                     Surface(
-                        shape = RoundedCornerShape(18.dp),
+                        shape = RoundedCornerShape(20.dp),
                         color = Color(0x334CAF50),
                         border = BorderStroke(1.5.dp, Color(0xFF4CAF50)),
                         modifier = Modifier
@@ -218,6 +222,7 @@ fun CastDeviceSheet(
                                     // Pause / Resume on TV
                                     IconButton(
                                         onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                             if (isPausedOnTv) {
                                                 SmartCastManager.resume()
                                                 isPausedOnTv = false
@@ -242,6 +247,7 @@ fun CastDeviceSheet(
                                     // Disconnect button
                                     IconButton(
                                         onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                             SmartCastManager.stopCasting()
                                             ToastManager.showToast("Casting stopped")
                                         },
@@ -277,7 +283,7 @@ fun CastDeviceSheet(
             // Discovered Devices List
             if (discoveredDevices.isEmpty()) {
                 Surface(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(20.dp),
                     color = Color(0x14FFFFFF),
                     border = BorderStroke(1.dp, Color(0x1AFFFFFF)),
                     modifier = Modifier
@@ -318,8 +324,16 @@ fun CastDeviceSheet(
                 ) {
                     items(discoveredDevices) { device ->
                         val isConnected = activeDevice?.id == device.id && isCasting
+                        val devInteractionSource = remember { MutableInteractionSource() }
+                        val isPressed by devInteractionSource.collectIsPressedAsState()
+                        val scale by animateFloatAsState(
+                            targetValue = if (isPressed) 0.96f else 1.0f,
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                            label = "DeviceCardScale"
+                        )
+
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(20.dp),
                             color = if (isConnected) Color(0x334CAF50) else Color(0x14FFFFFF),
                             border = BorderStroke(
                                 1.dp,
@@ -327,23 +341,32 @@ fun CastDeviceSheet(
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable {
-                                    ToastManager.showToast("Connecting to ${device.name}... 📡")
-                                    onPausePhonePlayer()
-                                    SmartCastManager.castToDevice(
-                                        device = device,
-                                        videoUrl = videoUrl,
-                                        title = mediaTitle,
-                                        positionMs = currentPositionMs,
-                                        onSuccess = {
-                                            ToastManager.showToast("Casting to ${device.name}! 🎬")
-                                        },
-                                        onError = { err ->
-                                            ToastManager.showToast("Cast error: $err")
-                                        }
-                                    )
+                                .graphicsLayer {
+                                    scaleX = scale
+                                    scaleY = scale
                                 }
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable(
+                                    interactionSource = devInteractionSource,
+                                    indication = null,
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        ToastManager.showToast("Connecting to ${device.name}... 📡")
+                                        onPausePhonePlayer()
+                                        SmartCastManager.castToDevice(
+                                            device = device,
+                                            videoUrl = videoUrl,
+                                            title = mediaTitle,
+                                            positionMs = currentPositionMs,
+                                            onSuccess = {
+                                                ToastManager.showToast("Casting to ${device.name}! 🎬")
+                                            },
+                                            onError = { err ->
+                                                ToastManager.showToast("Cast error: $err")
+                                            }
+                                        )
+                                    }
+                                )
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -383,7 +406,7 @@ fun CastDeviceSheet(
                                         color = Color.White,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                                     )
                                 }
                             }
@@ -412,19 +435,36 @@ fun CastDeviceSheet(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 // External App Bridge (Google Cast / VLC / Web Video Caster)
+                val extInteractionSource = remember { MutableInteractionSource() }
+                val isExtPressed by extInteractionSource.collectIsPressedAsState()
+                val extScale by animateFloatAsState(
+                    targetValue = if (isExtPressed) 0.94f else 1.0f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                    label = "ExtCastScale"
+                )
+
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(20.dp),
                     color = Color(0x1A6750A4),
                     border = BorderStroke(1.dp, Color(0x44D0BCFF)),
                     modifier = Modifier
                         .weight(1f)
-                        .height(46.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable {
-                            onPausePhonePlayer()
-                            SmartCastManager.launchExternalCastIntent(context, videoUrl, mediaTitle)
-                            onDismiss()
+                        .height(48.dp)
+                        .graphicsLayer {
+                            scaleX = extScale
+                            scaleY = extScale
                         }
+                        .clip(RoundedCornerShape(20.dp))
+                        .clickable(
+                            interactionSource = extInteractionSource,
+                            indication = null,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onPausePhonePlayer()
+                                SmartCastManager.launchExternalCastIntent(context, videoUrl, mediaTitle)
+                                onDismiss()
+                            }
+                        )
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -448,17 +488,34 @@ fun CastDeviceSheet(
                 }
 
                 // Copy Stream Link
+                val copyInteractionSource = remember { MutableInteractionSource() }
+                val isCopyPressed by copyInteractionSource.collectIsPressedAsState()
+                val copyScale by animateFloatAsState(
+                    targetValue = if (isCopyPressed) 0.94f else 1.0f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                    label = "CopyLinkScale"
+                )
+
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(20.dp),
                     color = Color(0x14FFFFFF),
                     border = BorderStroke(1.dp, Color(0x1AFFFFFF)),
                     modifier = Modifier
                         .weight(1f)
-                        .height(46.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable {
-                            SmartCastManager.copyStreamLink(context, videoUrl)
+                        .height(48.dp)
+                        .graphicsLayer {
+                            scaleX = copyScale
+                            scaleY = copyScale
                         }
+                        .clip(RoundedCornerShape(20.dp))
+                        .clickable(
+                            interactionSource = copyInteractionSource,
+                            indication = null,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                SmartCastManager.copyStreamLink(context, videoUrl)
+                            }
+                        )
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,

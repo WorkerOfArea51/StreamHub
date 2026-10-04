@@ -53,6 +53,16 @@ import com.streamhub.app.data.AudioProfile
 import com.streamhub.app.ui.screens.player.controls.MpvPlayerSheet
 import com.streamhub.app.ui.theme.TextSecondary
 
+import com.streamhub.app.ui.screens.player.controls.ExpressiveSheetDragHandle
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+
 @Composable
 fun MpvAudioTracksSheet(
     tracks: List<String>,
@@ -73,34 +83,25 @@ fun MpvAudioTracksSheet(
     }
 
     var isSettingsOpen by remember { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
 
     MpvPlayerSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 10.dp)
+                .padding(horizontal = 24.dp, vertical = 6.dp)
         ) {
-            // Drag Handle
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(width = 38.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x44FFFFFF))
-                )
-            }
+            // Material 3 Expressive Drag Handle
+            ExpressiveSheetDragHandle()
 
             if (!isSettingsOpen) {
                 // ──────────────────────────────────────────
                 // MAIN VIEW: Audio Tracks List (Clean & Spacious)
                 // ──────────────────────────────────────────
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -132,19 +133,21 @@ fun MpvAudioTracksSheet(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Add external audio button
+                        // Add external audio button (M3 Expressive Pill)
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
+                            shape = CircleShape,
                             color = Color(0x22FFFFFF),
+                            border = BorderStroke(1.dp, Color(0x1AFFFFFF)),
                             modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(CircleShape)
                                 .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     audioPicker.launch(arrayOf("audio/*", "application/ogg", "*/*"))
                                 }
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Add,
@@ -152,7 +155,7 @@ fun MpvAudioTracksSheet(
                                     tint = Color.White,
                                     modifier = Modifier.size(16.dp)
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
+                                Spacer(modifier = Modifier.width(5.dp))
                                 Text(
                                     text = "External",
                                     color = Color.White,
@@ -164,7 +167,10 @@ fun MpvAudioTracksSheet(
 
                         // Audio Settings Menu Icon Button
                         IconButton(
-                            onClick = { isSettingsOpen = true },
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                isSettingsOpen = true
+                            },
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
@@ -180,9 +186,9 @@ fun MpvAudioTracksSheet(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                // Full-height Audio Tracks List
+                // Full-height Audio Tracks List (20.dp borderless cards)
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier
@@ -207,8 +213,16 @@ fun MpvAudioTracksSheet(
                     } else {
                         items(tracks) { trackName ->
                             val isSelected = selectedTrackId == trackName || (selectedTrackId.isNullOrBlank() && trackName == tracks.firstOrNull())
+                            val trackInteractionSource = remember { MutableInteractionSource() }
+                            val isPressed by trackInteractionSource.collectIsPressedAsState()
+                            val scale by animateFloatAsState(
+                                targetValue = if (isPressed) 0.96f else 1.0f,
+                                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                                label = "AudioTrackScale"
+                            )
+
                             Surface(
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(20.dp),
                                 color = if (isSelected) Color(0x336750A4) else Color(0x14FFFFFF),
                                 border = BorderStroke(
                                     if (isSelected) 1.5.dp else 1.dp,
@@ -216,15 +230,24 @@ fun MpvAudioTracksSheet(
                                 ),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .clickable {
-                                        onSelectTrack(trackName)
-                                        onDismiss()
+                                    .graphicsLayer {
+                                        scaleX = scale
+                                        scaleY = scale
                                     }
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .clickable(
+                                        interactionSource = trackInteractionSource,
+                                        indication = null,
+                                        onClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            onSelectTrack(trackName)
+                                            onDismiss()
+                                        }
+                                    )
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
                                 ) {
                                     Icon(
                                         imageVector = if (isSelected) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
@@ -253,11 +276,16 @@ fun MpvAudioTracksSheet(
                 // SUB-VIEW: Audio Settings & Enhancements
                 // ──────────────────────────────────────────
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
-                        onClick = { isSettingsOpen = false },
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            isSettingsOpen = false
+                        },
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -286,14 +314,15 @@ fun MpvAudioTracksSheet(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Vocal Enhancement & Night Mode Section
                 Text(
-                    text = "Vocal Enhancement & Night Mode",
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
+                    text = "VOCAL ENHANCEMENT & NIGHT MODE",
+                    color = Color(0xFFD0BCFF),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -309,14 +338,17 @@ fun MpvAudioTracksSheet(
                             AudioProfile.NIGHT_CINEMA -> Icons.Default.NightlightRound
                         }
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isProfileSelected) Color(0xFF6750A4) else Color(0x1EFFFFFF),
+                            shape = CircleShape,
+                            color = if (isProfileSelected) Color(0xFF6750A4) else Color(0x18FFFFFF),
                             border = BorderStroke(1.dp, if (isProfileSelected) Color(0xFFD0BCFF) else Color(0x1AFFFFFF)),
                             modifier = Modifier
                                 .weight(1f)
                                 .height(42.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { onSelectAudioProfile(profile) }
+                                .clip(CircleShape)
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onSelectAudioProfile(profile)
+                                }
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -342,11 +374,12 @@ fun MpvAudioTracksSheet(
                     }
                 }
 
-                // Profile explanation card
-                Spacer(modifier = Modifier.height(8.dp))
+                // Profile explanation card (20.dp borderless container)
+                Spacer(modifier = Modifier.height(10.dp))
                 Surface(
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = Color(0x14FFFFFF),
+                    border = BorderStroke(1.dp, Color(0x1AFFFFFF)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
@@ -358,7 +391,7 @@ fun MpvAudioTracksSheet(
                         color = Color(0xFFD0BCFF),
                         fontSize = 11.sp,
                         lineHeight = 15.sp,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
                     )
                 }
 
@@ -367,50 +400,65 @@ fun MpvAudioTracksSheet(
                     color = Color(0x1FFFFFFF)
                 )
 
-                // Audio Delay Sync Section
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                // Audio Delay Sync Section (20.dp borderless container)
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0x14FFFFFF),
+                    border = BorderStroke(1.dp, Color(0x1AFFFFFF)),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "Audio Delay Sync",
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "${if (audioDelayMs > 0) "+" else ""}${audioDelayMs}ms",
-                            color = Color(0xFFD0BCFF),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Advanced Steppers ▸",
-                            color = Color(0xFFD0BCFF),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0x22FFFFFF))
-                                .clickable { onOpenAudioDelaySheet() }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Audio Delay Sync",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "${if (audioDelayMs > 0) "+" else ""}${audioDelayMs}ms",
+                                    color = Color(0xFFD0BCFF),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Advanced Steppers ▸",
+                                    color = Color(0xFFD0BCFF),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(Color(0x22FFFFFF))
+                                        .clickable {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            onOpenAudioDelaySheet()
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Slider(
+                            value = audioDelayMs.toFloat(),
+                            onValueChange = { onAudioDelayChange(it.toLong()) },
+                            valueRange = -3000f..3000f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = Color.White,
+                                activeTrackColor = Color(0xFFD0BCFF),
+                                inactiveTrackColor = Color(0x33FFFFFF)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 }
-                Slider(
-                    value = audioDelayMs.toFloat(),
-                    onValueChange = { onAudioDelayChange(it.toLong()) },
-                    valueRange = -3000f..3000f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color.White,
-                        activeTrackColor = Color(0xFFD0BCFF),
-                        inactiveTrackColor = Color(0x33FFFFFF)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
 
                 Spacer(modifier = Modifier.height(14.dp))
             }

@@ -57,6 +57,17 @@ import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.ui.screens.player.controls.formatMpvTime
 import com.streamhub.app.ui.theme.TextSecondary
 
+import com.streamhub.app.ui.screens.player.controls.ExpressiveSheetDragHandle
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+
 @Composable
 fun MpvPlaylistSheet(
     mediaItem: MediaItem? = null,
@@ -67,6 +78,7 @@ fun MpvPlaylistSheet(
 ) {
     var isGridView by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
 
     val safeCurrentIndex = currentIndex.coerceIn(0, (episodes.size - 1).coerceAtLeast(0))
     val initialScrollIndex = (safeCurrentIndex - 1).coerceAtLeast(0)
@@ -106,26 +118,16 @@ fun MpvPlaylistSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 10.dp)
+                .padding(horizontal = 20.dp, vertical = 6.dp)
         ) {
-            // Drag Handle
-            Box(
+            // Standardized Material 3 Expressive Drag Handle
+            ExpressiveSheetDragHandle()
+
+            // Header Row
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(width = 38.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x44FFFFFF))
-                )
-            }
-
-            // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
+                    .padding(bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -152,7 +154,7 @@ fun MpvPlaylistSheet(
                         Text(
                             text = "Now Playing",
                             color = Color(0xFFD0BCFF),
-                            fontSize = 16.sp,
+                            fontSize = 17.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
@@ -171,12 +173,13 @@ fun MpvPlaylistSheet(
                     // Quick jump back to playing episode chip if user scrolled away
                     if (!isCurrentVisible && episodes.isNotEmpty()) {
                         Surface(
-                            shape = RoundedCornerShape(20.dp),
+                            shape = CircleShape,
                             color = Color(0x336750A4),
                             border = BorderStroke(1.dp, Color(0xFFD0BCFF)),
                             modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
+                                .clip(CircleShape)
                                 .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     coroutineScope.launch {
                                         val target = (safeCurrentIndex - 1).coerceAtLeast(0)
                                         if (isGridView) gridState.animateScrollToItem(target)
@@ -186,35 +189,75 @@ fun MpvPlaylistSheet(
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Text("🎯 Ep $currentEpNumber", color = Color(0xFFD0BCFF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
 
-                    // View Switcher Button (List <-> Grid)
-                    IconButton(
-                        onClick = { isGridView = !isGridView },
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x22FFFFFF))
+                    // M3 Expressive Segmented Capsule Switcher (List <-> Grid)
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0x1FFFFFFF),
+                        border = BorderStroke(1.dp, Color(0x1FFFFFFF))
                     ) {
-                        Icon(
-                            imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
-                            contentDescription = "Toggle Grid View",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // List tab
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(if (!isGridView) Color(0xFF6750A4) else Color.Transparent)
+                                    .clickable {
+                                        if (isGridView) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            isGridView = false
+                                        }
+                                    }
+                                    .padding(horizontal = 9.dp, vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ViewList,
+                                    contentDescription = "List view",
+                                    tint = if (!isGridView) Color.White else Color(0xAAFFFFFF),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
+                            // Grid tab
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(if (isGridView) Color(0xFF6750A4) else Color.Transparent)
+                                    .clickable {
+                                        if (!isGridView) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            isGridView = true
+                                        }
+                                    }
+                                    .padding(horizontal = 9.dp, vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.GridView,
+                                    contentDescription = "Grid view",
+                                    tint = if (isGridView) Color.White else Color(0xAAFFFFFF),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             if (isGridView) {
-                // Grid View: Horizontal Scrolling Carousel of Cards
+                // Grid View: Horizontal Scrolling Carousel of M3 Expressive Cards
                 LazyRow(
                     state = gridState,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -230,20 +273,37 @@ fun MpvPlaylistSheet(
                             mediaItem?.bannerUrl?.ifBlank { mediaItem.posterUrl } ?: ""
                         }
 
+                        val cardInteractionSource = remember { MutableInteractionSource() }
+                        val isPressed by cardInteractionSource.collectIsPressedAsState()
+                        val scale by animateFloatAsState(
+                            targetValue = if (isPressed) 0.95f else 1.0f,
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                            label = "GridCardScale"
+                        )
+
                         Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = if (isCurrent) Color(0x336750A4) else Color(0x18FFFFFF),
+                            shape = RoundedCornerShape(20.dp),
+                            color = if (isCurrent) Color(0x336750A4) else Color(0x14FFFFFF),
                             border = BorderStroke(
-                                if (isCurrent) 2.dp else 1.dp,
+                                if (isCurrent) 1.5.dp else 1.dp,
                                 if (isCurrent) Color(0xFFD0BCFF) else Color(0x1AFFFFFF)
                             ),
                             modifier = Modifier
                                 .width(220.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .clickable {
-                                    onSelectEpisode(index)
-                                    onDismiss()
+                                .graphicsLayer {
+                                    scaleX = scale
+                                    scaleY = scale
                                 }
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable(
+                                    interactionSource = cardInteractionSource,
+                                    indication = null,
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onSelectEpisode(index)
+                                        onDismiss()
+                                    }
+                                )
                         ) {
                             Column(modifier = Modifier.padding(10.dp)) {
                                 // Thumbnail with episode number badge
@@ -251,7 +311,7 @@ fun MpvPlaylistSheet(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(115.dp)
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .clip(RoundedCornerShape(14.dp))
                                         .background(Color(0xFF14141E)),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -273,7 +333,7 @@ fun MpvPlaylistSheet(
 
                                     // Number badge top left
                                     Surface(
-                                        shape = RoundedCornerShape(6.dp),
+                                        shape = CircleShape,
                                         color = Color(0xCC000000),
                                         modifier = Modifier
                                             .align(Alignment.TopStart)
@@ -284,14 +344,14 @@ fun MpvPlaylistSheet(
                                             color = Color.White,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                                         )
                                     }
 
                                     // Duration badge bottom right
                                     if (ep.durationMs > 0L) {
                                         Surface(
-                                            shape = RoundedCornerShape(6.dp),
+                                            shape = CircleShape,
                                             color = Color(0xCC000000),
                                             modifier = Modifier
                                                 .align(Alignment.BottomEnd)
@@ -302,7 +362,7 @@ fun MpvPlaylistSheet(
                                                 color = Color.White,
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Medium,
-                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                             )
                                         }
                                     }
@@ -334,7 +394,7 @@ fun MpvPlaylistSheet(
 
                                     if (chipText != null) {
                                         Surface(
-                                            shape = RoundedCornerShape(4.dp),
+                                            shape = CircleShape,
                                             color = Color(0x22FFFFFF)
                                         ) {
                                             Text(
@@ -343,7 +403,7 @@ fun MpvPlaylistSheet(
                                                 fontSize = 10.sp,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                                             )
                                         }
                                     } else {
@@ -352,12 +412,12 @@ fun MpvPlaylistSheet(
 
                                     if (isCurrent) {
                                         Surface(
-                                            shape = RoundedCornerShape(50),
+                                            shape = CircleShape,
                                             color = Color(0xFF7C4DFF)
                                         ) {
                                             Row(
                                                 verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
                                             ) {
                                                 Icon(
                                                     imageVector = Icons.Default.PlayArrow,
@@ -397,8 +457,16 @@ fun MpvPlaylistSheet(
                             mediaItem?.bannerUrl?.ifBlank { mediaItem.posterUrl } ?: ""
                         }
 
+                        val cardInteractionSource = remember { MutableInteractionSource() }
+                        val isPressed by cardInteractionSource.collectIsPressedAsState()
+                        val scale by animateFloatAsState(
+                            targetValue = if (isPressed) 0.96f else 1.0f,
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                            label = "ListCardScale"
+                        )
+
                         Surface(
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(20.dp),
                             color = if (isCurrent) Color(0x336750A4) else Color(0x14FFFFFF),
                             border = BorderStroke(
                                 if (isCurrent) 1.5.dp else 1.dp,
@@ -406,11 +474,20 @@ fun MpvPlaylistSheet(
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable {
-                                    onSelectEpisode(index)
-                                    onDismiss()
+                                .graphicsLayer {
+                                    scaleX = scale
+                                    scaleY = scale
                                 }
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable(
+                                    interactionSource = cardInteractionSource,
+                                    indication = null,
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onSelectEpisode(index)
+                                        onDismiss()
+                                    }
+                                )
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -420,7 +497,7 @@ fun MpvPlaylistSheet(
                                 Box(
                                     modifier = Modifier
                                         .size(width = 110.dp, height = 66.dp)
-                                        .clip(RoundedCornerShape(10.dp))
+                                        .clip(RoundedCornerShape(14.dp))
                                         .background(Color(0xFF14141E)),
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -441,7 +518,7 @@ fun MpvPlaylistSheet(
                                     }
 
                                     Surface(
-                                        shape = RoundedCornerShape(6.dp),
+                                        shape = CircleShape,
                                         color = if (isCurrent) Color(0xFF7C4DFF) else Color(0xCC000000),
                                         modifier = Modifier
                                             .align(Alignment.TopStart)
@@ -452,13 +529,13 @@ fun MpvPlaylistSheet(
                                             color = Color.White,
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
                                     }
 
                                     if (ep.durationMs > 0L) {
                                         Surface(
-                                            shape = RoundedCornerShape(4.dp),
+                                            shape = CircleShape,
                                             color = Color(0xCC000000),
                                             modifier = Modifier
                                                 .align(Alignment.BottomEnd)
@@ -468,7 +545,7 @@ fun MpvPlaylistSheet(
                                                 text = formatMpvTime(ep.durationMs),
                                                 color = Color.White,
                                                 fontSize = 9.sp,
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                                             )
                                         }
                                     }
@@ -494,40 +571,40 @@ fun MpvPlaylistSheet(
                                     ) {
                                         if (ep.arcName.isNotBlank()) {
                                             Surface(
-                                                shape = RoundedCornerShape(4.dp),
+                                                shape = CircleShape,
                                                 color = Color(0x22FFFFFF)
                                             ) {
                                                 Text(
                                                     text = ep.arcName,
                                                     color = Color(0xFFD0BCFF),
                                                     fontSize = 10.sp,
-                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                                                 )
                                             }
                                         }
 
                                         if (ep.fileSize.isNotBlank()) {
                                             Surface(
-                                                shape = RoundedCornerShape(4.dp),
+                                                shape = CircleShape,
                                                 color = Color(0x22FFFFFF)
                                             ) {
                                                 Text(
                                                     text = ep.fileSize,
                                                     color = TextSecondary,
                                                     fontSize = 10.sp,
-                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                                                 )
                                             }
                                         }
 
                                         if (isCurrent) {
                                             Surface(
-                                                shape = RoundedCornerShape(50),
+                                                shape = CircleShape,
                                                 color = Color(0xFF7C4DFF)
                                             ) {
                                                 Row(
                                                     verticalAlignment = Alignment.CenterVertically,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
                                                 ) {
                                                     Icon(
                                                         imageVector = Icons.Default.PlayArrow,

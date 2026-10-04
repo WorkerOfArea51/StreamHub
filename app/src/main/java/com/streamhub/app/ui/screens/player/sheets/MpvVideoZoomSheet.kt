@@ -1,10 +1,13 @@
 package com.streamhub.app.ui.screens.player.sheets
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import com.streamhub.app.ui.screens.player.controls.MpvPlayerSheet
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +25,8 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,9 +54,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.streamhub.app.ui.screens.player.controls.ExpressiveSheetDragHandle
+import com.streamhub.app.ui.screens.player.controls.MpvPlayerSheet
 import com.streamhub.app.ui.theme.TextSecondary
 import kotlin.math.roundToInt
 
@@ -65,140 +75,215 @@ fun MpvVideoZoomSheet(
     onDismiss: () -> Unit
 ) {
     val scrollState = rememberScrollState()
+    val zoomPresets = listOf(1.0f, 1.25f, 1.5f, 2.0f, 3.0f)
+    val haptic = LocalHapticFeedback.current
 
     MpvPlayerSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(scrollState)
-                .padding(horizontal = 24.dp, vertical = 10.dp)
+                .padding(horizontal = 24.dp, vertical = 6.dp)
         ) {
-            // Drag Handle
-            Box(
+            // Material 3 Expressive Drag Handle
+            ExpressiveSheetDragHandle()
+
+            // Header
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                contentAlignment = Alignment.Center
+                    .padding(bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
+                IconButton(
+                    onClick = onDismiss,
                     modifier = Modifier
-                        .size(width = 38.dp, height = 4.dp)
+                        .size(36.dp)
                         .clip(CircleShape)
-                        .background(Color(0x44FFFFFF))
+                        .background(Color(0x22FFFFFF))
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "Video Zoom",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
 
-                // Header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x22FFFFFF))
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "Video Zoom",
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+            Spacer(modifier = Modifier.height(10.dp))
 
-                Spacer(modifier = Modifier.height(14.dp))
+            // Prominent Zoom Display
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = String.format("%.2fx", currentZoom),
+                    color = Color(0xFFD0BCFF),
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
 
-                // Zoom Slider Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color(0x33FFFFFF),
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .clickable {
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Zoom Stepper + Slider Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                val decInteractionSource = remember { MutableInteractionSource() }
+                val isDecPressed by decInteractionSource.collectIsPressedAsState()
+                val decScale by animateFloatAsState(
+                    targetValue = if (isDecPressed) 0.88f else 1.0f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                    label = "DecZoomScale"
+                )
+
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0x22FFFFFF),
+                    border = BorderStroke(1.dp, Color(0x1AFFFFFF)),
+                    modifier = Modifier
+                        .size(42.dp)
+                        .graphicsLayer {
+                            scaleX = decScale
+                            scaleY = decScale
+                        }
+                        .clip(CircleShape)
+                        .clickable(
+                            interactionSource = decInteractionSource,
+                            indication = null,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 val next = ((currentZoom - 0.05f) * 20).roundToInt() / 20f
                                 onZoomChange(next.coerceIn(0.5f, 3.0f))
                             }
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Remove,
-                                contentDescription = "Decrease Zoom",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Video Zoom", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text(String.format("%.2fx", currentZoom), color = Color(0xFFD0BCFF), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Slider(
-                            value = currentZoom,
-                            onValueChange = {
-                                val snapped = (it * 20).roundToInt() / 20f
-                                onZoomChange(snapped.coerceIn(0.5f, 3.0f))
-                            },
-                            valueRange = 0.5f..3.0f,
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color.White,
-                                activeTrackColor = Color(0xFFD0BCFF),
-                                inactiveTrackColor = Color(0x33FFFFFF)
-                            )
+                        )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Remove,
+                            contentDescription = "Decrease Zoom",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
+                }
 
-                    Surface(
-                        shape = CircleShape,
-                        color = Color(0x33FFFFFF),
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .clickable {
+                Slider(
+                    value = currentZoom,
+                    onValueChange = {
+                        val snapped = (it * 20).roundToInt() / 20f
+                        onZoomChange(snapped.coerceIn(0.5f, 3.0f))
+                    },
+                    valueRange = 0.5f..3.0f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color.White,
+                        activeTrackColor = Color(0xFFD0BCFF),
+                        inactiveTrackColor = Color(0x33FFFFFF)
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+
+                val incInteractionSource = remember { MutableInteractionSource() }
+                val isIncPressed by incInteractionSource.collectIsPressedAsState()
+                val incScale by animateFloatAsState(
+                    targetValue = if (isIncPressed) 0.88f else 1.0f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                    label = "IncZoomScale"
+                )
+
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0x22FFFFFF),
+                    border = BorderStroke(1.dp, Color(0x1AFFFFFF)),
+                    modifier = Modifier
+                        .size(42.dp)
+                        .graphicsLayer {
+                            scaleX = incScale
+                            scaleY = incScale
+                        }
+                        .clip(CircleShape)
+                        .clickable(
+                            interactionSource = incInteractionSource,
+                            indication = null,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 val next = ((currentZoom + 0.05f) * 20).roundToInt() / 20f
                                 onZoomChange(next.coerceIn(0.5f, 3.0f))
                             }
+                        )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Increase Zoom",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Quick Zoom Snap Presets (CircleShape pills)
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(zoomPresets) { preset ->
+                    val isSelected = (currentZoom - preset) in -0.02f..0.02f
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isSelected) Color(0xFF6750A4) else Color(0x18FFFFFF),
+                        border = BorderStroke(1.dp, if (isSelected) Color(0xFFD0BCFF) else Color(0x1AFFFFFF)),
+                        modifier = Modifier
+                            .height(38.dp)
+                            .clip(CircleShape)
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onZoomChange(preset)
+                            }
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "Increase Zoom",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.padding(horizontal = 14.dp)
+                        ) {
+                            Text(
+                                text = if (preset == 1.0f) "1.0x (Normal)" else "${preset}x",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                             )
                         }
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-                // Pan & Zoom Switch Row
+            // Pan & Zoom Switch Row (20.dp borderless tonal container)
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0x14FFFFFF),
+                border = BorderStroke(1.dp, Color(0x1AFFFFFF)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0x18FFFFFF))
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -212,13 +297,16 @@ fun MpvVideoZoomSheet(
                         Text(
                             text = "Drag with fingers to reposition the zoomed video frame",
                             color = TextSecondary,
-                            fontSize = 10.sp
+                            fontSize = 11.sp
                         )
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     Switch(
                         checked = isPanEnabled,
-                        onCheckedChange = onPanToggle,
+                        onCheckedChange = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onPanToggle(it)
+                        },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = Color(0xFF6750A4),
@@ -227,39 +315,44 @@ fun MpvVideoZoomSheet(
                         )
                     )
                 }
+            }
 
-                Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-                // Action Buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+            // Action Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4)),
+                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
                 ) {
-                    Button(
-                        onClick = { onDismiss() },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4)),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(46.dp)
-                    ) {
-                        Text("Apply", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = {
-                            onReset()
-                            onDismiss()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0x22FFFFFF)),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.height(46.dp)
-                    ) {
-                        Text("Reset (1.00x)", color = Color.White)
-                    }
+                    Text("Apply", color = Color.White, fontWeight = FontWeight.Bold)
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Button(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onReset()
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0x22FFFFFF)),
+                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    Text("Reset (1.00x)", color = Color.White)
+                }
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
+        }
     }
 }

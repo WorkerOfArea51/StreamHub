@@ -1,10 +1,13 @@
 package com.streamhub.app.ui.screens.player.sheets
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import com.streamhub.app.ui.screens.player.controls.MpvPlayerSheet
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,10 +57,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.streamhub.app.ui.screens.player.controls.ExpressiveSheetDragHandle
+import com.streamhub.app.ui.screens.player.controls.MpvPlayerSheet
 import com.streamhub.app.ui.theme.TextSecondary
 import kotlin.math.roundToInt
 
@@ -71,32 +79,23 @@ fun MpvMoreSheet(
 ) {
     val scrollState = rememberScrollState()
     val sleepPresets = listOf(0, 15, 30, 45, 60, 90)
+    val haptic = LocalHapticFeedback.current
 
     MpvPlayerSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(scrollState)
-                .padding(horizontal = 24.dp, vertical = 10.dp)
+                .padding(horizontal = 24.dp, vertical = 6.dp)
         ) {
-            // Drag Handle
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(width = 38.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x44FFFFFF))
-                )
-            }
+            // Material 3 Expressive Drag Handle
+            ExpressiveSheetDragHandle()
 
             // Header
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
@@ -122,21 +121,41 @@ fun MpvMoreSheet(
                 )
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Stats for Nerds Card
+            // Stats for Nerds Card (20.dp borderless tonal container)
+            val statsInteractionSource = remember { MutableInteractionSource() }
+            val isStatsPressed by statsInteractionSource.collectIsPressedAsState()
+            val statsScale by animateFloatAsState(
+                targetValue = if (isStatsPressed) 0.96f else 1.0f,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                label = "StatsCardScale"
+            )
+
             Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0x18FFFFFF),
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0x14FFFFFF),
+                border = BorderStroke(1.dp, Color(0x1AFFFFFF)),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { onToggleStatsForNerds(!showStatsForNerds) }
+                    .graphicsLayer {
+                        scaleX = statsScale
+                        scaleY = statsScale
+                    }
+                    .clip(RoundedCornerShape(20.dp))
+                    .clickable(
+                        interactionSource = statsInteractionSource,
+                        indication = null,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onToggleStatsForNerds(!showStatsForNerds)
+                        }
+                    )
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -153,12 +172,15 @@ fun MpvMoreSheet(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text("Stats for Nerds", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Draggable overlay with RAM, framerate, buffer & decoder stats", color = TextSecondary, fontSize = 10.sp)
+                            Text("Draggable overlay with RAM, framerate, buffer & decoder stats", color = TextSecondary, fontSize = 11.sp)
                         }
                     }
                     Switch(
                         checked = showStatsForNerds,
-                        onCheckedChange = onToggleStatsForNerds,
+                        onCheckedChange = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onToggleStatsForNerds(it)
+                        },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = Color(0xFF6750A4),
@@ -169,10 +191,16 @@ fun MpvMoreSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Sleep Timer Row
-            Text("Sleep Timer", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                text = "SLEEP TIMER",
+                color = Color(0xFFD0BCFF),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
             Spacer(modifier = Modifier.height(8.dp))
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -181,17 +209,20 @@ fun MpvMoreSheet(
                 items(sleepPresets) { mins ->
                     val isSelected = sleepTimerMinutes == mins
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = if (isSelected) Color(0xFF6750A4) else Color(0x1EFFFFFF),
+                        shape = CircleShape,
+                        color = if (isSelected) Color(0xFF6750A4) else Color(0x18FFFFFF),
                         border = BorderStroke(1.dp, if (isSelected) Color(0xFFD0BCFF) else Color(0x1AFFFFFF)),
                         modifier = Modifier
-                            .height(38.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { onSetSleepTimer(mins) }
+                            .height(40.dp)
+                            .clip(CircleShape)
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onSetSleepTimer(mins)
+                            }
                     ) {
                         Box(
                             contentAlignment = Alignment.Center,
-                            modifier = Modifier.padding(horizontal = 14.dp)
+                            modifier = Modifier.padding(horizontal = 16.dp)
                         ) {
                             Text(
                                 text = if (mins == 0) "Off" else "${mins}m",
@@ -204,7 +235,7 @@ fun MpvMoreSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
         }
     }
 }

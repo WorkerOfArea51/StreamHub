@@ -20,6 +20,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +34,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamhub.app.ui.theme.TextPrimary
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ControlsButton(
@@ -42,22 +51,43 @@ fun ControlsButton(
     onLongClick: () -> Unit = {},
     title: String? = null,
     color: Color = Color.White,
-    backgroundColor: Color = Color(0x661A1A24),
-    borderColor: Color = Color(0x33FFFFFF),
-    size: Dp = 45.dp,
+    backgroundColor: Color = Color(0x5514141E),
+    borderColor: Color = Color(0x22FFFFFF),
+    size: Dp = 44.dp,
     iconSize: Dp = 20.dp,
     badgeText: String? = null,
     customIcon: (@Composable () -> Unit)? = null
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val haptic = LocalHapticFeedback.current
+
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.88f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "ControlsButtonScale"
+    )
 
     Surface(
         modifier = modifier
             .size(size)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .clip(CircleShape)
             .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick,
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onClick()
+                },
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onLongClick()
+                },
                 interactionSource = interactionSource,
                 indication = ripple()
             ),
@@ -85,7 +115,7 @@ fun ControlsButton(
 
             if (!badgeText.isNullOrBlank()) {
                 Surface(
-                    shape = RoundedCornerShape(6.dp),
+                    shape = CircleShape,
                     color = Color(0xFFE50914),
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -96,7 +126,7 @@ fun ControlsButton(
                         color = Color.White,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                     )
                 }
             }

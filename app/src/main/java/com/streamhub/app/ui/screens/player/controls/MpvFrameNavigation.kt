@@ -3,6 +3,9 @@ package com.streamhub.app.ui.screens.player.controls
 import android.graphics.Bitmap
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
@@ -14,6 +17,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,38 +38,33 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 
 /**
- * Expandable Frame Navigation Capsule matching mpvEx.
+ * Expandable Frame Navigation Capsule with Material 3 Expressive tokens,
+ * spring press physics, and tactile haptic feedback.
  * Collapsed: Camera button.
- * Expanded: [<| Frame Back] [📷 Snapshot] [|> Frame Forward].
+ * Expanded: [<| Frame Back] [📷 Snapshot] [|> Frame Forward] [x].
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -79,6 +79,8 @@ fun FrameNavigationCapsule(
     modifier: Modifier = Modifier,
     buttonSize: Dp = 40.dp
 ) {
+    val haptic = LocalHapticFeedback.current
+
     AnimatedContent(
         targetState = isExpanded,
         transitionSpec = {
@@ -91,9 +93,9 @@ fun FrameNavigationCapsule(
     ) { expanded ->
         if (expanded) {
             Surface(
-                shape = RoundedCornerShape(50),
-                color = Color(0xF0181824),
-                border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+                shape = CircleShape,
+                color = Color(0xF0101018),
+                border = BorderStroke(1.dp, Color(0x1FFFFFFF)),
                 modifier = Modifier.height(buttonSize)
             ) {
                 Row(
@@ -102,13 +104,24 @@ fun FrameNavigationCapsule(
                     modifier = Modifier.padding(horizontal = 6.dp)
                 ) {
                     // Frame Back
+                    val backInteraction = remember { MutableInteractionSource() }
+                    val isBackPressed by backInteraction.collectIsPressedAsState()
+                    val backScale by animateFloatAsState(
+                        if (isBackPressed) 0.88f else 1f,
+                        spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow),
+                        label = "FrameBackScale"
+                    )
                     Surface(
                         shape = CircleShape,
                         color = Color.Transparent,
                         modifier = Modifier
                             .size(buttonSize - 8.dp)
+                            .graphicsLayer { scaleX = backScale; scaleY = backScale }
                             .clip(CircleShape)
-                            .clickable { onStepBackward() }
+                            .clickable(interactionSource = backInteraction, indication = null) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onStepBackward()
+                            }
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
@@ -136,15 +149,31 @@ fun FrameNavigationCapsule(
                             }
                         }
                     } else {
+                        val camInteraction = remember { MutableInteractionSource() }
+                        val isCamPressed by camInteraction.collectIsPressedAsState()
+                        val camScale by animateFloatAsState(
+                            if (isCamPressed) 0.88f else 1f,
+                            spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow),
+                            label = "CamScale"
+                        )
                         Surface(
                             shape = CircleShape,
                             color = Color(0x22FFFFFF),
                             modifier = Modifier
                                 .size(buttonSize - 8.dp)
+                                .graphicsLayer { scaleX = camScale; scaleY = camScale }
                                 .clip(CircleShape)
                                 .combinedClickable(
-                                    onClick = onTakeSnapshot,
-                                    onLongClick = onOpenSheet
+                                    interactionSource = camInteraction,
+                                    indication = null,
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onTakeSnapshot()
+                                    },
+                                    onLongClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onOpenSheet()
+                                    }
                                 )
                         ) {
                             Box(contentAlignment = Alignment.Center) {
@@ -159,13 +188,24 @@ fun FrameNavigationCapsule(
                     }
 
                     // Frame Forward
+                    val fwdInteraction = remember { MutableInteractionSource() }
+                    val isFwdPressed by fwdInteraction.collectIsPressedAsState()
+                    val fwdScale by animateFloatAsState(
+                        if (isFwdPressed) 0.88f else 1f,
+                        spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow),
+                        label = "FrameFwdScale"
+                    )
                     Surface(
                         shape = CircleShape,
                         color = Color.Transparent,
                         modifier = Modifier
                             .size(buttonSize - 8.dp)
+                            .graphicsLayer { scaleX = fwdScale; scaleY = fwdScale }
                             .clip(CircleShape)
-                            .clickable { onStepForward() }
+                            .clickable(interactionSource = fwdInteraction, indication = null) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onStepForward()
+                            }
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
@@ -178,13 +218,24 @@ fun FrameNavigationCapsule(
                     }
 
                     // Collapse button (x)
+                    val closeInteraction = remember { MutableInteractionSource() }
+                    val isClosePressed by closeInteraction.collectIsPressedAsState()
+                    val closeScale by animateFloatAsState(
+                        if (isClosePressed) 0.88f else 1f,
+                        spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow),
+                        label = "FrameCollapseScale"
+                    )
                     Surface(
                         shape = CircleShape,
                         color = Color.Transparent,
                         modifier = Modifier
                             .size(buttonSize - 8.dp)
+                            .graphicsLayer { scaleX = closeScale; scaleY = closeScale }
                             .clip(CircleShape)
-                            .clickable { onToggleExpand() }
+                            .clickable(interactionSource = closeInteraction, indication = null) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onToggleExpand()
+                            }
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
@@ -226,6 +277,8 @@ fun FrameNavigationSheet(
     isSnapshotLoading: Boolean,
     onDismissRequest: () -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+
     MpvPlayerSheet(
         onDismissRequest = onDismissRequest
     ) {
@@ -234,20 +287,8 @@ fun FrameNavigationSheet(
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp, vertical = 10.dp)
         ) {
-            // Drag Handle
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(width = 38.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x44FFFFFF))
-                )
-            }
+            // M3 Expressive Drag Handle
+            ExpressiveSheetDragHandle(modifier = Modifier.padding(bottom = 8.dp))
 
             // Header
             Row(
@@ -261,39 +302,55 @@ fun FrameNavigationSheet(
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
+                val closeInteractionSource = remember { MutableInteractionSource() }
+                val isClosePressed by closeInteractionSource.collectIsPressedAsState()
+                val closeScale by animateFloatAsState(
+                    targetValue = if (isClosePressed) 0.88f else 1f,
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                    label = "FrameNavCloseScale"
+                )
                 IconButton(
-                    onClick = onDismissRequest,
-                    modifier = Modifier.size(36.dp)
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onDismissRequest()
+                    },
+                    interactionSource = closeInteractionSource,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .graphicsLayer { scaleX = closeScale; scaleY = closeScale }
+                        .clip(CircleShape)
+                        .background(Color(0x22FFFFFF))
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Close",
-                        tint = TextSecondary,
-                        modifier = Modifier.size(20.dp)
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Timecode Card
+            // Timecode Card (M3 Expressive Borderless Card)
             Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF13131A),
-                border = BorderStroke(1.dp, Color(0x22FFFFFF)),
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0x14FFFFFF),
+                border = BorderStroke(1.dp, Color(0x1FFFFFFF)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(18.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
                         text = formatPreciseTime(currentPositionMs),
                         color = Color(0xFFD0BCFF),
-                        fontSize = 24.sp,
+                        fontSize = 26.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "Total: ${formatPreciseTime(durationMs)}",
                         color = TextSecondary,
@@ -311,27 +368,39 @@ fun FrameNavigationSheet(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // -1000ms
                 StepperPill(label = "-1.0s") { onStepBackward(1000L) }
-                // -100ms
                 StepperPill(label = "-100ms") { onStepBackward(100L) }
-                // +100ms
                 StepperPill(label = "+100ms") { onStepForward(100L) }
-                // +1000ms
                 StepperPill(label = "+1.0s") { onStepForward(1000L) }
             }
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // Snapshot Action Button
+            // Snapshot Action Button (M3 Expressive Pill)
+            val snapInteractionSource = remember { MutableInteractionSource() }
+            val isSnapPressed by snapInteractionSource.collectIsPressedAsState()
+            val snapScale by animateFloatAsState(
+                targetValue = if (isSnapPressed) 0.96f else 1f,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                label = "SnapshotBtnScale"
+            )
+
             Surface(
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(24.dp),
                 color = Color(0xFFD0BCFF),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .clickable(enabled = !isSnapshotLoading) { onTakeSnapshot() }
+                    .graphicsLayer { scaleX = snapScale; scaleY = snapScale }
+                    .clip(RoundedCornerShape(24.dp))
+                    .clickable(
+                        interactionSource = snapInteractionSource,
+                        indication = null,
+                        enabled = !isSnapshotLoading
+                    ) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onTakeSnapshot()
+                    }
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 16.dp),
@@ -379,21 +448,37 @@ private fun RowScope.StepperPill(
     label: String,
     onClick: () -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.92f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        label = "FrameStepperScale_$label"
+    )
+
     Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = Color(0xFF181824),
-        border = BorderStroke(1.dp, Color(0x2AFFFFFF)),
+        shape = CircleShape,
+        color = Color(0x18FFFFFF),
+        border = BorderStroke(1.dp, Color(0x1AFFFFFF)),
         modifier = Modifier
             .weight(1f)
             .height(42.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { onClick() }
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null
+            ) {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            }
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
                 text = label,
                 color = Color.White,
-                fontSize = 13.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
                 fontFamily = FontFamily.Monospace
             )

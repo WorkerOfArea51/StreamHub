@@ -32,14 +32,24 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.streamhub.app.ui.screens.player.controls.ExpressiveSheetDragHandle
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -99,32 +109,23 @@ fun MpvAmbientMoodSheet(
 ) {
     val playerSettings by PlayerSettingsManager.settingsFlow.collectAsState()
     val scrollState = rememberScrollState()
+    val haptic = LocalHapticFeedback.current
 
     MpvPlayerSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(scrollState)
-                .padding(horizontal = 24.dp, vertical = 10.dp)
+                .padding(horizontal = 24.dp, vertical = 6.dp)
         ) {
-            // Drag Handle
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(width = 38.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x44FFFFFF))
-                )
-            }
+            // Material 3 Expressive Drag Handle
+            ExpressiveSheetDragHandle()
 
             // Header
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -148,7 +149,7 @@ fun MpvAmbientMoodSheet(
                         Text(
                             text = "Cinema Ambient Lighting",
                             color = Color.White,
-                            fontSize = 16.sp,
+                            fontSize = 17.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
@@ -162,7 +163,10 @@ fun MpvAmbientMoodSheet(
                 // Master Toggle Switch
                 Switch(
                     checked = playerSettings.isAmbientEnabled,
-                    onCheckedChange = { PlayerSettingsManager.updateAmbientEnabled(it) },
+                    onCheckedChange = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        PlayerSettingsManager.updateAmbientEnabled(it)
+                    },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = Color.White,
                         checkedTrackColor = Color(0xFF7C4DFF),
@@ -172,17 +176,17 @@ fun MpvAmbientMoodSheet(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             if (playerSettings.isAmbientEnabled) {
-                // Intensity Slider
+                // Intensity Slider (20.dp borderless tonal container)
                 Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color(0x441E1E2C),
-                    border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0x14FFFFFF),
+                    border = BorderStroke(1.dp, Color(0x1AFFFFFF)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
+                    Column(modifier = Modifier.padding(16.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -202,6 +206,8 @@ fun MpvAmbientMoodSheet(
                             )
                         }
 
+                        Spacer(modifier = Modifier.height(4.dp))
+
                         Slider(
                             value = playerSettings.ambientIntensity,
                             onValueChange = { PlayerSettingsManager.updateAmbientIntensity(it) },
@@ -215,7 +221,7 @@ fun MpvAmbientMoodSheet(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
                     text = "MOOD PRESETS",
@@ -226,29 +232,46 @@ fun MpvAmbientMoodSheet(
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
 
-                // Mood Selection Cards
+                // Mood Selection Cards (20.dp borderless cards)
                 AmbientMoodPresets.forEach { preset ->
                     val isSelected = playerSettings.ambientMoodId == preset.id
+                    val moodInteractionSource = remember { MutableInteractionSource() }
+                    val isPressed by moodInteractionSource.collectIsPressedAsState()
+                    val scale by animateFloatAsState(
+                        targetValue = if (isPressed) 0.96f else 1.0f,
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                        label = "MoodCardScale"
+                    )
 
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = if (isSelected) Color(0x337C4DFF) else Color(0x221E1E2C),
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (isSelected) Color(0x337C4DFF) else Color(0x14FFFFFF),
                         border = BorderStroke(
                             1.dp,
-                            if (isSelected) Color(0xFFD0BCFF) else Color(0x22FFFFFF)
+                            if (isSelected) Color(0xFFD0BCFF) else Color(0x1AFFFFFF)
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 4.dp)
-                            .clickable {
-                                PlayerSettingsManager.updateAmbientMood(preset.id)
-                                PlayerSettingsManager.updateAmbientIntensity(preset.defaultIntensity)
+                            .graphicsLayer {
+                                scaleX = scale
+                                scaleY = scale
                             }
+                            .clip(RoundedCornerShape(20.dp))
+                            .clickable(
+                                interactionSource = moodInteractionSource,
+                                indication = null,
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    PlayerSettingsManager.updateAmbientMood(preset.id)
+                                    PlayerSettingsManager.updateAmbientIntensity(preset.defaultIntensity)
+                                }
+                            )
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(12.dp),
+                                .padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -259,7 +282,7 @@ fun MpvAmbientMoodSheet(
                                 // Color swatch preview
                                 Box(
                                     modifier = Modifier
-                                        .size(36.dp)
+                                        .size(38.dp)
                                         .clip(CircleShape)
                                         .background(Brush.linearGradient(preset.gradientColors)),
                                     contentAlignment = Alignment.Center
@@ -309,7 +332,7 @@ fun MpvAmbientMoodSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
         }
     }
 }
