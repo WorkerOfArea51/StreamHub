@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FormatAlignLeft
 import androidx.compose.material.icons.automirrored.filled.FormatAlignRight
 import androidx.compose.material.icons.filled.Add
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.MoreTime
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -70,10 +72,7 @@ fun MpvSubtitleTracksSheet(
     selectedTrackId: String?,
     onSelectTrack: (String) -> Unit,
     onAddExternalSubtitle: (Uri) -> Unit = {},
-    subtitleDelayMs: Long = 0L,
-    onSubtitleDelayChange: (Long) -> Unit = {},
     onOpenSubtitleSettings: () -> Unit,
-    onOpenSubtitleDelay: () -> Unit = {},
     onOpenSearch: () -> Unit,
     onRemoveSubtitle: ((String) -> Unit)? = null,
     onDismiss: () -> Unit
@@ -105,119 +104,127 @@ fun MpvSubtitleTracksSheet(
                 )
             }
 
-            // Prominent Online Subtitles Search Row
+            // Header Row: Back button, "Subtitles" title, and clean action pills on right
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onOpenSearch() }
-                    .height(48.dp)
-                    .padding(horizontal = 20.dp),
+                    .padding(horizontal = 20.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Language,
-                        contentDescription = "Search Online Subtitles",
-                        tint = Color(0xFFD0BCFF),
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "Search Online Subtitles",
-                        color = Color(0xFFD0BCFF),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0x336750A4),
-                    border = BorderStroke(1.dp, Color(0x55D0BCFF))
-                ) {
-                    Text(
-                        text = "OpenSubtitles",
-                        color = Color(0xFFD0BCFF),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
-                }
-            }
-
-            HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-                color = Color(0x1FFFFFFF)
-            )
-
-            // mpvEx AddTrackRow with Action Buttons (Search, Palette, Delay, Close)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        subtitlePicker.launch(arrayOf("text/*", "application/x-subrip", "*/*"))
-                    }
-                    .height(52.dp)
-                    .padding(horizontal = 20.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add External",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "Add external subtitles",
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
-                        onClick = onOpenSearch,
-                        modifier = Modifier.size(36.dp)
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x22FFFFFF))
                     ) {
-                        Icon(Icons.Default.Search, contentDescription = "Search Online Subtitles", tint = Color.White, modifier = Modifier.size(20.dp))
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "Subtitles",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Search Online (Single unified entry point)
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0x336750A4),
+                        border = BorderStroke(1.dp, Color(0x55D0BCFF)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onOpenSearch() }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Language,
+                                contentDescription = null,
+                                tint = Color(0xFFD0BCFF),
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "Search Online",
+                                color = Color(0xFFD0BCFF),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    // Add External Subtitle
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0x22FFFFFF),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                subtitlePicker.launch(arrayOf("text/*", "application/x-subrip", "*/*"))
+                            }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "External",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+
+                    // Subtitle Settings Menu ⚙
                     IconButton(
                         onClick = onOpenSubtitleSettings,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x22FFFFFF))
                     ) {
-                        Icon(Icons.Default.Palette, contentDescription = "Subtitle Style & Colors", tint = Color(0xFFD0BCFF), modifier = Modifier.size(20.dp))
-                    }
-                    IconButton(
-                        onClick = onOpenSubtitleDelay,
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(Icons.Default.MoreTime, contentDescription = "Sync Delay (+/- ms)", tint = Color.White, modifier = Modifier.size(20.dp))
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Subtitle Settings & Sync",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
             }
 
             HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                 color = Color(0x1FFFFFFF)
             )
 
-            // Embedded Subtitles Header
+            // Available Subtitles Header
             Text(
-                text = "Embedded Subtitles",
+                text = "Available Subtitles",
                 color = Color(0xFFD0BCFF),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
@@ -276,64 +283,6 @@ fun MpvSubtitleTracksSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
-
-            HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                color = Color(0x1FFFFFFF)
-            )
-
-            // Subtitle Delay Sync Adjuster
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 4.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Subtitle Delay Sync",
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "${if (subtitleDelayMs > 0) "+" else ""}${subtitleDelayMs}ms",
-                            color = Color(0xFFD0BCFF),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Advanced Steppers ▸",
-                            color = Color(0xFFD0BCFF),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0x22FFFFFF))
-                                .clickable { onOpenSubtitleDelay() }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-                Slider(
-                    value = subtitleDelayMs.toFloat(),
-                    onValueChange = { onSubtitleDelayChange(it.toLong()) },
-                    valueRange = -3000f..3000f,
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color.White,
-                        activeTrackColor = Color(0xFFD0BCFF),
-                        inactiveTrackColor = Color(0x33FFFFFF)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
             Spacer(modifier = Modifier.height(10.dp))
         }
     }
@@ -343,6 +292,9 @@ fun MpvSubtitleTracksSheet(
 fun MpvSubtitleSettingsDrawer(
     config: SubtitleConfig,
     onUpdateConfig: (SubtitleConfig) -> Unit,
+    subtitleDelayMs: Long = 0L,
+    onSubtitleDelayChange: (Long) -> Unit = {},
+    onOpenSubtitleDelay: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     MpvDraggablePanel(
@@ -382,6 +334,79 @@ fun MpvSubtitleSettingsDrawer(
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Subtitle Delay Sync Card (Shifted to Settings menu)
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color(0x14FFFFFF),
+                border = BorderStroke(1.dp, Color(0x1AFFFFFF)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.MoreTime,
+                                contentDescription = null,
+                                tint = Color(0xFFD0BCFF),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Subtitle Delay Sync",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "${if (subtitleDelayMs > 0) "+" else ""}${subtitleDelayMs}ms",
+                                color = Color(0xFFD0BCFF),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Advanced Steppers ▸",
+                                color = Color(0xFFD0BCFF),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0x22FFFFFF))
+                                    .clickable { onOpenSubtitleDelay() }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Slider(
+                        value = subtitleDelayMs.toFloat(),
+                        onValueChange = { onSubtitleDelayChange(it.toLong()) },
+                        valueRange = -3000f..3000f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color.White,
+                            activeTrackColor = Color(0xFFD0BCFF),
+                            inactiveTrackColor = Color(0x33FFFFFF)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             // Typography Tools (Bold, Italic, Alignment, Reset)
@@ -468,47 +493,46 @@ fun MpvSubtitleSettingsDrawer(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Border / Outline Width Slider
+            // Subtitle Edge Style (CaptionStyleCompat)
+            Text(
+                text = "Edge Style",
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text("Border outline size", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text("${config.outlineWidth.toInt()} dp", color = Color(0xFFD0BCFF), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                listOf(
+                    androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_NONE to "None",
+                    androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE to "Outline",
+                    androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW to "Shadow",
+                    androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_RAISED to "Raised",
+                    androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_DEPRESSED to "Depressed"
+                ).forEach { (edgeType, label) ->
+                    val isSelected = config.edgeType == edgeType
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isSelected) Color(0xFF6750A4) else Color(0x18FFFFFF),
+                        border = BorderStroke(1.dp, if (isSelected) Color(0xFFD0BCFF) else Color(0x33FFFFFF)),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onUpdateConfig(config.copy(edgeType = edgeType)) }
+                    ) {
+                        Text(
+                            text = label,
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            modifier = Modifier.padding(vertical = 7.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
             }
-            Slider(
-                value = config.outlineWidth,
-                onValueChange = { onUpdateConfig(config.copy(outlineWidth = it)) },
-                valueRange = 0f..8f,
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.White,
-                    activeTrackColor = Color(0xFFD0BCFF),
-                    inactiveTrackColor = Color(0x33FFFFFF)
-                )
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Shadow Offset Slider
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Shadow offset", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text("${config.shadowOffset.toInt()} dp", color = Color(0xFFD0BCFF), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            }
-            Slider(
-                value = config.shadowOffset,
-                onValueChange = { onUpdateConfig(config.copy(shadowOffset = it)) },
-                valueRange = 0f..10f,
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.White,
-                    activeTrackColor = Color(0xFFD0BCFF),
-                    inactiveTrackColor = Color(0x33FFFFFF)
-                )
-            )
 
             Spacer(modifier = Modifier.height(16.dp))
 

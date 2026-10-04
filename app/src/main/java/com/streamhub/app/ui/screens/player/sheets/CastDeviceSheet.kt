@@ -153,15 +153,6 @@ fun CastDeviceSheet(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isScanning) {
-                        CircularProgressIndicator(
-                            color = Color(0xFFD0BCFF),
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-
                     IconButton(
                         onClick = { SmartCastManager.startDiscovery(context) },
                         modifier = Modifier

@@ -2631,15 +2631,9 @@ fun PlayerScreen(
                     triggerHudPill("External Subtitle Loaded", Icons.Default.Subtitles)
                     showSubtitleSheet = false
                 },
-                subtitleDelayMs = uiState.subtitleOffsetMs,
-                onSubtitleDelayChange = { viewModel.setSubtitleOffset(it) },
                 onOpenSubtitleSettings = {
                     showSubtitleSheet = false
                     showSubtitleSettingsDrawer = true
-                },
-                onOpenSubtitleDelay = {
-                    showSubtitleSheet = false
-                    showSubtitleDelaySheet = true
                 },
                 onOpenSearch = {
                     showSubtitleSheet = false
@@ -2654,6 +2648,12 @@ fun PlayerScreen(
             MpvSubtitleSettingsDrawer(
                 config = subConfig,
                 onUpdateConfig = { SubtitleSettingsManager.updateConfig(it) },
+                subtitleDelayMs = uiState.subtitleOffsetMs,
+                onSubtitleDelayChange = { viewModel.setSubtitleOffset(it) },
+                onOpenSubtitleDelay = {
+                    showSubtitleSettingsDrawer = false
+                    showSubtitleDelaySheet = true
+                },
                 onDismiss = { showSubtitleSettingsDrawer = false }
             )
         }
@@ -3348,10 +3348,16 @@ private fun transformCue(
         }
 
         val cueBuilder = cue.buildUpon().setText(builder)
-        // Only override font size for regular dialogue subtitles to avoid blowing up positioned signs/karaoke,
-        // unless forceCleanTypography is active, in which case consistent uniform sizing is applied.
+        // Only override font size and alignment for regular dialogue subtitles to avoid blowing up positioned signs/karaoke,
+        // unless forceCleanTypography is active, in which case consistent uniform sizing and alignment are applied.
         if (!isPositionedSignOrSong || config.forceCleanTypography) {
             cueBuilder.setTextSize(config.fontSizeSp, androidx.media3.common.text.Cue.TEXT_SIZE_TYPE_ABSOLUTE)
+            val textAlignment = when (config.alignment) {
+                "LEFT" -> android.text.Layout.Alignment.ALIGN_NORMAL
+                "RIGHT" -> android.text.Layout.Alignment.ALIGN_OPPOSITE
+                else -> android.text.Layout.Alignment.ALIGN_CENTER
+            }
+            cueBuilder.setTextAlignment(textAlignment)
         }
         return cueBuilder.build()
     }
@@ -3379,11 +3385,7 @@ private fun applySubtitleStyling(
     }
     val customTypeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, typefaceStyle)
 
-    val effectiveEdgeType = when {
-        config.outlineWidth > 0f -> androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE
-        config.shadowOffset > 0f -> androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
-        else -> config.edgeType
-    }
+    val effectiveEdgeType = config.edgeType
 
     sv.setStyle(
         androidx.media3.ui.CaptionStyleCompat(

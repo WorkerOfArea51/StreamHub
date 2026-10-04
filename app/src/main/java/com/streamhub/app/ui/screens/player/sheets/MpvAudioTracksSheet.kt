@@ -6,36 +6,30 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import com.streamhub.app.ui.screens.player.controls.MpvPlayerSheet
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.MoreTime
+import androidx.compose.material.icons.filled.Equalizer
+import androidx.compose.material.icons.filled.NightlightRound
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -55,10 +49,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.material.icons.filled.Equalizer
-import androidx.compose.material.icons.filled.NightlightRound
-import androidx.compose.material.icons.filled.RecordVoiceOver
 import com.streamhub.app.data.AudioProfile
+import com.streamhub.app.ui.screens.player.controls.MpvPlayerSheet
 import com.streamhub.app.ui.theme.TextSecondary
 
 @Composable
@@ -80,8 +72,7 @@ fun MpvAudioTracksSheet(
         if (uri != null) onAddExternalAudio(uri)
     }
 
-    val channelModes = listOf("Auto", "Auto Safe", "Mono", "Stereo", "Reversed Stereo")
-    var selectedChannelMode by remember { mutableStateOf("Auto") }
+    var isSettingsOpen by remember { mutableStateOf(false) }
 
     MpvPlayerSheet(onDismissRequest = onDismiss) {
         Column(
@@ -104,7 +95,10 @@ fun MpvAudioTracksSheet(
                 )
             }
 
-                // Header
+            if (!isSettingsOpen) {
+                // ──────────────────────────────────────────
+                // MAIN VIEW: Audio Tracks List (Clean & Spacious)
+                // ──────────────────────────────────────────
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -138,18 +132,6 @@ fun MpvAudioTracksSheet(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        IconButton(
-                            onClick = onOpenAudioDelaySheet,
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.MoreTime,
-                                contentDescription = "Sync Delay (+/- ms)",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
                         // Add external audio button
                         Surface(
                             shape = RoundedCornerShape(12.dp),
@@ -179,99 +161,142 @@ fun MpvAudioTracksSheet(
                                 )
                             }
                         }
+
+                        // Audio Settings Menu Icon Button
+                        IconButton(
+                            onClick = { isSettingsOpen = true },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x22FFFFFF))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Audio Settings",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Audio Tracks List
+                // Full-height Audio Tracks List
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f, fill = false)
+                        .heightIn(min = 120.dp, max = 340.dp)
                 ) {
-                    items(tracks) { trackName ->
-                        val isSelected = selectedTrackId == trackName || (selectedTrackId.isNullOrBlank() && trackName == tracks.firstOrNull())
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = if (isSelected) Color(0x336750A4) else Color(0x14FFFFFF),
-                            border = BorderStroke(
-                                if (isSelected) 1.5.dp else 1.dp,
-                                if (isSelected) Color(0xFFD0BCFF) else Color(0x1AFFFFFF)
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable {
-                                    onSelectTrack(trackName)
-                                    onDismiss()
-                                }
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isSelected) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
-                                    contentDescription = null,
-                                    tint = if (isSelected) Color(0xFFD0BCFF) else Color(0x66FFFFFF),
-                                    modifier = Modifier.size(20.dp)
-                                )
-
-                                Spacer(modifier = Modifier.width(14.dp))
-
-                                Text(
-                                    text = trackName,
-                                    color = if (isSelected) Color(0xFFD0BCFF) else Color.White,
-                                    fontSize = 14.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Audio channels pill row
-                Text("Audio channels", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(modifier = Modifier.height(8.dp))
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    items(channelModes) { mode ->
-                        val isModeSelected = selectedChannelMode == mode
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = if (isModeSelected) Color(0xFF6750A4) else Color(0x1EFFFFFF),
-                            border = BorderStroke(1.dp, if (isModeSelected) Color(0xFFD0BCFF) else Color(0x1AFFFFFF)),
-                            modifier = Modifier
-                                .height(36.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { selectedChannelMode = mode }
-                        ) {
+                    if (tracks.isEmpty()) {
+                        item {
                             Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier.padding(horizontal = 14.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 24.dp),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = mode,
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isModeSelected) FontWeight.Bold else FontWeight.Medium
+                                    text = "No audio tracks detected",
+                                    color = TextSecondary,
+                                    fontSize = 14.sp
                                 )
+                            }
+                        }
+                    } else {
+                        items(tracks) { trackName ->
+                            val isSelected = selectedTrackId == trackName || (selectedTrackId.isNullOrBlank() && trackName == tracks.firstOrNull())
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (isSelected) Color(0x336750A4) else Color(0x14FFFFFF),
+                                border = BorderStroke(
+                                    if (isSelected) 1.5.dp else 1.dp,
+                                    if (isSelected) Color(0xFFD0BCFF) else Color(0x1AFFFFFF)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .clickable {
+                                        onSelectTrack(trackName)
+                                        onDismiss()
+                                    }
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isSelected) Icons.Default.RadioButtonChecked else Icons.Default.RadioButtonUnchecked,
+                                        contentDescription = null,
+                                        tint = if (isSelected) Color(0xFFD0BCFF) else Color(0x66FFFFFF),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+
+                                    Spacer(modifier = Modifier.width(14.dp))
+
+                                    Text(
+                                        text = trackName,
+                                        color = if (isSelected) Color(0xFFD0BCFF) else Color.White,
+                                        fontSize = 14.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
+            } else {
+                // ──────────────────────────────────────────
+                // SUB-VIEW: Audio Settings & Enhancements
+                // ──────────────────────────────────────────
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = { isSettingsOpen = false },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x22FFFFFF))
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back to Tracks",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "Audio Settings",
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Voice enhancement, night mode & delay sync",
+                            color = TextSecondary,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
 
-                // Audio Enhancement & Night Mode Profiles
-                Text("Vocal Enhancement & Night Mode", color = TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Vocal Enhancement & Night Mode Section
+                Text(
+                    text = "Vocal Enhancement & Night Mode",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
                 Spacer(modifier = Modifier.height(8.dp))
+
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
@@ -289,7 +314,7 @@ fun MpvAudioTracksSheet(
                             border = BorderStroke(1.dp, if (isProfileSelected) Color(0xFFD0BCFF) else Color(0x1AFFFFFF)),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(40.dp)
+                                .height(42.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .clickable { onSelectAudioProfile(profile) }
                         ) {
@@ -308,7 +333,7 @@ fun MpvAudioTracksSheet(
                                 Text(
                                     text = profile.title,
                                     color = Color.White,
-                                    fontSize = 11.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = if (isProfileSelected) FontWeight.Bold else FontWeight.Medium,
                                     maxLines = 1
                                 )
@@ -317,10 +342,28 @@ fun MpvAudioTracksSheet(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                // Profile explanation card
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0x14FFFFFF),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = when (selectedAudioProfile) {
+                            AudioProfile.STANDARD -> "Original studio audio mastering (Neutral bypass)."
+                            AudioProfile.CLEAR_DIALOGUE -> "Boosts human speech frequencies (+7 dB) & dialogue gain (+4 dB) so voices cut through background sound effects."
+                            AudioProfile.NIGHT_CINEMA -> "Cuts bass & explosion rumble (-6 dB) with +3 dB dialogue lift to avoid disturbing others at night."
+                        },
+                        color = Color(0xFFD0BCFF),
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
 
                 HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 12.dp),
+                    modifier = Modifier.padding(vertical = 14.dp),
                     color = Color(0x1FFFFFFF)
                 )
 
@@ -369,8 +412,8 @@ fun MpvAudioTracksSheet(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(14.dp))
             }
+        }
     }
 }
-

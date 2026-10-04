@@ -69,20 +69,26 @@ class DialogueEnhancerManager {
                     val numBands = eq.numberOfBands.toInt()
                     val range = eq.bandLevelRange // e.g. [-1500, 1500] in mB
                     val maxGain = if (range.size >= 2) range[1].toInt() else 1500
-                    val targetBoostMb = (500).coerceAtMost(maxGain).toShort() // +5 dB
+                    val targetBoostMb = (700).coerceAtMost(maxGain).toShort() // +7 dB vocal boost
+                    val presenceBoostMb = (350).coerceAtMost(maxGain).toShort() // +3.5 dB presence
+                    val bassTrimMb = (-250).toShort() // -2.5 dB trim on bass to reduce masking
 
                     for (i in 0 until numBands) {
                         val centerFreqHz = eq.getCenterFreq(i.toShort()) / 1000 // mHz to Hz
                         when {
-                            // Vocal clarity band: 900 Hz to 4000 Hz
-                            centerFreqHz in 900..4000 -> {
+                            // Sub-bass trim to eliminate voice masking
+                            centerFreqHz < 250 -> {
+                                eq.setBandLevel(i.toShort(), bassTrimMb)
+                            }
+                            // Fundamental human vocal spectrum: 250 Hz to 4500 Hz
+                            centerFreqHz in 250..4500 -> {
                                 eq.setBandLevel(i.toShort(), targetBoostMb)
                             }
-                            // Slight presence lift: 4000 Hz to 8000 Hz
-                            centerFreqHz in 4001..8000 -> {
-                                eq.setBandLevel(i.toShort(), (targetBoostMb / 2).toShort())
+                            // Sibilance & consonant articulation: 4501 Hz to 9000 Hz
+                            centerFreqHz in 4501..9000 -> {
+                                eq.setBandLevel(i.toShort(), presenceBoostMb)
                             }
-                            // Lows and highs neutral
+                            // Extreme highs neutral
                             else -> {
                                 eq.setBandLevel(i.toShort(), 0)
                             }

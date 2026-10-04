@@ -12,7 +12,6 @@ import androidx.media3.common.C
  * the perceived output volume without audible distortion or clipping.
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-@OptIn(androidx.media3.common.util.UnstableApi::class)
 class VolumeBoostManager {
 
     companion object {
@@ -81,12 +80,25 @@ class VolumeBoostManager {
                     val gainMb = (percent.toFloat() / 100f * MAX_GAIN_MB).toInt()
                     enhancer.setTargetGain(gainMb)
                     enhancer.enabled = true
-                } else if (isNormalizationEnabled || dialogueEnhancer.getProfile() == com.streamhub.app.data.AudioProfile.NIGHT_CINEMA) {
-                    // Normalization or Night Cinema compression baseline (+3 dB) to lift quiet dialogue
-                    enhancer.setTargetGain(300)
-                    enhancer.enabled = true
-                } else {
-                    enhancer.enabled = false
+                } else when (dialogueEnhancer.getProfile()) {
+                    com.streamhub.app.data.AudioProfile.CLEAR_DIALOGUE -> {
+                        // Dynamic speech presence gain (+4 dB = 400 mB) to immediately lift vocal clarity
+                        enhancer.setTargetGain(400)
+                        enhancer.enabled = true
+                    }
+                    com.streamhub.app.data.AudioProfile.NIGHT_CINEMA -> {
+                        // Night Cinema compression baseline (+3 dB = 300 mB) balancing quiet whisper dialogues
+                        enhancer.setTargetGain(300)
+                        enhancer.enabled = true
+                    }
+                    com.streamhub.app.data.AudioProfile.STANDARD -> {
+                        if (isNormalizationEnabled) {
+                            enhancer.setTargetGain(300)
+                            enhancer.enabled = true
+                        } else {
+                            enhancer.enabled = false
+                        }
+                    }
                 }
             }
         } catch (e: Exception) {
