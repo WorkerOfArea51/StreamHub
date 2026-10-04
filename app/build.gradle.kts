@@ -58,6 +58,8 @@ android {
         buildConfigField("boolean", "DEBUG_LOGGING", "false")
         buildConfigField("String", "ADMIN_MASTER_PASSWORD", "\"${secret("streamhub.admin_master_password", "")}\"")
         buildConfigField("String", "APP_ACCESS_CODE", "\"${secret("streamhub.app_access_code", "")}\"")
+
+        manifestPlaceholders["appName"] = "StreamHub"
     }
 
     splits {
@@ -115,6 +117,8 @@ android {
 
     buildTypes {
         debug {
+            applicationIdSuffix = ".debug"
+            manifestPlaceholders["appName"] = "StreamHub (Debug)"
             isMinifyEnabled = false
             isDebuggable = true
             buildConfigField("boolean", "DEBUG_LOGGING", "true")
@@ -124,6 +128,7 @@ android {
             versionNameSuffix = "-debug"
         }
         release {
+            manifestPlaceholders["appName"] = "StreamHub"
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
