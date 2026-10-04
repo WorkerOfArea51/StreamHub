@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
@@ -42,16 +43,18 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.streamhub.app.ui.screens.player.controls.MpvDraggablePanel
+import com.streamhub.app.ui.screens.player.controls.ExpressiveSheetDragHandle
+import com.streamhub.app.ui.screens.player.controls.MpvPlayerSheet
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 import kotlin.math.roundToLong
 
 /**
- * Draggable side/center panel for Audio Delay sync with Material 3 Expressive UI tokens,
- * spring press physics, and tactile haptic feedback.
+ * Floating bottom sheet for Audio Delay sync with Material 3 Expressive UI tokens,
+ * dropdown to dismiss, non-overlapping header controls, spring press physics, and tactile haptic feedback.
  */
 @Composable
 fun MpvAudioDelaySheet(
@@ -61,24 +64,65 @@ fun MpvAudioDelaySheet(
 ) {
     val haptic = LocalHapticFeedback.current
 
-    MpvDraggablePanel(
-        header = {
+    MpvPlayerSheet(onDismissRequest = onDismissRequest) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 6.dp)
+        ) {
+            // Material 3 Expressive Drag Handle
+            ExpressiveSheetDragHandle()
+
+            // Header Row: Back + Title on left, Reset + Close on right (no overlapping)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 6.dp),
+                    .padding(bottom = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Audio Delay Sync",
-                    color = TextPrimary,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    modifier = Modifier.weight(1f)
+                ) {
+                    IconButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onDismissRequest()
+                        },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x22FFFFFF))
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "Audio Delay Sync",
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "Adjust audio timing relative to video",
+                            color = TextSecondary,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     val resetInteractionSource = remember { MutableInteractionSource() }
                     val isResetPressed by resetInteractionSource.collectIsPressedAsState()
@@ -101,7 +145,7 @@ fun MpvAudioDelaySheet(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
-                            contentDescription = "Reset",
+                            contentDescription = "Reset Delay",
                             tint = Color(0xFFD0BCFF),
                             modifier = Modifier.size(18.dp)
                         )
@@ -129,19 +173,15 @@ fun MpvAudioDelaySheet(
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Close",
-                            tint = TextPrimary,
+                            tint = Color.White,
                             modifier = Modifier.size(18.dp)
                         )
                     }
                 }
             }
-        }
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp)
-        ) {
+
+            Spacer(modifier = Modifier.height(10.dp))
+
             // Current Offset Display (M3 Expressive Borderless Card)
             Surface(
                 shape = RoundedCornerShape(20.dp),
@@ -156,7 +196,7 @@ fun MpvAudioDelaySheet(
                     Text(
                         text = "${audioOffsetMs}ms",
                         color = Color(0xFFD0BCFF),
-                        fontSize = 28.sp,
+                        fontSize = 32.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace
                     )
@@ -180,23 +220,24 @@ fun MpvAudioDelaySheet(
                 fontWeight = FontWeight.SemiBold
             )
             Spacer(modifier = Modifier.height(8.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                DelayStepperPill("-500ms") { onUpdateOffset((audioOffsetMs - 500).coerceIn(-5000, 5000)) }
-                DelayStepperPill("-100ms") { onUpdateOffset((audioOffsetMs - 100).coerceIn(-5000, 5000)) }
-                DelayStepperPill("-50ms") { onUpdateOffset((audioOffsetMs - 50).coerceIn(-5000, 5000)) }
-                DelayStepperPill("+50ms") { onUpdateOffset((audioOffsetMs + 50).coerceIn(-5000, 5000)) }
-                DelayStepperPill("+100ms") { onUpdateOffset((audioOffsetMs + 100).coerceIn(-5000, 5000)) }
-                DelayStepperPill("+500ms") { onUpdateOffset((audioOffsetMs + 500).coerceIn(-5000, 5000)) }
+                DelayStepperPill("-500ms") { onUpdateOffset(audioOffsetMs - 500) }
+                DelayStepperPill("-100ms") { onUpdateOffset(audioOffsetMs - 100) }
+                DelayStepperPill("-50ms") { onUpdateOffset(audioOffsetMs - 50) }
+                DelayStepperPill("+50ms") { onUpdateOffset(audioOffsetMs + 50) }
+                DelayStepperPill("+100ms") { onUpdateOffset(audioOffsetMs + 100) }
+                DelayStepperPill("+500ms") { onUpdateOffset(audioOffsetMs + 500) }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Continuous Slider
+            // Fine Tuning Slider
             Text(
-                text = "Fine Tune Range (-5.0s to +5.0s)",
+                text = "Fine Tuning",
                 color = TextSecondary,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium
@@ -213,14 +254,14 @@ fun MpvAudioDelaySheet(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
 
 /**
- * Draggable side/center panel for Subtitle Delay sync & speed multiplier matching mpvEx SubtitleDelayPanel
- * with Material 3 Expressive tokens.
+ * Floating bottom sheet for Subtitle Delay sync & speed multiplier matching mpvEx SubtitleDelayPanel
+ * with Material 3 Expressive tokens, dropdown to dismiss, and non-overlapping header controls.
  */
 @Composable
 fun MpvSubtitleDelaySheet(
@@ -230,24 +271,65 @@ fun MpvSubtitleDelaySheet(
 ) {
     val haptic = LocalHapticFeedback.current
 
-    MpvDraggablePanel(
-        header = {
+    MpvPlayerSheet(onDismissRequest = onDismissRequest) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 6.dp)
+        ) {
+            // Material 3 Expressive Drag Handle
+            ExpressiveSheetDragHandle()
+
+            // Header Row: Back + Title on left, Reset + Close on right (no overlapping)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 6.dp),
+                    .padding(bottom = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Subtitle Delay Sync",
-                    color = TextPrimary,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    modifier = Modifier.weight(1f)
+                ) {
+                    IconButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onDismissRequest()
+                        },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x22FFFFFF))
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "Subtitle Delay Sync",
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "Adjust subtitle timing relative to audio",
+                            color = TextSecondary,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     val resetInteractionSource = remember { MutableInteractionSource() }
                     val isResetPressed by resetInteractionSource.collectIsPressedAsState()
@@ -270,7 +352,7 @@ fun MpvSubtitleDelaySheet(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
-                            contentDescription = "Reset",
+                            contentDescription = "Reset Delay",
                             tint = Color(0xFFD0BCFF),
                             modifier = Modifier.size(18.dp)
                         )
@@ -298,19 +380,15 @@ fun MpvSubtitleDelaySheet(
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Close",
-                            tint = TextPrimary,
+                            tint = Color.White,
                             modifier = Modifier.size(18.dp)
                         )
                     }
                 }
             }
-        }
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp)
-        ) {
+
+            Spacer(modifier = Modifier.height(10.dp))
+
             // Current Offset Card (M3 Expressive Borderless Card)
             Surface(
                 shape = RoundedCornerShape(20.dp),
@@ -323,9 +401,9 @@ fun MpvSubtitleDelaySheet(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "${if (subtitleOffsetMs > 0) "+" else ""}${subtitleOffsetMs}ms",
+                        text = "${subtitleOffsetMs}ms",
                         color = Color(0xFFD0BCFF),
-                        fontSize = 28.sp,
+                        fontSize = 32.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace
                     )
@@ -341,7 +419,7 @@ fun MpvSubtitleDelaySheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Quick Steppers (-500, -100, -50, +50, +100, +500)
+            // Quick Steppers Row (-500, -100, -50, +50, +100, +500)
             Text(
                 text = "Quick Adjustments",
                 color = TextSecondary,
@@ -349,23 +427,24 @@ fun MpvSubtitleDelaySheet(
                 fontWeight = FontWeight.SemiBold
             )
             Spacer(modifier = Modifier.height(8.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                DelayStepperPill("-500ms") { onUpdateOffset((subtitleOffsetMs - 500).coerceIn(-5000, 5000)) }
-                DelayStepperPill("-100ms") { onUpdateOffset((subtitleOffsetMs - 100).coerceIn(-5000, 5000)) }
-                DelayStepperPill("-50ms") { onUpdateOffset((subtitleOffsetMs - 50).coerceIn(-5000, 5000)) }
-                DelayStepperPill("+50ms") { onUpdateOffset((subtitleOffsetMs + 50).coerceIn(-5000, 5000)) }
-                DelayStepperPill("+100ms") { onUpdateOffset((subtitleOffsetMs + 100).coerceIn(-5000, 5000)) }
-                DelayStepperPill("+500ms") { onUpdateOffset((subtitleOffsetMs + 500).coerceIn(-5000, 5000)) }
+                DelayStepperPill("-500ms") { onUpdateOffset(subtitleOffsetMs - 500) }
+                DelayStepperPill("-100ms") { onUpdateOffset(subtitleOffsetMs - 100) }
+                DelayStepperPill("-50ms") { onUpdateOffset(subtitleOffsetMs - 50) }
+                DelayStepperPill("+50ms") { onUpdateOffset(subtitleOffsetMs + 50) }
+                DelayStepperPill("+100ms") { onUpdateOffset(subtitleOffsetMs + 100) }
+                DelayStepperPill("+500ms") { onUpdateOffset(subtitleOffsetMs + 500) }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Continuous Slider
+            // Fine Tuning Slider
             Text(
-                text = "Fine Tune Range (-5.0s to +5.0s)",
+                text = "Fine Tuning",
                 color = TextSecondary,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium
@@ -382,7 +461,7 @@ fun MpvSubtitleDelaySheet(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

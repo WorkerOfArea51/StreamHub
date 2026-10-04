@@ -403,21 +403,54 @@ fun MpvSubtitleSettingsDrawer(
 ) {
     val haptic = LocalHapticFeedback.current
 
-    MpvDraggablePanel(
-        header = {
+    MpvPlayerSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 6.dp)
+        ) {
+            // Material 3 Expressive Drag Handle
+            ExpressiveSheetDragHandle()
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Subtitle Settings",
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onDismiss()
+                    },
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x22FFFFFF))
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Subtitle Settings",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "Typography, styling & delay sync",
+                        color = TextSecondary,
+                        fontSize = 11.sp
+                    )
+                }
                 val closeInteractionSource = remember { MutableInteractionSource() }
                 val isClosePressed by closeInteractionSource.collectIsPressedAsState()
                 val closeScale by animateFloatAsState(
@@ -432,7 +465,7 @@ fun MpvSubtitleSettingsDrawer(
                     },
                     interactionSource = closeInteractionSource,
                     modifier = Modifier
-                        .size(34.dp)
+                        .size(36.dp)
                         .graphicsLayer { scaleX = closeScale; scaleY = closeScale }
                         .clip(CircleShape)
                         .background(Color(0x22FFFFFF))
@@ -441,17 +474,18 @@ fun MpvSubtitleSettingsDrawer(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Close",
                         tint = Color.White,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
-        }
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp)
-        ) {
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
             Spacer(modifier = Modifier.height(8.dp))
 
             // Subtitle Delay Sync Card (M3 Expressive Borderless Container)
@@ -1028,4 +1062,5 @@ fun MpvSubtitleSettingsDrawer(
             Spacer(modifier = Modifier.height(20.dp))
         }
     }
+}
 }

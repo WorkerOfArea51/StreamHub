@@ -612,27 +612,77 @@ class StreamPlayerViewModel : ViewModel() {
         startPositionTracker()
     }
 
+    private val KNOWN_LANGUAGES = listOf(
+        "english" to "English",
+        "hindi" to "Hindi",
+        "japanese" to "Japanese",
+        "spanish" to "Spanish",
+        "french" to "French",
+        "german" to "German",
+        "korean" to "Korean",
+        "chinese" to "Chinese",
+        "mandarin" to "Chinese",
+        "cantonese" to "Cantonese",
+        "tamil" to "Tamil",
+        "telugu" to "Telugu",
+        "malayalam" to "Malayalam",
+        "kannada" to "Kannada",
+        "bengali" to "Bengali",
+        "marathi" to "Marathi",
+        "punjabi" to "Punjabi",
+        "gujarati" to "Gujarati",
+        "russian" to "Russian",
+        "italian" to "Italian",
+        "portuguese" to "Portuguese",
+        "arabic" to "Arabic",
+        "turkish" to "Turkish",
+        "vietnamese" to "Vietnamese",
+        "thai" to "Thai",
+        "indonesian" to "Indonesian",
+        "polish" to "Polish",
+        "dutch" to "Dutch",
+        "swedish" to "Swedish",
+        "norwegian" to "Norwegian",
+        "danish" to "Danish",
+        "finnish" to "Finnish",
+        "greek" to "Greek",
+        "hebrew" to "Hebrew",
+        "ukrainian" to "Ukrainian",
+        "czech" to "Czech",
+        "hungarian" to "Hungarian",
+        "romanian" to "Romanian",
+        "persian" to "Persian",
+        "farsi" to "Persian",
+        "filipino" to "Filipino",
+        "tagalog" to "Filipino",
+        "urdu" to "Urdu"
+    )
+
     private fun cleanTrackName(label: String?, language: String?, isSubtitle: Boolean = false): String {
-        val langDisplay = if (!language.isNullOrBlank() && language != "und") {
+        // 1. Try standard ISO language code first if valid
+        var langDisplay = if (!language.isNullOrBlank() && language != "und") {
             try {
-                java.util.Locale(language).displayLanguage.replaceFirstChar { it.uppercase() }
+                val loc = java.util.Locale(language)
+                val name = loc.displayLanguage
+                if (name.isNotBlank() && !name.equals(language, ignoreCase = true)) {
+                    name.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.ROOT) else it.toString() }
+                } else ""
             } catch (_: Exception) { "" }
         } else ""
 
-        var cleanedLabel = label ?: ""
-        if (cleanedLabel.contains(Regex("""(?i)(?:https?://|www\.|hdhub4u|vegamovies|bollyflix|moviesmod|dotmovies|\.ag|\.in|\.org|\.com|\.net|\.top|\.lat|\.cc|\.vip|\.download)"""))) {
-            cleanedLabel = cleanedLabel.replace(Regex("""(?i)(?:https?://)?(?:www\.)?[a-z0-9\-_]+(?:\.[a-z]{2,6})+\S*"""), "").trim()
+        // 2. If language code was missing or undefined, inspect the label for known language names
+        if (langDisplay.isBlank() && !label.isNullOrBlank()) {
+            val lower = label.lowercase(java.util.Locale.ROOT)
+            val matched = KNOWN_LANGUAGES.firstOrNull { (pattern, _) ->
+                lower.contains(Regex("""\b$pattern\b""", RegexOption.IGNORE_CASE))
+            }
+            if (matched != null) {
+                langDisplay = matched.second
+            }
         }
-        cleanedLabel = cleanedLabel.replace(Regex("""(?i)\[?(?:sdh|forced)\]?"""), "").trim()
-        cleanedLabel = cleanedLabel.replace(Regex("""^[_\-\.\s\(\)]+|[_\-\.\s\(\)]+$"""), "").trim()
 
-        return when {
-            langDisplay.isNotBlank() && cleanedLabel.isNotBlank() && !cleanedLabel.equals(langDisplay, ignoreCase = true) ->
-                "$langDisplay ($cleanedLabel)"
-            langDisplay.isNotBlank() -> langDisplay
-            cleanedLabel.isNotBlank() -> cleanedLabel
-            else -> if (isSubtitle) "Subtitle" else "Audio"
-        }
+        // Return strictly the clean language name (or empty if unknown)
+        return langDisplay
     }
 
     /**
@@ -719,46 +769,63 @@ class StreamPlayerViewModel : ViewModel() {
                     (format.roleFlags and androidx.media3.common.C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND != 0)
         val isForced = (format.selectionFlags and androidx.media3.common.C.SELECTION_FLAG_FORCED != 0) ||
                       (format.label?.contains("forced", ignoreCase = true) == true)
+        val isDefault = (format.selectionFlags and androidx.media3.common.C.SELECTION_FLAG_DEFAULT != 0)
+
         val mime = format.sampleMimeType?.lowercase(java.util.Locale.ROOT) ?: ""
-        val isPgs = mime.contains("pgs") || mime.contains("hdmv") || mime.contains("dvb") || mime.contains("vobsub")
-        val isAss = mime.contains("ssa") || mime.contains("ass")
+        val codecs = format.codecs?.lowercase(java.util.Locale.ROOT) ?: ""
+        val labelLower = format.label?.lowercase(java.util.Locale.ROOT) ?: ""
+        val isAss = mime.contains("ssa") || mime.contains("ass") || codecs.contains("ass") || codecs.contains("ssa") || labelLower.contains(".ass") || labelLower.contains("ass")
+        val isPgs = mime.contains("pgs") || mime.contains("hdmv") || mime.contains("dvb") || mime.contains("vobsub") || labelLower.contains("pgs")
+        val isVtt = mime.contains("vtt") || mime.contains("webvtt") || labelLower.contains(".vtt") || labelLower.contains("vtt")
+        val isSrt = mime.contains("subrip") || mime.contains("x-subrip") || labelLower.contains(".srt") || labelLower.contains("srt")
+        val isTtml = mime.contains("ttml") || mime.contains("xml")
 
         val codecBadge = when {
-            isPgs -> "[PGS]"
             isAss -> "[ASS]"
+            isPgs -> "[PGS]"
+            isSrt -> "[SRT]"
+            isVtt -> "[VTT]"
+            isTtml -> "[TTML]"
             else -> null
         }
-        val roleBadge = when {
-            isSdh -> "[SDH]"
-            isForced -> "[Forced]"
-            else -> null
-        }
+
+        val defaultBadge = if (isDefault) "(Default)" else if (isForced) "(Forced)" else null
+        val sdhBadge = if (isSdh && !isForced) "[SDH]" else null
+
+        val baseName = lang.ifEmpty { "Subtitle $fallbackIndex" }
         return listOfNotNull(
-            lang.ifEmpty { "Subtitle $fallbackIndex" },
-            codecBadge,
-            roleBadge
+            baseName,
+            defaultBadge,
+            sdhBadge,
+            codecBadge
         ).joinToString(" ")
     }
 
     @OptIn(UnstableApi::class)
     private fun getAudioTrackLabel(format: androidx.media3.common.Format, fallbackIndex: Int): String {
         val lang = cleanTrackName(format.label, format.language, isSubtitle = false)
-        val mime = format.sampleMimeType
+        val mime = format.sampleMimeType?.lowercase(java.util.Locale.ROOT)
+        val codecs = format.codecs?.lowercase(java.util.Locale.ROOT) ?: ""
+        val labelLower = format.label?.lowercase(java.util.Locale.ROOT) ?: ""
         val codec = when {
-            mime?.contains("ac-3", ignoreCase = true) == true -> "AC3"
-            mime?.contains("eac3", ignoreCase = true) == true -> "E-AC3"
-            mime?.contains("aac", ignoreCase = true) == true -> "AAC"
-            mime?.contains("opus", ignoreCase = true) == true -> "Opus"
-            mime?.contains("vorbis", ignoreCase = true) == true -> "Vorbis"
-            mime?.contains("dts", ignoreCase = true) == true -> "DTS"
-            mime?.contains("truehd", ignoreCase = true) == true -> "Dolby TrueHD"
+            mime?.contains("eac3") == true || mime?.contains("e-ac-3") == true || codecs.contains("eac3") || codecs.contains("ec-3") || labelLower.contains("e-ac-3") || labelLower.contains("eac3") || labelLower.contains("ddp") || labelLower.contains("dd+") -> "E-AC3"
+            mime?.contains("ac-3") == true || mime?.contains("ac3") == true || codecs.contains("ac-3") || codecs.contains("ac3") || labelLower.contains("ac-3") || labelLower.contains("ac3") || labelLower.contains("dd5.1") || labelLower.contains("dd 5.1") -> "AC3"
+            mime?.contains("true-hd") == true || mime?.contains("truehd") == true || codecs.contains("truehd") || codecs.contains("mlp") || labelLower.contains("truehd") -> "Dolby TrueHD"
+            mime?.contains("dts-hd") == true || codecs.contains("dts-hd") || labelLower.contains("dts-hd") || labelLower.contains("dtshd") -> "DTS-HD"
+            mime?.contains("dts") == true || codecs.contains("dts") || labelLower.contains("dts") -> "DTS"
+            mime?.contains("opus") == true || codecs.contains("opus") || labelLower.contains("opus") -> "Opus"
+            mime?.contains("flac") == true || codecs.contains("flac") || labelLower.contains("flac") -> "FLAC"
+            mime?.contains("vorbis") == true || codecs.contains("vorbis") || labelLower.contains("vorbis") -> "Vorbis"
+            mime?.contains("mp4a-latm") == true || mime?.contains("aac") == true || codecs.contains("mp4a") || codecs.contains("aac") || labelLower.contains("aac") -> "AAC"
+            mime?.contains("mpeg") == true || mime?.contains("mp3") == true || labelLower.contains("mp3") -> "MP3"
             else -> null
         }
         val isDefault = format.selectionFlags and androidx.media3.common.C.SELECTION_FLAG_DEFAULT != 0
         val isForced = format.selectionFlags and androidx.media3.common.C.SELECTION_FLAG_FORCED != 0
         val defaultSuffix = if (isDefault) " (Default)" else if (isForced) " (Forced)" else ""
         val codecSuffix = if (codec != null) " [$codec]" else ""
-        return lang.ifEmpty { "Audio ${fallbackIndex + 1}" } + defaultSuffix + codecSuffix
+        val baseName = lang.ifEmpty { "Audio ${fallbackIndex + 1}" }
+        return "$baseName$defaultSuffix$codecSuffix"
     }
 
     @OptIn(UnstableApi::class)
@@ -771,13 +838,27 @@ class StreamPlayerViewModel : ViewModel() {
             if (trackType == androidx.media3.common.C.TRACK_TYPE_AUDIO) {
                 for (i in 0 until trackGroup.length) {
                     val format = trackGroup.getTrackFormat(i)
-                    val label = getAudioTrackLabel(format, audioTrackNames.size)
+                    var label = getAudioTrackLabel(format, audioTrackNames.size)
+                    if (audioTrackNames.contains(label)) {
+                        val parts = label.split(" ")
+                        val langPart = parts.firstOrNull() ?: label
+                        val restPart = if (parts.size > 1) " " + parts.drop(1).joinToString(" ") else ""
+                        val dupCount = audioTrackNames.count { it.startsWith(langPart) } + 1
+                        label = "$langPart $dupCount$restPart"
+                    }
                     audioTrackNames.add(label)
                 }
             } else if (trackType == androidx.media3.common.C.TRACK_TYPE_TEXT) {
                 for (i in 0 until trackGroup.length) {
                     val format = trackGroup.getTrackFormat(i)
-                    val label = getSubtitleTrackLabel(format, subtitleTrackNames.size)
+                    var label = getSubtitleTrackLabel(format, subtitleTrackNames.size)
+                    if (subtitleTrackNames.contains(label)) {
+                        val parts = label.split(" ")
+                        val langPart = parts.firstOrNull() ?: label
+                        val restPart = if (parts.size > 1) " " + parts.drop(1).joinToString(" ") else ""
+                        val dupCount = subtitleTrackNames.count { it.startsWith(langPart) } + 1
+                        label = "$langPart $dupCount$restPart"
+                    }
                     subtitleTrackNames.add(label)
                 }
             }
@@ -1368,18 +1449,29 @@ class StreamPlayerViewModel : ViewModel() {
         val player = exoPlayer ?: return
         val currentItem = player.currentMediaItem ?: return
 
-        val uriString = uri.toString().lowercase()
+        val uriString = uri.toString().lowercase(java.util.Locale.ROOT)
         val mimeType = when {
             uriString.endsWith(".vtt") -> androidx.media3.common.MimeTypes.TEXT_VTT
             uriString.endsWith(".ssa") || uriString.endsWith(".ass") -> androidx.media3.common.MimeTypes.TEXT_SSA
             else -> androidx.media3.common.MimeTypes.APPLICATION_SUBRIP
+        }
+        val extCodecBadge = when {
+            uriString.endsWith(".ass") || uriString.endsWith(".ssa") -> " [ASS]"
+            uriString.endsWith(".vtt") -> " [VTT]"
+            else -> " [SRT]"
+        }
+        val detectedLang = cleanTrackName(label.ifEmpty { uri.lastPathSegment }, null, isSubtitle = true)
+        val cleanLabel = if (detectedLang.isNotBlank()) {
+            "[Ext] $detectedLang$extCodecBadge"
+        } else {
+            "[Ext] ${label.ifEmpty { "Subtitle" }}$extCodecBadge"
         }
 
         val subtitleConfig = androidx.media3.common.MediaItem.SubtitleConfiguration.Builder(uri)
             .setMimeType(mimeType)
             .setLanguage("und")
             .setSelectionFlags(androidx.media3.common.C.SELECTION_FLAG_DEFAULT)
-            .setLabel(label)
+            .setLabel(cleanLabel)
             .build()
 
         val currentPosition = player.currentPosition
@@ -1393,8 +1485,8 @@ class StreamPlayerViewModel : ViewModel() {
         player.playWhenReady = isPlaying
         _uiState.update {
             it.copy(
-                selectedSubtitleTrack = label,
-                availableSubtitleTracks = (it.availableSubtitleTracks + label).distinct()
+                selectedSubtitleTrack = cleanLabel,
+                availableSubtitleTracks = (it.availableSubtitleTracks + cleanLabel).distinct()
             )
         }
     }
