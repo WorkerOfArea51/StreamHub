@@ -1,105 +1,54 @@
 package com.streamhub.app.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
-import android.widget.Toast
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
-import androidx.compose.material.icons.filled.AdminPanelSettings
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ElectricBolt
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.LocalFireDepartment
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Sensors
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.Verified
-import androidx.compose.ui.layout.ContentScale
-import coil.compose.AsyncImage
-import com.streamhub.app.data.UserProfileManager
-import com.streamhub.app.ui.components.EditProfileDialog
-import com.streamhub.app.ui.components.ToastManager
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.streamhub.app.data.AccessGateManager
 import com.streamhub.app.data.AdminManager
 import com.streamhub.app.data.StorageCacheManager
-import com.streamhub.app.data.UserStatsManager
+import com.streamhub.app.data.UserProfile
+import com.streamhub.app.data.UserProfileManager
 import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.components.AdminEditorDialog
-import com.streamhub.app.ui.theme.AccentOrange
+import com.streamhub.app.ui.components.AdminPasswordDialog
+import com.streamhub.app.ui.components.LiveAudienceTelemetryDialog
+import com.streamhub.app.ui.components.ToastManager
+import com.streamhub.app.ui.components.UserProfileTierBadge
 import com.streamhub.app.ui.theme.BackgroundDark
-import com.streamhub.app.ui.theme.PrimaryRed
-import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
+import com.streamhub.app.ui.theme.bouncyClickable
 
 @Composable
 fun ProfileScreen(
+    onNavigateToMyProfile: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
     onNavigateToVideoSettings: () -> Unit = {},
     onNavigateToHistory: () -> Unit = {},
@@ -107,142 +56,205 @@ fun ProfileScreen(
     onOpenAdminPanel: () -> Unit = {},
     onOpenAddContent: () -> Unit = {},
     onNavigateToAbout: () -> Unit = {},
+    onNavigateToMyList: () -> Unit = {},
     repository: FirebaseRepository = remember { FirebaseRepository.getInstance() },
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val primaryColor = MaterialTheme.colorScheme.primary
 
-    val totalWatchHours by UserStatsManager.totalWatchHours.collectAsState()
-    val dailyWatchTime by UserStatsManager.dailyWatchFormatted.collectAsState()
-    val streakDays by UserStatsManager.streakDays.collectAsState()
+    // User Profile & Stats States
+    val userProfile by UserProfileManager.profileFlow.collectAsState()
+    val historyMap by WatchHistoryManager.historyFlow.collectAsState()
+
     val isAdminMode by AdminManager.isAdminMode.collectAsState()
-    val isAccessKeyUnlocked by com.streamhub.app.data.AccessGateManager.isUnlocked.collectAsState()
-    val remainingVoucherDays by com.streamhub.app.data.AccessGateManager.remainingDays.collectAsState()
-    androidx.compose.runtime.LaunchedEffect(isAdminMode) {
-        if (isAdminMode) {
-            com.streamhub.app.data.UserTelemetryManager.startObservingLiveMetrics()
-        }
-        com.streamhub.app.data.StorageCacheManager.calculateStorageUsage()
-    }
+    val isAccessKeyUnlocked by AccessGateManager.isUnlocked.collectAsState()
+    val remainingVoucherDays by AccessGateManager.remainingDays.collectAsState()
 
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
     var showAddContentDialog by remember { mutableStateOf(false) }
     var showLiveTelemetryDialog by remember { mutableStateOf(false) }
-    var showEditProfileDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isAdminMode) {
+        if (isAdminMode) {
+            com.streamhub.app.data.UserTelemetryManager.startObservingLiveMetrics()
+        }
+        StorageCacheManager.calculateStorageUsage()
+    }
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
             .background(BackgroundDark),
-        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 120.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        contentPadding = PaddingValues(start = 16.dp, top = 20.dp, end = 16.dp, bottom = 120.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        // ── Top Bar: Title ──
-        item(key = "profile_top_bar") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+        // ── Top Title (Clean M3 Expressive Header) ──
+        item(key = "profile_top_title") {
+            Column(
+                modifier = Modifier.padding(horizontal = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = "My Space & Settings",
+                    text = "Personal Hub",
                     color = TextPrimary,
-                    fontSize = 24.sp,
+                    fontSize = 28.sp,
                     fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Profile pulse, streaming preferences & system controls",
+                    color = TextSecondary,
+                    fontSize = 13.sp
                 )
             }
         }
 
-        // ── VIP Profile Card ──
-        item(key = "vip_profile_card") {
-            StreamHubUserProfileCard(
+        // ── Section 1: ACCOUNT ──
+        item(key = "section_header_account") {
+            Text(
+                text = "ACCOUNT",
+                color = TextSecondary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.2.sp,
+                modifier = Modifier.padding(start = 4.dp)
+            )
+        }
+
+        // ── Nuvio-Style "My Profile" Preview Card ──
+        item(key = "nuvio_profile_preview_card") {
+            ProfilePreviewCard(
+                userProfile = userProfile,
                 isAdmin = isAdminMode,
                 isAccessKeyVerified = isAccessKeyUnlocked,
                 remainingDays = remainingVoucherDays,
                 primaryColor = primaryColor,
                 onSecretTapUnlock = {
                     if (isAdminMode) {
-                        ToastManager.showToast(
-                            message = "You are already Owner",
-                            icon = Icons.Default.AdminPanelSettings
-                        )
+                        ToastManager.showToast("You are already Owner 👑", Icons.Default.AdminPanelSettings)
                     } else {
                         showAdminPasswordDialog = true
                     }
                 },
-                onOpenStudio = { showAddContentDialog = true },
-                onLockAdmin = {
-                    AdminManager.disableAdmin()
-                    ToastManager.showToast("Admin mode locked", Icons.Default.Lock)
-                },
-                onEditProfile = { showEditProfileDialog = true }
+                onClick = onNavigateToMyProfile
             )
         }
 
-        // ── App Activity Section Header ──
-        item(key = "section_header_activity") {
-            Text(
-                text = "APP ACTIVITY & METRICS",
-                color = TextSecondary,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.2.sp,
-                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp, start = 4.dp)
-            )
-        }
+        // ── Creator Studio Actions (Visible strictly when Admin Mode is unlocked) ──
+        if (isAdminMode) {
+            item(key = "admin_creator_studio_card") {
+                Card(
+                    shape = RoundedCornerShape(22.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                    elevation = CardDefaults.cardElevation(0.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .bouncyClickable { showAddContentDialog = true }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0x22FFD700)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AdminPanelSettings,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFFD700),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = "Open Creator Studio",
+                                    color = Color(0xFFFFD700),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Add, edit, or manage media catalog & video streams",
+                                    color = TextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                            contentDescription = null,
+                            tint = Color(0xFFFFD700),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            }
 
-        // ── Watch Stats Row ──
-        item(key = "stats_row") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                StatCard(
-                    icon = Icons.Default.PlayArrow,
-                    label = "Watch Hours",
-                    value = totalWatchHours,
-                    primaryColor = primaryColor,
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                StatCard(
-                    icon = Icons.Default.ElectricBolt,
-                    label = "Today",
-                    value = dailyWatchTime,
-                    primaryColor = primaryColor,
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                StatCard(
-                    icon = Icons.Default.LocalFireDepartment,
-                    label = "Streak",
-                    value = "${streakDays}d",
-                    primaryColor = primaryColor,
-                    modifier = Modifier.weight(1f),
-                    isStreak = true
-                )
+            item(key = "admin_lock_action") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0x1DEF4444),
+                        modifier = Modifier.bouncyClickable {
+                            AdminManager.disableAdmin()
+                            ToastManager.showToast("Admin mode locked", Icons.Default.Lock)
+                        }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = Color(0xFFEF4444),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = "Lock Admin Access",
+                                color = Color(0xFFEF4444),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
             }
         }
 
-        // ── Streaming & App Preferences Hub (Contiguous M3 Grouped Container) ──
+        // ── Section 2: PREFERENCES & CONTROLS ──
         item(key = "section_header_prefs") {
             Text(
-                text = "STREAMING & APP PREFERENCES",
+                text = "PREFERENCES & SYSTEM",
                 color = TextSecondary,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.2.sp,
-                modifier = Modifier.padding(top = 8.dp, bottom = 2.dp, start = 4.dp)
+                modifier = Modifier.padding(top = 4.dp, start = 4.dp)
             )
         }
 
+        // ── Grouped Preferences Container ──
         item(key = "grouped_preferences_card") {
-            val historyMap by WatchHistoryManager.historyFlow.collectAsState()
             val metrics by StorageCacheManager.metricsFlow.collectAsState()
             val liveMetrics by com.streamhub.app.data.UserTelemetryManager.liveMetrics.collectAsState()
 
             Card(
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(26.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -259,7 +271,7 @@ fun ProfileScreen(
                         )
                         HorizontalDivider(
                             modifier = Modifier.padding(horizontal = 16.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                             thickness = 0.5.dp
                         )
                     }
@@ -275,7 +287,7 @@ fun ProfileScreen(
 
                     HorizontalDivider(
                         modifier = Modifier.padding(horizontal = 16.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                         thickness = 0.5.dp
                     )
 
@@ -290,7 +302,7 @@ fun ProfileScreen(
 
                     HorizontalDivider(
                         modifier = Modifier.padding(horizontal = 16.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                         thickness = 0.5.dp
                     )
 
@@ -298,14 +310,14 @@ fun ProfileScreen(
                         icon = Icons.Default.Settings,
                         iconTint = primaryColor,
                         title = "Settings & Preferences",
-                        subtitle = "Theme accents, playback speed, downloads & alerts",
+                        subtitle = "Theme accents, playback speed, player engines & downloads",
                         badge = "Customize",
                         onClick = onNavigateToSettings
                     )
 
                     HorizontalDivider(
                         modifier = Modifier.padding(horizontal = 16.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                         thickness = 0.5.dp
                     )
 
@@ -317,31 +329,46 @@ fun ProfileScreen(
                         badge = "v${com.streamhub.app.BuildConfig.VERSION_NAME}",
                         onClick = onNavigateToAbout
                     )
+
+                    if (isAdminMode) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                            thickness = 0.5.dp
+                        )
+
+                        ProfileListItem(
+                            icon = Icons.Default.AdminPanelSettings,
+                            iconTint = Color(0xFFFFD700),
+                            title = "Creator Studio & Admin",
+                            subtitle = "Add streams, manage catalog & edit metadata",
+                            badge = "Owner",
+                            onClick = { showAddContentDialog = true }
+                        )
+                    }
                 }
             }
         }
     }
 
-    // Live Audience & Telemetry Dialog
+    // ── Floating Admin Dialogs ──
     if (showLiveTelemetryDialog) {
-        com.streamhub.app.ui.components.LiveAudienceTelemetryDialog(
+        LiveAudienceTelemetryDialog(
             onDismiss = { showLiveTelemetryDialog = false }
         )
     }
 
-    // Master Password Verification Dialog (Triggered only via 5-tap gesture or secret code)
     if (showAdminPasswordDialog) {
         AdminPasswordDialog(
             onDismiss = { showAdminPasswordDialog = false },
             onSuccess = {
                 showAdminPasswordDialog = false
                 showAddContentDialog = true
-                ToastManager.showToast("Creator Studio Unlocked! 🎬")
+                ToastManager.showToast("Creator Studio Unlocked! 👑", Icons.Default.AdminPanelSettings)
             }
         )
     }
 
-    // Creator Studio Dialog
     if (showAddContentDialog) {
         AdminEditorDialog(
             initialItem = null,
@@ -353,131 +380,77 @@ fun ProfileScreen(
             }
         )
     }
-
-    // Edit Profile & VIP Persona Dialog
-    if (showEditProfileDialog) {
-        EditProfileDialog(
-            onDismiss = { showEditProfileDialog = false }
-        )
-    }
 }
 
+/**
+ * Nuvio-style "My Profile" Preview Card
+ * Displays Avatar (with 5-tap easter egg), Display Name + Tier Badge, Subtitle, Member ID pill, and Chevron.
+ * Tapping the card opens the full profile screen.
+ */
 @Composable
-private fun StreamHubUserProfileCard(
+private fun ProfilePreviewCard(
+    userProfile: UserProfile,
     isAdmin: Boolean,
     isAccessKeyVerified: Boolean,
-    remainingDays: Int = -1,
+    remainingDays: Int,
     primaryColor: Color,
     onSecretTapUnlock: () -> Unit,
-    onOpenStudio: () -> Unit,
-    onLockAdmin: () -> Unit,
-    onEditProfile: () -> Unit = {}
+    onClick: () -> Unit
 ) {
     val context = LocalContext.current
-    val userProfile by UserProfileManager.profileFlow.collectAsState()
+    val presets = UserProfileManager.PRESET_AVATARS
+    val activePreset = presets.getOrNull(userProfile.avatarPresetIndex) ?: presets.first()
+    val displayName = userProfile.customName.ifBlank { "My Profile" }
 
+    // 5-Tap secret admin easter egg counter specifically for avatar
     var tapCount by remember { mutableIntStateOf(0) }
     var lastTapTime by remember { mutableLongStateOf(0L) }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.04f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseScale"
-    )
-
-    // Determine visual styling by user tier
-    val (titleText, badgeText, subtitleText, avatarColors, avatarIcon, badgeIcon, badgeBg, badgeTextColor) = when {
-        isAdmin -> {
-            UserProfileTier(
-                title = "Creator & Owner",
-                badge = "Owner",
-                subtitle = "Unlimited Master Publishing & Streaming",
-                avatarColors = listOf(Color(0xFFFFD700), Color(0xFFF59E0B)),
-                avatarIcon = Icons.Default.AdminPanelSettings,
-                badgeIcon = Icons.Default.AdminPanelSettings,
-                badgeBg = Color(0x33FFD700),
-                badgeTextColor = Color(0xFFFFD700)
-            )
-        }
-        isAccessKeyVerified -> {
-            if (remainingDays > 0) {
-                UserProfileTier(
-                    title = "StreamHub User",
-                    badge = "User ($remainingDays d)",
-                    subtitle = "30-Day User Pass • $remainingDays days remaining",
-                    avatarColors = listOf(Color(0xFF38BDF8), Color(0xFF0284C7)),
-                    avatarIcon = Icons.Default.Person,
-                    badgeIcon = Icons.Default.Verified,
-                    badgeBg = Color(0x2238BDF8),
-                    badgeTextColor = Color(0xFF38BDF8)
-                )
-            } else {
-                UserProfileTier(
-                    title = "StreamHub Member",
-                    badge = "Lifetime Member",
-                    subtitle = "Community Key Active • 1080p Full HD",
-                    avatarColors = listOf(Color(0xFFFFD700), Color(0xFFFFA000)),
-                    avatarIcon = Icons.Default.Star,
-                    badgeIcon = Icons.Default.Star,
-                    badgeBg = Color(0x22FFD700),
-                    badgeTextColor = Color(0xFFFFD700)
-                )
-            }
-        }
-        else -> {
-            UserProfileTier(
-                title = "StreamHub User",
-                badge = "User",
-                subtitle = "StreamHub Media Experience",
-                avatarColors = listOf(primaryColor, Color(0xFF38BDF8)),
-                avatarIcon = Icons.Default.Person,
-                badgeIcon = Icons.Default.Person,
-                badgeBg = Color(0x18FFFFFF),
-                badgeTextColor = TextSecondary
-            )
-        }
-    }
-
-    val finalName = if (userProfile.customName.isNotBlank()) userProfile.customName else titleText
-    val finalTagline = if (userProfile.customTagline.isNotBlank()) userProfile.customTagline else subtitleText
-
     Card(
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(26.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = Modifier.fillMaxWidth()
+        elevation = CardDefaults.cardElevation(0.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .bouncyClickable { onClick() }
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Avatar with 5-tap secret easter egg trigger
+        Box(modifier = Modifier.fillMaxWidth()) {
+            // Optional custom background backdrop with gradient scrim
+            if (userProfile.backgroundUri.isNotBlank()) {
+                AsyncImage(
+                    model = userProfile.backgroundUri,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.matchParentSize()
+                )
                 Box(
                     modifier = Modifier
-                        .size(66.dp)
-                        .scale(pulseScale)
-                        .clip(CircleShape)
+                        .matchParentSize()
                         .background(
-                            if (userProfile.avatarUri.isNotBlank()) {
-                                Brush.linearGradient(listOf(Color(0xFF1E1E2E), Color(0xFF2D2D44)))
-                            } else if (userProfile.customName.isNotBlank() || userProfile.customTagline.isNotBlank()) {
-                                val preset = UserProfileManager.PRESET_AVATARS.getOrElse(userProfile.avatarPresetIndex) { UserProfileManager.PRESET_AVATARS[0] }
-                                Brush.linearGradient(preset.gradientColors.map { Color(it) })
-                            } else {
-                                Brush.linearGradient(avatarColors)
-                            }
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Black.copy(alpha = 0.55f),
+                                    MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f)
+                                )
+                            )
                         )
-                        .clickable {
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Left Avatar Preview with 5-tap Easter Egg
+                Box(
+                    modifier = Modifier
+                        .size(60.dp)
+                        .clip(CircleShape)
+                        .border(2.dp, primaryColor.copy(alpha = 0.6f), CircleShape)
+                        .bouncyClickable {
                             val now = System.currentTimeMillis()
                             if (now - lastTapTime > 3000L) {
                                 tapCount = 1
@@ -488,14 +461,7 @@ private fun StreamHubUserProfileCard(
 
                             if (tapCount >= 5) {
                                 tapCount = 0
-                                if (isAdmin) {
-                                    ToastManager.showToast(
-                                        message = "You are already Owner",
-                                        icon = Icons.Default.AdminPanelSettings
-                                    )
-                                } else {
-                                    onSecretTapUnlock()
-                                }
+                                onSecretTapUnlock()
                             }
                         },
                     contentAlignment = Alignment.Center
@@ -503,271 +469,88 @@ private fun StreamHubUserProfileCard(
                     if (userProfile.avatarUri.isNotBlank()) {
                         AsyncImage(
                             model = userProfile.avatarUri,
-                            contentDescription = "Avatar",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
+                            contentDescription = displayName,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
                         )
-                    } else if (userProfile.customName.isNotBlank() || userProfile.customTagline.isNotBlank()) {
-                        val preset = UserProfileManager.PRESET_AVATARS.getOrElse(userProfile.avatarPresetIndex) { UserProfileManager.PRESET_AVATARS[0] }
-                        Text(preset.emoji, fontSize = 32.sp)
                     } else {
-                        Icon(
-                            imageVector = avatarIcon,
-                            contentDescription = "Avatar",
-                            tint = Color.White,
-                            modifier = Modifier.size(36.dp)
+                        Image(
+                            painter = painterResource(id = activePreset.drawableResId),
+                            contentDescription = activePreset.name,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.width(14.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
+                // Middle: Name + Tier Badge + Subtitle + Member ID
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = finalName,
-                            color = TextPrimary,
-                            fontWeight = FontWeight.Bold,
+                            text = displayName,
                             fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false)
                         )
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        // M3 Tonal Badge Pill
-                        Surface(
-                            shape = CircleShape,
-                            color = badgeBg
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = badgeIcon,
-                                    contentDescription = null,
-                                    tint = badgeTextColor,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Text(
-                                    text = badgeText,
-                                    color = badgeTextColor,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        UserProfileTierBadge(
+                            isAdmin = isAdmin,
+                            isAccessKeyVerified = isAccessKeyVerified,
+                            remainingDays = remainingDays
+                        )
                     }
-
-                    Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
-                        text = finalTagline,
-                        color = TextSecondary,
+                        text = "Your viewing pulse, library signals, and profile actions.",
                         fontSize = 12.sp,
+                        color = TextSecondary,
                         lineHeight = 16.sp,
-                        maxLines = 2
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
-                }
-            }
 
-            // Persona & Member ID Footer Row
-            Spacer(modifier = Modifier.height(14.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                // Member ID Pill with copy action
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.clickable {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
-                        clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("StreamHub Member ID", userProfile.memberId))
-                        ToastManager.showToast("Copied Member ID: ${userProfile.memberId}", Icons.Default.ContentCopy)
-                    }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text("ID:", color = TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                        Text(userProfile.memberId, color = TextPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = TextSecondary, modifier = Modifier.size(10.dp))
-                    }
-                }
+                    Spacer(modifier = Modifier.height(2.dp))
 
-                // Customize Persona Button
-                Surface(
-                    shape = CircleShape,
-                    color = primaryColor.copy(alpha = 0.15f),
-                    modifier = Modifier.clickable { onEditProfile() }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = primaryColor, modifier = Modifier.size(12.dp))
-                        Text("Edit Persona", color = primaryColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-
-            // ONLY visible when Admin is unlocked on this device!
-            if (isAdmin) {
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onOpenStudio() }
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    // Member ID Pill with 1-tap clipboard copy
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.85f),
+                        modifier = Modifier.bouncyClickable {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            clipboard?.setPrimaryClip(ClipData.newPlainText("StreamHub Member ID", userProfile.memberId))
+                            ToastManager.showToast("Copied Member ID: ${userProfile.memberId}", Icons.Default.ContentCopy)
+                        }
                     ) {
                         Row(
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.AdminPanelSettings,
-                                contentDescription = "Studio",
-                                tint = Color(0xFFFFD700),
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "Open Creator Studio",
-                                    color = Color(0xFFFFD700),
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "Add or edit movies, anime & web series",
-                                    color = TextSecondary,
-                                    fontSize = 10.sp
-                                )
-                            }
+                            Text("ID:", color = TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text(userProfile.memberId, color = TextPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = TextSecondary, modifier = Modifier.size(10.dp))
                         }
-
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
-                            contentDescription = "Studio",
-                            tint = Color(0xFFFFD700),
-                            modifier = Modifier.size(12.dp)
-                        )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .clickable { onLockAdmin() }
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null,
-                            tint = Color(0xFFEF4444),
-                            modifier = Modifier.size(11.dp)
-                        )
-                        Text(
-                            text = "Lock Admin Access",
-                            color = Color(0xFFEF4444),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-private data class UserProfileTier(
-    val title: String,
-    val badge: String,
-    val subtitle: String,
-    val avatarColors: List<Color>,
-    val avatarIcon: ImageVector,
-    val badgeIcon: ImageVector,
-    val badgeBg: Color,
-    val badgeTextColor: Color
-)
-
-@Composable
-private fun StatCard(
-    icon: ImageVector,
-    label: String,
-    value: String,
-    primaryColor: Color,
-    modifier: Modifier = Modifier,
-    isStreak: Boolean = false
-) {
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        modifier = modifier
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
-                contentAlignment = Alignment.Center
-            ) {
+                // Right Chevron
                 Icon(
-                    imageVector = icon,
-                    contentDescription = label,
-                    tint = if (isStreak) Color(0xFFFF9800) else primaryColor,
-                    modifier = Modifier.size(18.dp)
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                    contentDescription = "Open Profile",
+                    tint = TextSecondary.copy(alpha = 0.7f),
+                    modifier = Modifier.size(16.dp)
                 )
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = value,
-                color = TextPrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = label,
-                color = TextSecondary,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Medium
-            )
         }
     }
 }
@@ -781,145 +564,73 @@ private fun ProfileListItem(
     badge: String? = null,
     onClick: () -> Unit
 ) {
-    Row(
+    Surface(
+        color = Color.Transparent,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+            .bouncyClickable { onClick() }
     ) {
         Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.weight(1f)
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Box(
                 modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(iconTint.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
-                    contentDescription = title,
+                    contentDescription = null,
                     tint = iconTint,
                     modifier = Modifier.size(20.dp)
                 )
             }
-            Spacer(modifier = Modifier.width(14.dp))
-            Column {
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
                 Text(
                     text = title,
                     color = TextPrimary,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
-                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = subtitle,
                     color = TextSecondary,
-                    fontSize = 11.sp,
-                    lineHeight = 15.sp
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
                 )
             }
-        }
 
-        if (badge != null) {
-            Spacer(modifier = Modifier.width(8.dp))
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh
-            ) {
-                Text(
-                    text = badge,
-                    color = TextSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-        }
-
-        Icon(
-            imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
-            contentDescription = "Open",
-            tint = TextSecondary.copy(alpha = 0.4f),
-            modifier = Modifier.size(14.dp)
-        )
-    }
-}
-
-@Composable
-fun AdminPasswordDialog(
-    onDismiss: () -> Unit,
-    onSuccess: () -> Unit
-) {
-    var password by remember { mutableStateOf("") }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.AdminPanelSettings, contentDescription = null, tint = PrimaryRed)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Creator Studio Unlock", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            }
-        },
-        text = {
-            Column {
-                Text(
-                    text = "Enter your admin master password to enable publishing and manage shows in StreamHub:",
-                    color = TextSecondary,
-                    fontSize = 13.sp
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = {
-                        password = it
-                        errorMessage = null
-                    },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true,
-                    placeholder = { Text("Enter Master Password", color = TextSecondary) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = PrimaryRed,
-                        unfocusedBorderColor = Color(0xFF3A3A4C),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
+            badge?.let {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh
+                ) {
+                    Text(
+                        text = it,
+                        color = TextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
-                )
-                errorMessage?.let {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(it, color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (AdminManager.verifyPassword(password)) {
-                        AdminManager.enableAdminMode()
-                        onSuccess()
-                    } else {
-                        errorMessage = "Incorrect admin password"
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed)
-            ) {
-                Text("Unlock Studio", color = Color.White, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            OutlinedButton(onClick = onDismiss) {
-                Text("Cancel", color = TextSecondary)
-            }
-        },
-        containerColor = Color(0xFF14141E),
-        shape = RoundedCornerShape(16.dp)
-    )
+
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                contentDescription = null,
+                tint = TextSecondary.copy(alpha = 0.5f),
+                modifier = Modifier.size(14.dp)
+            )
+        }
+    }
 }

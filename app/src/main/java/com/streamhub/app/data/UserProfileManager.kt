@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
 import android.util.Log
+import com.streamhub.app.R
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,14 +16,15 @@ data class UserProfile(
     val customTagline: String = "",
     val avatarUri: String = "",
     val avatarPresetIndex: Int = 0,
-    val memberId: String = ""
+    val memberId: String = "",
+    val backgroundUri: String = ""
 )
 
 data class PresetAvatar(
     val id: Int,
     val name: String,
-    val emoji: String,
-    val gradientColors: List<Long>
+    val category: String,
+    val drawableResId: Int
 )
 
 /**
@@ -31,6 +33,7 @@ data class PresetAvatar(
  * Persists:
  * - Custom display name & bio
  * - Custom gallery photo URI or selected aesthetic preset avatar
+ * - Optional custom profile wallpaper/background
  * - Generated persistent VIP Member ID (#SH-XXXX)
  */
 object UserProfileManager {
@@ -41,22 +44,31 @@ object UserProfileManager {
     private const val KEY_AVATAR_URI = "profile_avatar_uri"
     private const val KEY_AVATAR_PRESET = "profile_avatar_preset"
     private const val KEY_MEMBER_ID = "profile_member_id"
+    private const val KEY_BACKGROUND_URI = "profile_background_uri"
 
     private lateinit var appContext: Context
 
     val PRESET_AVATARS = listOf(
-        PresetAvatar(0, "Cyber Samurai", "⚡", listOf(0xFFE50914, 0xFFFF5722)),
-        PresetAvatar(1, "Neon Sovereign", "👑", listOf(0xFFFFD700, 0xFFFFA000)),
-        PresetAvatar(2, "Cosmic Voyaguer", "🌌", listOf(0xFF7C4DFF, 0xFF00E5FF)),
-        PresetAvatar(3, "Dragon Knight", "🐉", listOf(0xFF00E676, 0xFF00B0FF)),
-        PresetAvatar(4, "Cinema Director", "🎬", listOf(0xFFFF3366, 0xFF7928CA)),
-        PresetAvatar(5, "Popcorn King", "🍿", listOf(0xFFFF9800, 0xFFFF5722)),
-        PresetAvatar(6, "Phantom Shadow", "🎭", listOf(0xFF6366F1, 0xFFEC4899)),
-        PresetAvatar(7, "Lo-Fi Otaku", "🎧", listOf(0xFF38BDF8, 0xFF818CF8)),
-        PresetAvatar(8, "Cyber Kitsune", "🦊", listOf(0xFFF43F5E, 0xFFFB923C)),
-        PresetAvatar(9, "Valkyrie Blade", "⚔️", listOf(0xFF10B981, 0xFF06B6D4)),
-        PresetAvatar(10, "Diamond VIP", "💎", listOf(0xFF00E5FF, 0xFF3B82F6)),
-        PresetAvatar(11, "Astro Scout", "🚀", listOf(0xFFA855F7, 0xFFEC4899))
+        PresetAvatar(0, "Cyber Samurai", "Cyber", R.drawable.avatar_cyber_samurai),
+        PresetAvatar(1, "Neon Phantom", "Cyber", R.drawable.avatar_neon_phantom),
+        PresetAvatar(2, "Cosmic Voyager", "Sci-Fi", R.drawable.avatar_cosmic_voyager),
+        PresetAvatar(3, "Mecha Titan", "Cyber", R.drawable.avatar_mecha_titan),
+        PresetAvatar(4, "Noir Detective", "Cinema", R.drawable.avatar_noir_detective),
+        PresetAvatar(5, "Film Director", "Cinema", R.drawable.avatar_film_director),
+        PresetAvatar(6, "Retro Cinephile", "Cinema", R.drawable.avatar_retro_cinephile),
+        PresetAvatar(7, "Golden Maestro", "Classic", R.drawable.avatar_golden_maestro),
+        PresetAvatar(8, "Shadow Shinobi", "Mythic", R.drawable.avatar_shadow_shinobi),
+        PresetAvatar(9, "Solar Valkyrie", "Mythic", R.drawable.avatar_solar_valkyrie),
+        PresetAvatar(10, "Arcane Sorcerer", "Fantasy", R.drawable.avatar_arcane_sorcerer),
+        PresetAvatar(11, "Frost Viking", "Mythic", R.drawable.avatar_frost_viking),
+        PresetAvatar(12, "Urban Wolf", "Creatures", R.drawable.avatar_urban_wolf),
+        PresetAvatar(13, "Kitsune Fox", "Creatures", R.drawable.avatar_kitsune_fox),
+        PresetAvatar(14, "Midnight Owl", "Creatures", R.drawable.avatar_midnight_owl),
+        PresetAvatar(15, "Mecha Panther", "Creatures", R.drawable.avatar_mecha_panther),
+        PresetAvatar(16, "Chill Panda", "Creatures", R.drawable.avatar_chill_panda),
+        PresetAvatar(17, "Stellar Idol", "Anime", R.drawable.avatar_stellar_idol),
+        PresetAvatar(18, "Crimson Rebel", "Anime", R.drawable.avatar_crimson_rebel),
+        PresetAvatar(19, "Lo-Fi Dreamer", "Chill", R.drawable.avatar_lofi_dreamer)
     )
 
     private val _profileFlow = MutableStateFlow(UserProfile())
@@ -82,7 +94,8 @@ object UserProfileManager {
             customTagline = prefs.getString(KEY_CUSTOM_TAGLINE, "") ?: "",
             avatarUri = prefs.getString(KEY_AVATAR_URI, "") ?: "",
             avatarPresetIndex = prefs.getInt(KEY_AVATAR_PRESET, 0).coerceIn(0, PRESET_AVATARS.size - 1),
-            memberId = memberId
+            memberId = memberId,
+            backgroundUri = prefs.getString(KEY_BACKGROUND_URI, "") ?: ""
         )
     }
 
@@ -91,7 +104,8 @@ object UserProfileManager {
         name: String,
         tagline: String,
         avatarUri: String,
-        presetIndex: Int
+        presetIndex: Int,
+        backgroundUri: String = _profileFlow.value.backgroundUri
     ) {
         if (!::appContext.isInitialized) return
         val current = _profileFlow.value
@@ -99,7 +113,8 @@ object UserProfileManager {
             customName = name.trim(),
             customTagline = tagline.trim(),
             avatarUri = avatarUri.trim(),
-            avatarPresetIndex = presetIndex.coerceIn(0, PRESET_AVATARS.size - 1)
+            avatarPresetIndex = presetIndex.coerceIn(0, PRESET_AVATARS.size - 1),
+            backgroundUri = backgroundUri.trim()
         )
 
         _profileFlow.value = updated
@@ -108,6 +123,7 @@ object UserProfileManager {
             .putString(KEY_CUSTOM_TAGLINE, updated.customTagline)
             .putString(KEY_AVATAR_URI, updated.avatarUri)
             .putInt(KEY_AVATAR_PRESET, updated.avatarPresetIndex)
+            .putString(KEY_BACKGROUND_URI, updated.backgroundUri)
             .apply()
     }
 
@@ -126,6 +142,21 @@ object UserProfileManager {
         }
     }
 
+    fun saveCustomBackground(context: Context, sourceUri: Uri): String {
+        return try {
+            val destFile = File(context.filesDir, "custom_profile_bg.jpg")
+            context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                destFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            "file://${destFile.absolutePath}?t=${System.currentTimeMillis()}"
+        } catch (e: Exception) {
+            Log.e("UserProfileManager", "Failed to save custom background", e)
+            ""
+        }
+    }
+
     @Synchronized
     fun resetToDefault() {
         if (!::appContext.isInitialized) return
@@ -137,6 +168,7 @@ object UserProfileManager {
             .remove(KEY_CUSTOM_NAME)
             .remove(KEY_CUSTOM_TAGLINE)
             .remove(KEY_AVATAR_URI)
+            .remove(KEY_BACKGROUND_URI)
             .putInt(KEY_AVATAR_PRESET, 0)
             .apply()
     }
@@ -152,7 +184,8 @@ object UserProfileManager {
             customName = profile.customName.ifBlank { current.customName },
             customTagline = profile.customTagline.ifBlank { current.customTagline },
             avatarPresetIndex = profile.avatarPresetIndex.coerceIn(0, PRESET_AVATARS.size - 1),
-            memberId = profile.memberId.ifBlank { current.memberId }
+            memberId = profile.memberId.ifBlank { current.memberId },
+            backgroundUri = profile.backgroundUri.ifBlank { current.backgroundUri }
         )
         _profileFlow.value = updated
         getPrefs().edit()
@@ -160,6 +193,7 @@ object UserProfileManager {
             .putString(KEY_CUSTOM_TAGLINE, updated.customTagline)
             .putInt(KEY_AVATAR_PRESET, updated.avatarPresetIndex)
             .putString(KEY_MEMBER_ID, updated.memberId)
+            .putString(KEY_BACKGROUND_URI, updated.backgroundUri)
             .apply()
     }
 

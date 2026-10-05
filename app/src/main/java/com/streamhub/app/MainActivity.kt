@@ -84,6 +84,8 @@ import com.streamhub.app.ui.screens.HistoryScreen
 import com.streamhub.app.ui.screens.HomeScreen
 import com.streamhub.app.ui.screens.MyListScreen
 import com.streamhub.app.ui.screens.PlayerScreen
+import com.streamhub.app.ui.screens.EditProfileScreen
+import com.streamhub.app.ui.screens.MyProfileScreen
 import com.streamhub.app.ui.screens.ProfileScreen
 import com.streamhub.app.ui.screens.SearchScreen
 import com.streamhub.app.ui.screens.SettingsScreen
@@ -655,6 +657,9 @@ fun StreamHubApp(
 
             composable(Screen.Profile.route) {
                 ProfileScreen(
+                    onNavigateToMyProfile = {
+                        navController.navigate(Screen.MyProfile.route)
+                    },
                     onNavigateToSettings = {
                         navController.navigate(Screen.Settings.route)
                     },
@@ -669,7 +674,25 @@ fun StreamHubApp(
                     },
                     onNavigateToAbout = {
                         navController.navigate(Screen.About.route)
+                    },
+                    onNavigateToMyList = {
+                        navController.navigate(Screen.MyList.route)
                     }
+                )
+            }
+
+            composable(Screen.MyProfile.route) {
+                MyProfileScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onNavigateToEditProfile = { navController.navigate(Screen.EditProfile.route) },
+                    onNavigateToHistory = { navController.navigate(Screen.History.route) },
+                    onNavigateToMyList = { navController.navigate(Screen.MyList.route) }
+                )
+            }
+
+            composable(Screen.EditProfile.route) {
+                EditProfileScreen(
+                    onBackClick = { navController.popBackStack() }
                 )
             }
 
