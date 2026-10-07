@@ -1,4 +1,11 @@
-### What's New in StreamHub v4.8.397 🚀
+### What's New in StreamHub v4.8.398 🚀
+
+- 🌸 **AniList Specifications & Deep Metadata Engine**:
+  - **Full Production Specs**: Automatically extracts animation studios (*bones film, A-1 Pictures, WIT STUDIO*), producers (*bones, Aniplex, Square Enix, Crunchyroll*), and original source (*Manga, Light Novel, Web Manga, Original, Visual Novel*).
+  - **Smart Maturity Rating Engine**: Auto-computes industry standard content ratings (*TV-MA, TV-14, PG-13, 18+, TV-Y7*) based on AniList adult flags, content tags, and format.
+  - **100% Pure AniList Artwork**: Complete elimination of TMDb backdrop and poster overrides for anime. Posters (`coverImage.extraLarge`) and 16:9 banners (`bannerImage`) come 100% directly from AniList CDN.
+  - **Multi-Season Sequel Separation**: Direct resolution for multi-season anime entries (e.g. *Solo Leveling Season 2: Arise from the Shadow*), granting each season its own unique AniList ID, distinct synopsis, trailers, and cover artwork.
+  - **1-Click Catalog Repair**: Run **Deep Re-Sync from Source** in **Creator Studio ➔ Metadata Health Inspector ➔ Fix All** to automatically refresh and update the entire catalog in Firestore.
 
 - 🌸 **AniList GraphQL Engine & 100% MyAnimeList Purge**:
   - **Zero Rate Limits & Lightning Speed**: Completely replaced legacy MyAnimeList v2 REST API and Jikan web scraping with the official high-performance **AniList GraphQL API (`graphql.anilist.co`)**. Delivers rich anime metadata, Japanese voice actors, and high-res cover art in a single $< 200\text{ms}$ request with zero API keys or rate-limit dropouts (`429 Too Many Requests`).
