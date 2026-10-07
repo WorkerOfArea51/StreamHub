@@ -58,10 +58,39 @@ class MetadataInspectorTest {
         assertTrue(MetadataIssueType.RATING in issues)
         assertTrue(MetadataIssueType.CAST in issues)
         assertTrue(MetadataIssueType.STUDIO in issues)
+        assertTrue(MetadataIssueType.MATURITY in issues)
         assertTrue(MetadataIssueType.YEAR in issues)
         assertTrue(MetadataIssueType.DURATION in issues)
         assertTrue(MetadataIssueType.EPISODES in issues)
-        assertEquals(11, issues.size)
+        assertEquals(12, issues.size)
+    }
+
+    @Test
+    fun getMediaItemIssues_detectsAnimeSpecificProducersAndSource() {
+        val animeWithoutSpecs = MediaItem(
+            id = "anime_test",
+            title = "Demon Slayer",
+            type = "SERIES",
+            category = "Anime",
+            genres = listOf("Action", "Fantasy"),
+            trailerId = "abc",
+            description = "Tanjirou fights demons.",
+            posterUrl = "https://example.com/poster.jpg",
+            bannerUrl = "https://example.com/banner.jpg",
+            rating = "8.8",
+            castList = listOf("Natsuki Hanae"),
+            studio = "ufotable",
+            producers = "", // Missing producers
+            source = "",    // Missing source
+            maturityRating = "TV-14",
+            releaseYear = "2019",
+            duration = "24 min. per ep.",
+            totalEpisodes = "26"
+        )
+
+        val issues = getMediaItemIssues(animeWithoutSpecs)
+        assertTrue(MetadataIssueType.PRODUCERS in issues)
+        assertTrue(MetadataIssueType.SOURCE in issues)
     }
 
     @Test
@@ -77,6 +106,7 @@ class MetadataInspectorTest {
             posterUrl = "https://image.tmdb.org/t/p/w500/poster.jpg",
             bannerUrl = "https://image.tmdb.org/t/p/w1280/backdrop.jpg",
             rating = "6.8",
+            maturityRating = "PG-13",
             castList = listOf("Hrithik Roshan", "Tiger Shroff", "Vaani Kapoor"),
             studio = "Yash Raj Films",
             producers = "Aditya Chopra",
@@ -102,6 +132,7 @@ class MetadataInspectorTest {
             posterUrl = "https://example.com/poster.jpg",
             bannerUrl = "https://example.com/poster.jpg", // Same as poster!
             rating = "8.0",
+            maturityRating = "PG-13",
             castList = listOf("Actor 1"),
             studio = "Studio A",
             releaseYear = "2023",
@@ -111,4 +142,20 @@ class MetadataInspectorTest {
         val issues = getMediaItemIssues(duplicateBackdropItem)
         assertTrue("Duplicate banner should be flagged as BACKDROP issue", MetadataIssueType.BACKDROP in issues)
     }
+
+    @Test
+    fun getMediaItemIssues_detectsUnstandardizedSpecs() {
+        val itemWithDirtyCodec = MediaItem(
+            id = "test_dirty_codec",
+            title = "Sample Codec",
+            type = "MOVIE",
+            mediaInfo = com.streamhub.app.data.models.MediaInfo(
+                resolution = "1080",
+                videoCodec = "x265 10-bit"
+            )
+        )
+        val issues = getMediaItemIssues(itemWithDirtyCodec)
+        assertTrue("Dirty codec should be flagged as UNSTANDARDIZED_SPECS", MetadataIssueType.UNSTANDARDIZED_SPECS in issues)
+    }
 }
+

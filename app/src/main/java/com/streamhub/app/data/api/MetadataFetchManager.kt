@@ -1845,8 +1845,8 @@ object MetadataFetchManager {
                                 if (meta.releaseYear > 0) meta.releaseYear.toString() else item.releaseYear
                             } else item.releaseYear,
                             aired = if (deepSync || item.aired.isBlank()) meta.aired.ifBlank { item.aired } else item.aired,
-                            tmdbId = if (item.tmdbId.isBlank()) meta.tmdbId else item.tmdbId,
-                            anilistId = if (item.anilistId.isBlank()) meta.anilistId else item.anilistId,
+                            tmdbId = if (deepSync || item.tmdbId.isBlank()) meta.tmdbId.ifBlank { item.tmdbId } else item.tmdbId,
+                            anilistId = if (deepSync || item.anilistId.isBlank()) meta.anilistId.ifBlank { item.anilistId } else item.anilistId,
                             trailerId = if (deepSync || item.trailerId.isBlank() || item.trailerId.equals("null", ignoreCase = true)) {
                                 val tid = meta.youtubeTrailerId.takeIf { !it.equals("null", ignoreCase = true) } ?: ""
                                 tid.ifBlank { if (item.trailerId.equals("null", ignoreCase = true)) "" else item.trailerId }
