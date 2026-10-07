@@ -887,11 +887,11 @@ object MetadataFetchManager {
         )
         return Result.success(fetched)
         }
-
-/**
+    /**
      * AniList GraphQL Search & Specification Fetcher for Anime.
      * Prefers English title over Romaji title, extracts high-res cover artwork, 16:9 banner,
-     * studios, official YouTube trailer, synopsis, and Japanese voice actors + character cards.
+     * animation studios, production companies, original source, calculated maturity ratings,
+     * official YouTube trailer, synopsis, and Japanese voice actors + character cards.
      * 100% public, free, zero API key required, zero rate limits.
      */
     private const val ANILIST_MEDIA_QUERY = """
@@ -917,16 +917,28 @@ object MetadataFetchManager {
             duration
             status
             format
+            source
+            countryOfOrigin
+            isAdult
             genres
+            tags {
+              name
+              category
+              rank
+              isAdult
+            }
             averageScore
             meanScore
             trailer {
               id
               site
             }
-            studios(isMain: true) {
-              nodes {
-                name
+            studios {
+              edges {
+                isMain
+                node {
+                  name
+                }
               }
             }
             startDate {
@@ -1084,7 +1096,7 @@ object MetadataFetchManager {
             "NOT_YET_RELEASED" -> "Not Yet Aired"
             "CANCELLED" -> "Cancelled"
             "HIATUS" -> "On Hiatus"
-            else -> rawStatus.replace("_", " ").capitalizeWords()
+            else -> rawStatus.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }
         }
 
         val rawFormat = mediaObj.optString("format", "TV")
@@ -1097,6 +1109,26 @@ object MetadataFetchManager {
             "ONA" -> "ONA"
             "MUSIC" -> "Music"
             else -> rawFormat
+        }
+
+        // Original Source Formatting
+        val rawSource = mediaObj.optString("source", "")
+        val formattedSource = when (rawSource.uppercase()) {
+            "MANGA" -> "Manga"
+            "LIGHT_NOVEL" -> "Light Novel"
+            "WEB_MANGA" -> "Web Manga"
+            "ORIGINAL" -> "Original"
+            "VISUAL_NOVEL" -> "Visual Novel"
+            "VIDEO_GAME", "GAME" -> "Video Game"
+            "NOVEL" -> "Novel"
+            "DOUJINSHI" -> "Doujinshi"
+            "ANIME" -> "Anime"
+            "COMIC" -> "Comic"
+            "LIVE_ACTION" -> "Live Action"
+            "MULTIMEDIA_PROJECT" -> "Multimedia Project"
+            "PICTURE_BOOK" -> "Picture Book"
+            "OTHER" -> "Other"
+            else -> if (rawSource.isNotBlank()) rawSource.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() } else ""
         }
 
         val durationMin = mediaObj.optInt("duration", 0)
@@ -1127,14 +1159,24 @@ object MetadataFetchManager {
         } else ""
 
         val studioList = mutableListOf<String>()
-        val studiosArr = mediaObj.optJSONObject("studios")?.optJSONArray("nodes")
-        if (studiosArr != null) {
-            for (i in 0 until studiosArr.length()) {
-                val sName = studiosArr.optJSONObject(i)?.optString("name", "")?.trim() ?: ""
-                if (sName.isNotBlank() && !studioList.contains(sName)) studioList.add(sName)
+        val producerList = mutableListOf<String>()
+        val studiosEdges = mediaObj.optJSONObject("studios")?.optJSONArray("edges")
+        if (studiosEdges != null) {
+            for (i in 0 until studiosEdges.length()) {
+                val edge = studiosEdges.optJSONObject(i) ?: continue
+                val isMain = edge.optBoolean("isMain", false)
+                val sName = edge.optJSONObject("node")?.optString("name", "")?.trim() ?: ""
+                if (sName.isNotBlank()) {
+                    if (isMain) {
+                        if (!studioList.contains(sName)) studioList.add(sName)
+                    } else {
+                        if (!producerList.contains(sName)) producerList.add(sName)
+                    }
+                }
             }
         }
-        val studioStr = studioList.joinToString(", ")
+        val studioStr = studioList.joinToString(", ").ifBlank { producerList.firstOrNull() ?: "" }
+        val producerStr = producerList.joinToString(", ")
 
         val genresList = mutableListOf<String>()
         val gArr = mediaObj.optJSONArray("genres")
@@ -1143,6 +1185,29 @@ object MetadataFetchManager {
                 val g = gArr.optString(i, "").trim()
                 if (g.isNotBlank() && !g.equals("Anime", ignoreCase = true)) genresList.add(g)
             }
+        }
+
+        // Industry Standard Maturity Calculation for Anime
+        val isAdult = mediaObj.optBoolean("isAdult", false)
+        val tagsArr = mediaObj.optJSONArray("tags")
+        val tagsList = mutableListOf<String>()
+        if (tagsArr != null) {
+            for (i in 0 until tagsArr.length()) {
+                val tName = tagsArr.optJSONObject(i)?.optString("name", "")?.trim() ?: ""
+                if (tName.isNotBlank()) tagsList.add(tName.lowercase())
+            }
+        }
+
+        val genresLower = genresList.map { it.lowercase() }
+        val calculatedMaturity = when {
+            isAdult -> "18+"
+            genresLower.any { it == "ecchi" || it == "hentai" } -> "17+"
+            genresLower.any { it == "horror" || it == "psychological" } -> "TV-MA"
+            tagsList.any { it.contains("gore") || it.contains("violence") || it == "seinen" } -> "TV-MA"
+            genresLower.any { it == "action" || it == "thriller" || it == "supernatural" } -> "TV-14"
+            genresLower.any { it == "kids" } || rawFormat.equals("TV_SHORT", ignoreCase = true) -> "TV-Y7"
+            rawFormat.equals("MOVIE", ignoreCase = true) -> "PG-13"
+            else -> "TV-14"
         }
 
         val synonymsList = mutableListOf<String>()
@@ -1239,8 +1304,8 @@ object MetadataFetchManager {
             category = "Anime",
             genres = genresList.take(5),
             studio = studioStr,
-            producers = "",
-            source = "",
+            producers = producerStr,
+            source = formattedSource,
             duration = durationStr,
             status = formattedStatus,
             totalEpisodes = totalEpisodesStr,
@@ -1250,7 +1315,7 @@ object MetadataFetchManager {
             castList = castMembersList.take(8).joinToString(", ") { it.name },
             youtubeTrailerId = youtubeTrailerId,
             aired = airedStr,
-            maturityRating = "",
+            maturityRating = calculatedMaturity,
             franchiseId = detectedFranchiseId,
             franchiseTitle = detectedFranchiseTitle,
             seasonNumber = detectedSeason,
@@ -1304,12 +1369,12 @@ object MetadataFetchManager {
         meta: FetchedMetadata,
         fallbackTitle: String
     ): FetchedMetadata {
-        val needsBackdrop = meta.backdropUrl.isBlank() || meta.backdropUrl == meta.posterUrl
         val needsTrailer = meta.youtubeTrailerId.isBlank() || meta.youtubeTrailerId.equals("null", ignoreCase = true)
         val needsCast = meta.castList.isBlank()
         val needsTmdbId = meta.tmdbId.isBlank()
 
-        if (!needsBackdrop && !needsTrailer && !needsCast && !needsTmdbId) {
+        // For Anime, poster and backdrop are strictly kept from AniList (coverImage.extraLarge, bannerImage).
+        if (!needsTrailer && !needsCast && !needsTmdbId) {
             return meta
         }
 
@@ -1347,31 +1412,23 @@ object MetadataFetchManager {
 
             var enriched = meta
 
-            // 1. 16:9 Cinematic Backdrop
-            if (needsBackdrop && tmdbMeta.backdropUrl.isNotBlank() && 
-                tmdbMeta.backdropUrl != tmdbMeta.posterUrl && 
-                tmdbMeta.backdropUrl != meta.posterUrl &&
-                tmdbMeta.backdropUrl.contains("image.tmdb.org")) {
-                enriched = enriched.copy(backdropUrl = tmdbMeta.backdropUrl)
-            }
-
-            // 2. Verified YouTube Trailer
+            // 1. Verified YouTube Trailer (only if AniList was empty)
             if (needsTrailer && tmdbMeta.youtubeTrailerId.isNotBlank() && 
                 !tmdbMeta.youtubeTrailerId.equals("null", ignoreCase = true)) {
                 enriched = enriched.copy(youtubeTrailerId = tmdbMeta.youtubeTrailerId)
             }
 
-            // 3. Fallback Cast (only if AniList was empty)
+            // 2. Fallback Cast (only if AniList was empty)
             if (needsCast && tmdbMeta.castList.isNotBlank()) {
                 enriched = enriched.copy(castList = tmdbMeta.castList)
             }
 
-            // 4. Link TMDB ID
+            // 3. Link TMDB ID
             if (needsTmdbId && tmdbMeta.tmdbId.isNotBlank()) {
                 enriched = enriched.copy(tmdbId = tmdbMeta.tmdbId)
             }
 
-            // 5. Fallback Director, Writers, Cast, and Trailers
+            // 4. Fallback Director, Writers, Cast, and Trailers (only if AniList was empty)
             if (enriched.director.isBlank() && tmdbMeta.director.isNotBlank()) {
                 enriched = enriched.copy(director = tmdbMeta.director)
             }
