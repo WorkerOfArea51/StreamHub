@@ -262,13 +262,66 @@ object CatalogBackupManager {
         backupList.sortedByDescending { it.lastModified }
     }
 
-    fun deleteLocalBackup(file: File): Boolean {
-        return try {
-            if (file.exists()) file.delete() else false
+    fun deleteLocalBackup(context: Context? = null, file: File, fileName: String = file.name): Boolean {
+        var anyDeleted = false
+        val targetName = fileName.ifBlank { file.name }
+
+        // 1. Delete the passed file directly
+        try {
+            if (file.exists() && file.delete()) {
+                anyDeleted = true
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Error deleting backup file: ${file.absolutePath}", e)
-            false
+            Log.w(TAG, "Failed to delete file directly: ${file.absolutePath}", e)
         }
+
+        if (context != null) {
+            // 2. Delete internal filesDir copy
+            try {
+                val internalFile = File(File(context.filesDir, "backups"), targetName)
+                if (internalFile.exists() && internalFile.delete()) {
+                    anyDeleted = true
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to delete internal backup: $targetName", e)
+            }
+
+            // 3. Delete internal cacheDir copy
+            try {
+                val cacheFile = File(File(context.cacheDir, "backups"), targetName)
+                if (cacheFile.exists() && cacheFile.delete()) {
+                    anyDeleted = true
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to delete cache backup: $targetName", e)
+            }
+
+            // 4. Delete public Downloads copy
+            try {
+                val downloadsDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "StreamHub")
+                val pubFile = File(downloadsDir, targetName)
+                if (pubFile.exists() && pubFile.delete()) {
+                    anyDeleted = true
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to delete downloads backup: $targetName", e)
+            }
+
+            // 5. Delete from MediaStore on Android 10+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                try {
+                    val resolver = context.contentResolver
+                    val selection = "${MediaStore.Downloads.DISPLAY_NAME} = ?"
+                    val selectionArgs = arrayOf(targetName)
+                    val count = resolver.delete(MediaStore.Downloads.EXTERNAL_CONTENT_URI, selection, selectionArgs)
+                    if (count > 0) anyDeleted = true
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to delete MediaStore backup: $targetName", e)
+                }
+            }
+        }
+
+        return anyDeleted
     }
 
     private fun formatFileSize(sizeBytes: Long): String {

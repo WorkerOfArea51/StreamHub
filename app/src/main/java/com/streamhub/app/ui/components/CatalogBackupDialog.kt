@@ -178,9 +178,13 @@ fun CatalogBackupDialog(
             confirmButton = {
                 Button(
                     onClick = {
-                        val deleted = CatalogBackupManager.deleteLocalBackup(target.file)
+                        val targetCopy = target
+                        val deleted = CatalogBackupManager.deleteLocalBackup(context, targetCopy.file, targetCopy.fileName)
                         backupToDelete = null
                         if (deleted) {
+                            if (exportSuccessMessage?.contains(targetCopy.fileName) == true || exportSuccessMessage?.contains("Saved to") == true) {
+                                exportSuccessMessage = null
+                            }
                             refreshArchive()
                             Toast.makeText(context, "Backup deleted", Toast.LENGTH_SHORT).show()
                         } else {
@@ -505,11 +509,23 @@ fun CatalogBackupDialog(
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(10.dp)
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF81C784), modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(msg, color = Color(0xFF81C784), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f).padding(end = 6.dp)
+                                    ) {
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF81C784), modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(msg, color = Color(0xFF81C784), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    IconButton(
+                                        onClick = { exportSuccessMessage = null },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = Color(0xFF81C784), modifier = Modifier.size(14.dp))
+                                    }
                                 }
                             }
                         }
@@ -522,7 +538,19 @@ fun CatalogBackupDialog(
                                 border = BorderStroke(1.dp, PrimaryRed),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(err, color = PrimaryRed, fontSize = 11.sp, modifier = Modifier.padding(10.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(err, color = PrimaryRed, fontSize = 11.sp, modifier = Modifier.weight(1f).padding(end = 6.dp))
+                                    IconButton(
+                                        onClick = { exportErrorMessage = null },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = PrimaryRed, modifier = Modifier.size(14.dp))
+                                    }
+                                }
                             }
                         }
 
