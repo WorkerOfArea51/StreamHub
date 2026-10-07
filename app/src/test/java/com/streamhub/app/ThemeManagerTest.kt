@@ -10,8 +10,8 @@ class ThemeManagerTest {
 
     @Test
     fun defaultAccent_isCyan() {
-        val defaultAccent = AppThemeAccent.CYAN
-        assertEquals("Cyberpunk Cyan", defaultAccent.label)
+        val defaultAccent = AppThemeAccent.OCEAN
+        assertEquals("Ocean", defaultAccent.label)
         assertNotNull(defaultAccent.color)
     }
 
@@ -31,6 +31,6 @@ class ThemeManagerTest {
         val accents = AppThemeAccent.entries
         val found = accents.firstOrNull { it.key == "PURPLE" }
         assertNotNull(found)
-        assertEquals("Neon Purple", found?.label)
+        assertEquals("Violet", found?.label)
     }
 }

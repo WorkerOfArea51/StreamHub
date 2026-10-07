@@ -116,7 +116,6 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug"
             manifestPlaceholders["appName"] = "StreamHub (Debug)"
             isMinifyEnabled = false
             isDebuggable = true

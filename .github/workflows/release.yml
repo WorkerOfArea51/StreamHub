@@ -106,7 +106,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run unit tests
-        run: ./gradlew testDebugUnitTest --stacktrace
+        run: ./gradlew testReleaseUnitTest --stacktrace
 
       - name: Run Lint
         run: ./gradlew lintRelease --stacktrace
