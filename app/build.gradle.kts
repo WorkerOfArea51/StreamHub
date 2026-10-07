@@ -45,8 +45,8 @@ android {
         minSdk = 24
         targetSdk = 35
         val envVersionName = System.getenv("VERSION_NAME")?.removePrefix("v")?.removePrefix("V")
-        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 391
-        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.391"
+        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 396
+        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.396"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -54,7 +54,6 @@ android {
         }
 
         buildConfigField("String", "TMDB_API_KEY", "\"${secret("streamhub.tmdb_api_key")}\"")
-        buildConfigField("String", "MAL_CLIENT_ID", "\"${secret("streamhub.mal_client_id")}\"")
         buildConfigField("boolean", "DEBUG_LOGGING", "false")
         buildConfigField("String", "ADMIN_MASTER_PASSWORD", "\"${secret("streamhub.admin_master_password", "")}\"")
         buildConfigField("String", "APP_ACCESS_CODE", "\"${secret("streamhub.app_access_code", "")}\"")

@@ -18,6 +18,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     object Settings : Screen("settings", "Settings")
     object VideoSettings : Screen("video-settings", "Video Settings")
     object AppearanceSettings : Screen("appearance-settings", "Appearance")
+    object NotificationSettings : Screen("notification-settings", "Notifications")
     object GestureSettings : Screen("gesture-settings", "Gestures")
     object AudioSettings : Screen("audio-settings", "Audio & Sound")
     object AdvancedSettings : Screen("advanced-settings", "Advanced & Backup")

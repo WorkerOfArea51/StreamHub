@@ -13,13 +13,15 @@ import javax.net.SocketFactory
  */
 class HighThroughputSocketFactory(
     private val delegate: SocketFactory = SocketFactory.getDefault(),
-    private val bufferSizeBytes: Int = 1024 * 1024 // 1 MB TCP window scaling buffer
+    private val bufferSizeBytes: Int = 2 * 1024 * 1024 // 2 MB TCP window scaling buffer for line saturation
 ) : SocketFactory() {
 
     private fun configureSocket(socket: Socket): Socket {
         try {
             socket.tcpNoDelay = true
             socket.keepAlive = true
+            socket.receiveBufferSize = bufferSizeBytes
+            socket.sendBufferSize = 512 * 1024
         } catch (_: Exception) {}
         return socket
     }

@@ -94,6 +94,10 @@ object VoucherManager {
         label: String = "",
         durationDays: Int = 30
     ): Result<VipVoucher> = withContext(Dispatchers.IO) {
+        if (!AdminManager.isAdminMode.value) {
+            Log.e(TAG, "SECURITY VIOLATION: Unauthorized attempt to create VIP voucher without Admin verification!")
+            return@withContext Result.failure(SecurityException("Unauthorized: Creator Studio Admin mode required"))
+        }
         val db = firestore ?: return@withContext Result.failure(IllegalStateException("Firestore is not available"))
         try {
             val code = generateSecureCode()
@@ -259,6 +263,10 @@ object VoucherManager {
      * Deletes a voucher permanently from Firestore (called from Creator Studio).
      */
     suspend fun deleteVoucher(code: String): Result<Unit> = withContext(Dispatchers.IO) {
+        if (!AdminManager.isAdminMode.value) {
+            Log.e(TAG, "SECURITY VIOLATION: Unauthorized attempt to delete VIP voucher without Admin verification!")
+            return@withContext Result.failure(SecurityException("Unauthorized: Creator Studio Admin mode required"))
+        }
         val db = firestore ?: return@withContext Result.failure(IllegalStateException("Firestore is not available"))
         try {
             val cleanCode = code.trim().uppercase()
@@ -275,6 +283,10 @@ object VoucherManager {
      * Scans and deletes all vouchers whose 30 days have elapsed.
      */
     suspend fun purgeExpiredVouchers(): Result<Int> = withContext(Dispatchers.IO) {
+        if (!AdminManager.isAdminMode.value) {
+            Log.e(TAG, "SECURITY VIOLATION: Unauthorized attempt to purge VIP vouchers without Admin verification!")
+            return@withContext Result.failure(SecurityException("Unauthorized: Creator Studio Admin mode required"))
+        }
         val db = firestore ?: return@withContext Result.failure(IllegalStateException("Firestore is not available"))
         val now = System.currentTimeMillis()
 

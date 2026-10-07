@@ -1,5 +1,6 @@
 package com.streamhub.app.data
 
+import android.net.Uri
 import android.util.Log
 import com.streamhub.app.data.models.Episode
 import org.json.JSONArray
@@ -328,7 +329,9 @@ object TelegramLinkResolver {
      * 2. Ensures any web-player landing page route (`/stream/`) on the F2L bot backend
      *    is resolved to the direct binary media stream route (`/dl/`), which serves
      *    HTTP 206 Partial Content (Accept-Ranges: bytes, video/x-matroska/mp4).
-     * 3. Performs cosmetic cleanup (trim + strip invisible/zero-width characters).
+     * 3. Appends `stream=1` flag for backend `/dl/` endpoints to activate Mode A
+     *    (Dual-Engine 4-Worker Concurrent Pipelining) for cinema-grade line saturation.
+     * 4. Performs cosmetic cleanup (trim + strip invisible/zero-width characters).
      */
     fun sanitizePlayableUrl(url: String): String {
         var cleaned = url.trim().replace(Regex("""[\s\u200B-\u200D\uFEFF]"""), "")
@@ -337,12 +340,21 @@ object TelegramLinkResolver {
         if (StreamBackendConfig.isBackendHost(cleaned) && cleaned.contains("/stream/", ignoreCase = true)) {
             cleaned = cleaned.replace(Regex("""(?i)/stream/"""), "/dl/")
         }
+        if (StreamBackendConfig.isBackendHost(cleaned) && cleaned.contains("/dl/")) {
+            try {
+                val uri = Uri.parse(cleaned)
+                if (uri.getQueryParameter("stream") != "1") {
+                    cleaned = uri.buildUpon().appendQueryParameter("stream", "1").build().toString()
+                }
+            } catch (_: Exception) {}
+        }
         return cleaned
     }
 
     /**
      * Returns the download-route twin (`/dl/`) of an F2L link — used by the
-     * DOWNLOAD pipeline, which wants the attachment endpoint.
+     * DOWNLOAD pipeline, which wants the attachment endpoint without ?stream=1
+     * so the server runs in Mode B (multi-connection friendly, 1 worker per connection).
      *
      * Scoped strictly to the F2L backend host so unrelated direct links
      * (other hosts, YouTube-resolved URLs, local files) are never rewritten.
@@ -352,11 +364,27 @@ object TelegramLinkResolver {
         if (trimmed.isBlank()) return ""
         trimmed = StreamBackendConfig.migrateUrl(trimmed)
         if (!StreamBackendConfig.isBackendHost(trimmed)) return trimmed
-        return if (trimmed.contains("/stream/", ignoreCase = true)) {
+        var dl = if (trimmed.contains("/stream/", ignoreCase = true)) {
             trimmed.replace(Regex("""(?i)/stream/"""), "/dl/")
         } else {
             trimmed
         }
+        // Ensure downloads do NOT use stream=1 so bot server runs in Mode B
+        try {
+            val uri = Uri.parse(dl)
+            if (uri.queryParameterNames?.contains("stream") == true) {
+                val builder = uri.buildUpon().clearQuery()
+                for (param in uri.queryParameterNames) {
+                    if (!param.equals("stream", ignoreCase = true)) {
+                        for (value in uri.getQueryParameters(param)) {
+                            builder.appendQueryParameter(param, value)
+                        }
+                    }
+                }
+                dl = builder.build().toString()
+            }
+        } catch (_: Exception) {}
+        return dl
     }
 
     /**

@@ -38,7 +38,9 @@ data class PlayerSettings(
     val subtitleVerticalDragEnabled: Boolean = true,
     val maxVolumeBoostPercent: Int = 200,
     val defaultAudioDelayMs: Int = 0,
-    val audioProfile: AudioProfile = AudioProfile.STANDARD
+    val audioProfile: AudioProfile = AudioProfile.STANDARD,
+    val playerStatusOverlayEnabled: Boolean = true,
+    val contentWarningEnabled: Boolean = true
 )
 
 /**
@@ -77,6 +79,8 @@ object PlayerSettingsManager {
     private const val KEY_MAX_VOLUME_BOOST = "max_volume_boost_percent"
     private const val KEY_DEFAULT_AUDIO_DELAY = "default_audio_delay_ms"
     private const val KEY_AUDIO_PROFILE = "audio_profile_id"
+    private const val KEY_PLAYER_STATUS_OVERLAY = "player_status_overlay_enabled"
+    private const val KEY_CONTENT_WARNING = "content_warning_enabled"
 
     private lateinit var appContext: Context
 
@@ -123,7 +127,9 @@ object PlayerSettingsManager {
                     "CLEAR_DIALOGUE" -> AudioProfile.CLEAR_DIALOGUE
                     "NIGHT_CINEMA" -> AudioProfile.NIGHT_CINEMA
                     else -> AudioProfile.STANDARD
-                }
+                },
+                playerStatusOverlayEnabled = prefs.getBoolean(KEY_PLAYER_STATUS_OVERLAY, true),
+                contentWarningEnabled = prefs.getBoolean(KEY_CONTENT_WARNING, true)
             )
         } catch (e: Exception) {
             prefs.edit().clear().apply()
@@ -390,9 +396,21 @@ object PlayerSettingsManager {
             putInt(KEY_MAX_VOLUME_BOOST, settings.maxVolumeBoostPercent)
             putInt(KEY_DEFAULT_AUDIO_DELAY, settings.defaultAudioDelayMs)
             putString(KEY_AUDIO_PROFILE, settings.audioProfile.name)
+            putBoolean(KEY_PLAYER_STATUS_OVERLAY, settings.playerStatusOverlayEnabled)
+            putBoolean(KEY_CONTENT_WARNING, settings.contentWarningEnabled)
             apply()
         }
         _settingsFlow.value = settings
+    }
+
+    fun updatePlayerStatusOverlay(enabled: Boolean) {
+        _settingsFlow.update { it.copy(playerStatusOverlayEnabled = enabled) }
+        getPrefs().edit().putBoolean(KEY_PLAYER_STATUS_OVERLAY, enabled).apply()
+    }
+
+    fun updateContentWarning(enabled: Boolean) {
+        _settingsFlow.update { it.copy(contentWarningEnabled = enabled) }
+        getPrefs().edit().putBoolean(KEY_CONTENT_WARNING, enabled).apply()
     }
 
     private fun getPrefs(): SharedPreferences {

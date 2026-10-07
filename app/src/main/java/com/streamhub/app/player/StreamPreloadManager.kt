@@ -601,7 +601,20 @@ object StreamPreloadManager {
         val key = StreamDataSourceFactory.sanitizeCacheKey(uri)
         return try {
             val simpleCache = StreamCacheManager.getCache(context.applicationContext)
-            simpleCache.isCached(key, 0, minBytes)
+            simpleCache.isCached(key, 0, minBytes) || simpleCache.getCachedSpans(key).sumOf { it.length } >= minBytes
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun hasAnyCachedData(context: Context, rawUrl: String): Boolean {
+        if (rawUrl.isBlank()) return false
+        val sanitized = TelegramLinkResolver.sanitizePlayableUrl(rawUrl)
+        if (sanitized.isBlank()) return false
+        val uri = Uri.parse(sanitized)
+        val key = StreamDataSourceFactory.sanitizeCacheKey(uri)
+        return try {
+            StreamCacheManager.hasCachedSpans(context, key)
         } catch (_: Exception) {
             false
         }

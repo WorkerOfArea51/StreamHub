@@ -9,37 +9,18 @@
 # in the right-hand column. The build script checks env vars first,
 # then local.properties, then falls back to empty defaults.
 #
-# If a key is missing or empty, the build still succeeds, but the
-# corresponding runtime feature will degrade gracefully (e.g. TMDB
-# metadata autofetch returns no results).
+# NOTE: Anime metadata is powered 100% by AniList GraphQL (graphql.anilist.co)
+# which is public, lightning-fast, and requires ZERO API keys or client IDs.
 # ============================================================
 
 #                              local.properties key               GitHub Actions secret name
 #                              ──────────────────────────────     ─────────────────────────────────────
-# TMDB v3 API key
-# Get one at: https://www.themoviedb.org/settings/api
-# IMPORTANT: Never commit API keys to git repository.
+# TMDB v3 API key (For Movies & Series metadata, posters & backdrops)
+# Get a free API key at: https://www.themoviedb.org/settings/api
 streamhub.tmdb_api_key=YOUR_TMDB_API_KEY_HERE                       # STREAMHUB_TMDB_API_KEY
 
-# MyAnimeList v2 client ID
-# Register at: https://myanimelist.net/apiconfig
-# Client secret is empty for public clients (PKCE flow).
-streamhub.mal_client_id=YOUR_MAL_CLIENT_ID_HERE                     # STREAMHUB_MAL_CLIENT_ID
-streamhub.mal_client_secret=                                        # STREAMHUB_MAL_CLIENT_SECRET
+# Master Admin Password (Optional fallback for Creator Studio unlock)
+streamhub.admin_master_password=YOUR_ADMIN_PASSWORD_HERE            # STREAMHUB_ADMIN_MASTER_PASSWORD
 
-# Telegram MTProto Credentials from https://my.telegram.org/apps
-streamhub.telegram_api_id=YOUR_TELEGRAM_API_ID                     # STREAMHUB_TELEGRAM_API_ID
-streamhub.telegram_api_hash=YOUR_TELEGRAM_API_HASH                 # STREAMHUB_TELEGRAM_API_HASH
-
-# ─── Telegram Channels (auto-joined on user login) ───
-# These are the channels your users join to access streaming content.
-# Supports 3 formats:
-#   1. Public channel username: "StreamHubAnime" (without @)
-#   2. Private invite link: "https://t.me/+AbCdEfGhIjKlMnOp"
-#   3. t.me/c/ bare ID: "2633457020" (the number from t.me/c/<ID>/...)
-streamhub.telegram_anime_channel=                                   # STREAMHUB_TELEGRAM_ANIME_CHANNEL
-streamhub.telegram_movies_channel=                                  # STREAMHUB_TELEGRAM_MOVIES_CHANNEL
-streamhub.telegram_series_channel=                                  # STREAMHUB_TELEGRAM_SERIES_CHANNEL
-
-# Owner usernames (comma-separated, without @) for Channel Owner Dashboard & Admin access
-streamhub.owner_usernames=YOUR_TELEGRAM_USERNAME                     # STREAMHUB_OWNER_USERNAMES
+# Community VIP Access Code (Optional fallback for permanent App Gate unlock)
+streamhub.app_access_code=YOUR_VIP_ACCESS_CODE_HERE                 # STREAMHUB_APP_ACCESS_CODE

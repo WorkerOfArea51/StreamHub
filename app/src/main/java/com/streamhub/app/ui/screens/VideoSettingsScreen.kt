@@ -28,6 +28,7 @@ import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.FastForward
 import androidx.compose.material.icons.outlined.PictureInPictureAlt
 import androidx.compose.material.icons.outlined.PlayCircle
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.SkipNext
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.Wifi
@@ -173,6 +174,32 @@ fun VideoSettingsScreen(
                         checked = playerSettings.autoPlayNextEpisode,
                         onCheckedChange = { PlayerSettingsManager.updateAutoPlayNextEpisode(it) },
                         icon = Icons.Outlined.PlayCircle,
+                        iconTint = currentAccent.color,
+                        accentColor = currentAccent.color
+                    )
+
+                    PreferenceDivider()
+
+                    // Player Status Overlay (Corner HUD: Countdown, Clock, Battery)
+                    PreferenceSwitchItem(
+                        title = "Player Status Overlay (HUD)",
+                        subtitle = "Show countdown, battery, and live clock in screen corners when controls are hidden",
+                        checked = playerSettings.playerStatusOverlayEnabled,
+                        onCheckedChange = { PlayerSettingsManager.updatePlayerStatusOverlay(it) },
+                        icon = Icons.Outlined.Schedule,
+                        iconTint = currentAccent.color,
+                        accentColor = currentAccent.color
+                    )
+
+                    PreferenceDivider()
+
+                    // Content Warnings (Parental Guidance)
+                    PreferenceSwitchItem(
+                        title = "Content Warnings",
+                        subtitle = "Show parental guidance rating and mature descriptor overlay when video playback starts",
+                        checked = playerSettings.contentWarningEnabled,
+                        onCheckedChange = { PlayerSettingsManager.updateContentWarning(it) },
+                        icon = Icons.Outlined.AutoAwesome,
                         iconTint = currentAccent.color,
                         accentColor = currentAccent.color
                     )

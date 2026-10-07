@@ -74,6 +74,45 @@ import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.CardBorderDark
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.TextSecondary
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material.icons.filled.BatteryAlert
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.BatteryFull
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.SignalCellularAlt
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import com.streamhub.app.data.NetworkMonitor
+import com.streamhub.app.data.NetworkType
+import kotlinx.coroutines.delay
 
 @Composable
 fun VolumeIndicator(
@@ -713,5 +752,431 @@ fun StreamRestoredPill(
             }
         }
     }
+}
+
+data class ContentAdvisoryDescriptor(
+    val category: String,
+    val severity: String
+)
+
+private val HudTextShadow = Shadow(
+    color = Color.Black.copy(alpha = 0.85f),
+    offset = Offset(0f, 1.5f),
+    blurRadius = 3.5f
+)
+
+/**
+ * Parental Guidance & Content Warning Overlay Banner (Exact Nuvio Signature Style)
+ * Featuring a vertical 2.5dp cyan accent bar directly beside stacked category/severity rows.
+ * Container-less and borderless, floating directly on top of the video in the top-left corner.
+ */
+@Composable
+fun ContentWarningBanner(
+    visible: Boolean,
+    maturityRating: String,
+    genres: List<String>,
+    modifier: Modifier = Modifier
+) {
+    val advisories = remember(maturityRating, genres) {
+        val list = mutableListOf<ContentAdvisoryDescriptor>()
+        val r = maturityRating.uppercase()
+        val isHeavy = r.contains("18") || r.contains("R") || r.contains("MA") || r.contains("NC-17")
+
+        for (g in genres) {
+            when {
+                g.contains("Action", ignoreCase = true) || g.contains("War", ignoreCase = true) ->
+                    list.add(ContentAdvisoryDescriptor("Violence", if (isHeavy) "Severe" else "Moderate"))
+                g.contains("Horror", ignoreCase = true) || g.contains("Thriller", ignoreCase = true) ->
+                    list.add(ContentAdvisoryDescriptor("Frightening", if (isHeavy) "Severe" else "Moderate"))
+                g.contains("Ecchi", ignoreCase = true) || g.contains("Romance", ignoreCase = true) ->
+                    list.add(ContentAdvisoryDescriptor("Nudity", if (isHeavy) "Moderate" else "Mild"))
+                g.contains("Crime", ignoreCase = true) ->
+                    list.add(ContentAdvisoryDescriptor("Alcohol/Drugs", if (isHeavy) "Moderate" else "Mild"))
+                g.contains("Psychological", ignoreCase = true) || g.contains("Mystery", ignoreCase = true) ->
+                    list.add(ContentAdvisoryDescriptor("Profanity", if (isHeavy) "Moderate" else "Mild"))
+            }
+        }
+
+        if (list.isEmpty()) {
+            if (isHeavy) {
+                list.add(ContentAdvisoryDescriptor("Violence", "Severe"))
+                list.add(ContentAdvisoryDescriptor("Frightening", "Severe"))
+                list.add(ContentAdvisoryDescriptor("Profanity", "Moderate"))
+                list.add(ContentAdvisoryDescriptor("Nudity", "Mild"))
+                list.add(ContentAdvisoryDescriptor("Alcohol/Drugs", "Mild"))
+            } else if (r.contains("16") || r.contains("14") || r.contains("PG-13")) {
+                list.add(ContentAdvisoryDescriptor("Violence", "Moderate"))
+                list.add(ContentAdvisoryDescriptor("Profanity", "Moderate"))
+                list.add(ContentAdvisoryDescriptor("Frightening", "Mild"))
+                list.add(ContentAdvisoryDescriptor("Suggestive Themes", "Mild"))
+            } else {
+                list.add(ContentAdvisoryDescriptor("Parental Guidance", "General"))
+                list.add(ContentAdvisoryDescriptor("Action", "Mild"))
+            }
+        }
+        list.distinctBy { it.category }.take(5)
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(350)),
+        exit = fadeOut(tween(400)),
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier.height(IntrinsicSize.Min),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Vertical Cyan Indicator Bar (Nuvio Signature)
+            Box(
+                modifier = Modifier
+                    .width(2.5.dp)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color(0xFF00E5FF))
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                advisories.forEach { item ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = item.category,
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            style = TextStyle(shadow = HudTextShadow)
+                        )
+                        Text(
+                            text = " · ",
+                            color = Color(0x99FFFFFF),
+                            fontSize = 11.sp,
+                            style = TextStyle(shadow = HudTextShadow)
+                        )
+                        Text(
+                            text = item.severity,
+                            color = Color(0xCCE0E0E0),
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Normal,
+                            style = TextStyle(shadow = HudTextShadow)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Precision Horizontal Battery Gauge (Exact XPlayer / Native Status Bar Style)
+ * Minimal 17dp x 9.5dp battery shell with terminal nipple and proportional internal fill.
+ */
+@Composable
+private fun HorizontalBatteryIcon(
+    level: Int,
+    isCharging: Boolean,
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier.size(width = 17.dp, height = 9.5.dp)) {
+        val strokeWidth = 1.dp.toPx()
+        val cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+        val bodyWidth = size.width - 2.5.dp.toPx()
+        val bodyHeight = size.height
+
+        // Outer battery shell outline
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(0f, 0f),
+            size = Size(bodyWidth, bodyHeight),
+            cornerRadius = cornerRadius,
+            style = Stroke(width = strokeWidth)
+        )
+
+        // Terminal nipple on the right
+        val nippleWidth = 1.5.dp.toPx()
+        val nippleHeight = bodyHeight * 0.45f
+        val nippleTop = (bodyHeight - nippleHeight) / 2f
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(bodyWidth, nippleTop),
+            size = Size(nippleWidth, nippleHeight),
+            cornerRadius = CornerRadius(0.8.dp.toPx(), 0.8.dp.toPx()),
+            style = Fill
+        )
+
+        // Internal battery level fill
+        val fillPadding = 1.5.dp.toPx()
+        val maxFillWidth = bodyWidth - (fillPadding * 2f)
+        val fillWidth = (maxFillWidth * (level.coerceIn(0, 100) / 100f)).coerceAtLeast(0f)
+        val fillHeight = bodyHeight - (fillPadding * 2f)
+
+        if (fillWidth > 0f) {
+            drawRoundRect(
+                color = tint,
+                topLeft = Offset(fillPadding, fillPadding),
+                size = Size(fillWidth, fillHeight),
+                cornerRadius = CornerRadius(1.dp.toPx(), 1.dp.toPx()),
+                style = Fill
+            )
+        }
+    }
+}
+
+/**
+ * Corner Status HUD (Exact XPlayer Signature Corner Style)
+ * Pure, borderless, non-intrusive floating text and icons positioned right in the top corners.
+ * Free of backgrounds and pills so users enjoy the full screen with zero eye-catching distraction.
+ *
+ * - Top-Left: Countdown time (e.g. "-02:43:54")
+ * - Top-Right: Horizontal battery gauge + level + live clock (e.g. "[battery] 70%   1:07 am")
+ */
+@Composable
+fun PlayerCornerStatusHud(
+    visible: Boolean,
+    currentPositionMs: Long,
+    durationMs: Long,
+    suppressLeftHud: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val (batteryLevel, isCharging) = rememberBatteryState()
+    val formattedTime = rememberFormattedTime()
+
+    // Format remaining time (XPlayer format: -HH:mm:ss or -mm:ss)
+    val remainingMs = remember(durationMs, currentPositionMs) {
+        if (durationMs > 0L) (durationMs - currentPositionMs).coerceAtLeast(0L) else 0L
+    }
+
+    val remainingText = remember(remainingMs) {
+        if (remainingMs <= 0L) "" else {
+            val totalSeconds = remainingMs / 1000L
+            val hours = totalSeconds / 3600L
+            val minutes = (totalSeconds % 3600L) / 60L
+            val seconds = totalSeconds % 60L
+            if (hours > 0) {
+                String.format(java.util.Locale.US, "-%02d:%02d:%02d", hours, minutes, seconds)
+            } else {
+                String.format(java.util.Locale.US, "-%02d:%02d", minutes, seconds)
+            }
+        }
+    }
+
+    // Battery tint (subtle green if charging, red if critically low, soft clean white normally)
+    val batteryTint = when {
+        isCharging -> Color(0xFF00E676)
+        batteryLevel <= 15 -> Color(0xFFFF5252)
+        batteryLevel <= 30 -> Color(0xFFFFB300)
+        else -> Color(0xEEFFFFFF)
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp, vertical = 5.dp)
+    ) {
+        // TOP-LEFT: Remaining Countdown Time (Exact XPlayer Corner Style)
+        AnimatedVisibility(
+            visible = visible && !suppressLeftHud && remainingText.isNotBlank(),
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(200)),
+            modifier = Modifier.align(Alignment.TopStart)
+        ) {
+            Text(
+                text = remainingText,
+                color = Color(0xEEFFFFFF),
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Normal,
+                style = TextStyle(shadow = HudTextShadow)
+            )
+        }
+
+        // TOP-RIGHT: Battery + Live Clock (Exact XPlayer Corner Style)
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(200)),
+            modifier = Modifier.align(Alignment.TopEnd)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                // Sleek horizontal battery gauge
+                HorizontalBatteryIcon(
+                    level = batteryLevel,
+                    isCharging = isCharging,
+                    tint = batteryTint
+                )
+
+                // Battery Percentage
+                Text(
+                    text = "$batteryLevel%",
+                    color = Color(0xEEFFFFFF),
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Normal,
+                    style = TextStyle(shadow = HudTextShadow)
+                )
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Live System Time
+                if (formattedTime.isNotBlank()) {
+                    Text(
+                        text = formattedTime,
+                        color = Color(0xEEFFFFFF),
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Normal,
+                        style = TextStyle(shadow = HudTextShadow)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Compact Top Status Capsule (Clock, Battery gauge & Network type)
+ * Kept for optional use inside top bars.
+ */
+@Composable
+fun PlayerStatusOverlayCapsule(
+    modifier: Modifier = Modifier
+) {
+    val (batteryLevel, isCharging) = rememberBatteryState()
+    val formattedTime = rememberFormattedTime()
+    val networkType by NetworkMonitor.networkType.collectAsState()
+
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = Color(0x661A1A24),
+        border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+        modifier = modifier
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+            // Network Icon
+            val networkIcon = when (networkType) {
+                NetworkType.WIFI -> Icons.Default.Wifi
+                NetworkType.CELLULAR -> Icons.Default.SignalCellularAlt
+                NetworkType.OFFLINE -> Icons.Default.WifiOff
+                else -> Icons.Default.Wifi
+            }
+            Icon(
+                imageVector = networkIcon,
+                contentDescription = "Network",
+                tint = if (networkType == NetworkType.OFFLINE) Color(0xFFFF5252) else Color(0xCCFFFFFF),
+                modifier = Modifier.size(13.dp)
+            )
+
+            // Live Time
+            if (formattedTime.isNotBlank()) {
+                Text(
+                    text = formattedTime,
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            // Battery Icon + Level
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                val batteryIcon = when {
+                    isCharging -> Icons.Default.BatteryChargingFull
+                    batteryLevel <= 15 -> Icons.Default.BatteryAlert
+                    else -> Icons.Default.BatteryFull
+                }
+                val batteryTint = when {
+                    isCharging -> Color(0xFF00E676)
+                    batteryLevel <= 15 -> Color(0xFFFF5252)
+                    batteryLevel <= 30 -> Color(0xFFFFB300)
+                    else -> Color(0xCCFFFFFF)
+                }
+
+                Icon(
+                    imageVector = batteryIcon,
+                    contentDescription = "Battery",
+                    tint = batteryTint,
+                    modifier = Modifier.size(13.dp)
+                )
+                Text(
+                    text = "$batteryLevel%",
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun rememberBatteryState(): Pair<Int, Boolean> {
+    val context = LocalContext.current
+    var batteryLevel by remember { mutableIntStateOf(100) }
+    var isCharging by remember { mutableStateOf(false) }
+
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: Intent?) {
+                intent?.let {
+                    val level = it.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                    val scale = it.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+                    val status = it.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+                    if (level >= 0 && scale > 0) {
+                        batteryLevel = (level * 100) / scale
+                    }
+                    isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                                 status == BatteryManager.BATTERY_STATUS_FULL
+                }
+            }
+        }
+        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        val initialIntent = context.registerReceiver(receiver, filter)
+        initialIntent?.let {
+            val level = it.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+            val scale = it.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+            val status = it.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+            if (level >= 0 && scale > 0) {
+                batteryLevel = (level * 100) / scale
+            }
+            isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                         status == BatteryManager.BATTERY_STATUS_FULL
+        }
+        onDispose {
+            try {
+                context.unregisterReceiver(receiver)
+            } catch (_: Exception) {}
+        }
+    }
+    return Pair(batteryLevel, isCharging)
+}
+
+@Composable
+private fun rememberFormattedTime(): String {
+    val context = LocalContext.current
+    var timeStr by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val is24 = android.text.format.DateFormat.is24HourFormat(context)
+            val cal = java.util.Calendar.getInstance()
+            val sdf = if (is24) {
+                java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+            } else {
+                java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
+            }
+            timeStr = sdf.format(cal.time)
+            delay(15_000L)
+        }
+    }
+    return timeStr
 }
 

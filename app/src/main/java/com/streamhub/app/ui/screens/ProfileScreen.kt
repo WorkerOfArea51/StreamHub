@@ -329,23 +329,6 @@ fun ProfileScreen(
                         badge = "v${com.streamhub.app.BuildConfig.VERSION_NAME}",
                         onClick = onNavigateToAbout
                     )
-
-                    if (isAdminMode) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                            thickness = 0.5.dp
-                        )
-
-                        ProfileListItem(
-                            icon = Icons.Default.AdminPanelSettings,
-                            iconTint = Color(0xFFFFD700),
-                            title = "Creator Studio & Admin",
-                            subtitle = "Add streams, manage catalog & edit metadata",
-                            badge = "Owner",
-                            onClick = { showAddContentDialog = true }
-                        )
-                    }
                 }
             }
         }

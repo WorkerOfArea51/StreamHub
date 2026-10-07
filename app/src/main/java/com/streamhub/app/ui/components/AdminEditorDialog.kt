@@ -125,7 +125,7 @@ fun AdminEditorDialog(
     var title by remember(initialItem) { mutableStateOf(initialItem?.title ?: "") }
     var type by remember(initialItem) { mutableStateOf(initialItem?.type ?: "SERIES") }
     var category by remember(initialItem) { mutableStateOf(initialItem?.category ?: "ANIME") }
-    var malId by remember(initialItem) { mutableStateOf(initialItem?.malId ?: "") }
+    var anilistId by remember(initialItem) { mutableStateOf(initialItem?.anilistId ?: "") }
     var tmdbId by remember(initialItem) { mutableStateOf(initialItem?.tmdbId ?: "") }
     var trailerId by remember(initialItem) { mutableStateOf(initialItem?.trailerId?.takeIf { !it.equals("null", ignoreCase = true) } ?: "") }
     var rating by remember(initialItem) { mutableStateOf(initialItem?.rating ?: "") }
@@ -230,7 +230,7 @@ fun AdminEditorDialog(
         title = itemToEdit.title
         type = itemToEdit.type
         category = itemToEdit.category
-        malId = itemToEdit.malId
+        anilistId = itemToEdit.anilistId
         tmdbId = itemToEdit.tmdbId
         trailerId = itemToEdit.trailerId.takeIf { !it.equals("null", ignoreCase = true) } ?: ""
         rating = itemToEdit.rating
@@ -608,8 +608,8 @@ fun AdminEditorDialog(
                         OutlinedTextField(
                             value = title,
                             onValueChange = { title = it; validationError = null },
-                            label = { Text("Exact Title or MAL / TMDB Link *", color = TextSecondary) },
-                            placeholder = { Text("Title or link (e.g. Buddy Daddies or https://myanimelist.net/anime/52932)", color = TextSecondary) },
+                            label = { Text("Exact Title or AniList / TMDb Link *", color = TextSecondary) },
+                            placeholder = { Text("Title or link (e.g. Frieren or https://anilist.co/anime/154587)", color = TextSecondary) },
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = Color(0xFFFFD700),
@@ -651,7 +651,7 @@ fun AdminEditorDialog(
                                             if (meta.status.isNotBlank()) status = meta.status
                                             if (meta.totalEpisodes.isNotBlank()) totalEpisodes = meta.totalEpisodes
                                             if (meta.alternativeTitles.isNotBlank()) synonyms = meta.alternativeTitles
-                                            if (meta.malId.isNotBlank()) malId = meta.malId
+                                            if (meta.anilistId.isNotBlank()) anilistId = meta.anilistId
                                             if (meta.tmdbId.isNotBlank()) tmdbId = meta.tmdbId
                                             if (meta.castList.isNotBlank()) castText = meta.castList
                                             if (meta.youtubeTrailerId.isNotBlank() && !meta.youtubeTrailerId.equals("null", ignoreCase = true)) trailerId = meta.youtubeTrailerId
@@ -684,7 +684,7 @@ fun AdminEditorDialog(
                             if (isFetchingApi) {
                                 ExpressiveLoadingIndicator(size = 16.dp, color = Color.White, accentColor = AccentGold)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Searching TMDB & MAL...", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Searching TMDb & AniList...", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             } else {
                                 Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -1633,7 +1633,7 @@ fun AdminEditorDialog(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        MetadataRow(malId, { malId = it }, "MAL ID (Optional)", tmdbId, { tmdbId = it }, "TMDB ID (Optional)")
+                        MetadataRow(anilistId, { anilistId = it }, "AniList ID (Optional)", tmdbId, { tmdbId = it }, "TMDB ID (Optional)")
 
                         Spacer(modifier = Modifier.height(14.dp))
 
@@ -2021,7 +2021,7 @@ fun AdminEditorDialog(
                                     Spacer(modifier = Modifier.height(10.dp))
 
                                     Text(
-                                        text = "Scan all shows across your catalog, audit 11 critical metadata fields (trailers, cast, genres, synopses, backdrops, ratings, runtime, studios), and auto-repair them from TMDb/MAL with a single tap.",
+                                        text = "Scan all shows across your catalog, audit 11 critical metadata fields (trailers, cast, genres, synopses, backdrops, ratings, runtime, studios), and auto-repair them from TMDb / AniList with a single tap.",
                                         color = TextSecondary,
                                         fontSize = 12.sp,
                                         lineHeight = 16.sp
@@ -2366,7 +2366,7 @@ fun AdminEditorDialog(
                                         maturityRating = maturityRating,
                                         studio = studio,
                                         trailerId = trailerId.trim().takeIf { !it.equals("null", ignoreCase = true) } ?: "",
-                                        malId = malId,
+                                        anilistId = anilistId,
                                         tmdbId = tmdbId,
                                         synonyms = synonyms,
                                         totalEpisodes = totalEpisodes,

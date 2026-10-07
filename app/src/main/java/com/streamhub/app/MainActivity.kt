@@ -612,6 +612,7 @@ fun StreamHubApp(
                 HomeScreen(
                     repository = repository,
                     onMediaClick = { media ->
+                        com.streamhub.app.data.api.MetadataFetchManager.prewarmExtendedDetails(media)
                         navController.navigate(Screen.Details.createRoute(media.id)) { launchSingleTop = true }
                     },
                     onPlayEpisode = playViaDetails,
@@ -631,6 +632,7 @@ fun StreamHubApp(
                 SearchScreen(
                     repository = repository,
                     onMediaClick = { media ->
+                        com.streamhub.app.data.api.MetadataFetchManager.prewarmExtendedDetails(media)
                         navController.navigate(Screen.Details.createRoute(media.id)) { launchSingleTop = true }
                     },
                     onPlayEpisode = playViaDetails
@@ -650,6 +652,7 @@ fun StreamHubApp(
                 MyListScreen(
                     repository = repository,
                     onMediaClick = { media ->
+                        com.streamhub.app.data.api.MetadataFetchManager.prewarmExtendedDetails(media)
                         navController.navigate(Screen.Details.createRoute(media.id)) { launchSingleTop = true }
                     }
                 )
@@ -738,6 +741,9 @@ fun StreamHubApp(
                     onNavigateToAppearance = {
                         navController.navigate(Screen.AppearanceSettings.route)
                     },
+                    onNavigateToNotifications = {
+                        navController.navigate(Screen.NotificationSettings.route)
+                    },
                     onNavigateToVideoSettings = {
                         navController.navigate(Screen.VideoSettings.route)
                     },
@@ -758,6 +764,12 @@ fun StreamHubApp(
 
             composable(Screen.AppearanceSettings.route) {
                 com.streamhub.app.ui.screens.settings.AppearancePreferencesScreen(
+                    onBackClick = { navController.popBackStack() }
+                )
+            }
+
+            composable(Screen.NotificationSettings.route) {
+                com.streamhub.app.ui.screens.settings.NotificationPreferencesScreen(
                     onBackClick = { navController.popBackStack() }
                 )
             }
@@ -883,7 +895,7 @@ fun StreamHubApp(
                         catalog.firstOrNull { 
                             it.id == mediaId ||
                             (it.tmdbId.isNotBlank() && (it.tmdbId == mediaId || it.tmdbId == mediaId.removePrefix("tmdb_rec_").removePrefix("tmdb_"))) ||
-                            (it.malId.isNotBlank() && (it.malId == mediaId || it.malId == mediaId.removePrefix("mal_rec_").removePrefix("mal_"))) ||
+                            (it.anilistId.isNotBlank() && (it.anilistId == mediaId || it.anilistId == mediaId.removePrefix("anilist_rec_").removePrefix("mal_rec_").removePrefix("mal_"))) ||
                             (it.title.isNotBlank() && (it.title.equals(mediaId, ignoreCase = true) || it.title.replace(":", "").equals(mediaId.replace(":", ""), ignoreCase = true)))
                         }
                     }

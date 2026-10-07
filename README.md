@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/WorkerOfArea51/StreamHub">
-    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=16&duration=3000&pause=1000&color=FF3366&center=true&vCenter=true&width=650&lines=Ultra-High-Performance+Android+Media+Streaming+Ecosystem;Pure+Direct+HTTP+Progressive+Streaming+%2B+ExoPlayer+Cache;Multi-Arc+Creator+Studio+%2B+F2L+API+REST+Importer;Netflix+%26+Crunchyroll+Slate+UI+with+Jetpack+Compose" alt="Typing SVG" />
+    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=16&duration=3000&pause=1000&color=FF3366&center=true&vCenter=true&width=650&lines=Ultra-High-Performance+Android+Media+Streaming+Ecosystem;Pure+Direct+HTTP+Progressive+Streaming+%2B+ExoPlayer+Cache;AniList+GraphQL+%2B+TMDB+v3+Autofetch+Engine;Material+3+Expressive+UI+%2B+Nuvio-Grade+Theming" alt="Typing SVG" />
   </a>
 </p>
 
@@ -23,7 +23,7 @@
 
 **StreamHub** is a bleeding-edge, high-performance native Android media streaming application built with **Kotlin 2.0**, **Jetpack Compose (Material 3)**, and **AndroidX Media3 ExoPlayer**. 
 
-Engineered from the ground up for low latency, zero-login instant playback, aggressive byte-range disk caching, and a multi-season **Story Arc Creator Studio** with 1-click REST API batch ingestion.
+Engineered from the ground up for low latency, zero-login instant playback, aggressive byte-range disk caching, real-time AniList GraphQL & TMDB metadata auto-fetching, and a multi-season **Story Arc Creator Studio** with 1-click batch ingestion.
 
 ---
 
@@ -32,16 +32,16 @@ Engineered from the ground up for low latency, zero-login instant playback, aggr
 | 🚀 Feature | 💡 Description |
 | :--- | :--- |
 | **🎨 Material 3 Expressive UI** | Native 5-level dark tonal elevation (`surfaceContainer`), split-button navigation dock, borderless tactile pills (`CircleShape`), and clean vector iconography. |
-| **⚡ Turbo HTTP Progressive Engine** | Sub-second playback initialization with byte-range requests and dynamic bitrate-proportional disk caching (`SimpleCache`). |
+| **⚡ Turbo HTTP Progressive Engine** | Sub-second playback initialization with byte-range requests, 2 MB TCP window scaling, and dynamic bitrate-proportional disk caching (`SimpleCache`). |
+| **🌸 AniList GraphQL Engine** | Zero-auth, sub-200ms anime metadata queries (`graphql.anilist.co`) fetching synopses, voice actors, high-res posters, banners, and trailers. |
 | **📦 Smart Batch Download & Queue** | High-throughput in-app OkHttp download engine (2–3+ MB/s), intelligent batch episode selector, sequential queue, and single branded notification. |
 | **🌐 Live Online Subtitle Search** | OpenSubtitles & Cinemeta CDN integration with 1-tap player injection, live language filters, and real-time millisecond offset sync. |
-| **🎬 Multi-Arc Story Hub** | Dedicated Arc-Level episode manager with automatic missing episode gap detection, 1-click F2L REST batch importer, and snippet insertion. |
-| **🎧 Dual-Audio & Subtitle Master** | Embedded MKV multi-audio track switcher, subtitle track selector with audio/sub delay sync, and ASS/SSA anime typography styling. |
-| **📺 Advanced Player HUD** | Fluid seekbar with chapter markers, 3-zone swipe gestures (brightness, volume boost up to 200%), hold-to-2x, pinch-to-zoom, and Picture-in-Picture. |
-| **🏷️ Real-time MediaInfo Badges** | Dynamic resolution and codec badges (`4K UHD`, `1080p FHD`, `x264/AVC`, `HEVC/x265`, `Dual Audio`, `ESub`, `File Size`). |
-| **📊 Live Audience Telemetry** | Real-time active viewer tracking, access tier breakdown, live device health inspector, and admin broadcast alerts. |
-| **🎨 Dynamic Theming & Preferences** | 7 accent themes (AMOLED dark mode), structured contiguous preferences, volume normalization, and 1-click JSON Backup & Restore. |
-| **🔒 VIP Access Gate & Admin Studio** | Private community gate on launch with secret 5-tap gesture unlock for Creator Studio in-app publishing. |
+| **🎬 Multi-Arc Story Hub** | Dedicated Arc-Level episode manager with automatic missing episode gap detection, 1-click batch importer, and snippet insertion. |
+| **🎧 Dual-Audio & Vocal Enhancement** | Embedded MKV multi-audio track switcher, hardware dialogue boost, night cinema mode, subtitle track selector with delay sync, and ASS/SSA styling. |
+| **📺 XPlayer-Grade Immersion HUD** | Pure containerless corner countdown time, horizontal battery gauge, and live system clock that auto-hides during active full-screen video. |
+| **⚠️ Nuvio-Grade Content Advisory** | Starts playback with signature vertical cyan indicator bar and stacked maturity category/severity rows. |
+| **🎨 Nuvio-Grade Theming & Display** | 7 Classic solid themes, 6 Enhanced dual-tonal gradients, AMOLED black switch, customizable catalog grid density, and poster aspect ratios. |
+| **🔒 Air-Tight Security & Admin Studio** | Cryptographic SHA-256 password protection, hardware-bound 30-day VIP vouchers, and verified server-side write gating. |
 
 ---
 
@@ -50,9 +50,9 @@ Engineered from the ground up for low latency, zero-login instant playback, aggr
 ```mermaid
 graph TD
     A[UI Presentation Layer: Jetpack Compose] --> B[ViewModel State Flows]
-    B --> C[Player Engine: Media3 ExoPlayer + CacheManager]
-    B --> D[Data Layer: Repository & Local Room DB]
-    D --> E[Cloud Firestore & TMDB / MAL REST APIs]
+    B --> C[Player Engine: Media3 ExoPlayer + StreamCacheManager]
+    B --> D[Data Layer: FirebaseRepository & Managers]
+    D --> E[Cloud Firestore & TMDB v3 / AniList GraphQL APIs]
     C --> F[Direct HTTP Byte-Range Caching Engine]
 ```
 
@@ -60,19 +60,20 @@ graph TD
 - **UI Framework**: Pure Jetpack Compose with Material 3 Design Tokens
 - **Video Engine**: AndroidX Media3 ExoPlayer (`media3-exoplayer`, `media3-ui`, `media3-datasource`)
 - **Metadata Database**: Firebase Cloud Firestore (`firebase-firestore-ktx`)
-- **Networking**: Retrofit 2 + OkHttp3 + Gson
-- **Metadata Resolvers**: TMDB API v3 + Official MyAnimeList REST API v2 + Jikan Global Fallback
+- **Networking**: Retrofit 2 + OkHttp3 + Gson + AniList GraphQL
+- **Metadata Resolvers**: TMDB API v3 (Movies/Series) + Official AniList GraphQL API (Anime)
 - **Image Pipeline**: Coil Compose with disk and memory cache
-- **Security**: AndroidX Security Crypto (`EncryptedSharedPreferences`)
+- **Security**: AndroidX Security Crypto (`EncryptedSharedPreferences`) + SHA-256 Verification
 
 ---
 
 ## 🎬 Creator Studio & In-App Publishing
 
 StreamHub includes a built-in **Creator Studio** for catalog owners:
-- **1-Click F2L REST API Importer**: Paste any batch link or ID (`/batch/...`) to ingest 300+ episodes across all arcs in seconds.
-- **Smart Link & ID Resolver**: Paste direct MyAnimeList (`https://myanimelist.net/anime/...`) or TMDB (`https://www.themoviedb.org/tv/...`) URLs to auto-fetch high-res posters, banners, studios, cast, and trailers with 100% accuracy.
-- **Story Arc Episode Manager**: Long-press any Story Arc in the sheet to inspect, edit JSON, detect missing episode gaps, and re-order episodes.
+- **1-Click Batch Importer**: Ingest 300+ episodes across all arcs in seconds from direct server streams or batch dumps.
+- **Smart Link & ID Resolver**: Paste direct AniList (`https://anilist.co/anime/...`) or TMDB (`https://www.themoviedb.org/tv/...`) URLs to auto-fetch high-res posters, banners, studios, cast, and trailers with 100% accuracy.
+- **1-Tap Batch Catalog Migrator**: Bulk-update older anime catalogs to official AniList specs, Japanese voice actors, and high-res art with zero downtime.
+- **Story Arc Episode Manager**: Inspect, edit JSON, detect missing episode gaps, and re-order episodes dynamically.
 
 ---
 
@@ -102,28 +103,28 @@ If you would like to contribute or sponsor high-speed streaming nodes and server
 
 StreamHub is designed so anyone can fork the repository and launch their own customized media streaming app. Follow these steps to configure your fork:
 
-### 1. Database Setup (Firebase & Supabase)
-- **Firebase Cloud Firestore (Default & Out-of-the-Box)**:
-  1. Create a free project on the [Firebase Console](https://console.firebase.google.com/).
-  2. Add an Android app with your package name (e.g. `com.streamhub.app`).
-  3. Enable **Cloud Firestore** in test or production mode.
-  4. Download `google-services.json` and place it inside the `app/` folder:
-     ```text
-     StreamHub/app/google-services.json
-     ```
-- **Supabase (Alternative Backend)**:
-  - If you prefer to use **Supabase** instead of Firebase, you can implement a custom repository adapter in `app/.../data/repository/` to map your tables.
-  - Alternatively, feel free to open a [GitHub Issue](https://github.com/WorkerOfArea51/StreamHub/issues) to request official out-of-the-box Supabase integration!
+### 1. Database Setup (Firebase Cloud Firestore)
+1. Create a free project on the [Firebase Console](https://console.firebase.google.com/).
+2. Add an Android app with your package name (e.g. `com.streamhub.app`).
+3. Enable **Cloud Firestore** in test or production mode.
+4. Download `google-services.json` and place it inside the `app/` folder:
+   ```text
+   StreamHub/app/google-services.json
+   ```
 
 ### 2. Configure API Keys (`local.properties`)
-Create or edit `local.properties` in the root directory with your free metadata API keys:
+Create or edit `local.properties` in the root directory:
 ```properties
 # Free API key from https://www.themoviedb.org/settings/api (For movies & TV series metadata & posters)
 streamhub.tmdb_api_key=YOUR_TMDB_API_KEY
 
-# Free Client ID from https://myanimelist.net/apiconfig (For anime metadata & posters)
-streamhub.mal_client_id=YOUR_MAL_CLIENT_ID
+# Master Admin Password (For Creator Studio unlock)
+streamhub.admin_master_password=YOUR_ADMIN_PASSWORD
+
+# VIP Access Code (For permanent Community App Gate unlock)
+streamhub.app_access_code=YOUR_VIP_ACCESS_CODE
 ```
+*(Anime metadata is powered by AniList GraphQL which is 100% free and requires zero API keys).*
 
 ### 3. Set Your Admin & VIP Passwords (SHA-256 Security)
 StreamHub uses cryptographic one-way **SHA-256 hashing** in code so that plaintext passwords are never stored in GitHub Secrets or exposed in the compiled APK binary.
@@ -137,7 +138,6 @@ StreamHub uses cryptographic one-way **SHA-256 hashing** in code so that plainte
      ```powershell
      [BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes("YourSecretPassword"))).Replace("-","").ToLower()
      ```
-   - Or use any online SHA-256 calculator.
 
 2. **Update the code hashes**:
    - **Creator Studio Admin Password** (`app/src/main/java/com/streamhub/app/data/AdminManager.kt`):
@@ -162,9 +162,6 @@ If you want your fork to automatically build signed release APKs on push:
    - `RELEASE_KEYSTORE_BASE64`: Base64 encoded `.jks` or `.keystore` file
    - `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`: Keystore signing credentials
    - `STREAMHUB_TMDB_API_KEY`: Your TMDB API key
-   - `STREAMHUB_MAL_CLIENT_ID`: Your MyAnimeList Client ID
-
-*(Notice: No admin password secret is needed in GitHub Actions — authentication is handled securely via SHA-256 in code).*
 
 ---
 
@@ -192,8 +189,8 @@ cd StreamHub
 
 ### 4. Install & Launch via ADB
 ```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb shell am start -n com.streamhub.app/.MainActivity
+adb install -r app/build/outputs/apk/debug/StreamHub-arm64-debug.apk
+adb shell am start -n com.streamhub.app.debug/com.streamhub.app.MainActivity
 ```
 
 ---

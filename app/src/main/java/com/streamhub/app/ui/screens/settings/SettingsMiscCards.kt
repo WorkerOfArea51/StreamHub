@@ -344,7 +344,7 @@ fun VideoSettingsEntryCard(currentAccent: AppThemeAccent, onNavigateToVideoSetti
 
 
 @Composable
-fun AppUpdatePreferenceItem(currentAccent: AppThemeAccent = AppThemeAccent.CYAN) {
+fun AppUpdatePreferenceItem(currentAccent: AppThemeAccent = AppThemeAccent.OCEAN) {
     val context = LocalContext.current
     val updateState by AppUpdateManager.updateState.collectAsState()
     val accentColor = currentAccent.color
@@ -551,7 +551,7 @@ fun AppUpdatePreferenceItem(currentAccent: AppThemeAccent = AppThemeAccent.CYAN)
 }
 
 @Composable
-fun AppUpdateCard(currentAccent: AppThemeAccent = AppThemeAccent.CYAN) {
+fun AppUpdateCard(currentAccent: AppThemeAccent = AppThemeAccent.OCEAN) {
     com.streamhub.app.ui.screens.settings.components.PreferenceCard {
         AppUpdatePreferenceItem(currentAccent = currentAccent)
     }

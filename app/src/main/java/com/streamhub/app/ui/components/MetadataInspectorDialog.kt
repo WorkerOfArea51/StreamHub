@@ -41,10 +41,16 @@ import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.withContext
+import java.util.Collections
+import java.util.concurrent.atomic.AtomicInteger
 
 enum class MetadataIssueType(val title: String, val shortBadge: String) {
     GENRE("Broken / Generic Genres", "⚠️ Genres"),
@@ -87,6 +93,7 @@ fun getMediaItemIssues(item: MediaItem): List<MetadataIssueType> {
 enum class InspectorFilter(val label: String) {
     ALL_ISSUES("All Issues"),
     UNSTANDARDIZED_SPECS("Unstandardized Specs"),
+    ANIME("Anime Catalog"),
     NO_TRAILER("No Trailer"),
     BROKEN_GENRES("Broken Genres"),
     NO_CAST("No Cast"),
@@ -309,10 +316,15 @@ fun MetadataInspectorDialog(
     }
     val unstandardizedSpecsCount = unstandardizedItems.size
 
-    val filteredList: List<MediaItem> = remember(catalog, issuesMap, selectedFilter, searchQuery, unstandardizedItems) {
+    val animeItems: List<MediaItem> = remember(catalog) {
+        catalog.filter { it.category.equals("ANIME", ignoreCase = true) }
+    }
+
+    val filteredList: List<MediaItem> = remember(catalog, issuesMap, selectedFilter, searchQuery, unstandardizedItems, animeItems) {
         val baseList = when (selectedFilter) {
             InspectorFilter.ALL_ISSUES -> needsRepairItems
             InspectorFilter.UNSTANDARDIZED_SPECS -> unstandardizedItems
+            InspectorFilter.ANIME -> animeItems
             InspectorFilter.NO_TRAILER -> catalog.filter { it.trailerId.isBlank() || it.trailerId.equals("null", ignoreCase = true) }
             InspectorFilter.BROKEN_GENRES -> catalog.filter { isGenreBroken(it.genres) }
             InspectorFilter.NO_CAST -> catalog.filter { it.castList.isEmpty() }
@@ -540,7 +552,7 @@ fun MetadataInspectorDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Row(
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier.weight(1f).padding(end = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
@@ -552,13 +564,13 @@ fun MetadataInspectorDialog(
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Column {
                                         Text(
-                                            text = if (isBatchRepairing) "Auto-Repairing Metadata..." else "One-Click Batch Auto-Repair",
+                                            text = if (isBatchRepairing) "Running Batch Sync..." else "Catalog Auto-Repair",
                                             color = Color.White,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold
                                         )
                                         Text(
-                                            text = if (isBatchRepairing) batchStatusText else "${needsRepairItems.size} shows have missing trailers, cast, genres, or specs",
+                                            text = if (isBatchRepairing) batchStatusText else "${needsRepairItems.size} shows have missing or unstandardized metadata",
                                             color = Color(0xFFD0BCFF),
                                             fontSize = 11.sp,
                                             maxLines = 1,
@@ -580,54 +592,83 @@ fun MetadataInspectorDialog(
                                         Text("Stop", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                     }
                                 } else {
-                                    Button(
-                                        onClick = {
-                                            if (isBatchRepairing || needsRepairItems.isEmpty()) return@Button
-                                            val snapshotItems = needsRepairItems.toList()
-                                            isBatchRepairing = true
-                                            batchProgress = 0f
-                                            batchJob = scope.launch {
-                                                var repaired = 0
-                                                var failed = 0
-                                                val total = snapshotItems.size
-                                                for ((index, item) in snapshotItems.withIndex()) {
-                                                    val issues = getMediaItemIssues(item)
-                                                    val issueSummary = issues.take(2).joinToString { it.shortBadge }
-                                                    batchStatusText = "Repairing (${index + 1}/$total): ${item.title} [$issueSummary]"
-                                                    batchProgress = (index + 1).toFloat() / total.toFloat()
-                                                    val res = MetadataFetchManager.repairMediaItem(item, deepSync = deepSyncMode)
-                                                    res.fold(
-                                                        onSuccess = { updated ->
-                                                            val (normalizedMediaInfo, _) = MediaSpecsNormalizer.normalize(updated.mediaInfo)
-                                                            val fullyUpdated = updated.copy(mediaInfo = normalizedMediaInfo)
-                                                            val writeRes = repository.saveMediaItemSuspending(fullyUpdated)
-                                                            if (writeRes.isSuccess) {
-                                                                repaired++
-                                                            } else {
-                                                                failed++
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        if (needsRepairItems.isNotEmpty()) {
+                                            Button(
+                                                onClick = {
+                                                    if (isBatchRepairing || needsRepairItems.isEmpty()) return@Button
+                                                    val snapshotItems = needsRepairItems.toList()
+                                                    isBatchRepairing = true
+                                                    batchProgress = 0f
+                                                    batchJob = scope.launch {
+                                                        val repairedList = Collections.synchronizedList(mutableListOf<MediaItem>())
+                                                        val completedCount = AtomicInteger(0)
+                                                        val failedCount = AtomicInteger(0)
+                                                        val total = snapshotItems.size
+                                                        val semaphore = Semaphore(6)
+
+                                                        val jobs = snapshotItems.map { item ->
+                                                            launch(Dispatchers.IO) {
+                                                                semaphore.acquire()
+                                                                try {
+                                                                    ensureActive()
+                                                                    val res = MetadataFetchManager.repairMediaItem(item, deepSync = deepSyncMode)
+                                                                    res.fold(
+                                                                        onSuccess = { updated ->
+                                                                            val (normalizedMediaInfo, _) = MediaSpecsNormalizer.normalize(updated.mediaInfo)
+                                                                            val fullyUpdated = updated.copy(mediaInfo = normalizedMediaInfo)
+                                                                            repairedList.add(fullyUpdated)
+                                                                        },
+                                                                        onFailure = {
+                                                                            failedCount.incrementAndGet()
+                                                                        }
+                                                                    )
+                                                                } finally {
+                                                                    semaphore.release()
+                                                                    val done = completedCount.incrementAndGet()
+                                                                    withContext(Dispatchers.Main) {
+                                                                        batchProgress = done.toFloat() / total.toFloat()
+                                                                        val issues = getMediaItemIssues(item)
+                                                                        val issueSummary = issues.take(2).joinToString { it.shortBadge }
+                                                                        batchStatusText = "Repairing ($done/$total): ${item.title} [$issueSummary]"
+                                                                    }
+                                                                }
                                                             }
-                                                        },
-                                                        onFailure = {
-                                                            failed++
                                                         }
-                                                    )
-                                                    delay(750)
-                                                }
-                                                val summaryMsg = if (failed > 0) "Repaired $repaired shows ($failed failed)!" else "Repaired $repaired shows successfully!"
-                                                ToastManager.showToast(summaryMsg, if (failed > 0) Icons.Default.Warning else Icons.Default.CheckCircle)
-                                                isBatchRepairing = false
-                                                batchProgress = 1f
-                                                batchStatusText = summaryMsg
+                                                        jobs.joinAll()
+
+                                                        withContext(Dispatchers.Main) {
+                                                            batchStatusText = "Saving ${repairedList.size} shows to database..."
+                                                        }
+                                                        val saveRes = repository.saveMediaItemsBatchSuspending(repairedList.toList())
+                                                        val failed = failedCount.get()
+                                                        saveRes.fold(
+                                                            onSuccess = { savedCount ->
+                                                                val summaryMsg = if (failed > 0) "Repaired $savedCount shows ($failed failed)!" else "Repaired $savedCount shows successfully!"
+                                                                ToastManager.showToast(summaryMsg, if (failed > 0) Icons.Default.Warning else Icons.Default.CheckCircle)
+                                                                isBatchRepairing = false
+                                                                batchProgress = 1f
+                                                                batchStatusText = summaryMsg
+                                                            },
+                                                            onFailure = { err ->
+                                                                val summaryMsg = "Batch save error: ${err.message}"
+                                                                ToastManager.showToast(summaryMsg, Icons.Default.Warning)
+                                                                isBatchRepairing = false
+                                                                batchStatusText = summaryMsg
+                                                            }
+                                                        )
+                                                    }
+                                                },
+                                                enabled = !isBatchRepairing,
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
+                                                shape = RoundedCornerShape(8.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                            ) {
+                                                Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Fix All (${needsRepairItems.size})", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                             }
-                                        },
-                                        enabled = !isBatchRepairing && needsRepairItems.isNotEmpty(),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
-                                    ) {
-                                        Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("⚡ Fix All ${needsRepairItems.size} Shows", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
                                     }
                                 }
                             }
@@ -649,7 +690,7 @@ fun MetadataInspectorDialog(
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Column {
                                         Text(
-                                            text = "Deep Re-Sync from Source (TMDb / MAL)",
+                                            text = "Deep Re-Sync from Source (TMDb / AniList)",
                                             color = Color.White,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.SemiBold
@@ -735,6 +776,9 @@ fun MetadataInspectorDialog(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     FilterPill("All Issues (${needsRepairItems.size})", isSelected = selectedFilter == InspectorFilter.ALL_ISSUES) { selectedFilter = InspectorFilter.ALL_ISSUES }
+                    if (animeItems.isNotEmpty()) {
+                        FilterPill("🌸 Anime (${animeItems.size})", isSelected = selectedFilter == InspectorFilter.ANIME) { selectedFilter = InspectorFilter.ANIME }
+                    }
                     if (unstandardizedSpecsCount > 0) {
                         FilterPill("⚡ Unstandardized Specs ($unstandardizedSpecsCount)", isSelected = selectedFilter == InspectorFilter.UNSTANDARDIZED_SPECS) { selectedFilter = InspectorFilter.UNSTANDARDIZED_SPECS }
                     }
@@ -961,8 +1005,8 @@ private fun InspectorItemRow(
                     }
 
                     // Source IDs
-                    if (item.malId.isNotBlank()) {
-                        BadgeTag("MAL: ${item.malId}", Color(0xFF64748B))
+                    if (item.anilistId.isNotBlank()) {
+                        BadgeTag("AniList: ${item.anilistId}", Color(0xFF02A9FF))
                     } else if (item.tmdbId.isNotBlank()) {
                         BadgeTag("TMDB: ${item.tmdbId}", Color(0xFF64748B))
                     }

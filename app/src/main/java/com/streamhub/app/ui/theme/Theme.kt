@@ -30,6 +30,11 @@ fun StreamHubTheme(
     val view = LocalView.current
     val context = LocalContext.current
     val accent by ThemeManager.currentAccent.collectAsState()
+    val isAmoled by ThemeManager.isAmoledBlack.collectAsState()
+
+    val currentBg = if (isAmoled) Color.Black else BackgroundDark
+    val currentSurface = if (isAmoled) Color(0xFF0C0C0C) else SurfaceDark
+    val currentSurfaceVariant = if (isAmoled) Color(0xFF141414) else SurfaceVariantDark
 
     val brandScheme = darkColorScheme(
         primary = accent.color,
@@ -38,17 +43,17 @@ fun StreamHubTheme(
         onSecondary = TextPrimary,
         tertiary = AccentGold,
         onTertiary = TextPrimary,
-        background = BackgroundDark,
+        background = currentBg,
         onBackground = TextPrimary,
-        surface = SurfaceDark,
+        surface = currentSurface,
         onSurface = TextPrimary,
-        surfaceVariant = SurfaceVariantDark,
+        surfaceVariant = currentSurfaceVariant,
         onSurfaceVariant = TextSecondary,
-        surfaceContainerLowest = M3SurfaceContainerLowest,
-        surfaceContainerLow = M3SurfaceContainerLow,
-        surfaceContainer = M3SurfaceContainer,
-        surfaceContainerHigh = M3SurfaceContainerHigh,
-        surfaceContainerHighest = M3SurfaceContainerHighest,
+        surfaceContainerLowest = if (isAmoled) Color.Black else M3SurfaceContainerLowest,
+        surfaceContainerLow = if (isAmoled) Color(0xFF080808) else M3SurfaceContainerLow,
+        surfaceContainer = if (isAmoled) Color(0xFF101010) else M3SurfaceContainer,
+        surfaceContainerHigh = if (isAmoled) Color(0xFF181818) else M3SurfaceContainerHigh,
+        surfaceContainerHighest = if (isAmoled) Color(0xFF222222) else M3SurfaceContainerHighest,
         outline = CardBorderDark,
         outlineVariant = M3OutlineVariant,
         error = Color(0xFFFF5252),

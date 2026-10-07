@@ -47,6 +47,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -64,6 +65,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.streamhub.app.data.PlayerSettingsManager
 import com.streamhub.app.ui.screens.player.controls.ExpressiveSheetDragHandle
 import com.streamhub.app.ui.screens.player.controls.MpvPlayerSheet
 import com.streamhub.app.ui.theme.TextSecondary
@@ -80,6 +82,7 @@ fun MpvMoreSheet(
     val scrollState = rememberScrollState()
     val sleepPresets = listOf(0, 15, 30, 45, 60, 90)
     val haptic = LocalHapticFeedback.current
+    val playerSettings by PlayerSettingsManager.settingsFlow.collectAsState()
 
     MpvPlayerSheet(onDismissRequest = onDismiss) {
         Column(
@@ -123,73 +126,39 @@ fun MpvMoreSheet(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Stats for Nerds Card (20.dp borderless tonal container)
-            val statsInteractionSource = remember { MutableInteractionSource() }
-            val isStatsPressed by statsInteractionSource.collectIsPressedAsState()
-            val statsScale by animateFloatAsState(
-                targetValue = if (isStatsPressed) 0.96f else 1.0f,
-                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-                label = "StatsCardScale"
+            // 1. Stats for Nerds Card
+            MoreOptionSwitchCard(
+                title = "Stats for Nerds",
+                subtitle = "Draggable overlay with RAM, framerate, buffer & decoder stats",
+                icon = Icons.Default.Info,
+                iconTint = Color(0xFFD0BCFF),
+                checked = showStatsForNerds,
+                onCheckedChange = onToggleStatsForNerds
             )
 
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = Color(0x14FFFFFF),
-                border = BorderStroke(1.dp, Color(0x1AFFFFFF)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .graphicsLayer {
-                        scaleX = statsScale
-                        scaleY = statsScale
-                    }
-                    .clip(RoundedCornerShape(20.dp))
-                    .clickable(
-                        interactionSource = statsInteractionSource,
-                        indication = null,
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onToggleStatsForNerds(!showStatsForNerds)
-                        }
-                    )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = "Stats",
-                            tint = Color(0xFFD0BCFF),
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text("Stats for Nerds", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Draggable overlay with RAM, framerate, buffer & decoder stats", color = TextSecondary, fontSize = 11.sp)
-                        }
-                    }
-                    Switch(
-                        checked = showStatsForNerds,
-                        onCheckedChange = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onToggleStatsForNerds(it)
-                        },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = Color(0xFF6750A4),
-                            uncheckedThumbColor = Color.LightGray,
-                            uncheckedTrackColor = Color(0x33FFFFFF)
-                        )
-                    )
-                }
-            }
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // 2. Player Status Overlay (Corner HUD)
+            MoreOptionSwitchCard(
+                title = "Player Status (HUD)",
+                subtitle = "Show remaining countdown, battery & live clock in top corners",
+                icon = Icons.Default.Schedule,
+                iconTint = Color(0xFF00E5FF),
+                checked = playerSettings.playerStatusOverlayEnabled,
+                onCheckedChange = { PlayerSettingsManager.updatePlayerStatusOverlay(it) }
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // 3. Content Advisory Card
+            MoreOptionSwitchCard(
+                title = "Content Advisory",
+                subtitle = "Show parental guidance rating & mature descriptors on start",
+                icon = Icons.Default.AutoAwesome,
+                iconTint = Color(0xFFFFB300),
+                checked = playerSettings.contentWarningEnabled,
+                onCheckedChange = { PlayerSettingsManager.updateContentWarning(it) }
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -239,3 +208,83 @@ fun MpvMoreSheet(
         }
     }
 }
+
+@Composable
+private fun MoreOptionSwitchCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    iconTint: Color,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val haptic = LocalHapticFeedback.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        label = "MoreOptionCardScale"
+    )
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = Color(0x14FFFFFF),
+        border = BorderStroke(1.dp, Color(0x1AFFFFFF)),
+        modifier = modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onCheckedChange(!checked)
+                }
+            )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = iconTint,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(subtitle, color = TextSecondary, fontSize = 11.sp)
+                }
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onCheckedChange(it)
+                },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = Color(0xFF6750A4),
+                    uncheckedThumbColor = Color.LightGray,
+                    uncheckedTrackColor = Color(0x33FFFFFF)
+                )
+            )
+        }
+    }
+}
+

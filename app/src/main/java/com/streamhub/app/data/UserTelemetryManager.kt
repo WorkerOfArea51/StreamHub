@@ -459,6 +459,10 @@ object UserTelemetryManager {
     // ─────────────────────────────────────────────────────────────
 
     fun sendDirectNotification(targetClientId: String, title: String, message: String) {
+        if (!AdminManager.isAdminMode.value) {
+            Log.e(TAG, "SECURITY VIOLATION: Unauthorized attempt to send direct notification without Admin verification!")
+            return
+        }
         if (targetClientId.isBlank() || title.isBlank() || message.isBlank()) return
         if (targetClientId == clientId) {
             appContext?.let { ctx ->
@@ -484,6 +488,10 @@ object UserTelemetryManager {
     }
 
     fun sendGlobalBroadcast(title: String, message: String, expiryHours: Int = 24) {
+        if (!AdminManager.isAdminMode.value) {
+            Log.e(TAG, "SECURITY VIOLATION: Unauthorized attempt to send global broadcast without Admin verification!")
+            return
+        }
         if (title.isBlank() || message.isBlank()) return
         val now = System.currentTimeMillis()
         val expiresAt = now + (expiryHours.coerceIn(1, 168) * 3600_000L)
@@ -523,6 +531,11 @@ object UserTelemetryManager {
     }
 
     fun clearActiveBroadcast(onComplete: ((Boolean) -> Unit)? = null) {
+        if (!AdminManager.isAdminMode.value) {
+            Log.e(TAG, "SECURITY VIOLATION: Unauthorized attempt to clear broadcast without Admin verification!")
+            onComplete?.invoke(false)
+            return
+        }
         scope.launch {
             try {
                 val db = FirebaseFirestore.getInstance()
@@ -551,6 +564,10 @@ object UserTelemetryManager {
     }
 
     fun sendForceRefresh(targetClientId: String) {
+        if (!AdminManager.isAdminMode.value) {
+            Log.e(TAG, "SECURITY VIOLATION: Unauthorized attempt to send refresh command without Admin verification!")
+            return
+        }
         if (targetClientId.isBlank()) return
         if (targetClientId == clientId) {
             triggerImmediateHeartbeat()
@@ -571,6 +588,10 @@ object UserTelemetryManager {
     }
 
     fun sendKickUser(targetClientId: String) {
+        if (!AdminManager.isAdminMode.value) {
+            Log.e(TAG, "SECURITY VIOLATION: Unauthorized attempt to kick user without Admin verification!")
+            return
+        }
         if (targetClientId.isBlank()) return
         scope.launch {
             try {

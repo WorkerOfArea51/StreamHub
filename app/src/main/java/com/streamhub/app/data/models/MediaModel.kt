@@ -26,7 +26,7 @@ data class MediaItem(
     val maturityRating: String = "",     // e.g. "16+" — empty if unknown
     val studio: String = "",             // e.g. "A-1 Pictures" — empty if unknown
     val trailerId: String = "",          // YouTube video ID — empty if unknown
-    val malId: String = "",
+    val anilistId: String = "",
     val tmdbId: String = "",
     val synonyms: String = "",           // alternative titles — empty if unknown
     val totalEpisodes: String = "",      // e.g. "12 Episodes" — empty if unknown
@@ -55,8 +55,33 @@ data class MediaItem(
     val relatedMediaIds: List<String> = emptyList(), // linked document IDs in Firestore
     val createdAt: Long = 0L,            // Epoch millis when uploaded/created for accurate chronologic sorting
     val updatedAt: Long = 0L,            // Epoch millis when last modified/updated
+    val director: String = "",
+    val writers: String = "",
+    val castMembers: List<CastMember> = emptyList(),
+    val trailers: List<MediaTrailer> = emptyList(),
     val mediaInfo: MediaInfo = MediaInfo(),
     val episodes: List<Episode> = emptyList()
+)
+
+/**
+ * Cast member representation with actor name, character name, and profile headshot.
+ */
+@IgnoreExtraProperties
+data class CastMember(
+    val name: String = "",
+    val character: String = "",
+    val profileUrl: String = ""
+)
+
+/**
+ * Trailer/clip representation with YouTube video ID, display title, and category type.
+ */
+@IgnoreExtraProperties
+data class MediaTrailer(
+    val id: String = "",
+    val title: String = "",
+    val type: String = "Trailer",
+    val isOfficial: Boolean = false
 )
 
 /**

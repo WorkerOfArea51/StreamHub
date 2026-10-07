@@ -84,6 +84,8 @@ data class PlayerUiState(
     val streamRestoredToast: Boolean = false,
     val isFirstFrameRendered: Boolean = false,
     val isStreamPrecached: Boolean = false,
+    val isResumedPlayback: Boolean = false,
+    val isSeeking: Boolean = false,
     val audioProfile: com.streamhub.app.data.AudioProfile = com.streamhub.app.data.AudioProfile.STANDARD
 )
 
@@ -293,6 +295,7 @@ class StreamPlayerViewModel : ViewModel() {
                 }
 
                 if (playbackState == Player.STATE_READY) {
+                    _uiState.update { it.copy(isSeeking = false) }
                     if (!isStartupPerfLogged && prepareStartTimeMs > 0L) {
                         val elapsed = System.currentTimeMillis() - prepareStartTimeMs
                         Log.i("StreamPlayerViewModel", "[StartupPerf] Video ready for playback in ${elapsed}ms")
@@ -314,14 +317,33 @@ class StreamPlayerViewModel : ViewModel() {
                 if (playbackState == Player.STATE_ENDED) {
                     // FIX: Clear stale pending seek target before next episode starts.
                     pendingSeekTargetMs = null
-                    if (com.streamhub.app.data.PlayerSettingsManager.settingsFlow.value.autoPlayNextEpisode) {
+                    val currentPos = exoPlayer?.currentPosition ?: _playbackProgress.value.currentPositionMs
+                    val totalDuration = exoPlayer?.duration?.takeIf { it > 0L } ?: _playbackProgress.value.durationMs
+                    val isFirstFrameDone = _uiState.value.isFirstFrameRendered
+
+                    // Only allow auto-play next episode if there was genuine playback completion:
+                    // (at least 85% watched, or within 20s of the end, or >30s watched for unset duration).
+                    // If video failed at 0s or closed early, NEVER auto-skip to the next episode!
+                    val hasGenuinePlayback = when {
+                        !isFirstFrameDone -> false
+                        totalDuration > 0L -> {
+                            val remainingMs = totalDuration - currentPos
+                            remainingMs <= 20_000L || (currentPos.toFloat() / totalDuration.toFloat()) >= 0.85f
+                        }
+                        else -> currentPos >= 30_000L
+                    }
+
+                    if (hasGenuinePlayback && com.streamhub.app.data.PlayerSettingsManager.settingsFlow.value.autoPlayNextEpisode) {
+                        Log.i("StreamPlayerViewModel", "STATE_ENDED reached with genuine playback ($currentPos ms / $totalDuration ms). Auto-playing next episode.")
                         playNextEpisode()
+                    } else {
+                        Log.w("StreamPlayerViewModel", "STATE_ENDED reached without genuine playback completion (pos=$currentPos ms, dur=$totalDuration ms, firstFrame=$isFirstFrameDone). Suppressing autoPlayNextEpisode to prevent runaway skip cascade.")
                     }
                 }
             }
 
             override fun onRenderedFirstFrame() {
-                _uiState.update { it.copy(isFirstFrameRendered = true) }
+                _uiState.update { it.copy(isFirstFrameRendered = true, isResumedPlayback = false, isSeeking = false) }
             }
 
             override fun onPositionDiscontinuity(
@@ -335,7 +357,7 @@ class StreamPlayerViewModel : ViewModel() {
                         // FIX: Cancel the seek timeout — the seek completed successfully.
                         pendingSeekTimeoutJob?.cancel()
                         pendingSeekTimeoutJob = null
-                        _uiState.update { it.copy(currentPositionMs = newPosition.positionMs) }
+                        _uiState.update { it.copy(currentPositionMs = newPosition.positionMs, isSeeking = false) }
                     }
                 }
                 // FIX: Also clear pending seek on auto-transition (e.g. next episode).
@@ -403,11 +425,21 @@ class StreamPlayerViewModel : ViewModel() {
         }
     }
 
+    fun updateMediaItem(mediaItem: MediaItem) {
+        if (mediaItem.id != currentMediaItem?.id) return
+        currentMediaItem = mediaItem
+        episodesList = mediaItem.episodes
+    }
+
     fun initializePlayer(context: Context, mediaItem: MediaItem, initialEpisodeIndex: Int = 0) {
         StreamPreloadManager.cancelDetailsPrewarm()
         val safeContext = context.applicationContext
         appContext = safeContext
         val isDifferentMedia = currentMediaItem?.id != mediaItem.id
+        val currentTargetUrl = episodesList.getOrNull(initialEpisodeIndex)?.let { it.streamUrl.ifBlank { it.mirrorStreamUrl } }
+        val newTargetUrl = mediaItem.episodes.getOrNull(initialEpisodeIndex)?.let { it.streamUrl.ifBlank { it.mirrorStreamUrl } }
+        val streamUrlChanged = currentTargetUrl != null && newTargetUrl != null && currentTargetUrl != newTargetUrl
+
         currentMediaItem = mediaItem
         episodesList = mediaItem.episodes
 
@@ -422,8 +454,8 @@ class StreamPlayerViewModel : ViewModel() {
         }
 
         // 1. If this ViewModel already has an active ExoPlayer playing this exact media & episode,
-        // PRESERVE IT directly! Do not restart, do not seek to 0s, do not re-buffer.
-        if (exoPlayer != null && exoPlayer?.playbackState != Player.STATE_IDLE) {
+        // PRESERVE IT directly! Do not restart, do not seek to 0s, do not re-buffer UNLESS stream URL changed.
+        if (exoPlayer != null && exoPlayer?.playbackState != Player.STATE_IDLE && !streamUrlChanged) {
             val activeMediaId = currentMediaItem?.id ?: PlayerHolder.currentMediaId
             val activeEpisodeIndex = _uiState.value.currentEpisodeIndex
             if (activeMediaId == mediaItem.id && activeEpisodeIndex == initialEpisodeIndex) {
@@ -1002,8 +1034,9 @@ class StreamPlayerViewModel : ViewModel() {
 
         val episode = episodesList[index]
         val rawUrl = episode.streamUrl.ifEmpty { episode.mirrorStreamUrl }
+        val isResumed = startPositionMs > 5_000L
         val isInitiallyPrecached = appContext?.let { ctx ->
-            StreamPreloadManager.isStreamPrecached(ctx, rawUrl)
+            StreamPreloadManager.isStreamPrecached(ctx, rawUrl) || StreamPreloadManager.hasAnyCachedData(ctx, rawUrl)
         } ?: false
         val savedDuration = WatchHistoryManager.getProgress(currentMediaItem?.id ?: "")?.durationMs ?: 0L
         val fallbackDurationMs = when {
@@ -1020,6 +1053,8 @@ class StreamPlayerViewModel : ViewModel() {
                 isFirstFrameRendered = false,
                 isBuffering = true,
                 isStreamPrecached = isInitiallyPrecached,
+                isResumedPlayback = isResumed,
+                isSeeking = false,
                 resolvedStreamUrl = rawUrl,
                 durationMs = if (fallbackDurationMs > 0) fallbackDurationMs else it.durationMs
             )
@@ -1100,13 +1135,14 @@ class StreamPlayerViewModel : ViewModel() {
                 return@launch
             }
             val isPrecached = isInitiallyPrecached || (appContext?.let { ctx ->
-                StreamPreloadManager.isStreamPrecached(ctx, resolvedUrl)
+                StreamPreloadManager.isStreamPrecached(ctx, resolvedUrl) || StreamPreloadManager.hasAnyCachedData(ctx, resolvedUrl)
             } ?: false)
             _uiState.update {
                 it.copy(
                     resolvedStreamUrl = resolvedUrl,
                     posterUrl = currentMediaItem?.posterUrl ?: "",
-                    isStreamPrecached = isPrecached
+                    isStreamPrecached = isPrecached,
+                    isResumedPlayback = isResumed
                 )
             }
             val uri = if (resolvedUrl.startsWith("/")) android.net.Uri.fromFile(java.io.File(resolvedUrl)) else android.net.Uri.parse(resolvedUrl)
@@ -1211,8 +1247,13 @@ class StreamPlayerViewModel : ViewModel() {
             com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
         } catch (_: Exception) {}
         bandwidthTracker?.reset()
+        val playUrl = if (rawUrl.startsWith("/") || rawUrl.startsWith("file://")) {
+            rawUrl
+        } else {
+            TelegramLinkResolver.sanitizePlayableUrl(rawUrl)
+        }
         val isPrecached = appContext?.let { ctx ->
-            StreamPreloadManager.isStreamPrecached(ctx, rawUrl)
+            StreamPreloadManager.isStreamPrecached(ctx, playUrl)
         } ?: false
         StreamPreloadManager.cancelDetailsPrewarm()
         StreamPreloadManager.cancelBingePrecache(resetCompleted = true)
@@ -1238,7 +1279,7 @@ class StreamPlayerViewModel : ViewModel() {
                 currentEpisodeIndex = index,
                 playerError = null,
                 playerErrorInfo = null,
-                resolvedStreamUrl = rawUrl,
+                resolvedStreamUrl = playUrl,
                 isFirstFrameRendered = false,
                 isBuffering = true,
                 isStreamPrecached = isPrecached,
@@ -1251,7 +1292,7 @@ class StreamPlayerViewModel : ViewModel() {
                 durationMs = if (fallbackDurationMs > 0) fallbackDurationMs else it.durationMs
             )
         }
-        val uri = if (rawUrl.startsWith("/")) android.net.Uri.fromFile(java.io.File(rawUrl)) else android.net.Uri.parse(rawUrl)
+        val uri = if (playUrl.startsWith("/")) android.net.Uri.fromFile(java.io.File(playUrl)) else android.net.Uri.parse(playUrl)
         val cacheKey = StreamDataSourceFactory.sanitizeCacheKey(uri)
         val mediaItem = ExoMediaItem.fromUri(uri)
             .buildUpon()
@@ -1585,7 +1626,8 @@ class StreamPlayerViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 currentPositionMs = target,
-                bufferedPositionMs = player.bufferedPosition.coerceAtLeast(target)
+                bufferedPositionMs = player.bufferedPosition.coerceAtLeast(target),
+                isSeeking = true
             )
         }
 
@@ -1599,6 +1641,7 @@ class StreamPlayerViewModel : ViewModel() {
             if (pendingSeekTargetMs != null) {
                 Log.w("StreamPlayerViewModel", "Seek timeout — clearing stale pendingSeekTargetMs=$pendingSeekTargetMs")
                 pendingSeekTargetMs = null
+                _uiState.update { it.copy(isSeeking = false) }
             }
         }
     }
@@ -1619,7 +1662,8 @@ class StreamPlayerViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 currentPositionMs = target,
-                bufferedPositionMs = player.bufferedPosition.coerceAtLeast(target)
+                bufferedPositionMs = player.bufferedPosition.coerceAtLeast(target),
+                isSeeking = true
             )
         }
     }
@@ -1643,6 +1687,7 @@ class StreamPlayerViewModel : ViewModel() {
     fun cancelDebouncedSeek() {
         debouncedSeekJob?.cancel()
         debouncedSeekJob = null
+        _uiState.update { it.copy(isSeeking = false) }
     }
 
     fun seekForward(offsetMs: Long = 10000L) {

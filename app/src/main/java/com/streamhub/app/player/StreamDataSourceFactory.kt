@@ -33,7 +33,7 @@ class StreamDataSourceFactory(
         private const val USER_AGENT = "StreamHub/4.8 (Linux; Android 14; Mobile)"
         private val VOLATILE_QUERY_PARAMS = setOf(
             "token", "sign", "signature", "sig", "expires", "expiry", "exp",
-            "key", "auth", "timestamp", "ts", "hash"
+            "key", "auth", "timestamp", "ts", "hash", "stream"
         )
 
         fun sanitizeCacheKey(uri: android.net.Uri): String {

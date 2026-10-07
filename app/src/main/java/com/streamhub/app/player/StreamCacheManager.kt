@@ -65,6 +65,39 @@ object StreamCacheManager {
         }
     }
 
+    fun hasCachedSpans(context: Context, key: String): Boolean {
+        val cache = getCache(context)
+        return cacheLock.read {
+            try {
+                cache.getCachedSpans(key).isNotEmpty()
+            } catch (e: Exception) {
+                false
+            }
+        }
+    }
+
+    fun isCached(context: Context, key: String, position: Long, length: Long): Boolean {
+        val cache = getCache(context)
+        return cacheLock.read {
+            try {
+                cache.isCached(key, position, length)
+            } catch (e: Exception) {
+                false
+            }
+        }
+    }
+
+    fun getCachedBytesForResource(context: Context, key: String): Long {
+        val cache = getCache(context)
+        return cacheLock.read {
+            try {
+                cache.getCachedSpans(key).sumOf { it.length }
+            } catch (e: Exception) {
+                0L
+            }
+        }
+    }
+
     fun getCache(context: Context): SimpleCache {
         cachedContext = context.applicationContext
         // FIX: Use READ lock for the hot path — only upgrade to WRITE if creation needed.

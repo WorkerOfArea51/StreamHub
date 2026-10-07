@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.CompositionLocalProvider
 import com.streamhub.app.ui.components.LocalIsScrollInProgress
 import androidx.compose.foundation.shape.CircleShape
@@ -61,9 +62,13 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import com.streamhub.app.data.models.CastMember
+import com.streamhub.app.data.models.MediaTrailer
+import com.streamhub.app.data.api.ExtendedMediaDetails
 import com.streamhub.app.data.MyListManager
 import com.streamhub.app.data.NetworkMonitor
 import com.streamhub.app.data.WatchHistoryManager
@@ -75,8 +80,10 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import com.streamhub.app.ui.components.ArcEpisodeEditorDialog
 import com.streamhub.app.ui.components.BatchDownloadSheet
+import com.streamhub.app.ui.components.CastMemberCard
 import com.streamhub.app.ui.components.FolderSelectionDialog
 import com.streamhub.app.ui.components.SeasonArcSelectorSheet
+import com.streamhub.app.ui.components.TrailerCard
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -170,6 +177,19 @@ fun DetailsScreen(
     var isBatchDownloadSheetOpen by remember { mutableStateOf(false) }
     var isTrailerPlaying by remember { mutableStateOf(false) }
     var recommendations by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
+    var extendedDetails by remember(mediaId) {
+        mutableStateOf(
+            MetadataFetchManager.getCachedExtendedDetails(mediaId) ?:
+            ExtendedMediaDetails(
+                director = "",
+                writers = "",
+                castMembers = emptyList(),
+                trailers = emptyList()
+            )
+        )
+    }
+    var activeTrailerVideoId by remember { mutableStateOf("") }
+    var activeTrailerTitle by remember { mutableStateOf("") }
 
     var currentMediaId by rememberSaveable(mediaId) { mutableStateOf(mediaId) }
     LaunchedEffect(mediaId) {
@@ -180,7 +200,7 @@ fun DetailsScreen(
         catalog.firstOrNull { 
             it.id == currentMediaId ||
             (it.tmdbId.isNotBlank() && (it.tmdbId == currentMediaId || it.tmdbId == currentMediaId.removePrefix("tmdb_rec_").removePrefix("tmdb_"))) ||
-            (it.malId.isNotBlank() && (it.malId == currentMediaId || it.malId == currentMediaId.removePrefix("mal_rec_").removePrefix("mal_"))) ||
+            (it.anilistId.isNotBlank() && (it.anilistId == currentMediaId || it.anilistId == currentMediaId.removePrefix("anilist_rec_").removePrefix("mal_rec_").removePrefix("mal_"))) ||
             (it.title.isNotBlank() && (it.title.equals(currentMediaId, ignoreCase = true) || it.title.replace(":", "").equals(currentMediaId.replace(":", ""), ignoreCase = true)))
         } ?: run {
             // Offline fallback: construct MediaItem from completed downloads if catalog is not available offline
@@ -255,9 +275,34 @@ fun DetailsScreen(
         } else 0
     }
 
-    LaunchedEffect(mediaItem?.id, mediaItem?.tmdbId, mediaItem?.malId) {
+    LaunchedEffect(mediaItem?.id, mediaItem?.tmdbId, mediaItem?.anilistId) {
+        if (mediaItem != null) {
+            val cached = MetadataFetchManager.getCachedExtendedDetails(mediaItem.id.ifBlank { mediaItem.title })
+            if (cached != null && cached.castMembers.isNotEmpty() && cached.castMembers.any { it.profileUrl.isNotBlank() }) {
+                extendedDetails = cached
+            } else if (mediaItem.castMembers.isNotEmpty() && (mediaItem.trailers.isNotEmpty() || mediaItem.director.isNotBlank())) {
+                extendedDetails = ExtendedMediaDetails(
+                    director = mediaItem.director,
+                    writers = mediaItem.writers,
+                    castMembers = mediaItem.castMembers,
+                    trailers = mediaItem.trailers
+                )
+            }
+
+            // Live dynamic sync: Fetch latest TMDb / AniList metadata in background so cast photos, full ensemble cast, and trailers auto-refresh
+            try {
+                val force = mediaItem.castMembers.isEmpty() || mediaItem.castMembers.any { it.profileUrl.isBlank() } || mediaItem.trailers.isEmpty()
+                val fetchedExt = MetadataFetchManager.fetchExtendedDetails(mediaItem, forceRefresh = force)
+                if (fetchedExt.castMembers.isNotEmpty() || fetchedExt.trailers.isNotEmpty() || fetchedExt.director.isNotBlank()) {
+                    extendedDetails = fetchedExt
+                }
+            } catch (e: Exception) {
+                Log.w("DetailsScreen", "Failed to load dynamic extended details: ${e.message}")
+            }
+        }
+
         val tId = mediaItem?.tmdbId?.trim() ?: ""
-        val mId = mediaItem?.malId?.trim() ?: ""
+        val aId = mediaItem?.anilistId?.trim() ?: ""
 
         if (tId.isNotBlank()) {
             try {
@@ -268,14 +313,14 @@ fun DetailsScreen(
             } catch (e: Exception) {
                 Log.w("DetailsScreen", "Failed to load TMDB recs: ${e.message}")
             }
-        } else if (mId.isNotBlank()) {
+        } else if (aId.isNotBlank()) {
             try {
-                val fetched = MetadataFetchManager.fetchMALRecommendations(mId)
+                val fetched = MetadataFetchManager.fetchAniListRecommendations(aId)
                 if (fetched.isNotEmpty()) {
                     recommendations = fetched
                 }
             } catch (e: Exception) {
-                Log.w("DetailsScreen", "Failed to load MAL recs: ${e.message}")
+                Log.w("DetailsScreen", "Failed to load AniList recs: ${e.message}")
             }
         }
     }
@@ -315,19 +360,35 @@ fun DetailsScreen(
         return
     }
 
-    // High-Res Cinematic Backdrop Image (Prioritize TMDB Banner -> YouTube MaxRes -> Poster)
-    val backdropUrl = remember(mediaItem.bannerUrl, mediaItem.trailerId, mediaItem.posterUrl) {
-        val cleanTrailerId = when {
-            mediaItem.trailerId.isBlank() || mediaItem.trailerId.equals("null", ignoreCase = true) -> ""
-            mediaItem.trailerId.contains("v=") -> mediaItem.trailerId.substringAfter("v=").substringBefore("&")
-            mediaItem.trailerId.contains("youtu.be/") -> mediaItem.trailerId.substringAfter("youtu.be/").substringBefore("?")
-            else -> mediaItem.trailerId.trim()
+    val cleanTrailerId = remember(mediaItem.trailerId) {
+        val raw = mediaItem.trailerId.trim()
+        when {
+            raw.isBlank() || raw.equals("null", ignoreCase = true) -> ""
+            raw.contains("v=") -> raw.substringAfter("v=").substringBefore("&")
+            raw.contains("youtu.be/") -> raw.substringAfter("youtu.be/").substringBefore("?")
+            else -> raw
         }
+    }
+
+    // High-Res Cinematic Backdrop Image (Prioritize TMDB Banner -> YouTube MaxRes -> Poster)
+    val backdropUrl = remember(mediaItem.bannerUrl, cleanTrailerId, mediaItem.posterUrl) {
         when {
             mediaItem.bannerUrl.isNotBlank() -> mediaItem.bannerUrl
             cleanTrailerId.isNotBlank() -> "https://img.youtube.com/vi/$cleanTrailerId/maxresdefault.jpg"
             else -> mediaItem.posterUrl
         }
+    }
+
+    // Combined list of Official Trailers, Teasers, and PVs
+    val allTrailers = remember(cleanTrailerId, extendedDetails.trailers) {
+        val list = mutableListOf<MediaTrailer>()
+        if (cleanTrailerId.isNotBlank()) {
+            list.add(MediaTrailer(id = cleanTrailerId, title = "Official Main Trailer", type = "Trailer", isOfficial = true))
+        }
+        extendedDetails.trailers.forEach { t ->
+            if (list.none { it.id == t.id }) list.add(t)
+        }
+        list
     }
 
     // Filter Episodes based on selected Season Number or Arc Name
@@ -397,6 +458,19 @@ fun DetailsScreen(
         modifier = modifier
     ) { innerPadding ->
         val detailsListState = rememberLazyListState()
+
+        val currentFranchiseIndex = remember(franchiseItems, mediaItem.id) {
+            franchiseItems.indexOfFirst { it.id == mediaItem.id }.coerceAtLeast(0)
+        }
+        val franchiseRowState = rememberSaveable(
+            mediaItem.id,
+            saver = LazyListState.Saver
+        ) {
+            LazyListState(
+                firstVisibleItemIndex = currentFranchiseIndex,
+                firstVisibleItemScrollOffset = 0
+            )
+        }
 
         val historyMap by WatchHistoryManager.historyFlow.collectAsState()
         val mediaProgress = historyMap[mediaItem.id] ?: remember(mediaItem.id) { WatchHistoryManager.getProgress(mediaItem.id) }
@@ -495,21 +569,19 @@ fun DetailsScreen(
             ) {
             // Header Backdrop Container (Modern 16:9 Hero Trailer Player)
             item {
-                val rawId = mediaItem.trailerId.trim()
-                val cleanTrailerId = remember(rawId) {
-                    when {
-                        rawId.isBlank() || rawId.equals("null", ignoreCase = true) -> ""
-                        rawId.contains("v=") -> rawId.substringAfter("v=").substringBefore("&")
-                        rawId.contains("youtu.be/") -> rawId.substringAfter("youtu.be/").substringBefore("?")
-                        else -> rawId
-                    }
-                }
 
-                if (isTrailerPlaying && cleanTrailerId.isNotBlank()) {
+                val activeVideoId = if (activeTrailerVideoId.isNotBlank()) activeTrailerVideoId else if (isTrailerPlaying) cleanTrailerId else ""
+                val activeTitle = if (activeTrailerVideoId.isNotBlank()) activeTrailerTitle else mediaItem.title
+
+                if (activeVideoId.isNotBlank()) {
                     com.streamhub.app.ui.components.TrailerPlayerDialog(
-                        videoId = cleanTrailerId,
-                        title = mediaItem.title,
-                        onDismiss = { isTrailerPlaying = false }
+                        videoId = activeVideoId,
+                        title = activeTitle,
+                        onDismiss = {
+                            isTrailerPlaying = false
+                            activeTrailerVideoId = ""
+                            activeTrailerTitle = ""
+                        }
                     )
                 }
 
@@ -659,23 +731,56 @@ fun DetailsScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     if (mediaItem.rating.isNotBlank()) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Default.Star, contentDescription = "Rating", tint = AccentGold, modifier = Modifier.size(15.dp))
-                                            Spacer(modifier = Modifier.width(3.dp))
-                                            val ratingLabel = if (isAnime) "MAL Score" else "TMDB Score"
-                                            Text(
-                                                text = "$ratingLabel: ${mediaItem.rating}",
-                                                color = TextPrimary,
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                        ) {
+                                            if (isAnime) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = Color(0xFF02A9FF)
+                                                ) {
+                                                    Text(
+                                                        text = "AniList",
+                                                        color = Color.White,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Black,
+                                                        modifier = Modifier.padding(horizontal = 4.5.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                                Text(
+                                                    text = mediaItem.rating,
+                                                    color = Color(0xFF02A9FF),
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            } else {
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = Color(0xFFF5C518)
+                                                ) {
+                                                    Text(
+                                                        text = "IMDb",
+                                                        color = Color.Black,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Black,
+                                                        modifier = Modifier.padding(horizontal = 4.5.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                                Text(
+                                                    text = mediaItem.rating,
+                                                    color = Color(0xFFF5C518),
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
                                         }
                                     }
 
                                     if (mediaItem.maturityRating.isNotBlank()) {
                                         Box(
                                             modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
+                                                .clip(RoundedCornerShape(4.dp))
                                                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                                         ) {
@@ -886,21 +991,108 @@ fun DetailsScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Cast & Voice Actors BELOW Synopsis
-                    if (mediaItem.castList.isNotEmpty()) {
+                    // Directors & Writers / Creators
+                    val directorText = extendedDetails.director.ifBlank { mediaItem.director }
+                    val writersText = extendedDetails.writers.ifBlank { mediaItem.writers }
+                    if (directorText.isNotBlank() || writersText.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            if (directorText.isNotBlank()) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("DIRECTOR", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(directorText, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                            if (writersText.isNotBlank()) {
+                                val writerHeader = if (isAnime) "ORIGINAL CREATOR / WRITER" else "WRITERS"
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(writerHeader, color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(writersText, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+                    }
+
+                    // Cast & Voice Actors Carousel with Avatars & Roles
+                    val activeCastMembers = extendedDetails.castMembers.ifEmpty { mediaItem.castMembers }
+                    if (activeCastMembers.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(18.dp))
+                        val castHeader = if (isAnime) "🎌 VOICE CAST & CHARACTERS (${activeCastMembers.size})" else "👥 TOP CAST & CHARACTERS (${activeCastMembers.size})"
+                        Text(castHeader, color = AccentGold, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        val castRowState = rememberLazyListState()
+                        val isParentScrolling = LocalIsScrollInProgress.current
+                        val isCastScrolling = isParentScrolling || castRowState.isScrollInProgress
+                        CompositionLocalProvider(LocalIsScrollInProgress provides isCastScrolling) {
+                            LazyRow(
+                                state = castRowState,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                items(activeCastMembers) { member ->
+                                    CastMemberCard(member = member)
+                                }
+                            }
+                        }
+                    } else if (mediaItem.castList.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(16.dp))
                         val castHeader = if (mediaItem.category.equals("Anime", ignoreCase = true)) "VOICE CAST" else "TOP CAST"
                         Text(castHeader, color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(6.dp))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(mediaItem.castList) { castName ->
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(SurfaceDark)
-                                        .border(1.dp, CardBorderDark, RoundedCornerShape(6.dp))
-                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                        val castRowState = rememberLazyListState()
+                        val isParentScrolling = LocalIsScrollInProgress.current
+                        val isCastScrolling = isParentScrolling || castRowState.isScrollInProgress
+                        CompositionLocalProvider(LocalIsScrollInProgress provides isCastScrolling) {
+                            LazyRow(
+                                state = castRowState,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(mediaItem.castList) { castName ->
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(SurfaceDark)
+                                            .border(1.dp, CardBorderDark, RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 10.dp, vertical = 6.dp)
                                     ) {
-                                    Text(text = castName, color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                        Text(text = castName, color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Trailers, Teasers & PVs Carousel
+                    if (allTrailers.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(18.dp))
+                        Text(
+                            text = "🎬 TRAILERS & CLIPS (${allTrailers.size})",
+                            color = AccentOrange,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        val trailerRowState = rememberLazyListState()
+                        val isParentScrolling = LocalIsScrollInProgress.current
+                        val isTrailerScrolling = isParentScrolling || trailerRowState.isScrollInProgress
+                        CompositionLocalProvider(LocalIsScrollInProgress provides isTrailerScrolling) {
+                            LazyRow(
+                                state = trailerRowState,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                items(allTrailers) { trailer ->
+                                    TrailerCard(
+                                        trailer = trailer,
+                                        onClick = {
+                                            activeTrailerVideoId = trailer.id
+                                            activeTrailerTitle = trailer.title
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -932,13 +1124,12 @@ fun DetailsScreen(
                             )
                         }
                         Spacer(modifier = Modifier.height(8.dp))
-                        val franchiseRowState = rememberLazyListState()
                         val isParentScrolling = LocalIsScrollInProgress.current
                         val isFranchiseScrolling = isParentScrolling || franchiseRowState.isScrollInProgress
 
                         LaunchedEffect(franchiseItems, mediaItem.id) {
                             val currentIdx = franchiseItems.indexOfFirst { it.id == mediaItem.id }
-                            if (currentIdx > 0) {
+                            if (currentIdx > 0 && franchiseRowState.firstVisibleItemIndex != currentIdx) {
                                 franchiseRowState.animateScrollToItem(currentIdx)
                             }
                         }
@@ -1348,8 +1539,17 @@ fun DetailsScreen(
                         if (mediaItem.producers.isNotEmpty()) InfoDetailRow("Producers", mediaItem.producers)
                         if (mediaItem.studio.isNotEmpty()) InfoDetailRow("Studio", mediaItem.studio)
                         if (mediaItem.source.isNotEmpty()) InfoDetailRow("Source", mediaItem.source)
-                        if (mediaItem.duration.isNotEmpty()) InfoDetailRow("Duration", mediaItem.duration)
-                        if (isAnime && mediaItem.malId.isNotEmpty()) InfoDetailRow("MAL ID", mediaItem.malId)
+                        val directorVal = extendedDetails.director.ifBlank { mediaItem.director }
+                        if (directorVal.isNotBlank()) InfoDetailRow("Director", directorVal)
+
+                        val writersVal = extendedDetails.writers.ifBlank { mediaItem.writers }
+                        if (writersVal.isNotBlank()) InfoDetailRow(if (isAnime) "Original Creator / Writer" else "Writers", writersVal)
+
+                        val castCount = extendedDetails.castMembers.size.takeIf { it > 0 } ?: mediaItem.castMembers.size.takeIf { it > 0 } ?: mediaItem.castList.size
+                        if (castCount > 0) InfoDetailRow("Cast Members", "$castCount credited")
+
+                        if (allTrailers.isNotEmpty()) InfoDetailRow("Trailers & Clips", "${allTrailers.size} available")
+
                         if (mediaItem.trailerId.isNotBlank() && !mediaItem.trailerId.equals("null", ignoreCase = true)) InfoDetailRow("YouTube Trailer ID", mediaItem.trailerId)
                         if (mediaItem.tmdbId.isNotEmpty()) InfoDetailRow("TMDB ID", mediaItem.tmdbId)
                     }
@@ -1375,7 +1575,7 @@ fun DetailsScreen(
                                 val match = catalog.firstOrNull { cat ->
                                     (cat.id == rec.id) ||
                                     (cat.tmdbId.isNotBlank() && (cat.tmdbId == rec.tmdbId || cat.tmdbId == rec.id.removePrefix("tmdb_rec_"))) ||
-                                    (cat.malId.isNotBlank() && (cat.malId == rec.malId || cat.malId == rec.id.removePrefix("mal_rec_"))) ||
+                                    (cat.anilistId.isNotBlank() && (cat.anilistId == rec.anilistId || cat.anilistId == rec.id.removePrefix("anilist_rec_").removePrefix("mal_rec_"))) ||
                                     (cat.title.isNotBlank() && (cat.title.equals(rec.title, ignoreCase = true) || cat.title.replace(":", "").equals(rec.title.replace(":", ""), ignoreCase = true)))
                                 }
                                 match ?: rec
@@ -1398,7 +1598,7 @@ fun DetailsScreen(
                                                 val catalogMatch = catalog.firstOrNull { cat ->
                                                     (cat.id == recItem.id) ||
                                                     (cat.tmdbId.isNotBlank() && (cat.tmdbId == recItem.tmdbId || cat.tmdbId == recItem.id.removePrefix("tmdb_rec_"))) ||
-                                                    (cat.malId.isNotBlank() && (cat.malId == recItem.malId || cat.malId == recItem.id.removePrefix("mal_rec_"))) ||
+                                                    (cat.anilistId.isNotBlank() && (cat.anilistId == recItem.anilistId || cat.anilistId == recItem.id.removePrefix("anilist_rec_").removePrefix("mal_rec_"))) ||
                                                     (cat.title.isNotBlank() && (cat.title.equals(recItem.title, ignoreCase = true) || cat.title.replace(":", "").equals(recItem.title.replace(":", ""), ignoreCase = true)))
                                                 }
                                                 if (catalogMatch != null) {
@@ -1524,6 +1724,8 @@ fun DetailsScreen(
             initialItem = mediaItem,
             onDismiss = { showAdminEditDialog = false },
             onSave = { updatedItem ->
+                com.streamhub.app.player.StreamPreloadManager.cancelDetailsPrewarm()
+                com.streamhub.app.player.StreamPreloadManager.cancelBingePrecache(resetCompleted = true)
                 repository.saveMediaItem(updatedItem)
                 showAdminEditDialog = false
             },

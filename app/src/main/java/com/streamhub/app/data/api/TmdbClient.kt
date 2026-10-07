@@ -39,13 +39,4 @@ object TmdbClient {
             .build()
             .create(TmdbApiService::class.java)
     }
-
-    val malInstance: MalApiService by lazy {
-        Retrofit.Builder()
-            .baseUrl(Secrets.MAL_BASE_URL)
-            .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(MalApiService::class.java)
-    }
 }

@@ -77,6 +77,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -188,6 +189,9 @@ import com.streamhub.app.ui.screens.player.PlayerErrorOverlay
 import com.streamhub.app.ui.screens.player.ReconnectingStreamHud
 import com.streamhub.app.ui.screens.player.SmartResumePill
 import com.streamhub.app.ui.screens.player.StreamRestoredPill
+import com.streamhub.app.ui.screens.player.PlayerStatusOverlayCapsule
+import com.streamhub.app.ui.screens.player.PlayerCornerStatusHud
+import com.streamhub.app.ui.screens.player.ContentWarningBanner
 import com.streamhub.app.ui.screens.player.controls.AmbientDiscoIcon
 import com.streamhub.app.ui.screens.player.controls.BrightnessSliderCard
 import com.streamhub.app.ui.screens.player.controls.CenterPlayPauseRippleOverlay
@@ -344,8 +348,13 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(mediaItem.id, initialEpisodeIndex) {
+    val currentEpisodeUrl = mediaItem.episodes.getOrNull(initialEpisodeIndex)?.let { it.streamUrl.ifBlank { it.mirrorStreamUrl } } ?: ""
+    LaunchedEffect(mediaItem.id, initialEpisodeIndex, currentEpisodeUrl) {
         viewModel.initializePlayer(context, mediaItem, initialEpisodeIndex)
+    }
+
+    LaunchedEffect(mediaItem.episodes) {
+        viewModel.updateMediaItem(mediaItem)
     }
 
     // Keep screen on when playing or when keepScreenOnWhenPaused is enabled (matching mpvEx)
@@ -414,18 +423,30 @@ fun PlayerScreen(
     var audioDelayMs by remember(playerSettings.defaultAudioDelayMs) { mutableLongStateOf(playerSettings.defaultAudioDelayMs.toLong()) }
 
     var showBufferingHud by remember { mutableStateOf(false) }
-    LaunchedEffect(uiState.isBuffering, uiState.isFirstFrameRendered, uiState.isStreamPrecached) {
+    LaunchedEffect(
+        uiState.isBuffering,
+        uiState.isFirstFrameRendered,
+        uiState.isStreamPrecached,
+        uiState.isResumedPlayback,
+        uiState.isSeeking,
+        playbackProgress.bufferHealthSeconds
+    ) {
         if (uiState.isBuffering && !uiState.isFirstFrameRendered) {
             // Debounce initial episode startup/transition:
-            // If stream head is already pre-cached on disk, grant 3,500ms grace window for decoders.
-            // If not pre-cached, grant a smooth 1,200ms grace window for remote server handshake and container demuxing,
+            // If stream is pre-cached on disk or resuming from a saved position,
+            // grant a smooth 3,500ms grace window for container demuxing and hardware video decoders.
+            // If fresh uncached cold start, grant 1,500ms for network socket handshake,
             // completely eliminating the jarring flash of "Buffer: 0s" spinner.
-            val startupGraceMs = if (uiState.isStreamPrecached) 3500L else 1200L
+            val startupGraceMs = if (uiState.isStreamPrecached || uiState.isResumedPlayback) 3500L else 1500L
             delay(startupGraceMs)
             showBufferingHud = true
         } else if (uiState.isBuffering) {
-            // Mid-stream buffering stall: 350ms debounce
-            delay(350L)
+            // Mid-stream buffering stall:
+            // Routine MediaCodec keyframe flushes during seeks or scrubbing take 300-600ms.
+            // If seeking or if forward buffer is already positive, grant 1,200ms grace window
+            // to prevent false-positive spinner flicker. Genuine network stalls trigger in 500ms.
+            val midStreamGraceMs = if (uiState.isSeeking || playbackProgress.bufferHealthSeconds > 0L) 1200L else 500L
+            delay(midStreamGraceMs)
             showBufferingHud = true
         } else {
             showBufferingHud = false
@@ -495,6 +516,31 @@ fun PlayerScreen(
     var showAspectToast by remember { mutableStateOf(false) }
     var aspectToastText by remember { mutableStateOf("") }
     var aspectToastJob by remember { mutableStateOf<Job?>(null) }
+
+    // Content Warning / Parental Guidance Banner
+    var showContentWarning by remember { mutableStateOf(false) }
+
+    LaunchedEffect(uiState.isFirstFrameRendered, playerSettings.contentWarningEnabled, mediaItem.id, uiState.currentEpisodeIndex) {
+        if (uiState.isFirstFrameRendered && playerSettings.contentWarningEnabled) {
+            val hasRating = mediaItem.maturityRating.isNotBlank()
+            val hasMatureGenre = mediaItem.genres.any { g ->
+                g.contains("Horror", ignoreCase = true) ||
+                g.contains("Thriller", ignoreCase = true) ||
+                g.contains("Crime", ignoreCase = true) ||
+                g.contains("Action", ignoreCase = true) ||
+                g.contains("Ecchi", ignoreCase = true) ||
+                g.contains("Psychological", ignoreCase = true) ||
+                g.contains("Mystery", ignoreCase = true)
+            }
+            if (hasRating || hasMatureGenre) {
+                showContentWarning = true
+                delay(5000L)
+                showContentWarning = false
+            }
+        } else {
+            showContentWarning = false
+        }
+    }
 
     // Gesture Scrub / Hold States
     var isScrubbing by remember { mutableStateOf(false) }
@@ -1584,6 +1630,27 @@ fun PlayerScreen(
                 .padding(top = 18.dp)
         )
 
+        // Content Warning / Parental Guidance Banner (Nuvio Signature Style)
+        ContentWarningBanner(
+            visible = showContentWarning && !uiState.isControlsVisible && playerSettings.contentWarningEnabled,
+            maturityRating = mediaItem.maturityRating,
+            genres = mediaItem.genres,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(start = 20.dp, top = 8.dp)
+        )
+
+        // Player Corner Status HUD (XPlayer style: countdown, battery, clock)
+        if (playerSettings.playerStatusOverlayEnabled) {
+            PlayerCornerStatusHud(
+                visible = !uiState.isControlsVisible && !uiState.isLocked && !isPipMode,
+                currentPositionMs = playbackProgress.currentPositionMs,
+                durationMs = playbackProgress.durationMs,
+                suppressLeftHud = showContentWarning && playerSettings.contentWarningEnabled,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
         if (uiState.streamRestoredToast) {
             LaunchedEffect(Unit) {
                 kotlinx.coroutines.delay(2500L)
@@ -1600,7 +1667,7 @@ fun PlayerScreen(
                 onBack = { onBackClick() },
                 modifier = Modifier.align(Alignment.Center)
             )
-        } else if (showBufferingHud && !uiState.isReconnecting) {
+        } else if (showBufferingHud && !uiState.isReconnecting && !isScrubbing) {
             BufferingHud(
                 visible = true,
                 networkSpeedKbps = playbackProgress.networkSpeedKbps,

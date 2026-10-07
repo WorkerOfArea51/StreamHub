@@ -72,7 +72,7 @@ class FirebaseRepository private constructor() {
                 "maturityRating" to item.maturityRating,
                 "studio" to item.studio,
                 "trailerId" to item.trailerId,
-                "malId" to item.malId,
+                "anilistId" to item.anilistId,
                 "tmdbId" to item.tmdbId,
                 "synonyms" to item.synonyms,
                 "totalEpisodes" to item.totalEpisodes,
@@ -101,6 +101,14 @@ class FirebaseRepository private constructor() {
                 "relatedMediaIds" to item.relatedMediaIds,
                 "createdAt" to item.createdAt,
                 "updatedAt" to item.updatedAt,
+                "director" to item.director,
+                "writers" to item.writers,
+                "castMembers" to item.castMembers.map { cm ->
+                    mapOf("name" to cm.name, "character" to cm.character, "profileUrl" to cm.profileUrl)
+                },
+                "trailers" to item.trailers.map { tr ->
+                    mapOf("id" to tr.id, "title" to tr.title, "type" to tr.type, "isOfficial" to tr.isOfficial)
+                },
                 "mediaInfo" to mapOf(
                     "resolution" to item.mediaInfo.resolution,
                     "videoCodec" to item.mediaInfo.videoCodec,
@@ -273,11 +281,30 @@ class FirebaseRepository private constructor() {
                             )
                         }.distinctBy { it.id }
 
-                        _mediaCatalog.value = normalized
-                        _catalogState.value = CatalogState.Ready
-                        Log.d(TAG, "✅ Synced catalog via Bundles! ${snapshot.size()} bundle docs read, total shows = ${normalized.size}")
+                        // FIX: Timestamp merge protection — never allow a stale bundle snapshot to
+                        // overwrite an item that was freshly saved locally with a newer updatedAt!
+                        val currentCatalog = _mediaCatalog.value
+                        val currentById = currentCatalog.associateBy { it.id }
 
-                        triggerNotificationAlerts(normalized)
+                        val merged = normalized.map { incomingItem ->
+                            val localItem = currentById[incomingItem.id]
+                            if (localItem != null && localItem.updatedAt > incomingItem.updatedAt) {
+                                Log.d(TAG, "Preserving newer local show state for ${localItem.id} (local=${localItem.updatedAt} > incoming=${incomingItem.updatedAt})")
+                                localItem
+                            } else {
+                                incomingItem
+                            }
+                        }
+
+                        val incomingIds = normalized.map { it.id }.toSet()
+                        val pendingLocalItems = currentCatalog.filter { it.id !in incomingIds && it.updatedAt > 0L }
+                        val finalCatalog = (merged + pendingLocalItems).distinctBy { it.id }
+
+                        _mediaCatalog.value = finalCatalog
+                        _catalogState.value = CatalogState.Ready
+                        Log.d(TAG, "✅ Synced catalog via Bundles! ${snapshot.size()} bundle docs read, total shows = ${finalCatalog.size}")
+
+                        triggerNotificationAlerts(finalCatalog)
                     } else {
                         if (!_isUsingBundles.value && rawCollectionListeners.isEmpty()) {
                             attachRawCollectionListeners(db)
@@ -378,13 +405,27 @@ class FirebaseRepository private constructor() {
 
                     collectionMap[col] = items
 
-                    // Merge all collections together, deduplicating by ID
-                    val merged = collectionMap.values.flatten().distinctBy { it.id }
-                    _mediaCatalog.value = merged
-                    _catalogState.value = CatalogState.Ready
-                    Log.d(TAG, "Firestore synced raw collection '$col' (${items.size} items), total merged = ${merged.size}")
+                    // Merge all collections together, deduplicating by ID with timestamp protection
+                    val currentCatalog = _mediaCatalog.value
+                    val currentById = currentCatalog.associateBy { it.id }
+                    val allRaw = collectionMap.values.flatten().distinctBy { it.id }
+                    val merged = allRaw.map { incomingItem ->
+                        val localItem = currentById[incomingItem.id]
+                        if (localItem != null && localItem.updatedAt > incomingItem.updatedAt) {
+                            localItem
+                        } else {
+                            incomingItem
+                        }
+                    }
+                    val incomingIds = allRaw.map { it.id }.toSet()
+                    val pendingLocal = currentCatalog.filter { it.id !in incomingIds && it.updatedAt > 0L }
+                    val finalCatalog = (merged + pendingLocal).distinctBy { it.id }
 
-                    triggerNotificationAlerts(merged)
+                    _mediaCatalog.value = finalCatalog
+                    _catalogState.value = CatalogState.Ready
+                    Log.d(TAG, "Firestore synced raw collection '$col' (${items.size} items), total merged = ${finalCatalog.size}")
+
+                    triggerNotificationAlerts(finalCatalog)
                 }
                 rawCollectionListeners.add(reg)
             }
@@ -432,7 +473,7 @@ class FirebaseRepository private constructor() {
             val maturityRating = map["maturityRating"] as? String ?: ""
             val studio = map["studio"] as? String ?: ""
             val trailerId = map["trailerId"] as? String ?: ""
-            val malId = map["malId"] as? String ?: ""
+            val anilistId = (map["anilistId"] as? String)?.takeIf { it.isNotBlank() } ?: (map["malId"] as? String) ?: ""
             val tmdbId = map["tmdbId"] as? String ?: ""
             val synonyms = map["synonyms"] as? String ?: ""
             val totalEpisodes = map["totalEpisodes"] as? String ?: ""
@@ -492,6 +533,26 @@ class FirebaseRepository private constructor() {
                 )
             } ?: emptyList()
 
+            val director = map["director"] as? String ?: ""
+            val writers = map["writers"] as? String ?: ""
+            val castMembers = (map["castMembers"] as? List<*>)?.mapNotNull { cmObj ->
+                val cmMap = cmObj as? Map<*, *> ?: return@mapNotNull null
+                com.streamhub.app.data.models.CastMember(
+                    name = cmMap["name"] as? String ?: "",
+                    character = cmMap["character"] as? String ?: "",
+                    profileUrl = cmMap["profileUrl"] as? String ?: ""
+                )
+            } ?: emptyList()
+            val trailers = (map["trailers"] as? List<*>)?.mapNotNull { trObj ->
+                val trMap = trObj as? Map<*, *> ?: return@mapNotNull null
+                com.streamhub.app.data.models.MediaTrailer(
+                    id = trMap["id"] as? String ?: "",
+                    title = trMap["title"] as? String ?: "",
+                    type = trMap["type"] as? String ?: "Trailer",
+                    isOfficial = trMap["isOfficial"] as? Boolean ?: false
+                )
+            } ?: emptyList()
+
             MediaItem(
                 id = id,
                 title = title,
@@ -503,7 +564,7 @@ class FirebaseRepository private constructor() {
                 maturityRating = maturityRating,
                 studio = studio,
                 trailerId = trailerId,
-                malId = malId,
+                anilistId = anilistId,
                 tmdbId = tmdbId,
                 synonyms = synonyms,
                 totalEpisodes = totalEpisodes,
@@ -530,6 +591,10 @@ class FirebaseRepository private constructor() {
                 relatedMediaIds = relatedMediaIds,
                 createdAt = createdAt,
                 updatedAt = updatedAt,
+                director = director,
+                writers = writers,
+                castMembers = castMembers,
+                trailers = trailers,
                 mediaInfo = mediaInfo,
                 episodes = episodes
             )
@@ -544,6 +609,12 @@ class FirebaseRepository private constructor() {
      * Returns Result.success(Unit) or Result.failure(Exception).
      */
     suspend fun saveMediaItemSuspending(item: MediaItem): Result<Unit> = suspendCancellableCoroutine { cont ->
+        if (!com.streamhub.app.data.AdminManager.isAdminMode.value) {
+            Log.e(TAG, "SECURITY VIOLATION: Unauthorized attempt to save media item ${item.id} without Admin/Owner verification!")
+            _adminOperationState.value = AdminOperationState.Error("Unauthorized: Admin access required")
+            if (cont.isActive) cont.resume(Result.failure(SecurityException("Unauthorized: Creator Studio Admin mode required")))
+            return@suspendCancellableCoroutine
+        }
         _adminOperationState.value = AdminOperationState.Loading
 
         val finalCreatedAt = if (item.createdAt > 0L) item.createdAt else System.currentTimeMillis()
@@ -625,10 +696,103 @@ class FirebaseRepository private constructor() {
     }
 
     /**
+     * High-speed atomic batch save for bulk migration / auto-repair operations.
+     * Writes items in Firestore chunks of 250, optimistically updates UI, and triggers a single bundle sync.
+     */
+    suspend fun saveMediaItemsBatchSuspending(items: List<MediaItem>): Result<Int> = withContext(Dispatchers.IO) {
+        if (items.isEmpty()) return@withContext Result.success(0)
+        if (!com.streamhub.app.data.AdminManager.isAdminMode.value) {
+            Log.e(TAG, "SECURITY VIOLATION: Unauthorized attempt to batch save media items without Admin/Owner verification!")
+            _adminOperationState.value = AdminOperationState.Error("Unauthorized: Admin access required")
+            return@withContext Result.failure(SecurityException("Unauthorized: Creator Studio Admin mode required"))
+        }
+        _adminOperationState.value = AdminOperationState.Loading
+        val db = firestore
+        if (db == null) {
+            _adminOperationState.value = AdminOperationState.Error("Firebase database not initialized")
+            return@withContext Result.failure(IllegalStateException("Firebase database not initialized"))
+        }
+
+        val now = System.currentTimeMillis()
+        val preparedItems = items.map { item ->
+            val finalCreatedAt = if (item.createdAt > 0L) item.createdAt else now
+            val migratedEpisodes = item.episodes.map { ep ->
+                ep.copy(
+                    streamUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.streamUrl),
+                    mirrorStreamUrl = TelegramLinkResolver.sanitizePlayableUrl(
+                        if (ep.mirrorStreamUrl.isNotBlank()) ep.mirrorStreamUrl else ep.streamUrl
+                    )
+                )
+            }
+            val normalizedEpisodes = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(migratedEpisodes)
+            val finalTrendingAt = if (item.isTrending) {
+                if (item.trendingAt > 0L) item.trendingAt else now
+            } else 0L
+            item.copy(
+                createdAt = finalCreatedAt,
+                updatedAt = now,
+                trendingAt = finalTrendingAt,
+                episodes = normalizedEpisodes
+            )
+        }
+
+        // Optimistic UI update
+        _mediaCatalog.update { current ->
+            val map = current.associateBy { it.id }.toMutableMap()
+            for (p in preparedItems) {
+                map[p.id] = p
+            }
+            map.values.toList()
+        }
+        _catalogState.value = CatalogState.Ready
+
+        var savedCount = 0
+        val chunks = preparedItems.chunked(250) // Firestore max 500 per batch
+        for (chunk in chunks) {
+            val batch = db.batch()
+            for (item in chunk) {
+                val targetCol = getCollectionForCategory(item.category, item.type)
+                val targetRef = db.collection(targetCol).document(item.id)
+                batch.set(targetRef, mediaItemToMap(item))
+            }
+            try {
+                Tasks.await(batch.commit())
+                savedCount += chunk.size
+            } catch (e: Exception) {
+                Log.e(TAG, "Batch write chunk failed", e)
+                _adminOperationState.value = AdminOperationState.Error(e.message ?: "Batch write failed")
+                return@withContext Result.failure(e)
+            }
+        }
+
+        _adminOperationState.value = AdminOperationState.Success()
+
+        // Single background category bundle sync at the end
+        val affectedCategories = preparedItems.map { it.category to it.type }.distinct()
+        for ((cat, typ) in affectedCategories) {
+            runCatching {
+                com.streamhub.app.data.importer.CatalogBundleManager.syncCategoryBundles(
+                    db = db,
+                    category = cat,
+                    type = typ,
+                    fullCatalog = _mediaCatalog.value
+                )
+            }.onFailure { Log.w(TAG, "Batch category bundle sync warning: ${it.message}") }
+        }
+
+        Result.success(savedCount)
+    }
+
+    /**
      * Save or update a media item in its respective Firestore collection (movies, animes, web_series)
      * and dual-write to legacy media_content for complete security rule & backward compatibility.
      */
     fun saveMediaItem(item: MediaItem) {
+        if (!com.streamhub.app.data.AdminManager.isAdminMode.value) {
+            Log.e(TAG, "SECURITY VIOLATION: Unauthorized attempt to save media item ${item.id} without Admin/Owner verification!")
+            _adminOperationState.value = AdminOperationState.Error("Unauthorized: Admin access required")
+            return
+        }
         _adminOperationState.value = AdminOperationState.Loading
 
         val finalCreatedAt = if (item.createdAt > 0L) item.createdAt else System.currentTimeMillis()
@@ -710,6 +874,11 @@ class FirebaseRepository private constructor() {
      * Delete a media item from all collections using an atomic batch.
      */
     fun deleteMediaItem(itemId: String) {
+        if (!com.streamhub.app.data.AdminManager.isAdminMode.value) {
+            Log.e(TAG, "SECURITY VIOLATION: Unauthorized attempt to delete media item $itemId without Admin/Owner verification!")
+            _adminOperationState.value = AdminOperationState.Error("Unauthorized: Admin access required")
+            return
+        }
         _adminOperationState.value = AdminOperationState.Loading
         val targetItem = _mediaCatalog.value.firstOrNull { it.id == itemId }
         val category = targetItem?.category ?: ""

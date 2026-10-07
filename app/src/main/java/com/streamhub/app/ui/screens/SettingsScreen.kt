@@ -30,6 +30,7 @@ import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -73,20 +74,19 @@ private data class SearchableItem(
 
 /**
  * mpvEx-parity Master Settings & Preferences Hub.
- * Organizes preferences into structured, elegant grouped cards matching mpvEx 1:1:
- * - UI & Appearance
+ * Organizes preferences into structured, elegant grouped cards:
+ * - UI & Appearance (Theme, Seekbars & Layouts)
+ * - Notifications (Episode release alerts & test delivery)
  * - Playback & Controls (Player engine + Touch gestures)
  * - Media & Audio (Volume normalization & loudness boost)
  * - Downloads & Storage (Paths & directories)
  * - Advanced & Backup (JSON backup/restore, Speedometer & Updates)
- *
- * Strict anti-duplication: Storage Management and About StreamHub are strictly
- * on the Profile screen and never duplicated here.
  */
 @Composable
 fun SettingsScreen(
     onBackClick: () -> Unit,
     onNavigateToAppearance: () -> Unit = {},
+    onNavigateToNotifications: () -> Unit = {},
     onNavigateToVideoSettings: () -> Unit = {},
     onNavigateToGestures: () -> Unit = {},
     onNavigateToAudio: () -> Unit = {},
@@ -99,6 +99,7 @@ fun SettingsScreen(
 
     val allSearchableItems = remember(
         onNavigateToAppearance,
+        onNavigateToNotifications,
         onNavigateToVideoSettings,
         onNavigateToGestures,
         onNavigateToAudio,
@@ -109,10 +110,13 @@ fun SettingsScreen(
             SearchableItem("App Cinema Theme Accent", "Choose primary dynamic accent color", "UI & Appearance", Icons.Outlined.Palette, onNavigateToAppearance),
             SearchableItem("Seekbar Style (Standard, Wavy, Thick)", "Select sinusoidal wavy, thick pill, or standard seekbar", "UI & Appearance", Icons.Outlined.Palette, onNavigateToAppearance),
             SearchableItem("Home Screen Layout", "Toggle featured hero carousel, trending, continue watching", "UI & Appearance", Icons.Outlined.Palette, onNavigateToAppearance),
+            SearchableItem("Episode Release Alerts & Notifications", "Configure release alerts and test system notification delivery", "Notifications", Icons.Outlined.NotificationsActive, onNavigateToNotifications),
             SearchableItem("Remember Display Brightness", "Restore last used brightness level when opening video", "Playback & Controls", Icons.Outlined.PlayCircle, onNavigateToVideoSettings),
             SearchableItem("Auto Picture-in-Picture (PiP)", "Automatically enter floating PiP on Home gesture", "Playback & Controls", Icons.Outlined.PlayCircle, onNavigateToVideoSettings),
             SearchableItem("Keep Screen On When Paused", "Prevent display sleep timeout when video is paused", "Playback & Controls", Icons.Outlined.PlayCircle, onNavigateToVideoSettings),
             SearchableItem("Auto-Play Next Episode", "Smoothly start next episode upon current video completion", "Playback & Controls", Icons.Outlined.PlayCircle, onNavigateToVideoSettings),
+            SearchableItem("Player Status Overlay (Time, Battery, Network)", "Show live clock, battery gauge, and network icon in player", "Playback & Controls", Icons.Outlined.PlayCircle, onNavigateToVideoSettings),
+            SearchableItem("Content Warnings & Parental Guidance", "Show parental guidance rating and mature descriptor overlay on start", "Playback & Controls", Icons.Outlined.PlayCircle, onNavigateToVideoSettings),
             SearchableItem("Skip Intro Duration", "Set seconds to fast-forward on Skip Intro tap (60s, 85s, 90s)", "Playback & Controls", Icons.Outlined.PlayCircle, onNavigateToVideoSettings),
             SearchableItem("Stream Pre-Warming & Binge Caching", "Pre-buffer container headers and 25 MB next episode", "Playback & Controls", Icons.Outlined.PlayCircle, onNavigateToVideoSettings),
             SearchableItem("Cinema Ambient Lighting", "Atmospheric diffused back-glow with customizable mood presets", "Playback & Controls", Icons.Outlined.PlayCircle, onNavigateToVideoSettings),
@@ -302,11 +306,21 @@ fun SettingsScreen(
                     PreferenceSectionHeader(title = "UI & APPEARANCE", accentColor = currentAccent.color)
                     PreferenceCard {
                         PreferenceItem(
-                            title = "Appearance & UI",
-                            subtitle = "Dynamic cinema theme colors, seekbar styles & home feed layout",
+                            title = "Theme & Layout",
+                            subtitle = "Nuvio-grade classic & enhanced themes, AMOLED black & layout tuning",
                             icon = Icons.Outlined.Palette,
                             iconTint = currentAccent.color,
                             onClick = onNavigateToAppearance
+                        )
+
+                        PreferenceDivider()
+
+                        PreferenceItem(
+                            title = "Notifications & Alerts",
+                            subtitle = "Episode release alerts, background scheduling & test notification",
+                            icon = Icons.Outlined.NotificationsActive,
+                            iconTint = currentAccent.color,
+                            onClick = onNavigateToNotifications
                         )
                     }
                 }

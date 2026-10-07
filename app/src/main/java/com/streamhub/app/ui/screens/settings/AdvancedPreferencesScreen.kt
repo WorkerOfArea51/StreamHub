@@ -253,11 +253,9 @@ fun AdvancedPreferencesScreen(
 
             // Section 2: Network & Diagnostics
             item {
-                PreferenceSectionHeader(title = "NETWORK SPEED & NOTIFICATIONS", accentColor = currentAccent.color)
+                PreferenceSectionHeader(title = "STREAM CDN SPEEDOMETER", accentColor = currentAccent.color)
                 PreferenceCard {
                     SpeedTestPreferenceItem(currentAccent = currentAccent)
-                    PreferenceDivider()
-                    NotificationAlertPreferenceItem(currentAccent = currentAccent)
                 }
             }
 

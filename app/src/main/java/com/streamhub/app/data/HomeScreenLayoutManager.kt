@@ -65,6 +65,17 @@ enum class CatalogSortOrder(val displayName: String, val shortName: String) {
     }
 }
 
+enum class PosterSize(val displayName: String, val cardWidthDp: Int, val landscapeWidthDp: Int) {
+    COMPACT("Compact", 105, 145),
+    REGULAR("Regular", 120, 168),
+    LARGE("Large", 140, 195)
+}
+
+enum class PosterLayout(val displayName: String) {
+    PORTRAIT("Portrait"),
+    LANDSCAPE("Landscape")
+}
+
 data class HomeLayoutConfig(
     val showHeroCarousel: Boolean = true,
     val showContinueWatching: Boolean = true,
@@ -76,7 +87,11 @@ data class HomeLayoutConfig(
     val showMicroGenreShelves: Boolean = true,
     val showAnimeSection: Boolean = true,
     val showMoviesSection: Boolean = true,
-    val catalogSortOrder: CatalogSortOrder = CatalogSortOrder.NEWEST_FIRST
+    val catalogSortOrder: CatalogSortOrder = CatalogSortOrder.NEWEST_FIRST,
+    val catalogGridColumns: Int = 3,
+    val posterSize: PosterSize = PosterSize.REGULAR,
+    val posterLayout: PosterLayout = PosterLayout.PORTRAIT,
+    val homeShelfRows: Int = 1
 )
 
 /**
@@ -99,6 +114,10 @@ object HomeScreenLayoutManager {
     private const val KEY_SHOW_MOVIES = "show_movies"
     private const val KEY_SORT_ORDER = "catalog_sort_order"
     private const val KEY_SELECTED_CATEGORY = "selected_category_filter"
+    private const val KEY_CATALOG_GRID_COLUMNS = "catalog_grid_columns"
+    private const val KEY_POSTER_SIZE = "poster_size"
+    private const val KEY_POSTER_LAYOUT = "poster_layout"
+    private const val KEY_HOME_SHELF_ROWS = "home_shelf_rows"
 
     private var prefs: SharedPreferences? = null
 
@@ -131,7 +150,18 @@ object HomeScreenLayoutManager {
                 showMicroGenreShelves = p.getBoolean(KEY_SHOW_MICRO_GENRES, true),
                 showAnimeSection = p.getBoolean(KEY_SHOW_ANIME, true),
                 showMoviesSection = p.getBoolean(KEY_SHOW_MOVIES, true),
-                catalogSortOrder = sortOrder
+                catalogSortOrder = sortOrder,
+                catalogGridColumns = p.getInt(KEY_CATALOG_GRID_COLUMNS, 3).coerceIn(2, 4),
+                posterSize = when (p.getString(KEY_POSTER_SIZE, "REGULAR")?.uppercase()) {
+                    "COMPACT" -> PosterSize.COMPACT
+                    "LARGE" -> PosterSize.LARGE
+                    else -> PosterSize.REGULAR
+                },
+                posterLayout = when (p.getString(KEY_POSTER_LAYOUT, "PORTRAIT")?.uppercase()) {
+                    "LANDSCAPE" -> PosterLayout.LANDSCAPE
+                    else -> PosterLayout.PORTRAIT
+                },
+                homeShelfRows = p.getInt(KEY_HOME_SHELF_ROWS, 1).coerceIn(1, 2)
             )
             _selectedCategoryFilter.value = p.getString(KEY_SELECTED_CATEGORY, "ALL") ?: "ALL"
         } catch (e: Exception) {
@@ -161,6 +191,10 @@ object HomeScreenLayoutManager {
             putBoolean(KEY_SHOW_ANIME, newConfig.showAnimeSection)
             putBoolean(KEY_SHOW_MOVIES, newConfig.showMoviesSection)
             putString(KEY_SORT_ORDER, newConfig.catalogSortOrder.name)
+            putInt(KEY_CATALOG_GRID_COLUMNS, newConfig.catalogGridColumns)
+            putString(KEY_POSTER_SIZE, newConfig.posterSize.name)
+            putString(KEY_POSTER_LAYOUT, newConfig.posterLayout.name)
+            putInt(KEY_HOME_SHELF_ROWS, newConfig.homeShelfRows)
             apply()
         }
     }
@@ -181,4 +215,8 @@ object HomeScreenLayoutManager {
     fun updateRecentlyAdded(enabled: Boolean) = updateConfig(_layoutConfig.value.copy(showRecentlyAdded = enabled))
     fun updateBecauseYouWatched(enabled: Boolean) = updateConfig(_layoutConfig.value.copy(showBecauseYouWatched = enabled))
     fun updateSortOrder(order: CatalogSortOrder) = setSortOrder(order)
+    fun updateCatalogGridColumns(columns: Int) = updateConfig(_layoutConfig.value.copy(catalogGridColumns = columns.coerceIn(2, 4)))
+    fun updatePosterSize(size: PosterSize) = updateConfig(_layoutConfig.value.copy(posterSize = size))
+    fun updatePosterLayout(layout: PosterLayout) = updateConfig(_layoutConfig.value.copy(posterLayout = layout))
+    fun updateHomeShelfRows(rows: Int) = updateConfig(_layoutConfig.value.copy(homeShelfRows = rows.coerceIn(1, 2)))
 }

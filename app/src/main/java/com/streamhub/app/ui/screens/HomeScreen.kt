@@ -1100,6 +1100,14 @@ fun MediaSectionRow(
     val rowState = rememberLazyListState()
     val isParentScrolling = LocalIsScrollInProgress.current
     val isScrolling = isParentScrolling || rowState.isScrollInProgress
+    val layoutConfig by com.streamhub.app.data.HomeScreenLayoutManager.layoutConfig.collectAsState()
+
+    val isLandscape = layoutConfig.posterLayout == com.streamhub.app.data.PosterLayout.LANDSCAPE
+    val cardWidth = if (isLandscape) {
+        layoutConfig.posterSize.landscapeWidthDp.dp
+    } else {
+        layoutConfig.posterSize.cardWidthDp.dp
+    }
 
     Column(
         modifier = Modifier
@@ -1122,13 +1130,29 @@ fun MediaSectionRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(horizontal = 16.dp)
             ) {
-                items(items, key = { it.id }) { item ->
-                    MediaCard(
-                        item = item,
-                        onClick = { onMediaClick(item) },
-                        onLongClick = onMediaLongClick?.let { { it(item) } },
-                        modifier = Modifier.width(115.dp)
-                    )
+                if (layoutConfig.homeShelfRows == 2) {
+                    val chunked = items.chunked(2)
+                    items(chunked, key = { it.first().id }) { chunk ->
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            chunk.forEach { item ->
+                                MediaCard(
+                                    item = item,
+                                    onClick = { onMediaClick(item) },
+                                    onLongClick = onMediaLongClick?.let { { it(item) } },
+                                    modifier = Modifier.width(cardWidth)
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(items, key = { it.id }) { item ->
+                        MediaCard(
+                            item = item,
+                            onClick = { onMediaClick(item) },
+                            onLongClick = onMediaLongClick?.let { { it(item) } },
+                            modifier = Modifier.width(cardWidth)
+                        )
+                    }
                 }
             }
         }

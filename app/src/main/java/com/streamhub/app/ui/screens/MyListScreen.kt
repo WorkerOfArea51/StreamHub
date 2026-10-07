@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -768,9 +769,10 @@ fun MyListScreen(
                     .weight(1f)
             )
         } else {
+            val layoutConfig by com.streamhub.app.data.HomeScreenLayoutManager.layoutConfig.collectAsState()
             if (isGridView) {
                 LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 135.dp),
+                    columns = GridCells.Fixed(layoutConfig.catalogGridColumns),
                     contentPadding = PaddingValues(bottom = 120.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -1144,6 +1146,11 @@ fun MyListGridCard(
     onManageCollection: () -> Unit,
     onOptionsClick: () -> Unit
 ) {
+    val layoutConfig by com.streamhub.app.data.HomeScreenLayoutManager.layoutConfig.collectAsState()
+    val isLandscape = layoutConfig.posterLayout == com.streamhub.app.data.PosterLayout.LANDSCAPE
+    val cardAspectRatio = if (isLandscape) 1.777f else 0.7f
+    val imageModel = if (isLandscape && item.bannerUrl.isNotBlank()) item.bannerUrl else item.posterUrl
+
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -1159,10 +1166,10 @@ fun MyListGridCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(185.dp)
+                    .aspectRatio(cardAspectRatio)
             ) {
                 AsyncImage(
-                    model = item.posterUrl,
+                    model = imageModel,
                     contentDescription = item.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()

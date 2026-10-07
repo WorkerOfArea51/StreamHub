@@ -53,6 +53,8 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.foundation.layout.fillMaxHeight
 import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.ui.theme.AccentOrange
+import com.streamhub.app.data.HomeScreenLayoutManager
+import com.streamhub.app.data.PosterLayout
 import kotlinx.coroutines.delay
 
 /**
@@ -66,9 +68,16 @@ fun MediaCard(
     item: MediaItem,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
-    modifier: Modifier = Modifier.width(135.dp),
+    modifier: Modifier = Modifier,
     isScrolling: Boolean = LocalIsScrollInProgress.current
 ) {
+    val layoutConfig by HomeScreenLayoutManager.layoutConfig.collectAsState()
+    val isLandscape = layoutConfig.posterLayout == PosterLayout.LANDSCAPE
+    val cardAspectRatio = if (isLandscape) 1.777f else 0.7f
+    val imageUrl = if (isLandscape && item.bannerUrl.isNotBlank()) item.bannerUrl else item.posterUrl
+    val defaultCardWidth = if (isLandscape) layoutConfig.posterSize.landscapeWidthDp.dp else layoutConfig.posterSize.cardWidthDp.dp
+    val effectiveModifier = if (modifier == Modifier) Modifier.width(defaultCardWidth) else modifier
+
     var canMarquee by remember { mutableStateOf(false) }
 
     LaunchedEffect(isScrolling) {
@@ -101,7 +110,7 @@ fun MediaCard(
     val haptic = LocalHapticFeedback.current
 
     Column(
-        modifier = modifier
+        modifier = effectiveModifier
             .bouncyCombinedClickable(
                 onLongClick = if (onLongClick != null) {
                     {
@@ -115,13 +124,13 @@ fun MediaCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(0.7f)
+                .aspectRatio(cardAspectRatio)
                 .clip(RoundedCornerShape(12.dp))
                 .background(SurfaceDark)
                 .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
         ) {
             AsyncImage(
-                model = item.posterUrl,
+                model = imageUrl,
                 contentDescription = item.title,
                 contentScale = ContentScale.Crop,
                 placeholder = androidx.compose.ui.graphics.painter.ColorPainter(Color(0xFF2A2A2A)),

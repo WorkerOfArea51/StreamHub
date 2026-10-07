@@ -401,4 +401,57 @@ object NotificationAlertManager {
             Log.e(TAG, "Failed to send admin alert notification: ${e.message}", e)
         }
     }
+
+    /**
+     * Sends an immediate test notification to verify system notification channel and permissions.
+     */
+    fun sendTestNotification(context: Context): Boolean {
+        createNotificationChannels(context)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val permissionStatus = context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+            if (permissionStatus != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                Log.w(TAG, "POST_NOTIFICATIONS permission not granted — cannot send test notification")
+                return false
+            }
+        }
+
+        try {
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                9999,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val appIcon = NotificationIconHelper.getAppIconBitmap(context)
+            val builder = NotificationCompat.Builder(context, CHANNEL_EPISODE_ID)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setColor(0xFFE50914.toInt())
+                .apply {
+                    if (appIcon != null) setLargeIcon(appIcon)
+                }
+                .setContentTitle("🎉 Test Notification from StreamHub")
+                .setContentText("Notifications are active and working properly!")
+                .setStyle(
+                    NotificationCompat.BigTextStyle()
+                        .bigText("🎉 Notification Delivery Verified!\n\nStreamHub episode release alerts and notifications are properly configured and operational on your device.")
+                )
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            notificationManager?.notify(9999, builder.build())
+            Log.i(TAG, "Triggered test notification successfully")
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send test notification: ${e.message}", e)
+            return false
+        }
+    }
 }

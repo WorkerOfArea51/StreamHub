@@ -87,6 +87,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.streamhub.app.data.repository.CatalogState
 import com.streamhub.app.ui.components.AppErrorState
@@ -300,20 +301,34 @@ fun SearchScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     var searchQuery by rememberSaveable { mutableStateOf("") }
-    var debouncedQuery by remember { mutableStateOf("") }
+    var debouncedQuery by rememberSaveable { mutableStateOf(searchQuery) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
 
     LaunchedEffect(searchQuery) {
-        delay(300L)
-        debouncedQuery = searchQuery
+        if (searchQuery.isEmpty()) {
+            debouncedQuery = ""
+        } else if (debouncedQuery != searchQuery) {
+            delay(300L)
+            debouncedQuery = searchQuery
+        }
     }
 
     var selectedTypeFilter by rememberSaveable { mutableStateOf("ALL") }
-    var selectedGenres by remember { mutableStateOf(setOf<String>()) }
+    var selectedGenres by rememberSaveable(
+        stateSaver = Saver<Set<String>, ArrayList<String>>(
+            save = { ArrayList(it) },
+            restore = { it.toSet() }
+        )
+    ) { mutableStateOf(setOf<String>()) }
     var minRatingFilter by rememberSaveable { mutableStateOf(0.0) }
     var selectedYearFilter by rememberSaveable { mutableStateOf("ALL") }
-    var sortOption by remember { mutableStateOf(SortOption.LATEST) }
+    var sortOption by rememberSaveable(
+        stateSaver = Saver<SortOption, String>(
+            save = { it.name },
+            restore = { name -> SortOption.entries.find { it.name == name } ?: SortOption.LATEST }
+        )
+    ) { mutableStateOf(SortOption.LATEST) }
     var isSortMenuExpanded by remember { mutableStateOf(false) }
 
     var searchHoldLabel by remember { mutableStateOf<String?>(null) }
@@ -746,7 +761,10 @@ fun SearchScreen(
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = primaryColor) },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { searchQuery = "" }) {
+                    IconButton(onClick = {
+                        searchQuery = ""
+                        debouncedQuery = ""
+                    }) {
                         Icon(Icons.Default.Clear, contentDescription = "Clear", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -969,7 +987,7 @@ fun SearchScreen(
         }
 
         // ── Recent Searches (When not filtering/searching) ──
-        if (debouncedQuery.isEmpty() && searchHistory.isNotEmpty()) {
+        if (searchQuery.isEmpty() && debouncedQuery.isEmpty() && searchHistory.isNotEmpty()) {
             Spacer(modifier = Modifier.height(6.dp))
             Column(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
                 Row(
@@ -1036,7 +1054,7 @@ fun SearchScreen(
         }
 
         // ── Dynamic Category-Aware Trending Searches (When not searching) ──
-        if (debouncedQuery.isEmpty() && trendingSearches.isNotEmpty()) {
+        if (searchQuery.isEmpty() && debouncedQuery.isEmpty() && trendingSearches.isNotEmpty()) {
             Spacer(modifier = Modifier.height(4.dp))
             Column(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
                 Row(
@@ -1239,10 +1257,11 @@ fun SearchScreen(
             }
         } else {
             val gridState = rememberLazyGridState()
+            val layoutConfig by com.streamhub.app.data.HomeScreenLayoutManager.layoutConfig.collectAsState()
             CompositionLocalProvider(LocalIsScrollInProgress provides gridState.isScrollInProgress) {
                 LazyVerticalGrid(
                     state = gridState,
-                    columns = GridCells.Adaptive(minSize = 135.dp),
+                    columns = GridCells.Fixed(layoutConfig.catalogGridColumns),
                     contentPadding = PaddingValues(bottom = 120.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -1256,6 +1275,7 @@ fun SearchScreen(
                                 if (trimmed.length >= 2) {
                                     com.streamhub.app.data.SearchHistoryManager.addQuery(trimmed)
                                 }
+                                com.streamhub.app.data.api.MetadataFetchManager.prewarmExtendedDetails(item)
                                 onMediaClick(item)
                             },
                             onLongClick = {
