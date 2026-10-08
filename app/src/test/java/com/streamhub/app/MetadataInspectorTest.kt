@@ -29,9 +29,9 @@ class MetadataInspectorTest {
 
     @Test
     fun getMediaItemIssues_detectsAllMissingSpecs() {
-        val brokenItem = MediaItem(
-            id = "test_broken",
-            title = "Test Broken Title",
+        val brokenSeries = MediaItem(
+            id = "test_broken_series",
+            title = "Test Broken Series",
             type = "SERIES",
             category = "Series",
             genres = listOf("Series"), // Broken genre
@@ -48,21 +48,39 @@ class MetadataInspectorTest {
             totalEpisodes = ""         // Missing episode count
         )
 
-        val issues = getMediaItemIssues(brokenItem)
+        val seriesIssues = getMediaItemIssues(brokenSeries)
 
-        assertTrue(MetadataIssueType.GENRE in issues)
-        assertTrue(MetadataIssueType.TRAILER in issues)
-        assertTrue(MetadataIssueType.SYNOPSIS in issues)
-        assertTrue(MetadataIssueType.POSTER in issues)
-        assertTrue(MetadataIssueType.BACKDROP in issues)
-        assertTrue(MetadataIssueType.RATING in issues)
-        assertTrue(MetadataIssueType.CAST in issues)
-        assertTrue(MetadataIssueType.STUDIO in issues)
-        assertTrue(MetadataIssueType.MATURITY in issues)
-        assertTrue(MetadataIssueType.YEAR in issues)
-        assertTrue(MetadataIssueType.DURATION in issues)
-        assertTrue(MetadataIssueType.EPISODES in issues)
-        assertEquals(12, issues.size)
+        assertTrue(MetadataIssueType.GENRE in seriesIssues)
+        assertTrue(MetadataIssueType.TRAILER in seriesIssues)
+        assertTrue(MetadataIssueType.SYNOPSIS in seriesIssues)
+        assertTrue(MetadataIssueType.POSTER in seriesIssues)
+        assertTrue(MetadataIssueType.BACKDROP in seriesIssues)
+        assertTrue(MetadataIssueType.RATING in seriesIssues)
+        assertTrue(MetadataIssueType.CAST in seriesIssues)
+        assertTrue(MetadataIssueType.STUDIO in seriesIssues)
+        assertTrue(MetadataIssueType.MATURITY in seriesIssues)
+        assertTrue(MetadataIssueType.YEAR in seriesIssues)
+        assertTrue(MetadataIssueType.EPISODES in seriesIssues)
+        assertEquals(11, seriesIssues.size)
+
+        val brokenMovie = MediaItem(
+            id = "test_broken_movie",
+            title = "Test Broken Movie",
+            type = "MOVIE",
+            category = "Movie",
+            genres = listOf("Movie"),
+            trailerId = "",
+            description = "",
+            posterUrl = "",
+            bannerUrl = "",
+            rating = "",
+            castList = emptyList(),
+            studio = "",
+            releaseYear = "",
+            duration = ""
+        )
+        val movieIssues = getMediaItemIssues(brokenMovie)
+        assertTrue(MetadataIssueType.DURATION in movieIssues)
     }
 
     @Test

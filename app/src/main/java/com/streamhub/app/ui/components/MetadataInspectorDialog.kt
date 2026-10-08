@@ -107,7 +107,7 @@ fun getMediaItemIssues(item: MediaItem): List<MetadataIssueType> {
 
     // Anime specific specification checks
     if (isAnime) {
-        if (item.studio.isBlank() && item.producers.isBlank()) issues.add(MetadataIssueType.PRODUCERS)
+        if (item.producers.isBlank()) issues.add(MetadataIssueType.PRODUCERS)
         if (item.source.isBlank()) issues.add(MetadataIssueType.SOURCE)
         if (item.posterUrl.contains("tmdb.org", ignoreCase = true) || item.bannerUrl.contains("tmdb.org", ignoreCase = true) || item.tmdbId.isNotBlank()) {
             issues.add(MetadataIssueType.TMDB_ON_ANIME)
