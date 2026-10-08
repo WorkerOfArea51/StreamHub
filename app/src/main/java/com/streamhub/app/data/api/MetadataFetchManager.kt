@@ -1438,23 +1438,7 @@ object MetadataFetchManager {
                 put("query", ANILIST_MEDIA_QUERY)
                 put("variables", JSONObject().apply { put("id", directAniListId) })
             })
-            if (res != null) {
-                val mediaSeason = res.optJSONObject("title")?.let { tObj ->
-                    val en = tObj.optCleanString("english")
-                    val ro = tObj.optCleanString("romaji")
-                    val pref = tObj.optCleanString("userPreferred")
-                    val na = tObj.optCleanString("native")
-                    val resolved = en.ifBlank { ro.ifBlank { pref.ifBlank { na } } }
-                    extractTargetSeasonNumber(resolved, 1)
-                } ?: 1
-
-                // If direct ID matches targetSeason (or targetSeason is 1 and direct ID is Season 1), return it!
-                if (targetSeason <= 1 || mediaSeason == targetSeason) {
-                    return@withContext res
-                }
-                // Otherwise, the direct ID was a stale Season 1 ID from a legacy import, so fall through to search candidates!
-                Log.w(TAG, "Direct AniList ID $directAniListId was Season $mediaSeason, but target is Season $targetSeason. Searching for Season $targetSeason...")
-            }
+            if (res != null) return@withContext res
         }
 
         if (directMalId != null && directMalId > 0) {
@@ -1466,7 +1450,7 @@ object MetadataFetchManager {
         }
 
         for (cand in searchCandidates) {
-            if (cand.isBlank()) continue
+            if (cand.isBlank() || cand.startsWith("http", ignoreCase = true)) continue
             val mediaArray = executeAniListPageSearch(cand)
             if (mediaArray != null && mediaArray.length() > 0) {
                 val best = pickBestAniListMedia(mediaArray, targetQuery.ifBlank { cand }, targetSeason)
@@ -1854,9 +1838,20 @@ object MetadataFetchManager {
             .trim()
             .ifBlank { query.trim() }
 
-        val effectiveSeason = extractTargetSeasonNumber(cleanQuery, targetSeason)
+        val extractedIds = extractAniListId(cleanQuery)
+        val resolvedAniListId = directAniListId ?: extractedIds.first
+        val resolvedMalId = directMalId ?: extractedIds.second
 
-        val baseCleanQuery = cleanQuery
+        val urlSlugTitle = if (cleanQuery.contains("anilist.co/anime/")) {
+            cleanQuery.substringAfter("anilist.co/anime/").substringAfter("/").trimEnd('/').replace("-", " ")
+        } else if (cleanQuery.contains("myanimelist.net/anime/")) {
+            cleanQuery.substringAfter("myanimelist.net/anime/").substringAfter("/").trimEnd('/').replace("_", " ").replace("-", " ")
+        } else ""
+
+        val effectiveQuery = if (cleanQuery.startsWith("http", ignoreCase = true) && urlSlugTitle.isNotBlank()) urlSlugTitle else cleanQuery
+        val effectiveSeason = extractTargetSeasonNumber(effectiveQuery, targetSeason)
+
+        val baseCleanQuery = effectiveQuery
             .replace(Regex("(?i)(?:\\s*:\\s*|\\s*-\\s*|\\s+)\\b(?:season|s)\\s*\\d+.*$"), "")
             .replace(Regex("(?i)\\s*\\(\\s*(?:season|s)\\s*\\d+\\s*\\)"), "")
             .replace(Regex("(?i)\\s*\\b(?:2nd|3rd|4th|5th|1st)\\s+season\\b.*$"), "")
@@ -1866,7 +1861,7 @@ object MetadataFetchManager {
             .trim()
 
         val searchCandidates = mutableListOf<String>()
-        if (cleanQuery.isNotBlank()) searchCandidates.add(cleanQuery)
+        if (effectiveQuery.isNotBlank() && !effectiveQuery.startsWith("http", ignoreCase = true)) searchCandidates.add(effectiveQuery)
         if (effectiveSeason > 1 && baseCleanQuery.isNotBlank()) {
             searchCandidates.add("$baseCleanQuery Season $effectiveSeason")
             searchCandidates.add("$baseCleanQuery ${effectiveSeason}nd Season")
@@ -1876,19 +1871,19 @@ object MetadataFetchManager {
         }
 
         val mediaObj = queryAniListGraphQL(
-            directAniListId = directAniListId,
-            directMalId = directMalId,
+            directAniListId = resolvedAniListId,
+            directMalId = resolvedMalId,
             searchCandidates = searchCandidates,
             targetSeason = effectiveSeason,
-            targetQuery = cleanQuery
+            targetQuery = effectiveQuery
         )
         if (mediaObj != null) {
-            val fetched = parseAniListMedia(mediaObj, cleanQuery)
+            val fetched = parseAniListMedia(mediaObj, effectiveQuery)
             return@withContext Result.success(fetched)
         }
 
         Log.w(TAG, "AniList query returned no hits for '$query'")
-        Result.failure(Exception("Anime '$cleanQuery' not found on AniList"))
+        Result.failure(Exception("Anime '$effectiveQuery' not found on AniList"))
     }
 
     suspend fun fetchAniListExtendedDetails(
@@ -2256,7 +2251,7 @@ object MetadataFetchManager {
                 val result = when {
                     isAnime -> {
                         val aniIdNum = item.anilistId.toIntOrNull()
-                        if (aniIdNum != null && aniIdNum > 0 && (!isMultiSeason || detectedSeason <= 1)) {
+                        if (aniIdNum != null && aniIdNum > 0) {
                             // Fetch fresh official AniList data using exact AniList ID
                             fetchFromAniList(item.title, targetSeason = detectedSeason, directAniListId = aniIdNum)
                         } else {
