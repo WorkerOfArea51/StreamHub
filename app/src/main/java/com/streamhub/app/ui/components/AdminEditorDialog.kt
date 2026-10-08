@@ -141,12 +141,24 @@ fun AdminEditorDialog(
     var duration by remember(initialItem) { mutableStateOf(initialItem?.duration ?: "") }
     var genresText by remember(initialItem) { mutableStateOf(initialItem?.genres?.joinToString(", ") ?: "") }
     var castText by remember(initialItem) { mutableStateOf(initialItem?.castList?.joinToString(", ") ?: "") }
-    var posterUrl by remember(initialItem) { mutableStateOf(initialItem?.posterUrl ?: "") }
-    var bannerUrl by remember(initialItem) { mutableStateOf(initialItem?.bannerUrl ?: "") }
+    var posterUrl by remember(initialItem) {
+        mutableStateOf(initialItem?.posterUrl?.takeIf { !it.equals("null", ignoreCase = true) } ?: "")
+    }
+    var bannerUrl by remember(initialItem) {
+        mutableStateOf(
+            initialItem?.bannerUrl?.takeIf { !it.equals("null", ignoreCase = true) && it.isNotBlank() }
+                ?: initialItem?.posterUrl?.takeIf { !it.equals("null", ignoreCase = true) }
+                ?: ""
+        )
+    }
     var description by remember(initialItem) { mutableStateOf(initialItem?.description ?: "") }
     var isFeatured by remember(initialItem) { mutableStateOf(initialItem?.isFeatured ?: true) }
     var isTrending by remember(initialItem) { mutableStateOf(initialItem?.isTrending ?: true) }
     var trendingAt by remember(initialItem) { mutableStateOf(initialItem?.trendingAt ?: 0L) }
+    val isAnimeCat = category.equals("Anime", ignoreCase = true) ||
+                     category.equals("ANIMES", ignoreCase = true) ||
+                     category.contains("Anime", ignoreCase = true) ||
+                     type.equals("ANIME", ignoreCase = true)
 
     // --- State: Franchise & Sequel Grouping ---
     var franchiseId by remember(initialItem) { mutableStateOf(initialItem?.franchiseId ?: "") }
@@ -246,8 +258,9 @@ fun AdminEditorDialog(
         duration = itemToEdit.duration
         genresText = itemToEdit.genres.joinToString(", ")
         castText = itemToEdit.castList.joinToString(", ")
-        posterUrl = itemToEdit.posterUrl
-        bannerUrl = itemToEdit.bannerUrl
+        posterUrl = itemToEdit.posterUrl.takeIf { !it.equals("null", ignoreCase = true) } ?: ""
+        bannerUrl = itemToEdit.bannerUrl.takeIf { !it.equals("null", ignoreCase = true) && it.isNotBlank() }
+            ?: itemToEdit.posterUrl.takeIf { !it.equals("null", ignoreCase = true) } ?: ""
         description = itemToEdit.description
         isFeatured = itemToEdit.isFeatured
         isTrending = itemToEdit.isTrending
@@ -604,12 +617,12 @@ fun AdminEditorDialog(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Title Input (Supports exact title name, MAL URL/ID, TMDB URL/ID)
+                        // Title Input (Supports exact title name, AniList URL/ID, TMDB URL/ID)
                         OutlinedTextField(
                             value = title,
                             onValueChange = { title = it; validationError = null },
-                            label = { Text("Exact Title or AniList / TMDb Link *", color = TextSecondary) },
-                            placeholder = { Text("Title or link (e.g. Frieren or https://anilist.co/anime/154587)", color = TextSecondary) },
+                            label = { Text(if (isAnimeCat) "Exact Title or AniList Link / ID *" else "Exact Title or TMDb Link / ID *", color = TextSecondary) },
+                            placeholder = { Text(if (isAnimeCat) "Title or AniList link (e.g. Solo Leveling Season 2 or https://anilist.co/anime/176496)" else "Title or TMDb link (e.g. Inception or https://themoviedb.org/movie/27205)", color = TextSecondary) },
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = Color(0xFFFFD700),
@@ -627,16 +640,22 @@ fun AdminEditorDialog(
                                 isFetchingApi = true
                                 fetchError = null
                                 scope.launch {
-                                    val parsedSeason = seasonNumberText.toIntOrNull() ?: 1
+                                    val parsedSeason = seasonNumberText.toIntOrNull()?.takeIf { it > 1 } ?: MetadataFetchManager.extractTargetSeasonNumber(title, 1)
                                     val result = MetadataFetchManager.fetchMetadata(title, category, targetSeason = parsedSeason)
                                     result.fold(
                                         onSuccess = { meta ->
-                                            title = meta.title
+                                            if (meta.title.isNotBlank() && !meta.title.equals("null", ignoreCase = true)) {
+                                                title = meta.title
+                                            }
                                             description = meta.synopsis
                                             posterUrl = meta.posterUrl
-                                            bannerUrl = meta.backdropUrl
+                                            bannerUrl = if (meta.backdropUrl.isNotBlank() && !meta.backdropUrl.equals("null", ignoreCase = true)) {
+                                                meta.backdropUrl
+                                            } else {
+                                                meta.posterUrl
+                                            }
                                             rating = meta.rating
-                                            category = meta.category
+                                            category = if (isAnimeCat) "ANIME" else meta.category
                                             resolution = meta.resolution
                                             if (meta.genres.isNotEmpty()) {
                                                 genresText = meta.genres.joinToString(", ")
@@ -651,8 +670,13 @@ fun AdminEditorDialog(
                                             if (meta.status.isNotBlank()) status = meta.status
                                             if (meta.totalEpisodes.isNotBlank()) totalEpisodes = meta.totalEpisodes
                                             if (meta.alternativeTitles.isNotBlank()) synonyms = meta.alternativeTitles
-                                            if (meta.anilistId.isNotBlank()) anilistId = meta.anilistId
-                                            if (meta.tmdbId.isNotBlank()) tmdbId = meta.tmdbId
+                                            if (isAnimeCat) {
+                                                anilistId = meta.anilistId
+                                                tmdbId = "" // Eradicate TMDB ID for Anime
+                                            } else {
+                                                tmdbId = meta.tmdbId
+                                                anilistId = ""
+                                            }
                                             if (meta.castList.isNotBlank()) castText = meta.castList
                                             if (meta.youtubeTrailerId.isNotBlank() && !meta.youtubeTrailerId.equals("null", ignoreCase = true)) trailerId = meta.youtubeTrailerId
                                             if (meta.aired.isNotBlank()) aired = meta.aired
@@ -684,7 +708,7 @@ fun AdminEditorDialog(
                             if (isFetchingApi) {
                                 ExpressiveLoadingIndicator(size = 16.dp, color = Color.White, accentColor = AccentGold)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Searching TMDb & AniList...", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(if (isAnimeCat) "Searching AniList..." else "Searching TMDb...", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             } else {
                                 Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -1633,7 +1657,23 @@ fun AdminEditorDialog(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        MetadataRow(anilistId, { anilistId = it }, "AniList ID (Optional)", tmdbId, { tmdbId = it }, "TMDB ID (Optional)")
+                        if (isAnimeCat) {
+                            OutlinedTextField(
+                                value = anilistId,
+                                onValueChange = { anilistId = it },
+                                label = { Text("AniList Media ID (Recommended)", color = TextSecondary) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else {
+                            OutlinedTextField(
+                                value = tmdbId,
+                                onValueChange = { tmdbId = it },
+                                label = { Text("TMDB ID (Recommended)", color = TextSecondary) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
 
                         Spacer(modifier = Modifier.height(14.dp))
 
@@ -2366,8 +2406,8 @@ fun AdminEditorDialog(
                                         maturityRating = maturityRating,
                                         studio = studio,
                                         trailerId = trailerId.trim().takeIf { !it.equals("null", ignoreCase = true) } ?: "",
-                                        anilistId = anilistId,
-                                        tmdbId = tmdbId,
+                                        anilistId = if (isAnimeCat) anilistId.trim() else "",
+                                        tmdbId = if (isAnimeCat) "" else tmdbId.trim(),
                                         synonyms = synonyms,
                                         totalEpisodes = totalEpisodes,
                                         status = status,

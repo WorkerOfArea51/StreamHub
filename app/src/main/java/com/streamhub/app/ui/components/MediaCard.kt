@@ -154,7 +154,6 @@ fun MediaCard(
             val topLeftBadge = when {
                 !isMovie && (effectiveSeason > 1 || (effectivePart != null && effectivePart > 0)) -> Pair(seasonBadgeText, Color(0xCC7C4DFF))
                 isMovie && movieSeq != null && movieSeq > 1 -> Pair("M$movieSeq", Color(0xCCFF5722))
-                isMovie -> Pair("MOVIE", Color(0xCCFF5722))
                 item.relationType.contains("OVA", ignoreCase = true) -> Pair("OVA", Color(0xCCF59E0B))
                 item.relationType.contains("Special", ignoreCase = true) -> Pair("SPECIAL", Color(0xCCF59E0B))
                 item.relationType.contains("Side Story", ignoreCase = true) -> Pair("SIDE", Color(0xCC0284C7))

@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -62,6 +63,18 @@ data class ExtendedMediaDetails(
     val trailers: List<MediaTrailer> = emptyList()
 )
 
+private fun JSONObject?.optCleanString(key: String, fallback: String = ""): String {
+    if (this == null || isNull(key)) return fallback
+    val v = optString(key, fallback).trim()
+    return if (v.isEmpty() || v.equals("null", ignoreCase = true)) fallback else v
+}
+
+private fun JSONArray?.optCleanString(index: Int, fallback: String = ""): String {
+    if (this == null || isNull(index)) return fallback
+    val v = optString(index, fallback).trim()
+    return if (v.isEmpty() || v.equals("null", ignoreCase = true)) fallback else v
+}
+
 /**
  * Metadata Auto-Fetcher Engine:
  * - Queries TMDB API for Movies & Series
@@ -111,7 +124,12 @@ object MetadataFetchManager {
             getCachedExtendedDetails(cacheKey)?.let { return@withContext it }
         }
 
-        val hasCompleteCast = item.castMembers.isNotEmpty() && item.castMembers.any { it.profileUrl.isNotBlank() }
+        val isAnime = item.category.equals("ANIME", ignoreCase = true) ||
+                      item.category.equals("ANIMES", ignoreCase = true) ||
+                      item.type.equals("ANIME", ignoreCase = true) ||
+                      item.category.contains("Anime", ignoreCase = true)
+        val hasAnimeCartoonAvatars = isAnime && item.castMembers.any { it.profileUrl.contains("/character/") }
+        val hasCompleteCast = item.castMembers.isNotEmpty() && item.castMembers.any { it.profileUrl.isNotBlank() } && !hasAnimeCartoonAvatars
         if (!forceRefresh && hasCompleteCast && (item.trailers.isNotEmpty() || item.director.isNotBlank())) {
             val details = ExtendedMediaDetails(
                 director = item.director,
@@ -123,7 +141,6 @@ object MetadataFetchManager {
             return@withContext details
         }
 
-        val isAnime = item.category.equals("ANIME", ignoreCase = true)
         val isMovie = item.type.equals("MOVIE", ignoreCase = true) || item.category.equals("MOVIES", ignoreCase = true)
 
         val result = if (isAnime) {
@@ -237,6 +254,9 @@ object MetadataFetchManager {
         Regex("""(?i)^mal[:/\s-]+(\d+)""").find(trimmed)?.let {
             return Pair(null, it.groupValues[1].toIntOrNull())
         }
+        if (trimmed.toIntOrNull() != null && trimmed.toInt() in 1..999999) {
+            return Pair(trimmed.toInt(), null)
+        }
         return Pair(null, null)
     }
 
@@ -265,10 +285,22 @@ object MetadataFetchManager {
         return withContext(Dispatchers.IO) {
             try {
                 val cleanQuery = titleQuery.trim()
+                val isAnimeCat = category.equals("Anime", ignoreCase = true) ||
+                                 category.equals("ANIMES", ignoreCase = true) ||
+                                 category.contains("Anime", ignoreCase = true)
                 val aniTarget = extractAniListId(cleanQuery)
                 val tmdbTarget = extractTmdbTarget(cleanQuery)
 
                 when {
+                    isAnimeCat -> {
+                        // Anime is 100% strictly AniList - ZERO TMDb calls!
+                        fetchFromAniList(
+                            query = cleanQuery,
+                            targetSeason = targetSeason,
+                            directAniListId = aniTarget.first,
+                            directMalId = aniTarget.second
+                        )
+                    }
                     aniTarget.first != null -> {
                         fetchFromAniList(cleanQuery, targetSeason = targetSeason, directAniListId = aniTarget.first)
                     }
@@ -277,11 +309,8 @@ object MetadataFetchManager {
                     }
                     tmdbTarget != null -> {
                         val isMovie = tmdbTarget.second ?: (category.equals("Movie", ignoreCase = true) || category.equals("Movies", ignoreCase = true))
-                        val effectiveCat = if (isMovie) "Movies" else if (category.equals("Anime", ignoreCase = true)) "Anime" else "Series"
+                        val effectiveCat = if (isMovie) "Movies" else "Series"
                         fetchFromTMDB(cleanQuery, effectiveCat, targetSeason, directTmdbId = tmdbTarget.first, explicitIsMovie = tmdbTarget.second)
-                    }
-                    category.equals("Anime", ignoreCase = true) -> {
-                        fetchFromAniList(cleanQuery, targetSeason = targetSeason)
                     }
                     else -> {
                         fetchFromTMDB(cleanQuery, category, targetSeason)
@@ -985,6 +1014,7 @@ object MetadataFetchManager {
                     userPreferred
                   }
                   image {
+                    large
                     medium
                   }
                 }
@@ -1040,6 +1070,7 @@ object MetadataFetchManager {
               }
               averageScore
               meanScore
+              popularity
               trailer {
                 id
                 site
@@ -1096,6 +1127,7 @@ object MetadataFetchManager {
                       userPreferred
                     }
                     image {
+                      large
                       medium
                     }
                   }
@@ -1150,6 +1182,111 @@ object MetadataFetchManager {
         return if (explicitSeason > 0) explicitSeason else 1
     }
 
+    /**
+     * Intelligently resolves the best English localized title for Anime.
+     * 1. Direct AniList English title (e.g. "Doraemon: Nobita's Dinosaur")
+     * 2. Synonym matching the user's explicit English search query
+     * 3. Highest-confidence English localized title from AniList synonyms (e.g. "Doraemon: Nobita's Secret Gadget Museum" over "Doraemon: Nobita no Himitsu Dougu Museum")
+     * 4. Romaji / UserPreferred fallback
+     */
+    fun resolveBestAnimeEnglishTitle(
+        englishTitle: String,
+        romajiTitle: String,
+        userPreferredTitle: String,
+        synonyms: List<String>,
+        fallbackQuery: String = ""
+    ): String {
+        val cleanEn = englishTitle.trim()
+        if (cleanEn.isNotBlank() && !cleanEn.equals("null", ignoreCase = true) && !cleanEn.equals("none", ignoreCase = true)) {
+            return cleanEn
+        }
+
+        val cleanFallback = fallbackQuery.trim().lowercase()
+        val isExplicitQuery = cleanFallback.isNotBlank() &&
+                !cleanFallback.startsWith("http") &&
+                !cleanFallback.startsWith("anilist") &&
+                cleanFallback.toIntOrNull() == null
+
+        // 1. Direct match with fallback query in synonyms
+        if (isExplicitQuery) {
+            for (syn in synonyms) {
+                val sClean = syn.trim()
+                if (sClean.isBlank() || sClean.equals("null", ignoreCase = true)) continue
+                val sLower = sClean.lowercase()
+                if (sLower == cleanFallback) return sClean
+                val queryWords = cleanFallback.split(Regex("\\s+")).filter { it.length > 2 }
+                if (queryWords.size >= 2 && queryWords.all { sLower.contains(it) }) {
+                    return sClean
+                }
+            }
+        }
+
+        // 2. Score English localized titles from synonyms
+        val foreignMarkers = listOf(
+            " al ", " del ", " de ", " en el ", " la ", " los ", " las ", " il ", " le ", " les ",
+            " und ", " der ", " die ", " das ", " dla ", " w ", " z ", " i nobita ", " do futuro ", " misterioso "
+        )
+        val genericMovieNumRegex = Regex("""(?i)^[a-z0-9\s:_-]+\bmovie\s*\d+\b$""")
+
+        val englishKeywords = listOf(
+            "the", "a", "an", "of", "and", "in", "on", "at", "to", "for", "with", "from",
+            "secret", "gadget", "museum", "birth", "adventure", "dimension", "chronicle",
+            "symphony", "kingdom", "island", "space", "sky", "earth", "future", "world",
+            "hero", "planet", "treasure", "legend", "war", "battle", "story", "come back",
+            "stand by me", "dinosaur", "moon", "star", "castle", "great", "little", "night",
+            "utopia", "chronicles", "exploration", "record", "antarctic", "ice", "kachi",
+            "wind", "water", "sun", "magic", "miracle", "undersea", "galaxy", "express",
+            "train", "robot", "spirits", "animal", "drift", "labyrinth", "mermaid"
+        )
+
+        var bestScore = -999
+        var bestCandidate: String? = null
+
+        for (syn in synonyms) {
+            val sClean = syn.trim()
+            if (sClean.isBlank() || sClean.equals("null", ignoreCase = true) || sClean.equals("none", ignoreCase = true)) continue
+            // Must be ASCII / Latin
+            if (sClean.any { it.code > 255 }) continue
+            val sLower = " ${sClean.lowercase()} "
+            if (foreignMarkers.any { sLower.contains(it) }) continue
+
+            var score = 0
+            if (sClean.contains("'s")) score += 50
+            if (sClean.contains(":")) score += 20
+            if (sClean.split(Regex("\\s+")).size >= 3) score += 15
+
+            val matchedWords = englishKeywords.count { Regex("""(?i)\b${Regex.escape(it)}\b""").containsMatchIn(sLower) }
+            score += matchedWords * 25
+
+            if (genericMovieNumRegex.matches(sClean)) {
+                score -= 100 // Deprioritize generic "Doraemon Movie 33" if a real title exists
+            }
+
+            if (score > bestScore) {
+                bestScore = score
+                bestCandidate = sClean
+            }
+        }
+
+        if (bestCandidate != null && bestScore > 0) {
+            return bestCandidate
+        }
+
+        // 3. Fallback to Romaji
+        val cleanRo = romajiTitle.trim()
+        if (cleanRo.isNotBlank() && !cleanRo.equals("null", ignoreCase = true)) {
+            return cleanRo
+        }
+
+        // 4. UserPreferred
+        val cleanPref = userPreferredTitle.trim()
+        if (cleanPref.isNotBlank() && !cleanPref.equals("null", ignoreCase = true)) {
+            return cleanPref
+        }
+
+        return fallbackQuery.ifBlank { "Untitled Anime" }
+    }
+
     private fun pickBestAniListMedia(
         mediaList: JSONArray,
         targetQuery: String,
@@ -1163,41 +1300,72 @@ object MetadataFetchManager {
         for (i in 0 until mediaList.length()) {
             val item = mediaList.optJSONObject(i) ?: continue
             val titleObj = item.optJSONObject("title")
-            val en = titleObj?.optString("english", "")?.trim() ?: ""
-            val ro = titleObj?.optString("romaji", "")?.trim() ?: ""
-            val pref = titleObj?.optString("userPreferred", "")?.trim() ?: ""
-            val na = titleObj?.optString("native", "")?.trim() ?: ""
+            val en = titleObj.optCleanString("english")
+            val ro = titleObj.optCleanString("romaji")
+            val pref = titleObj.optCleanString("userPreferred")
+            val na = titleObj.optCleanString("native")
+
+            val primaryTitles = listOf(en, ro, pref).filter { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
 
             val syns = mutableListOf<String>()
             val synArr = item.optJSONArray("synonyms")
             if (synArr != null) {
                 for (j in 0 until synArr.length()) {
-                    val s = synArr.optString(j, "").trim()
-                    if (s.isNotBlank()) syns.add(s)
+                    val s = synArr.optCleanString(j)
+                    if (s.isNotBlank() && !s.equals("null", ignoreCase = true)) syns.add(s)
                 }
             }
 
-            val allTitles = (listOf(en, ro, pref, na) + syns).filter { it.isNotBlank() }
+            val allTitles = (primaryTitles + listOf(na) + syns).filter { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
             val itemSeasons = allTitles.map { extractTargetSeasonNumber(it, 1) }
 
             var score = 0
 
-            // 1. Season Matching Score
+            // 1. Title Match Score (DO NOT ACCUMULATE - find maximum title match)
+            var bestTitleMatch = 0
+            for (t in primaryTitles) {
+                val normT = t.lowercase().replace(Regex("[^a-z0-9]"), "")
+                if (normT.isNotBlank()) {
+                    if (normT == cleanTarget) {
+                        bestTitleMatch = maxOf(bestTitleMatch, 600)
+                    } else if (normT.startsWith(cleanTarget) || cleanTarget.startsWith(normT)) {
+                        bestTitleMatch = maxOf(bestTitleMatch, 350)
+                    } else if (normT.contains(cleanTarget)) {
+                        bestTitleMatch = maxOf(bestTitleMatch, 250)
+                    } else if (cleanTarget.contains(normT)) {
+                        bestTitleMatch = maxOf(bestTitleMatch, 150)
+                    }
+                }
+            }
+
+            for (t in syns) {
+                val normT = t.lowercase().replace(Regex("[^a-z0-9]"), "")
+                if (normT.isNotBlank()) {
+                    if (normT == cleanTarget) {
+                        bestTitleMatch = maxOf(bestTitleMatch, 400)
+                    } else if (normT.startsWith(cleanTarget) || cleanTarget.startsWith(normT)) {
+                        bestTitleMatch = maxOf(bestTitleMatch, 250)
+                    } else if (normT.contains(cleanTarget)) {
+                        bestTitleMatch = maxOf(bestTitleMatch, 150)
+                    }
+                }
+            }
+            score += bestTitleMatch
+
+            // 2. Season Matching Score
             if (targetSeason > 1) {
                 if (itemSeasons.contains(targetSeason)) {
-                    score += 300
+                    score += 400
                 } else if (itemSeasons.any { it > 1 }) {
                     score += 50
                 } else {
-                    // Candidate is Season 1 while target is Season 2+
-                    score -= 200
+                    score -= 300
                 }
 
-                // Check relations if this candidate is a sequel (has PREQUEL relation)
                 val relEdges = item.optJSONObject("relations")?.optJSONArray("edges")
                 if (relEdges != null) {
                     for (k in 0 until relEdges.length()) {
-                        val relType = relEdges.optJSONObject(k)?.optString("relationType", "")
+                        val relType = relEdges.optJSONObject(k).optCleanString("relationType")
                         if (relType.equals("PREQUEL", ignoreCase = true)) {
                             score += 100
                             break
@@ -1209,32 +1377,29 @@ object MetadataFetchManager {
                 if (itemSeasons.all { it == 1 }) {
                     score += 150
                 } else {
-                    score -= 200
+                    score -= 300
                 }
             }
 
-            // 2. Format Preference (TV / TV_SHORT > SPECIAL > MOVIE for series searches)
-            val fmt = item.optString("format", "").uppercase()
-            if (fmt == "TV" || fmt == "TV_SHORT") {
-                score += 50
-            } else if (fmt == "MOVIE" && !targetQuery.contains("movie", ignoreCase = true)) {
-                score -= 100
+            // 3. Format Preference (TV > TV_SHORT > MOVIE > OVA > SPECIAL)
+            val fmt = item.optCleanString("format").uppercase()
+            if (fmt == "TV") {
+                score += 120
+            } else if (fmt == "TV_SHORT") {
+                score += 80
+            } else if (fmt == "MOVIE") {
+                if (targetQuery.contains("movie", ignoreCase = true)) score += 120 else score += 40
+            } else if (fmt == "OVA" || fmt == "ONA") {
+                score += 20
+            } else if (fmt == "SPECIAL") {
+                score -= 100 // Strongly de-prioritize specials and recaps like Death Note Rewrite
             }
 
-            // 3. Title String Similarity
-            for (t in allTitles) {
-                val normT = t.lowercase().replace(Regex("[^a-z0-9]"), "")
-                if (normT.isNotBlank()) {
-                    if (normT == cleanTarget) {
-                        score += 400
-                    } else if (normT.startsWith(cleanTarget) || cleanTarget.startsWith(normT)) {
-                        score += 200
-                    } else if (normT.contains(cleanTarget)) {
-                        score += 150
-                    } else if (cleanTarget.contains(normT)) {
-                        score += 100
-                    }
-                }
+            // 4. Popularity Bonus (logarithmic so dominant main shows beat obscure side specials)
+            val pop = item.optInt("popularity", 0)
+            if (pop > 0) {
+                val popScore = (Math.log10(pop.toDouble().coerceAtLeast(1.0)) * 25).toInt()
+                score += popScore
             }
 
             if (score > bestScore) {
@@ -1247,7 +1412,7 @@ object MetadataFetchManager {
     }
 
     private fun sanitizeDescription(raw: String): String {
-        if (raw.isBlank()) return "No synopsis available."
+        if (raw.isBlank() || raw.equals("null", ignoreCase = true)) return "No synopsis available."
         return raw
             .replace(Regex("<br\\s*/?>", RegexOption.IGNORE_CASE), "\n")
             .replace(Regex("<[^>]+>"), "")
@@ -1275,10 +1440,12 @@ object MetadataFetchManager {
             })
             if (res != null) {
                 val mediaSeason = res.optJSONObject("title")?.let { tObj ->
-                    val en = tObj.optString("english", "")
-                    val ro = tObj.optString("romaji", "")
-                    val pref = tObj.optString("userPreferred", "")
-                    extractTargetSeasonNumber(en.ifBlank { ro.ifBlank { pref } }, 1)
+                    val en = tObj.optCleanString("english")
+                    val ro = tObj.optCleanString("romaji")
+                    val pref = tObj.optCleanString("userPreferred")
+                    val na = tObj.optCleanString("native")
+                    val resolved = en.ifBlank { ro.ifBlank { pref.ifBlank { na } } }
+                    extractTargetSeasonNumber(resolved, 1)
                 } ?: 1
 
                 // If direct ID matches targetSeason (or targetSeason is 1 and direct ID is Season 1), return it!
@@ -1309,64 +1476,86 @@ object MetadataFetchManager {
         null
     }
 
-    private fun executeAniListPageSearch(searchTerm: String): JSONArray? {
-        return try {
-            val jsonBody = JSONObject().apply {
-                put("query", ANILIST_PAGE_SEARCH_QUERY)
-                put("variables", JSONObject().apply { put("search", searchTerm) })
-            }
-            val mediaType = "application/json; charset=utf-8".toMediaTypeOrNull()
-            val reqBody = jsonBody.toString().toRequestBody(mediaType)
-            val request = Request.Builder()
-                .url(Secrets.ANILIST_GRAPHQL_URL)
-                .post(reqBody)
-                .header("Content-Type", "application/json")
-                .header("Accept", "application/json")
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) StreamHub/4.8")
-                .build()
-
-            httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Log.w(TAG, "AniList Page GraphQL HTTP error: ${response.code}")
-                    return null
-                }
-                val body = response.body?.string() ?: return null
-                val json = JSONObject(body)
-                val page = json.optJSONObject("data")?.optJSONObject("Page")
-                page?.optJSONArray("media")
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "AniList Page GraphQL call failed: ${e.message}")
-            null
+    private suspend fun executeAniListPageSearch(searchTerm: String): JSONArray? = withContext(Dispatchers.IO) {
+        val jsonBody = JSONObject().apply {
+            put("query", ANILIST_PAGE_SEARCH_QUERY)
+            put("variables", JSONObject().apply { put("search", searchTerm) })
         }
+        val mediaType = "application/json; charset=utf-8".toMediaTypeOrNull()
+        val reqBody = jsonBody.toString().toRequestBody(mediaType)
+        val request = Request.Builder()
+            .url(Secrets.ANILIST_GRAPHQL_URL)
+            .post(reqBody)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) StreamHub/4.8")
+            .build()
+
+        var attempts = 0
+        while (attempts < 4) {
+            attempts++
+            try {
+                httpClient.newCall(request).execute().use { response ->
+                    if (response.code == 429) {
+                        val retrySec = response.header("Retry-After")?.toLongOrNull() ?: (attempts * 3L)
+                        Log.w(TAG, "AniList Page GraphQL rate limited (429). Retrying in ${retrySec}s (attempt $attempts/4)...")
+                        delay(retrySec * 1000L + 500L)
+                        return@use
+                    }
+                    if (!response.isSuccessful) {
+                        Log.w(TAG, "AniList Page GraphQL HTTP error: ${response.code}")
+                        return@withContext null
+                    }
+                    val body = response.body?.string() ?: return@withContext null
+                    val json = JSONObject(body)
+                    val page = json.optJSONObject("data")?.optJSONObject("Page")
+                    return@withContext page?.optJSONArray("media")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "AniList Page GraphQL call failed: ${e.message}")
+                if (attempts < 4) delay(1500L * attempts) else return@withContext null
+            }
+        }
+        null
     }
 
-    private fun executeAniListQuery(jsonBody: JSONObject): JSONObject? {
-        return try {
-            val mediaType = "application/json; charset=utf-8".toMediaTypeOrNull()
-            val reqBody = jsonBody.toString().toRequestBody(mediaType)
-            val request = Request.Builder()
-                .url(Secrets.ANILIST_GRAPHQL_URL)
-                .post(reqBody)
-                .header("Content-Type", "application/json")
-                .header("Accept", "application/json")
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) StreamHub/4.8")
-                .build()
+    private suspend fun executeAniListQuery(jsonBody: JSONObject): JSONObject? = withContext(Dispatchers.IO) {
+        val mediaType = "application/json; charset=utf-8".toMediaTypeOrNull()
+        val reqBody = jsonBody.toString().toRequestBody(mediaType)
+        val request = Request.Builder()
+            .url(Secrets.ANILIST_GRAPHQL_URL)
+            .post(reqBody)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) StreamHub/4.8")
+            .build()
 
-            httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Log.w(TAG, "AniList GraphQL HTTP error: ${response.code}")
-                    return null
+        var attempts = 0
+        while (attempts < 4) {
+            attempts++
+            try {
+                httpClient.newCall(request).execute().use { response ->
+                    if (response.code == 429) {
+                        val retrySec = response.header("Retry-After")?.toLongOrNull() ?: (attempts * 3L)
+                        Log.w(TAG, "AniList GraphQL rate limited (429). Retrying in ${retrySec}s (attempt $attempts/4)...")
+                        delay(retrySec * 1000L + 500L)
+                        return@use
+                    }
+                    if (!response.isSuccessful) {
+                        Log.w(TAG, "AniList GraphQL HTTP error: ${response.code}")
+                        return@withContext null
+                    }
+                    val body = response.body?.string() ?: return@withContext null
+                    val json = JSONObject(body)
+                    val data = json.optJSONObject("data")
+                    return@withContext data?.optJSONObject("Media")
                 }
-                val body = response.body?.string() ?: return null
-                val json = JSONObject(body)
-                val data = json.optJSONObject("data")
-                data?.optJSONObject("Media")
+            } catch (e: Exception) {
+                Log.w(TAG, "AniList GraphQL call failed: ${e.message}")
+                if (attempts < 4) delay(1500L * attempts) else return@withContext null
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "AniList GraphQL call failed: ${e.message}")
-            null
         }
+        null
     }
 
     private fun parseAniListMedia(
@@ -1375,18 +1564,34 @@ object MetadataFetchManager {
     ): FetchedMetadata {
         val anilistIdNum = mediaObj.optInt("id", 0)
         val titleObj = mediaObj.optJSONObject("title")
-        val enTitle = titleObj?.optString("english", "")?.trim() ?: ""
-        val roTitle = titleObj?.optString("romaji", "")?.trim() ?: ""
-        val prefTitle = titleObj?.optString("userPreferred", "")?.trim() ?: ""
-        val naTitle = titleObj?.optString("native", "")?.trim() ?: ""
+        val enTitle = titleObj.optCleanString("english")
+        val roTitle = titleObj.optCleanString("romaji")
+        val prefTitle = titleObj.optCleanString("userPreferred")
+        val naTitle = titleObj.optCleanString("native")
 
-        val finalTitle = enTitle.ifBlank { roTitle.ifBlank { prefTitle.ifBlank { fallbackQuery } } }
-        val rawDesc = mediaObj.optString("description", "")
+        val synArr = mediaObj.optJSONArray("synonyms")
+        val rawSyns = mutableListOf<String>()
+        if (synArr != null) {
+            for (i in 0 until synArr.length()) {
+                val s = synArr.optCleanString(i)
+                if (s.isNotBlank() && !s.equals("null", ignoreCase = true)) rawSyns.add(s)
+            }
+        }
+
+        val finalTitle = resolveBestAnimeEnglishTitle(
+            englishTitle = enTitle,
+            romajiTitle = roTitle,
+            userPreferredTitle = prefTitle,
+            synonyms = rawSyns,
+            fallbackQuery = fallbackQuery
+        )
+
+        val rawDesc = mediaObj.optCleanString("description")
         val synopsis = sanitizeDescription(rawDesc)
 
         val coverObj = mediaObj.optJSONObject("coverImage")
-        val posterUrl = coverObj?.optString("extraLarge", coverObj.optString("large", "")) ?: ""
-        val bannerUrl = mediaObj.optString("bannerImage", "")
+        val posterUrl = coverObj.optCleanString("extraLarge").ifBlank { coverObj.optCleanString("large") }
+        val bannerUrl = mediaObj.optCleanString("bannerImage", "")
 
         val avgScore = mediaObj.optInt("averageScore", mediaObj.optInt("meanScore", 0))
         val formattedRating = if (avgScore > 0) String.format(java.util.Locale.US, "%.1f", avgScore / 10.0) else ""
@@ -1394,17 +1599,17 @@ object MetadataFetchManager {
         val numEp = mediaObj.optInt("episodes", 0)
         val totalEpisodesStr = if (numEp > 0) numEp.toString() else ""
 
-        val rawStatus = mediaObj.optString("status", "")
+        val rawStatus = mediaObj.optCleanString("status")
         val formattedStatus = when (rawStatus.uppercase()) {
             "FINISHED" -> "Finished Airing"
             "RELEASING" -> "Currently Airing"
             "NOT_YET_RELEASED" -> "Not Yet Aired"
             "CANCELLED" -> "Cancelled"
             "HIATUS" -> "On Hiatus"
-            else -> rawStatus.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }
+            else -> if (rawStatus.isNotBlank()) rawStatus.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() } else ""
         }
 
-        val rawFormat = mediaObj.optString("format", "TV")
+        val rawFormat = mediaObj.optCleanString("format", "TV")
         val detectedFormat = when (rawFormat.uppercase()) {
             "TV" -> "TV"
             "TV_SHORT" -> "TV Short"
@@ -1417,7 +1622,7 @@ object MetadataFetchManager {
         }
 
         // Original Source Formatting
-        val rawSource = mediaObj.optString("source", "")
+        val rawSource = mediaObj.optCleanString("source")
         val formattedSource = when (rawSource.uppercase()) {
             "MANGA" -> "Manga"
             "LIGHT_NOVEL" -> "Light Novel"
@@ -1437,7 +1642,7 @@ object MetadataFetchManager {
         }
 
         val durationMin = mediaObj.optInt("duration", 0)
-        val durationStr = if (durationMin > 0) "$durationMin min. per ep." else ""
+        val durationStr = if (durationMin > 0) "$durationMin min" else ""
 
         val year = mediaObj.optInt("seasonYear", 0)
         val startObj = mediaObj.optJSONObject("startDate")
@@ -1470,7 +1675,7 @@ object MetadataFetchManager {
             for (i in 0 until studiosEdges.length()) {
                 val edge = studiosEdges.optJSONObject(i) ?: continue
                 val isMain = edge.optBoolean("isMain", false)
-                val sName = edge.optJSONObject("node")?.optString("name", "")?.trim() ?: ""
+                val sName = edge.optJSONObject("node").optCleanString("name")
                 if (sName.isNotBlank()) {
                     if (isMain) {
                         if (!studioList.contains(sName)) studioList.add(sName)
@@ -1487,7 +1692,7 @@ object MetadataFetchManager {
         val gArr = mediaObj.optJSONArray("genres")
         if (gArr != null) {
             for (i in 0 until gArr.length()) {
-                val g = gArr.optString(i, "").trim()
+                val g = gArr.optCleanString(i)
                 if (g.isNotBlank() && !g.equals("Anime", ignoreCase = true)) genresList.add(g)
             }
         }
@@ -1498,7 +1703,7 @@ object MetadataFetchManager {
         val tagsList = mutableListOf<String>()
         if (tagsArr != null) {
             for (i in 0 until tagsArr.length()) {
-                val tName = tagsArr.optJSONObject(i)?.optString("name", "")?.trim() ?: ""
+                val tName = tagsArr.optJSONObject(i).optCleanString("name")
                 if (tName.isNotBlank()) tagsList.add(tName.lowercase())
             }
         }
@@ -1517,18 +1722,17 @@ object MetadataFetchManager {
 
         val synonymsList = mutableListOf<String>()
         if (roTitle.isNotBlank() && !roTitle.equals(finalTitle, ignoreCase = true)) synonymsList.add(roTitle)
+        if (enTitle.isNotBlank() && !enTitle.equals(finalTitle, ignoreCase = true)) synonymsList.add(enTitle)
         if (naTitle.isNotBlank()) synonymsList.add(naTitle)
-        val synArr = mediaObj.optJSONArray("synonyms")
-        if (synArr != null) {
-            for (i in 0 until synArr.length()) {
-                val s = synArr.optString(i, "").trim()
-                if (s.isNotBlank() && !synonymsList.contains(s)) synonymsList.add(s)
+        for (s in rawSyns) {
+            if (!synonymsList.contains(s) && !s.equals(finalTitle, ignoreCase = true)) {
+                synonymsList.add(s)
             }
         }
 
         val trailerObj = mediaObj.optJSONObject("trailer")
-        val trailerSite = trailerObj?.optString("site", "") ?: ""
-        val trailerKey = trailerObj?.optString("id", "") ?: ""
+        val trailerSite = trailerObj.optCleanString("site")
+        val trailerKey = trailerObj.optCleanString("id")
         val youtubeTrailerId = if (trailerSite.equals("youtube", ignoreCase = true) && trailerKey.isNotBlank()) trailerKey else ""
         val parsedTrailers = if (youtubeTrailerId.isNotBlank()) {
             listOf(MediaTrailer(id = youtubeTrailerId, title = "Official Trailer", type = "Trailer", isOfficial = true))
@@ -1541,19 +1745,23 @@ object MetadataFetchManager {
                 val edge = charEdges.optJSONObject(i) ?: continue
                 val charNode = edge.optJSONObject("node") ?: continue
                 val charName = charNode.optJSONObject("name")?.let {
-                    it.optString("full").ifBlank { it.optString("userPreferred", "") }
-                }?.trim() ?: ""
+                    it.optCleanString("full").ifBlank { it.optCleanString("userPreferred") }
+                } ?: ""
                 val charImg = charNode.optJSONObject("image")?.let {
-                    it.optString("large").ifBlank { it.optString("medium", "") }
-                }?.trim() ?: ""
+                    it.optCleanString("large").ifBlank { it.optCleanString("medium") }
+                } ?: ""
 
                 val vaArr = edge.optJSONArray("voiceActors")
                 var vaName = ""
+                var vaImg = ""
                 if (vaArr != null && vaArr.length() > 0) {
                     val vaObj = vaArr.optJSONObject(0)
                     vaName = vaObj?.optJSONObject("name")?.let {
-                        it.optString("full").ifBlank { it.optString("userPreferred", "") }
-                    }?.trim() ?: ""
+                        it.optCleanString("full").ifBlank { it.optCleanString("userPreferred") }
+                    } ?: ""
+                    vaImg = vaObj?.optJSONObject("image")?.let {
+                        it.optCleanString("large").ifBlank { it.optCleanString("medium") }
+                    } ?: ""
                 }
 
                 if (charName.isNotBlank() || vaName.isNotBlank()) {
@@ -1561,7 +1769,7 @@ object MetadataFetchManager {
                         CastMember(
                             name = vaName.ifBlank { charName },
                             character = charName,
-                            profileUrl = charImg
+                            profileUrl = vaImg
                         )
                     )
                 }
@@ -1574,8 +1782,8 @@ object MetadataFetchManager {
         if (staffEdges != null) {
             for (i in 0 until staffEdges.length()) {
                 val edge = staffEdges.optJSONObject(i) ?: continue
-                val role = edge.optString("role", "")
-                val sName = edge.optJSONObject("node")?.optJSONObject("name")?.optString("full", "")?.trim() ?: ""
+                val role = edge.optCleanString("role")
+                val sName = edge.optJSONObject("node")?.optJSONObject("name").optCleanString("full")
                 if (sName.isNotBlank()) {
                     if (role.contains("Director", ignoreCase = true) && !dList.contains(sName)) {
                         dList.add(sName)
@@ -1676,97 +1884,11 @@ object MetadataFetchManager {
         )
         if (mediaObj != null) {
             val fetched = parseAniListMedia(mediaObj, cleanQuery)
-            val enriched = enrichAnimeWithTmdb(fetched, cleanQuery)
-            return@withContext Result.success(enriched)
+            return@withContext Result.success(fetched)
         }
 
-        // Final fallback to TMDb anime search if AniList search returned no hits
-        Log.w(TAG, "AniList query returned no hits for '$query', attempting TMDB fallback...")
-        fetchFromTMDB(cleanQuery, "Anime", targetSeason = effectiveSeason)
-    }
-
-    private suspend fun enrichAnimeWithTmdb(
-        meta: FetchedMetadata,
-        fallbackTitle: String
-    ): FetchedMetadata {
-        val needsTrailer = meta.youtubeTrailerId.isBlank() || meta.youtubeTrailerId.equals("null", ignoreCase = true)
-        val needsCast = meta.castList.isBlank()
-        val needsTmdbId = meta.tmdbId.isBlank()
-
-        // For Anime, poster and backdrop are strictly kept from AniList (coverImage.extraLarge, bannerImage).
-        if (!needsTrailer && !needsCast && !needsTmdbId) {
-            return meta
-        }
-
-        return try {
-            val isMovie = meta.totalEpisodes == "1" || 
-                          meta.title.contains("Movie", ignoreCase = true) || 
-                          meta.relationType.equals("Movie", ignoreCase = true)
-
-            val queryForTmdb = if (meta.title.contains(" Season ", ignoreCase = true) || meta.title.contains(":")) {
-                meta.title.substringBefore(" Season ").substringBefore(":").trim()
-            } else meta.title
-
-            val searchTitle = if (queryForTmdb.isNotBlank()) queryForTmdb else fallbackTitle
-            val tmdbRes = fetchFromTMDB(
-                query = searchTitle,
-                category = "Anime",
-                targetSeason = meta.seasonNumber.coerceAtLeast(1),
-                explicitIsMovie = isMovie
-            )
-
-            val tmdbMeta = tmdbRes.getOrNull() ?: return meta
-
-            val normAnime = meta.title.lowercase().replace(Regex("[^a-z0-9]"), "")
-            val normTmdb = tmdbMeta.title.lowercase().replace(Regex("[^a-z0-9]"), "")
-            val titleMatches = normAnime.contains(normTmdb) || 
-                               normTmdb.contains(normAnime) ||
-                               meta.alternativeTitles.split(",").any { alt ->
-                                   val nAlt = alt.trim().lowercase().replace(Regex("[^a-z0-9]"), "")
-                                   nAlt.isNotBlank() && (nAlt.contains(normTmdb) || normTmdb.contains(nAlt))
-                               }
-
-            if (!titleMatches && normTmdb.length >= 4) {
-                return meta
-            }
-
-            var enriched = meta
-
-            // 1. Verified YouTube Trailer (only if AniList was empty)
-            if (needsTrailer && tmdbMeta.youtubeTrailerId.isNotBlank() && 
-                !tmdbMeta.youtubeTrailerId.equals("null", ignoreCase = true)) {
-                enriched = enriched.copy(youtubeTrailerId = tmdbMeta.youtubeTrailerId)
-            }
-
-            // 2. Fallback Cast (only if AniList was empty)
-            if (needsCast && tmdbMeta.castList.isNotBlank()) {
-                enriched = enriched.copy(castList = tmdbMeta.castList)
-            }
-
-            // 3. Link TMDB ID
-            if (needsTmdbId && tmdbMeta.tmdbId.isNotBlank()) {
-                enriched = enriched.copy(tmdbId = tmdbMeta.tmdbId)
-            }
-
-            // 4. Fallback Director, Writers, Cast, and Trailers (only if AniList was empty)
-            if (enriched.director.isBlank() && tmdbMeta.director.isNotBlank()) {
-                enriched = enriched.copy(director = tmdbMeta.director)
-            }
-            if (enriched.writers.isBlank() && tmdbMeta.writers.isNotBlank()) {
-                enriched = enriched.copy(writers = tmdbMeta.writers)
-            }
-            if (enriched.castMembers.isEmpty() && tmdbMeta.castMembers.isNotEmpty()) {
-                enriched = enriched.copy(castMembers = tmdbMeta.castMembers)
-            }
-            if (enriched.trailers.isEmpty() && tmdbMeta.trailers.isNotEmpty()) {
-                enriched = enriched.copy(trailers = tmdbMeta.trailers)
-            }
-
-            enriched
-        } catch (e: Exception) {
-            Log.w(TAG, "Selective TMDB enrichment for anime '${meta.title}' skipped: ${e.message}")
-            meta
-        }
+        Log.w(TAG, "AniList query returned no hits for '$query'")
+        Result.failure(Exception("Anime '$cleanQuery' not found on AniList"))
     }
 
     suspend fun fetchAniListExtendedDetails(
@@ -1932,7 +2054,9 @@ object MetadataFetchManager {
                             english
                             romaji
                             userPreferred
+                            native
                           }
+                          synonyms
                           coverImage {
                             extraLarge
                             large
@@ -1976,21 +2100,34 @@ object MetadataFetchManager {
                     val recId = mr.optInt("id", 0)
                     if (recId <= 0) continue
                     val titleObj = mr.optJSONObject("title")
-                    val enTitle = titleObj?.optString("english", "")?.trim() ?: ""
-                    val roTitle = titleObj?.optString("romaji", "")?.trim() ?: ""
-                    val prefTitle = titleObj?.optString("userPreferred", "")?.trim() ?: ""
-                    val title = enTitle.ifBlank { roTitle.ifBlank { prefTitle } }
-                    if (title.isBlank()) continue
+                    val enTitle = titleObj.optCleanString("english")
+                    val roTitle = titleObj.optCleanString("romaji")
+                    val prefTitle = titleObj.optCleanString("userPreferred")
+                    val naTitle = titleObj.optCleanString("native")
+
+                    val recSyns = (mr.optJSONArray("synonyms")?.let { sArr ->
+                        (0 until sArr.length()).mapNotNull { idx -> sArr.optCleanString(idx).takeIf { s -> s.isNotBlank() } }
+                    } ?: emptyList())
+
+                    val title = resolveBestAnimeEnglishTitle(
+                        englishTitle = enTitle,
+                        romajiTitle = roTitle,
+                        userPreferredTitle = prefTitle,
+                        synonyms = recSyns
+                    )
+                    if (title.isBlank() || title.equals("null", ignoreCase = true)) continue
 
                     val coverObj = mr.optJSONObject("coverImage")
-                    val poster = coverObj?.optString("extraLarge", coverObj.optString("large", "")) ?: ""
-                    val banner = mr.optString("bannerImage", "")
+                    val poster = coverObj.optCleanString("extraLarge").ifBlank { coverObj.optCleanString("large") }
+                    val banner = mr.optCleanString("bannerImage", "")
                     val avg = mr.optInt("averageScore", 0)
                     val scoreStr = if (avg > 0) String.format(java.util.Locale.US, "%.1f", avg / 10.0) else ""
                     val year = mr.optInt("seasonYear", 0)
-                    val format = mr.optString("format", "TV")
+                    val format = mr.optCleanString("format", "TV")
                     val genres = (mr.optJSONArray("genres")?.let { gArr ->
-                        (0 until gArr.length()).mapNotNull { gArr.optString(it) }
+                        (0 until gArr.length()).mapNotNull { idx ->
+                            gArr.optCleanString(idx).takeIf { s -> s.isNotBlank() && !s.equals("Anime", ignoreCase = true) }
+                        }
                     } ?: emptyList())
 
                     results.add(
@@ -2102,22 +2239,28 @@ object MetadataFetchManager {
     ): Result<com.streamhub.app.data.models.MediaItem> {
         return withContext(Dispatchers.IO) {
             try {
-                val isAnime = item.category.equals("Anime", ignoreCase = true)
+                val isAnime = item.category.equals("Anime", ignoreCase = true) ||
+                              item.category.equals("ANIMES", ignoreCase = true) ||
+                              item.type.equals("ANIME", ignoreCase = true) ||
+                              item.category.contains("Anime", ignoreCase = true)
                 val isMovie = item.category.equals("Movie", ignoreCase = true) ||
                               item.category.equals("Movies", ignoreCase = true) ||
                               item.type.equals("MOVIE", ignoreCase = true)
 
                 val detectedSeason = if (isAnime) extractTargetSeasonNumber(item.title, item.seasonNumber) else item.seasonNumber
+                val isMultiSeason = detectedSeason > 1
+                val hasTmdbPoster = item.posterUrl.contains("tmdb.org", ignoreCase = true)
+                val hasTmdbBanner = item.bannerUrl.contains("tmdb.org", ignoreCase = true)
+                val hasTmdbId = item.tmdbId.isNotBlank()
 
                 val result = when {
                     isAnime -> {
                         val aniIdNum = item.anilistId.toIntOrNull()
-                        if (deepSync || detectedSeason > 1) {
-                            // When deep syncing or for Season 2+, bypass stale legacy Season 1 direct ID
-                            fetchFromAniList(item.title, targetSeason = detectedSeason)
-                        } else if (aniIdNum != null && aniIdNum > 0) {
+                        if (aniIdNum != null && aniIdNum > 0 && (!isMultiSeason || detectedSeason <= 1)) {
+                            // Fetch fresh official AniList data using exact AniList ID
                             fetchFromAniList(item.title, targetSeason = detectedSeason, directAniListId = aniIdNum)
                         } else {
+                            // Fetch fresh official AniList data by title and detected season
                             fetchFromAniList(item.title, targetSeason = detectedSeason)
                         }
                     }
@@ -2133,78 +2276,158 @@ object MetadataFetchManager {
 
                 result.fold(
                     onSuccess = { meta ->
-                        val hasBrokenGenres = item.genres.isEmpty() || item.genres.all { 
-                            val g = it.trim().lowercase()
-                            g.isBlank() || g == "movie" || g == "movies" || g == "tv series" || g == "series" || g == "anime"
-                        }
-                        val repairedGenres = if (deepSync && meta.genres.isNotEmpty()) {
-                            meta.genres
-                        } else if (hasBrokenGenres && meta.genres.isNotEmpty()) {
-                            meta.genres
+                        val cleanTitle = item.title.replace(Regex("\\s*\\(\\d{4}\\)\\s*$"), "").trim()
+                        val finalTitle = if (item.title.isBlank() || item.title.equals("null", ignoreCase = true)) {
+                            meta.title
+                        } else if (isMultiSeason && cleanTitle.isNotBlank()) {
+                            cleanTitle
                         } else {
-                            item.genres.ifEmpty { meta.genres }
+                            item.title
                         }
 
-                        val bannerNeedsUpdate = item.bannerUrl.isBlank() || item.bannerUrl == item.posterUrl
-                        val repairedBanner = if (deepSync || bannerNeedsUpdate || (detectedSeason > 1 && meta.backdropUrl.isNotBlank())) {
-                            meta.backdropUrl.ifBlank { item.bannerUrl }
-                        } else {
-                            item.bannerUrl
-                        }
+                        val repairedItem = if (isAnime) {
+                            // 100% AniList Data for Anime - Purge all TMDb leftovers!
+                            val repairedPoster = meta.posterUrl.ifBlank { item.posterUrl.takeIf { !it.contains("tmdb.org") && !it.equals("null", ignoreCase = true) } ?: "" }
+                            val hasCustomValidBanner = item.bannerUrl.isNotBlank() && 
+                                                       item.bannerUrl != item.posterUrl && 
+                                                       !item.bannerUrl.equals("null", ignoreCase = true) && 
+                                                       !item.bannerUrl.contains("tmdb.org")
+                            val repairedBanner = if (meta.backdropUrl.isNotBlank() && !meta.backdropUrl.equals("null", ignoreCase = true)) {
+                                meta.backdropUrl
+                            } else if (hasCustomValidBanner) {
+                                item.bannerUrl // Preserve custom user-provided 16:9 backdrop banner!
+                            } else {
+                                meta.posterUrl.ifBlank { item.posterUrl.takeIf { !it.contains("tmdb.org") && !it.equals("null", ignoreCase = true) } ?: "" }
+                            }
 
-                        val repairedSynopsis = if (deepSync || item.description.isBlank() || item.description == "No synopsis available." || (detectedSeason > 1 && meta.synopsis.isNotBlank() && meta.synopsis != "No synopsis available.")) {
-                            meta.synopsis.ifBlank { item.description }
-                        } else {
-                            item.description
-                        }
+                            val hasCustomValidTrailer = item.trailerId.isNotBlank() && !item.trailerId.equals("null", ignoreCase = true)
+                            val repairedTrailer = if (meta.youtubeTrailerId.isNotBlank() && !meta.youtubeTrailerId.equals("null", ignoreCase = true)) {
+                                meta.youtubeTrailerId
+                            } else if (hasCustomValidTrailer) {
+                                item.trailerId // Preserve custom user-provided trailer ID!
+                            } else {
+                                ""
+                            }
 
-                        val repairedItem = item.copy(
-                            genres = repairedGenres,
-                            rating = if (deepSync || item.rating.isBlank()) meta.rating.ifBlank { item.rating } else item.rating,
-                            maturityRating = if (deepSync || item.maturityRating.isBlank()) meta.maturityRating.ifBlank { item.maturityRating } else item.maturityRating,
-                            description = repairedSynopsis,
-                            posterUrl = if (deepSync || item.posterUrl.isBlank() || (detectedSeason > 1 && meta.posterUrl.isNotBlank())) meta.posterUrl.ifBlank { item.posterUrl } else item.posterUrl,
-                            bannerUrl = repairedBanner,
-                            studio = if (deepSync || item.studio.isBlank()) meta.studio.ifBlank { item.studio } else item.studio,
-                            producers = if (deepSync || item.producers.isBlank()) meta.producers.ifBlank { item.producers } else item.producers,
-                            duration = if (deepSync || item.duration.isBlank()) meta.duration.ifBlank { item.duration } else item.duration,
-                            status = if (deepSync || item.status.isBlank()) meta.status.ifBlank { item.status } else item.status,
-                            releaseYear = if (deepSync || item.releaseYear.isBlank() || (detectedSeason > 1 && meta.releaseYear > 0)) {
-                                if (meta.releaseYear > 0) meta.releaseYear.toString() else item.releaseYear
-                            } else item.releaseYear,
-                            aired = if (deepSync || item.aired.isBlank() || (detectedSeason > 1 && meta.aired.isNotBlank())) meta.aired.ifBlank { item.aired } else item.aired,
-                            tmdbId = if (deepSync || item.tmdbId.isBlank()) meta.tmdbId.ifBlank { item.tmdbId } else item.tmdbId,
-                            anilistId = if (deepSync || item.anilistId.isBlank() || (detectedSeason > 1 && meta.anilistId.isNotBlank())) {
-                                meta.anilistId.ifBlank { item.anilistId }
-                            } else item.anilistId,
-                            trailerId = if (deepSync || item.trailerId.isBlank() || item.trailerId.equals("null", ignoreCase = true) || (detectedSeason > 1 && meta.youtubeTrailerId.isNotBlank() && !meta.youtubeTrailerId.equals("null", ignoreCase = true))) {
-                                val tid = meta.youtubeTrailerId.takeIf { !it.equals("null", ignoreCase = true) } ?: ""
-                                tid.ifBlank { if (item.trailerId.equals("null", ignoreCase = true)) "" else item.trailerId }
-                            } else item.trailerId,
-                            synonyms = if (deepSync || item.synonyms.isBlank() || (detectedSeason > 1 && meta.alternativeTitles.isNotBlank())) meta.alternativeTitles.ifBlank { item.synonyms } else item.synonyms,
-                            castList = if (deepSync || item.castList.isEmpty() || (detectedSeason > 1 && meta.castList.isNotBlank())) {
-                                if (meta.castList.isNotBlank()) meta.castList.split(",").map { it.trim() }.filter { it.isNotBlank() } else item.castList
-                            } else item.castList,
-                            source = if (deepSync || item.source.isBlank()) meta.source.ifBlank { item.source } else item.source,
-                            premiered = if (deepSync || item.premiered.isBlank() || (detectedSeason > 1 && meta.releaseYear > 0)) {
-                                if (meta.releaseYear > 0) meta.releaseYear.toString() else item.premiered
-                            } else item.premiered,
-                            totalEpisodes = if (deepSync || item.totalEpisodes.isBlank() || (detectedSeason > 1 && meta.totalEpisodes.isNotBlank())) meta.totalEpisodes.ifBlank { item.totalEpisodes } else item.totalEpisodes,
-                            franchiseId = if (item.franchiseId.isBlank()) meta.franchiseId else item.franchiseId,
-                            franchiseTitle = if (item.franchiseTitle.isBlank()) meta.franchiseTitle else item.franchiseTitle,
-                            seasonNumber = if (detectedSeason > 1) detectedSeason else if (item.seasonNumber <= 1 && meta.seasonNumber > 1) meta.seasonNumber else item.seasonNumber,
-                            seasonTitle = if (item.seasonTitle.isBlank()) meta.seasonTitle else item.seasonTitle,
-                            relationType = if (item.relationType.isBlank()) meta.relationType else item.relationType,
-                            director = if (deepSync || item.director.isBlank() || (detectedSeason > 1 && meta.director.isNotBlank())) meta.director.ifBlank { item.director } else item.director,
-                            writers = if (deepSync || item.writers.isBlank() || (detectedSeason > 1 && meta.writers.isNotBlank())) meta.writers.ifBlank { item.writers } else item.writers,
-                            castMembers = if (deepSync || item.castMembers.isEmpty() || item.castMembers.any { it.profileUrl.isBlank() } || (detectedSeason > 1 && meta.castMembers.isNotEmpty())) {
-                                if (meta.castMembers.isNotEmpty()) meta.castMembers else item.castMembers
-                            } else item.castMembers,
-                            trailers = if (deepSync || item.trailers.isEmpty() || (detectedSeason > 1 && meta.trailers.isNotEmpty())) {
-                                if (meta.trailers.isNotEmpty()) meta.trailers else item.trailers
-                            } else item.trailers,
-                            updatedAt = System.currentTimeMillis()
-                        )
+                            item.copy(
+                                title = finalTitle,
+                                category = "ANIME",
+                                type = if (meta.category.equals("Movie", ignoreCase = true) || item.type.equals("MOVIE", ignoreCase = true)) "MOVIE" else "SERIES",
+                                genres = if (meta.genres.isNotEmpty()) meta.genres else item.genres,
+                                rating = meta.rating.ifBlank { item.rating.takeIf { !it.equals("null", ignoreCase = true) } ?: "" },
+                                maturityRating = meta.maturityRating.ifBlank { item.maturityRating },
+                                description = if (meta.synopsis.isNotBlank() && meta.synopsis != "No synopsis available.") meta.synopsis else item.description,
+                                posterUrl = repairedPoster,
+                                bannerUrl = repairedBanner,
+                                studio = meta.studio.ifBlank { item.studio },
+                                producers = meta.producers.ifBlank { item.producers },
+                                source = meta.source.ifBlank { item.source },
+                                duration = meta.duration.ifBlank { item.duration },
+                                status = meta.status.ifBlank { item.status },
+                                releaseYear = if (meta.releaseYear > 0) meta.releaseYear.toString() else item.releaseYear,
+                                aired = meta.aired.ifBlank { item.aired },
+                                tmdbId = "", // PURGE TMDb ID ON ALL ANIME!
+                                anilistId = meta.anilistId.ifBlank { item.anilistId },
+                                trailerId = repairedTrailer,
+                                synonyms = meta.alternativeTitles.ifBlank { item.synonyms },
+                                castList = if (meta.castList.isNotBlank()) meta.castList.split(",").map { it.trim() }.filter { it.isNotBlank() } else item.castList,
+                                premiered = if (meta.releaseYear > 0) meta.releaseYear.toString() else item.premiered,
+                                totalEpisodes = meta.totalEpisodes.ifBlank { item.totalEpisodes },
+                                franchiseId = if (item.franchiseId.isBlank()) meta.franchiseId else item.franchiseId,
+                                franchiseTitle = if (item.franchiseTitle.isBlank()) meta.franchiseTitle else item.franchiseTitle,
+                                seasonNumber = if (detectedSeason > 1) detectedSeason else if (item.seasonNumber <= 1 && meta.seasonNumber > 1) meta.seasonNumber else item.seasonNumber,
+                                seasonTitle = if (item.seasonTitle.isBlank()) meta.seasonTitle else item.seasonTitle,
+                                relationType = if (item.relationType.isBlank()) meta.relationType else item.relationType,
+                                director = meta.director.ifBlank { item.director },
+                                writers = meta.writers.ifBlank { item.writers },
+                                castMembers = if (meta.castMembers.isNotEmpty()) meta.castMembers else item.castMembers,
+                                trailers = if (meta.trailers.isNotEmpty()) meta.trailers else item.trailers,
+                                updatedAt = System.currentTimeMillis()
+                            )
+                        } else {
+                            // Standard repair for Movies & TV Series (TMDb)
+                            val hasBrokenGenres = item.genres.isEmpty() || item.genres.all { 
+                                val g = it.trim().lowercase()
+                                g.isBlank() || g == "movie" || g == "movies" || g == "tv series" || g == "series"
+                            }
+                            val repairedGenres = if (deepSync && meta.genres.isNotEmpty()) {
+                                meta.genres
+                            } else if (hasBrokenGenres && meta.genres.isNotEmpty()) {
+                                meta.genres
+                            } else {
+                                item.genres.ifEmpty { meta.genres }
+                            }
+
+                            val hasCustomValidBanner = item.bannerUrl.isNotBlank() && 
+                                                       item.bannerUrl != item.posterUrl && 
+                                                       !item.bannerUrl.equals("null", ignoreCase = true)
+                            val repairedBanner = if (meta.backdropUrl.isNotBlank() && !meta.backdropUrl.equals("null", ignoreCase = true)) {
+                                meta.backdropUrl
+                            } else if (hasCustomValidBanner) {
+                                item.bannerUrl // Preserve custom user-provided 16:9 backdrop banner!
+                            } else {
+                                meta.posterUrl.ifBlank { item.posterUrl.takeIf { !it.equals("null", ignoreCase = true) } ?: "" }
+                            }
+
+                            val hasCustomValidTrailer = item.trailerId.isNotBlank() && !item.trailerId.equals("null", ignoreCase = true)
+                            val repairedTrailer = if (meta.youtubeTrailerId.isNotBlank() && !meta.youtubeTrailerId.equals("null", ignoreCase = true)) {
+                                meta.youtubeTrailerId
+                            } else if (hasCustomValidTrailer) {
+                                item.trailerId // Preserve custom user-provided trailer ID!
+                            } else {
+                                ""
+                            }
+
+                            val repairedSynopsis = if (deepSync || item.description.isBlank() || item.description == "No synopsis available." || (isMultiSeason && meta.synopsis.isNotBlank() && meta.synopsis != "No synopsis available.")) {
+                                meta.synopsis.ifBlank { item.description }
+                            } else {
+                                item.description
+                            }
+
+                            item.copy(
+                                title = finalTitle,
+                                genres = repairedGenres,
+                                rating = if (deepSync || item.rating.isBlank() || (isMultiSeason && meta.rating.isNotBlank())) meta.rating.ifBlank { item.rating } else item.rating,
+                                maturityRating = if (deepSync || item.maturityRating.isBlank() || (isMultiSeason && meta.maturityRating.isNotBlank())) meta.maturityRating.ifBlank { item.maturityRating } else item.maturityRating,
+                                description = repairedSynopsis,
+                                posterUrl = if (deepSync || item.posterUrl.isBlank() || (isMultiSeason && meta.posterUrl.isNotBlank())) meta.posterUrl.ifBlank { item.posterUrl } else item.posterUrl,
+                                bannerUrl = repairedBanner,
+                                studio = if (deepSync || item.studio.isBlank() || (isMultiSeason && meta.studio.isNotBlank())) meta.studio.ifBlank { item.studio } else item.studio,
+                                producers = if (deepSync || item.producers.isBlank() || (isMultiSeason && meta.producers.isNotBlank())) meta.producers.ifBlank { item.producers } else item.producers,
+                                duration = if (deepSync || item.duration.isBlank() || (isMultiSeason && meta.duration.isNotBlank())) meta.duration.ifBlank { item.duration } else item.duration,
+                                status = if (deepSync || item.status.isBlank() || (isMultiSeason && meta.status.isNotBlank())) meta.status.ifBlank { item.status } else item.status,
+                                releaseYear = if (deepSync || item.releaseYear.isBlank() || (isMultiSeason && meta.releaseYear > 0)) {
+                                    if (meta.releaseYear > 0) meta.releaseYear.toString() else item.releaseYear
+                                } else item.releaseYear,
+                                aired = if (deepSync || item.aired.isBlank() || (isMultiSeason && meta.aired.isNotBlank())) meta.aired.ifBlank { item.aired } else item.aired,
+                                tmdbId = if (deepSync || item.tmdbId.isBlank() || (isMultiSeason && meta.tmdbId.isNotBlank())) meta.tmdbId.ifBlank { item.tmdbId } else item.tmdbId,
+                                anilistId = "",
+                                trailerId = repairedTrailer,
+                                synonyms = if (deepSync || item.synonyms.isBlank() || (isMultiSeason && meta.alternativeTitles.isNotBlank())) meta.alternativeTitles.ifBlank { item.synonyms } else item.synonyms,
+                                castList = if (deepSync || item.castList.isEmpty() || (isMultiSeason && meta.castList.isNotBlank())) {
+                                    if (meta.castList.isNotBlank()) meta.castList.split(",").map { it.trim() }.filter { it.isNotBlank() } else item.castList
+                                } else item.castList,
+                                source = if (deepSync || item.source.isBlank() || (isMultiSeason && meta.source.isNotBlank())) meta.source.ifBlank { item.source } else item.source,
+                                premiered = if (deepSync || item.premiered.isBlank() || (isMultiSeason && meta.releaseYear > 0)) {
+                                    if (meta.releaseYear > 0) meta.releaseYear.toString() else item.premiered
+                                } else item.premiered,
+                                totalEpisodes = if (deepSync || item.totalEpisodes.isBlank() || (isMultiSeason && meta.totalEpisodes.isNotBlank())) meta.totalEpisodes.ifBlank { item.totalEpisodes } else item.totalEpisodes,
+                                franchiseId = if (item.franchiseId.isBlank()) meta.franchiseId else item.franchiseId,
+                                franchiseTitle = if (item.franchiseTitle.isBlank()) meta.franchiseTitle else item.franchiseTitle,
+                                seasonNumber = if (detectedSeason > 1) detectedSeason else if (item.seasonNumber <= 1 && meta.seasonNumber > 1) meta.seasonNumber else item.seasonNumber,
+                                seasonTitle = if (item.seasonTitle.isBlank()) meta.seasonTitle else item.seasonTitle,
+                                relationType = if (item.relationType.isBlank()) meta.relationType else item.relationType,
+                                director = if (deepSync || item.director.isBlank() || (isMultiSeason && meta.director.isNotBlank())) meta.director.ifBlank { item.director } else item.director,
+                                writers = if (deepSync || item.writers.isBlank() || (isMultiSeason && meta.writers.isNotBlank())) meta.writers.ifBlank { item.writers } else item.writers,
+                                castMembers = if (deepSync || item.castMembers.isEmpty() || item.castMembers.any { it.profileUrl.isBlank() } || (isMultiSeason && meta.castMembers.isNotEmpty())) {
+                                    if (meta.castMembers.isNotEmpty()) meta.castMembers else item.castMembers
+                                } else item.castMembers,
+                                trailers = if (deepSync || item.trailers.isEmpty() || (isMultiSeason && meta.trailers.isNotEmpty())) {
+                                    if (meta.trailers.isNotEmpty()) meta.trailers else item.trailers
+                                } else item.trailers,
+                                updatedAt = System.currentTimeMillis()
+                            )
+                        }
 
                         val enrichedItem = repairedItem
                         Result.success(enrichedItem)

@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,7 +69,8 @@ enum class MetadataIssueType(val title: String, val shortBadge: String) {
     YEAR("Missing Release Year", "⚠️ Year"),
     DURATION("Missing Runtime", "⚠️ Runtime"),
     EPISODES("Missing Episode Count", "⚠️ Episodes"),
-    UNSTANDARDIZED_SPECS("Unstandardized Codecs/Tracks", "⚡ Codecs")
+    UNSTANDARDIZED_SPECS("Unstandardized Codecs/Tracks", "⚡ Codecs"),
+    TMDB_ON_ANIME("Legacy TMDb Link on Anime", "⚠️ TMDb Link")
 }
 
 private val GENERIC_GENRES = setOf("movie", "movies", "tv series", "series", "anime")
@@ -84,6 +86,9 @@ fun getMediaItemIssues(item: MediaItem): List<MetadataIssueType> {
     val isAnime = item.category.equals("ANIME", ignoreCase = true) ||
                   item.category.equals("ANIMES", ignoreCase = true) ||
                   item.type.equals("ANIME", ignoreCase = true)
+    val isSeries = item.type.equals("SERIES", ignoreCase = true) ||
+                   item.category.equals("SERIES", ignoreCase = true) ||
+                   item.category.equals("WEB_SERIES", ignoreCase = true)
 
     if (isGenreBroken(item.genres)) issues.add(MetadataIssueType.GENRE)
     if (item.trailerId.isBlank() || item.trailerId.equals("null", ignoreCase = true)) issues.add(MetadataIssueType.TRAILER)
@@ -95,13 +100,18 @@ fun getMediaItemIssues(item: MediaItem): List<MetadataIssueType> {
     if (item.studio.isBlank() && item.producers.isBlank()) issues.add(MetadataIssueType.STUDIO)
     if (item.maturityRating.isBlank()) issues.add(MetadataIssueType.MATURITY)
     if (item.releaseYear.isBlank() && item.aired.isBlank()) issues.add(MetadataIssueType.YEAR)
-    if (item.duration.isBlank()) issues.add(MetadataIssueType.DURATION)
-    if (item.type.equals("SERIES", ignoreCase = true) && item.totalEpisodes.isBlank()) issues.add(MetadataIssueType.EPISODES)
+    
+    // Series on TMDb do not have a single static movie duration
+    if (!isSeries && item.duration.isBlank()) issues.add(MetadataIssueType.DURATION)
+    if (isSeries && item.totalEpisodes.isBlank()) issues.add(MetadataIssueType.EPISODES)
 
     // Anime specific specification checks
     if (isAnime) {
-        if (item.producers.isBlank()) issues.add(MetadataIssueType.PRODUCERS)
+        if (item.studio.isBlank() && item.producers.isBlank()) issues.add(MetadataIssueType.PRODUCERS)
         if (item.source.isBlank()) issues.add(MetadataIssueType.SOURCE)
+        if (item.posterUrl.contains("tmdb.org", ignoreCase = true) || item.bannerUrl.contains("tmdb.org", ignoreCase = true) || item.tmdbId.isNotBlank()) {
+            issues.add(MetadataIssueType.TMDB_ON_ANIME)
+        }
     }
 
     // Codec & Track standardization checks
@@ -112,24 +122,31 @@ fun getMediaItemIssues(item: MediaItem): List<MetadataIssueType> {
     return issues
 }
 
+enum class InspectorCategory(val label: String, val emoji: String) {
+    ALL("All Shows", "🌐"),
+    ANIME("Anime", "🌸"),
+    MOVIES("Movies", "🎬"),
+    SERIES("TV Series", "📺")
+}
+
 enum class InspectorFilter(val label: String) {
+    FAILED_SYNC("⚠️ Failed Sync"),
     ALL_ISSUES("All Issues"),
-    ANIME("🌸 Anime Catalog"),
-    MOVIES("🎬 Movies"),
-    SERIES("📺 TV Series"),
-    UNSTANDARDIZED_SPECS("⚡ Unstandardized Specs"),
-    NO_PRODUCERS("🏢 No Producers"),
-    NO_SOURCE("📖 No Source"),
-    NO_MATURITY("🔞 No Maturity"),
+    UNSTANDARDIZED_SPECS("⚡ Codecs"),
+    TMDB_ON_ANIME("⚠️ TMDb on Anime"),
     NO_TRAILER("🎬 No Trailer"),
     BROKEN_GENRES("🏷️ Bad Genres"),
     NO_CAST("🎭 No Cast"),
     NO_SYNOPSIS("📄 No Synopsis"),
     NO_BACKDROP("🌄 No Backdrop"),
     NO_RATING("⭐ No Rating"),
-    NO_SPECS("⏱️ No Runtime/Specs"),
-    ALL("All Shows"),
-    HEALTHY("✅ 100% Healthy")
+    NO_SPECS("⏱️ No Specs"),
+    NO_PRODUCERS("🏢 No Studio/Producers"),
+    NO_SOURCE("📖 No Source"),
+    NO_MATURITY("🔞 No Maturity"),
+    NO_EPISODES("📺 No Episodes"),
+    HEALTHY("✅ 100% Healthy"),
+    ALL("Show All")
 }
 
 enum class InspectorSortOrder(val label: String) {
@@ -141,10 +158,6 @@ enum class InspectorSortOrder(val label: String) {
 }
 
 object MediaSpecsNormalizer {
-    /**
-     * Standardizes resolution, videoCodec, audioTracks, and subtitleTracks for a MediaInfo object.
-     * Returns the cleaned MediaInfo and a boolean flag indicating if any field was modified.
-     */
     fun normalize(mediaInfo: MediaInfo): Pair<MediaInfo, Boolean> {
         var changed = false
         var currentRes = mediaInfo.resolution.trim()
@@ -152,7 +165,6 @@ object MediaSpecsNormalizer {
         val currentAudios = mediaInfo.audioTracks.toMutableList()
         val currentSubs = mediaInfo.subtitleTracks.toMutableList()
 
-        // 1. Detect and extract resolution embedded inside codec or resolution field
         val fullSpecText = "$currentRes $currentCodec"
         val resMatch = Regex("(?i)\\b(4k|2160p|1080p|720p|480p)\\b").find(fullSpecText)
         val extractedRes = resMatch?.value?.lowercase()?.let {
@@ -182,7 +194,6 @@ object MediaSpecsNormalizer {
             }
         }
 
-        // If codec field contained the resolution, strip it out cleanly
         if (extractedRes != null && currentCodec.contains(extractedRes, ignoreCase = true)) {
             val stripped = currentCodec.replace(Regex("(?i)\\b" + Regex.escape(extractedRes) + "\\b"), "").trim()
             if (stripped.isNotBlank() && stripped != currentCodec) {
@@ -191,7 +202,6 @@ object MediaSpecsNormalizer {
             }
         }
 
-        // 2. Standardize Video Codec
         val codecLower = currentCodec.lowercase()
         val is10Bit = codecLower.contains("10-bit") || codecLower.contains("10bit") || codecLower.contains("10 bit")
         val isHevc = codecLower.contains("x265") || codecLower.contains("hevc") || codecLower.contains("h.265") || codecLower.contains("h265")
@@ -211,7 +221,6 @@ object MediaSpecsNormalizer {
             changed = true
         }
 
-        // 3. Clean and Standardize Audio Tracks
         val languageMapping = mapOf(
             "english" to "English", "eng" to "English",
             "hindi" to "Hindi", "hin" to "Hindi",
@@ -252,7 +261,6 @@ object MediaSpecsNormalizer {
             changed = true
         }
 
-        // 4. Clean Subtitle Tracks
         val cleanedSubs = mutableListOf<String>()
         for (rawSub in currentSubs) {
             val parts = rawSub.split(",").map { it.trim() }.filter { it.isNotBlank() }
@@ -274,7 +282,6 @@ object MediaSpecsNormalizer {
             changed = true
         }
 
-        // 5. Update Quality Badges
         val newBadges = listOfNotNull(
             currentRes.takeIf { it.isNotBlank() },
             currentCodec.takeIf { it.isNotBlank() }
@@ -305,19 +312,16 @@ fun MetadataInspectorDialog(
     val scope = rememberCoroutineScope()
     val catalog: List<MediaItem> by repository.mediaCatalog.collectAsState()
 
+    var selectedCategory by remember { mutableStateOf(InspectorCategory.ALL) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf(InspectorFilter.ALL_ISSUES) }
     var sortOrder by remember { mutableStateOf(InspectorSortOrder.MOST_ISSUES) }
     var deepSyncMode by remember { mutableStateOf(false) }
 
-    // Multi-select state
     var isSelectionMode by remember { mutableStateOf(false) }
     val selectedItemIds = remember { mutableStateMapOf<String, Boolean>() }
-
-    // Per-item repair loading state
     val repairingItemIds = remember { mutableStateMapOf<String, Boolean>() }
 
-    // Batch repair states
     var isBatchRepairing by remember { mutableStateOf(false) }
     var batchProgress by remember { mutableStateOf(0f) }
     var batchStatusText by remember { mutableStateOf("") }
@@ -334,64 +338,89 @@ fun MetadataInspectorDialog(
         catalog.associateWith { getMediaItemIssues(it) }
     }
 
-    val needsRepairItems: List<MediaItem> = remember(catalog, issuesMap) {
-        catalog.filter { (issuesMap[it] ?: emptyList()).isNotEmpty() }
-    }
-
-    val healthyItems: List<MediaItem> = remember(catalog, issuesMap) {
-        catalog.filter { (issuesMap[it] ?: emptyList()).isEmpty() }
-    }
-
-    val healthScore = remember(catalog, healthyItems) {
-        if (catalog.isEmpty()) 100 else ((healthyItems.size.toFloat() / catalog.size.toFloat()) * 100).toInt()
-    }
-
-    val brokenGenresCount = remember(catalog) { catalog.count { isGenreBroken(it.genres) } }
-    val noTrailerCount = remember(catalog) { catalog.count { it.trailerId.isBlank() || it.trailerId.equals("null", ignoreCase = true) } }
-    val noCastCount = remember(catalog) { catalog.count { it.castList.isEmpty() } }
-    val noSynopsisCount = remember(catalog) { catalog.count { it.description.isBlank() || it.description == "No synopsis available." } }
-    val noBackdropCount = remember(catalog) { catalog.count { it.bannerUrl.isBlank() || it.bannerUrl == it.posterUrl } }
-    val noSpecsCount = remember(catalog) { catalog.count { it.studio.isBlank() || it.duration.isBlank() || it.rating.isBlank() } }
-    val noMaturityCount = remember(catalog) { catalog.count { it.maturityRating.isBlank() } }
-    val noRatingCount = remember(catalog) { catalog.count { it.rating.isBlank() } }
-
-    val unstandardizedItems: List<MediaItem> = remember(catalog) {
-        catalog.filter { MediaSpecsNormalizer.normalize(it.mediaInfo).second }
-    }
-    val unstandardizedSpecsCount = unstandardizedItems.size
-
-    val animeItems: List<MediaItem> = remember(catalog) {
+    val animeItems = remember(catalog) {
         catalog.filter { it.category.equals("ANIME", ignoreCase = true) || it.type.equals("ANIME", ignoreCase = true) }
     }
-    val movieItems: List<MediaItem> = remember(catalog) {
-        catalog.filter { it.category.equals("MOVIES", ignoreCase = true) || it.type.equals("MOVIE", ignoreCase = true) }
+    val movieItems = remember(catalog) {
+        catalog.filter {
+            !it.category.equals("ANIME", ignoreCase = true) &&
+            !it.type.equals("ANIME", ignoreCase = true) &&
+            (it.category.equals("MOVIES", ignoreCase = true) ||
+             it.category.equals("MOVIE", ignoreCase = true) ||
+             it.type.equals("MOVIE", ignoreCase = true))
+        }
     }
-    val seriesItems: List<MediaItem> = remember(catalog) {
-        catalog.filter { (it.category.equals("SERIES", ignoreCase = true) || it.type.equals("SERIES", ignoreCase = true)) && !it.category.equals("ANIME", ignoreCase = true) }
+    val seriesItems = remember(catalog) {
+        catalog.filter {
+            !it.category.equals("ANIME", ignoreCase = true) &&
+            !it.type.equals("ANIME", ignoreCase = true) &&
+            (it.category.equals("SERIES", ignoreCase = true) ||
+             it.category.equals("WEB_SERIES", ignoreCase = true) ||
+             it.type.equals("SERIES", ignoreCase = true))
+        }
     }
 
-    val noProducersCount = remember(animeItems) { animeItems.count { it.producers.isBlank() } }
-    val noSourceCount = remember(animeItems) { animeItems.count { it.source.isBlank() } }
+    val activeCategoryCatalog = remember(catalog, selectedCategory, animeItems, movieItems, seriesItems) {
+        when (selectedCategory) {
+            InspectorCategory.ALL -> catalog
+            InspectorCategory.ANIME -> animeItems
+            InspectorCategory.MOVIES -> movieItems
+            InspectorCategory.SERIES -> seriesItems
+        }
+    }
 
-    val filteredList: List<MediaItem> = remember(catalog, issuesMap, selectedFilter, searchQuery, unstandardizedItems, animeItems, movieItems, seriesItems, sortOrder) {
+    val activeNeedsRepairItems: List<MediaItem> = remember(activeCategoryCatalog, issuesMap) {
+        activeCategoryCatalog.filter { (issuesMap[it] ?: emptyList()).isNotEmpty() }
+    }
+
+    val activeHealthyItems: List<MediaItem> = remember(activeCategoryCatalog, issuesMap) {
+        activeCategoryCatalog.filter { (issuesMap[it] ?: emptyList()).isEmpty() }
+    }
+
+    val categoryHealthScore = remember(activeCategoryCatalog, activeHealthyItems) {
+        if (activeCategoryCatalog.isEmpty()) 100 else ((activeHealthyItems.size.toFloat() / activeCategoryCatalog.size.toFloat()) * 100).toInt()
+    }
+
+    val activeUnstandardizedItems = remember(activeCategoryCatalog) {
+        activeCategoryCatalog.filter { MediaSpecsNormalizer.normalize(it.mediaInfo).second }
+    }
+    val unstandardizedSpecsCount = activeUnstandardizedItems.size
+    val tmdbOnAnimeCount = remember(animeItems) {
+        animeItems.count { it.posterUrl.contains("tmdb.org", ignoreCase = true) || it.bannerUrl.contains("tmdb.org", ignoreCase = true) || it.tmdbId.isNotBlank() }
+    }
+    val brokenGenresCount = remember(activeCategoryCatalog) { activeCategoryCatalog.count { isGenreBroken(it.genres) } }
+    val noTrailerCount = remember(activeCategoryCatalog) { activeCategoryCatalog.count { it.trailerId.isBlank() || it.trailerId.equals("null", ignoreCase = true) } }
+    val noCastCount = remember(activeCategoryCatalog) { activeCategoryCatalog.count { it.castList.isEmpty() } }
+    val noSynopsisCount = remember(activeCategoryCatalog) { activeCategoryCatalog.count { it.description.isBlank() || it.description == "No synopsis available." } }
+    val noBackdropCount = remember(activeCategoryCatalog) { activeCategoryCatalog.count { it.bannerUrl.isBlank() || it.bannerUrl == it.posterUrl } }
+    val noRatingCount = remember(activeCategoryCatalog) { activeCategoryCatalog.count { it.rating.isBlank() } }
+    val noSpecsCount = remember(activeCategoryCatalog) { activeCategoryCatalog.count { it.studio.isBlank() || it.duration.isBlank() || it.rating.isBlank() } }
+    val noSourceCount = remember(activeCategoryCatalog) { activeCategoryCatalog.count { it.source.isBlank() } }
+    val noProducersCount = remember(activeCategoryCatalog) { activeCategoryCatalog.count { it.studio.isBlank() && it.producers.isBlank() } }
+    val noMaturityCount = remember(activeCategoryCatalog) { activeCategoryCatalog.count { it.maturityRating.isBlank() } }
+    val noEpisodesCount = remember(activeCategoryCatalog) { activeCategoryCatalog.count { it.type.equals("SERIES", ignoreCase = true) && it.totalEpisodes.isBlank() } }
+
+    val filteredList: List<MediaItem> = remember(
+        activeCategoryCatalog, issuesMap, selectedFilter, searchQuery, activeUnstandardizedItems, sortOrder, failedItemsList
+    ) {
         val baseList = when (selectedFilter) {
-            InspectorFilter.ALL_ISSUES -> needsRepairItems
-            InspectorFilter.ANIME -> animeItems
-            InspectorFilter.MOVIES -> movieItems
-            InspectorFilter.SERIES -> seriesItems
-            InspectorFilter.UNSTANDARDIZED_SPECS -> unstandardizedItems
-            InspectorFilter.NO_PRODUCERS -> animeItems.filter { it.producers.isBlank() }
-            InspectorFilter.NO_SOURCE -> animeItems.filter { it.source.isBlank() }
-            InspectorFilter.NO_MATURITY -> catalog.filter { it.maturityRating.isBlank() }
-            InspectorFilter.NO_TRAILER -> catalog.filter { it.trailerId.isBlank() || it.trailerId.equals("null", ignoreCase = true) }
-            InspectorFilter.BROKEN_GENRES -> catalog.filter { isGenreBroken(it.genres) }
-            InspectorFilter.NO_CAST -> catalog.filter { it.castList.isEmpty() }
-            InspectorFilter.NO_SYNOPSIS -> catalog.filter { it.description.isBlank() || it.description == "No synopsis available." }
-            InspectorFilter.NO_BACKDROP -> catalog.filter { it.bannerUrl.isBlank() || it.bannerUrl == it.posterUrl }
-            InspectorFilter.NO_RATING -> catalog.filter { it.rating.isBlank() }
-            InspectorFilter.NO_SPECS -> catalog.filter { it.studio.isBlank() || it.duration.isBlank() || it.rating.isBlank() }
-            InspectorFilter.ALL -> catalog
-            InspectorFilter.HEALTHY -> healthyItems
+            InspectorFilter.FAILED_SYNC -> failedItemsList
+            InspectorFilter.ALL_ISSUES -> activeNeedsRepairItems
+            InspectorFilter.UNSTANDARDIZED_SPECS -> activeUnstandardizedItems
+            InspectorFilter.TMDB_ON_ANIME -> animeItems.filter { it.posterUrl.contains("tmdb.org", ignoreCase = true) || it.bannerUrl.contains("tmdb.org", ignoreCase = true) || it.tmdbId.isNotBlank() }
+            InspectorFilter.NO_TRAILER -> activeCategoryCatalog.filter { it.trailerId.isBlank() || it.trailerId.equals("null", ignoreCase = true) }
+            InspectorFilter.BROKEN_GENRES -> activeCategoryCatalog.filter { isGenreBroken(it.genres) }
+            InspectorFilter.NO_CAST -> activeCategoryCatalog.filter { it.castList.isEmpty() }
+            InspectorFilter.NO_SYNOPSIS -> activeCategoryCatalog.filter { it.description.isBlank() || it.description == "No synopsis available." }
+            InspectorFilter.NO_BACKDROP -> activeCategoryCatalog.filter { it.bannerUrl.isBlank() || it.bannerUrl == it.posterUrl }
+            InspectorFilter.NO_RATING -> activeCategoryCatalog.filter { it.rating.isBlank() }
+            InspectorFilter.NO_SPECS -> activeCategoryCatalog.filter { it.studio.isBlank() || it.duration.isBlank() || it.rating.isBlank() }
+            InspectorFilter.NO_PRODUCERS -> activeCategoryCatalog.filter { it.studio.isBlank() && it.producers.isBlank() }
+            InspectorFilter.NO_SOURCE -> activeCategoryCatalog.filter { it.source.isBlank() }
+            InspectorFilter.NO_MATURITY -> activeCategoryCatalog.filter { it.maturityRating.isBlank() }
+            InspectorFilter.NO_EPISODES -> activeCategoryCatalog.filter { it.type.equals("SERIES", ignoreCase = true) && it.totalEpisodes.isBlank() }
+            InspectorFilter.HEALTHY -> activeHealthyItems
+            InspectorFilter.ALL -> activeCategoryCatalog
         }
 
         val searched = if (searchQuery.isBlank()) {
@@ -422,7 +451,6 @@ fun MetadataInspectorDialog(
 
     val selectedCount = selectedItemIds.count { it.value }
 
-    // Fast local batch standardization (instant, zero network latency)
     fun executeFastStandardize(itemsToStandardize: List<MediaItem>) {
         if (isBatchRepairing || itemsToStandardize.isEmpty()) return
         val snapshot = itemsToStandardize.toList()
@@ -451,26 +479,27 @@ fun MetadataInspectorDialog(
         }
     }
 
-    // Comprehensive Batch Sync Engine (6 concurrent coroutine workers)
-    fun executeBatchSync(itemsToSync: List<MediaItem>) {
+    fun executeBatchSync(itemsToSync: List<MediaItem>, forceDeepSync: Boolean = false) {
         if (isBatchRepairing || itemsToSync.isEmpty()) return
         val snapshotItems = itemsToSync.toList()
         isBatchRepairing = true
         batchProgress = 0f
         failedItemsList = emptyList()
+        val isDeep = deepSyncMode || forceDeepSync
         batchJob = scope.launch {
             val repairedList = Collections.synchronizedList(mutableListOf<MediaItem>())
             val failedList = Collections.synchronizedList(mutableListOf<MediaItem>())
             val completedCount = AtomicInteger(0)
             val total = snapshotItems.size
-            val semaphore = Semaphore(6)
+            val semaphore = Semaphore(2)
 
-            val jobs = snapshotItems.map { item ->
+            val jobs = snapshotItems.mapIndexed { index, item ->
                 launch(Dispatchers.IO) {
+                    delay(index * 100L)
                     semaphore.acquire()
                     try {
                         ensureActive()
-                        val res = MetadataFetchManager.repairMediaItem(item, deepSync = deepSyncMode)
+                        val res = MetadataFetchManager.repairMediaItem(item, deepSync = isDeep)
                         res.fold(
                             onSuccess = { updated ->
                                 val (normalizedMediaInfo, _) = MediaSpecsNormalizer.normalize(updated.mediaInfo)
@@ -523,84 +552,47 @@ fun MetadataInspectorDialog(
         onDismissRequest = {
             if (!isBatchRepairing) onDismiss()
         },
-        properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = !isBatchRepairing)
+        properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)
     ) {
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = BackgroundDark,
-            border = BorderStroke(1.dp, CardBorderDark),
+        Card(
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
             modifier = Modifier
-                .fillMaxWidth(0.96f)
-                .fillMaxSize(0.94f)
+                .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.92f)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(18.dp)
+                    .padding(20.dp)
             ) {
-                // Top Header Row
+                // Header Bar (Matches Creator Studio Style)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f).padding(end = 8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color(0xFF7C4DFF).copy(alpha = 0.2f))
-                                .border(1.dp, Color(0xFF7C4DFF).copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.HealthAndSafety,
-                                contentDescription = null,
-                                tint = Color(0xFFB388FF),
-                                modifier = Modifier.size(22.dp)
+                    Column {
+                        Text(
+                            text = "Metadata Health Inspector",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
                             )
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "Metadata Health Inspector",
-                                    color = TextPrimary,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = Color(0xFF7C4DFF).copy(alpha = 0.2f),
-                                    border = BorderStroke(1.dp, Color(0xFF7C4DFF).copy(alpha = 0.5f))
-                                ) {
-                                    Text(
-                                        text = "v2.5 Deep Audit",
-                                        color = Color(0xFFD0BCFF),
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                            Text(
-                                text = "Intelligent catalog diagnostic, AniList specs auto-fetch, codecs standardizer & multi-select sync",
-                                color = TextSecondary,
-                                fontSize = 11.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Catalog Diagnostic, AniList Voice Actors & Codec Standardizer",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        }
+                        )
                     }
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Multi-select toggle button
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         IconButton(
                             onClick = {
                                 isSelectionMode = !isSelectionMode
@@ -610,22 +602,72 @@ fun MetadataInspectorDialog(
                             Icon(
                                 imageVector = if (isSelectionMode) Icons.Default.CheckCircle else Icons.Default.CheckCircleOutline,
                                 contentDescription = "Select Mode",
-                                tint = if (isSelectionMode) Color(0xFF7C4DFF) else TextSecondary
+                                tint = if (isSelectionMode) PrimaryRed else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
-                        // Close Button
-                        IconButton(
-                            onClick = {
-                                batchJob?.cancel()
-                                onDismiss()
-                            },
-                            enabled = !isBatchRepairing
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            modifier = Modifier.size(36.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Close",
-                                tint = TextPrimary
+                            IconButton(
+                                onClick = {
+                                    batchJob?.cancel()
+                                    onDismiss()
+                                },
+                                enabled = !isBatchRepairing
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Close",
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Category Switcher Tabs (Matches Creator Studio Tab Switcher)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainer)
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    InspectorCategory.values().forEach { cat ->
+                        val isCatSelected = selectedCategory == cat
+                        val count = when (cat) {
+                            InspectorCategory.ALL -> catalog.size
+                            InspectorCategory.ANIME -> animeItems.size
+                            InspectorCategory.MOVIES -> movieItems.size
+                            InspectorCategory.SERIES -> seriesItems.size
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isCatSelected) PrimaryRed else Color.Transparent,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    selectedCategory = cat
+                                    selectedFilter = InspectorFilter.ALL_ISSUES
+                                    selectedItemIds.clear()
+                                }
+                        ) {
+                            Text(
+                                text = "${cat.emoji} ${cat.label} ($count)",
+                                color = if (isCatSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.5.sp,
+                                fontWeight = if (isCatSelected) FontWeight.Bold else FontWeight.Medium,
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -633,11 +675,11 @@ fun MetadataInspectorDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Catalog Health Score & Quick Metrics Card
+                // Quality Score & Category Health Card
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFF161622),
-                    border = BorderStroke(1.dp, Color(0xFF28283C)),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    border = BorderStroke(1.dp, CardBorderDark),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
@@ -648,50 +690,40 @@ fun MetadataInspectorDialog(
                         ) {
                             Column {
                                 val scoreColor = when {
-                                    healthScore >= 90 -> Color(0xFF10B981)
-                                    healthScore >= 70 -> AccentGold
+                                    categoryHealthScore >= 90 -> Color(0xFF10B981)
+                                    categoryHealthScore >= 70 -> AccentGold
                                     else -> PrimaryRed
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        text = "$healthScore%",
+                                        text = "$categoryHealthScore%",
                                         color = scoreColor,
                                         fontSize = 22.sp,
                                         fontWeight = FontWeight.ExtraBold
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "Catalog Quality Score",
-                                        color = TextPrimary,
+                                        text = "${selectedCategory.label} Quality Score",
+                                        color = MaterialTheme.colorScheme.onSurface,
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.SemiBold
                                     )
                                 }
                                 Text(
-                                    text = "${healthyItems.size} of ${catalog.size} shows have 100% complete metadata",
-                                    color = TextSecondary,
+                                    text = "${activeHealthyItems.size} of ${activeCategoryCatalog.size} shows have 100% complete metadata",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontSize = 11.sp
                                 )
                             }
 
-                            // Metric Chips Row
+                            // Dynamic Metric Chips Row
                             Row(
                                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                if (noProducersCount > 0) {
-                                    MetricChip("🏢 $noProducersCount No Producers", Color(0xFFFF9800)) {
-                                        selectedFilter = InspectorFilter.NO_PRODUCERS
-                                    }
-                                }
-                                if (noSourceCount > 0) {
-                                    MetricChip("📖 $noSourceCount No Source", Color(0xFFFF9800)) {
-                                        selectedFilter = InspectorFilter.NO_SOURCE
-                                    }
-                                }
-                                if (noMaturityCount > 0) {
-                                    MetricChip("🔞 $noMaturityCount No Maturity", Color(0xFFFF9800)) {
-                                        selectedFilter = InspectorFilter.NO_MATURITY
+                                if (selectedCategory == InspectorCategory.ANIME && tmdbOnAnimeCount > 0) {
+                                    MetricChip("⚠️ $tmdbOnAnimeCount TMDb Links", PrimaryRed) {
+                                        selectedFilter = InspectorFilter.TMDB_ON_ANIME
                                     }
                                 }
                                 if (unstandardizedSpecsCount > 0) {
@@ -700,31 +732,36 @@ fun MetadataInspectorDialog(
                                     }
                                 }
                                 if (noTrailerCount > 0) {
-                                    MetricChip("🎬 $noTrailerCount No Trailer", Color(0xFFFF9800)) {
+                                    MetricChip("🎬 $noTrailerCount No Trailer", AccentGold) {
                                         selectedFilter = InspectorFilter.NO_TRAILER
                                     }
                                 }
                                 if (brokenGenresCount > 0) {
-                                    MetricChip("🏷️ $brokenGenresCount Bad Genres", Color(0xFFFF9800)) {
+                                    MetricChip("🏷️ $brokenGenresCount Bad Genres", AccentGold) {
                                         selectedFilter = InspectorFilter.BROKEN_GENRES
                                     }
                                 }
                                 if (noCastCount > 0) {
-                                    MetricChip("🎭 $noCastCount No Cast", Color(0xFFFF9800)) {
+                                    MetricChip("🎭 $noCastCount No Cast", AccentGold) {
                                         selectedFilter = InspectorFilter.NO_CAST
                                     }
                                 }
                                 if (noSynopsisCount > 0) {
-                                    MetricChip("📄 $noSynopsisCount No Synopsis", Color(0xFFFF9800)) {
+                                    MetricChip("📄 $noSynopsisCount No Synopsis", AccentGold) {
                                         selectedFilter = InspectorFilter.NO_SYNOPSIS
                                     }
                                 }
                                 if (noBackdropCount > 0) {
-                                    MetricChip("🌄 $noBackdropCount No Backdrop", Color(0xFFFF9800)) {
+                                    MetricChip("🌄 $noBackdropCount No Backdrop", AccentGold) {
                                         selectedFilter = InspectorFilter.NO_BACKDROP
                                     }
                                 }
-                                if (healthyItems.size == catalog.size && catalog.isNotEmpty()) {
+                                if (selectedCategory == InspectorCategory.SERIES && noEpisodesCount > 0) {
+                                    MetricChip("📺 $noEpisodesCount No Episodes", AccentGold) {
+                                        selectedFilter = InspectorFilter.NO_EPISODES
+                                    }
+                                }
+                                if (activeHealthyItems.size == activeCategoryCatalog.size && activeCategoryCatalog.isNotEmpty()) {
                                     MetricChip("✅ 100% Pristine", Color(0xFF10B981)) {}
                                 }
                             }
@@ -732,260 +769,282 @@ fun MetadataInspectorDialog(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Linear Health Progress
                         LinearProgressIndicator(
-                            progress = { (healthScore / 100f).coerceIn(0f, 1f) },
+                            progress = { (categoryHealthScore / 100f).coerceIn(0f, 1f) },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp)),
+                                .height(5.dp)
+                                .clip(RoundedCornerShape(3.dp)),
                             color = when {
-                                healthScore >= 90 -> Color(0xFF10B981)
-                                healthScore >= 70 -> AccentGold
+                                categoryHealthScore >= 90 -> Color(0xFF10B981)
+                                categoryHealthScore >= 70 -> AccentGold
                                 else -> PrimaryRed
                             },
-                            trackColor = Color(0xFF28283C)
+                            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Action Banner (Dynamic Context-Aware Buttons)
-                if (catalog.isNotEmpty() || isBatchRepairing) {
+                // Action Banner
+                if (activeCategoryCatalog.isNotEmpty() || isBatchRepairing) {
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFF20162E),
-                        border = BorderStroke(1.dp, Color(0xFF7C4DFF).copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        border = BorderStroke(1.dp, CardBorderDark),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            // 1. Top Header Row: Full-width title & status
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    modifier = Modifier.weight(1f).padding(end = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = PrimaryRed.copy(alpha = 0.15f),
+                                    modifier = Modifier.size(36.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.AutoFixHigh,
-                                        contentDescription = null,
-                                        tint = Color(0xFFB388FF),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column {
-                                        val bannerTitle = when {
-                                            isBatchRepairing -> "Running Batch Sync..."
-                                            isSelectionMode && selectedCount > 0 -> "Selected Shows Action ($selectedCount)"
-                                            selectedFilter == InspectorFilter.ANIME -> "Anime Catalog Sync"
-                                            selectedFilter == InspectorFilter.UNSTANDARDIZED_SPECS -> "Specs Standardization"
-                                            needsRepairItems.isEmpty() -> "Catalog Deep Sync & Health"
-                                            else -> "Catalog Auto-Repair"
-                                        }
-                                        val bannerSubtitle = when {
-                                            isBatchRepairing -> batchStatusText
-                                            isSelectionMode && selectedCount > 0 -> "$selectedCount shows selected for custom repair"
-                                            selectedFilter == InspectorFilter.ANIME -> {
-                                                val brokenAnime = animeItems.count { (issuesMap[it] ?: emptyList()).isNotEmpty() }
-                                                "${animeItems.size} anime in catalog (${if (brokenAnime > 0) "$brokenAnime need specs update" else "all healthy"})"
-                                            }
-                                            selectedFilter == InspectorFilter.ALL -> {
-                                                "${catalog.size} total shows in catalog (${needsRepairItems.size} have issues)"
-                                            }
-                                            selectedFilter == InspectorFilter.UNSTANDARDIZED_SPECS -> {
-                                                "$unstandardizedSpecsCount shows have non-standard video/audio codecs"
-                                            }
-                                            needsRepairItems.isEmpty() -> {
-                                                "All shows are 100% healthy! Toggle Deep Re-Sync to refresh official API specs."
-                                            }
-                                            else -> {
-                                                "${needsRepairItems.size} shows have missing or unstandardized metadata"
-                                            }
-                                        }
-
-                                        Text(
-                                            text = bannerTitle,
-                                            color = Color.White,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = bannerSubtitle,
-                                            color = Color(0xFFD0BCFF),
-                                            fontSize = 11.sp,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = if (isBatchRepairing) Icons.Default.CloudSync else Icons.Default.AutoFixHigh,
+                                            contentDescription = null,
+                                            tint = PrimaryRed,
+                                            modifier = Modifier.size(20.dp)
                                         )
                                     }
                                 }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    val bannerTitle = when {
+                                        isBatchRepairing -> "Running Batch Sync..."
+                                        isSelectionMode && selectedCount > 0 -> "Selected Shows Action ($selectedCount)"
+                                        selectedCategory == InspectorCategory.ANIME -> "🌸 Anime AniList Master Sync"
+                                        selectedCategory == InspectorCategory.MOVIES -> "🎬 Movies TMDb Sync"
+                                        selectedCategory == InspectorCategory.SERIES -> "📺 TV Series TMDb Sync"
+                                        activeNeedsRepairItems.isEmpty() -> "Catalog Deep Sync"
+                                        else -> "Auto-Repair Catalog"
+                                    }
+                                    val bannerSubtitle = when {
+                                        isBatchRepairing -> batchStatusText
+                                        isSelectionMode && selectedCount > 0 -> "$selectedCount shows selected for custom repair"
+                                        selectedCategory == InspectorCategory.ANIME -> {
+                                            "${animeItems.size} anime • Fetches real voice actor photos, 24 min format & AniList specs"
+                                        }
+                                        selectedCategory == InspectorCategory.MOVIES -> {
+                                            "${movieItems.size} movies • Fetches directors, runtimes & codecs from TMDb"
+                                        }
+                                        selectedCategory == InspectorCategory.SERIES -> {
+                                            "${seriesItems.size} series • Fetches episodes, seasons & codecs from TMDb"
+                                        }
+                                        activeNeedsRepairItems.isEmpty() -> {
+                                            "All shows in this category are 100% complete!"
+                                        }
+                                        else -> {
+                                            "${activeNeedsRepairItems.size} shows have missing or unstandardized metadata"
+                                        }
+                                    }
 
+                                    Text(
+                                        text = bannerTitle,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = bannerSubtitle,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 11.5.sp,
+                                        lineHeight = 15.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                                 if (isBatchRepairing) {
+                                    Spacer(modifier = Modifier.width(8.dp))
                                     Button(
                                         onClick = {
                                             batchJob?.cancel()
                                             isBatchRepairing = false
                                         },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                                        shape = RoundedCornerShape(10.dp),
+                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                                     ) {
-                                        Text("Stop", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text("Stop", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     }
-                                } else {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        // Failed shows retry button if any
-                                        if (failedItemsList.isNotEmpty()) {
+                                }
+                            }
+
+                            if (!isBatchRepairing) {
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                // 2. Action Buttons in full width Row
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (failedItemsList.isNotEmpty()) {
+                                        Button(
+                                            onClick = { executeBatchSync(failedItemsList) },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier.weight(1f),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+                                        ) {
+                                            Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Retry Failed (${failedItemsList.size})", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+
+                                    if (isSelectionMode && selectedCount > 0) {
+                                        val selectedItems = catalog.filter { selectedItemIds[it.id] == true }
+                                        Button(
+                                            onClick = { executeBatchSync(selectedItems) },
+                                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier.weight(1f),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+                                        ) {
+                                            Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Fix Selected ($selectedCount)", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    } else when (selectedCategory) {
+                                        InspectorCategory.ANIME -> {
+                                            if (unstandardizedSpecsCount > 0) {
+                                                Button(
+                                                    onClick = { executeFastStandardize(activeUnstandardizedItems) },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                                                    border = BorderStroke(1.dp, CardBorderDark),
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    modifier = Modifier.weight(1f),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Bolt, contentDescription = null, tint = Color(0xFF00E5FF), modifier = Modifier.size(15.dp))
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text("Standardize ($unstandardizedSpecsCount)", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
                                             Button(
-                                                onClick = { executeBatchSync(failedItemsList) },
-                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                                                shape = RoundedCornerShape(8.dp),
-                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                                onClick = { executeBatchSync(animeItems, forceDeepSync = true) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                                                shape = RoundedCornerShape(12.dp),
+                                                modifier = Modifier.weight(1f),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
                                             ) {
-                                                Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text("Retry Failed (${failedItemsList.size})", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Sync All Anime (${animeItems.size})", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                             }
                                         }
-
-                                        if (isSelectionMode && selectedCount > 0) {
-                                            val selectedItems = catalog.filter { selectedItemIds[it.id] == true }
+                                        InspectorCategory.MOVIES -> {
                                             Button(
-                                                onClick = { executeBatchSync(selectedItems) },
-                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
-                                                shape = RoundedCornerShape(8.dp),
-                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                                onClick = { executeBatchSync(movieItems, forceDeepSync = deepSyncMode) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                                                shape = RoundedCornerShape(12.dp),
+                                                modifier = Modifier.weight(1f),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
                                             ) {
-                                                Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text("Fix Selected ($selectedCount)", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Sync Movies (${movieItems.size})", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                             }
-                                        } else when (selectedFilter) {
-                                            InspectorFilter.ANIME -> {
-                                                val animeNeedsFix = filteredList.filter { (issuesMap[it] ?: emptyList()).isNotEmpty() }
-                                                if (!deepSyncMode && animeNeedsFix.isNotEmpty()) {
-                                                    Button(
-                                                        onClick = { executeBatchSync(animeNeedsFix) },
-                                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
-                                                        shape = RoundedCornerShape(8.dp),
-                                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                                                    ) {
-                                                        Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                                        Spacer(modifier = Modifier.width(4.dp))
-                                                        Text("Fix Issues (${animeNeedsFix.size})", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                                    }
-                                                }
+                                        }
+                                        InspectorCategory.SERIES -> {
+                                            Button(
+                                                onClick = { executeBatchSync(seriesItems, forceDeepSync = deepSyncMode) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                                                shape = RoundedCornerShape(12.dp),
+                                                modifier = Modifier.weight(1f),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+                                            ) {
+                                                Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Sync Series (${seriesItems.size})", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                        InspectorCategory.ALL -> {
+                                            if (activeNeedsRepairItems.isNotEmpty()) {
                                                 Button(
-                                                    onClick = { executeBatchSync(filteredList) },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = if (deepSyncMode) Color(0xFF7C4DFF) else Color(0xFF382A54)),
-                                                    border = if (!deepSyncMode) BorderStroke(1.dp, Color(0xFF7C4DFF).copy(alpha = 0.5f)) else null,
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                                    onClick = { executeBatchSync(activeNeedsRepairItems) },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    modifier = Modifier.weight(1f),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
                                                 ) {
-                                                    Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Text("Sync All Anime (${filteredList.size})", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color.White, modifier = Modifier.size(15.dp))
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text("Fix Issues (${activeNeedsRepairItems.size})", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                                 }
                                             }
-                                            InspectorFilter.UNSTANDARDIZED_SPECS -> {
-                                                Button(
-                                                    onClick = { executeFastStandardize(filteredList) },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00B0FF)),
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                                                ) {
-                                                    Icon(Icons.Default.Bolt, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Text("⚡ Fast Standardize (${filteredList.size})", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                                }
-                                            }
-                                            InspectorFilter.ALL -> {
-                                                if (needsRepairItems.isNotEmpty()) {
-                                                    Button(
-                                                        onClick = { executeBatchSync(needsRepairItems) },
-                                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
-                                                        shape = RoundedCornerShape(8.dp),
-                                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                                                    ) {
-                                                        Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                                        Spacer(modifier = Modifier.width(4.dp))
-                                                        Text("Fix All (${needsRepairItems.size})", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                                    }
-                                                }
-                                                if (deepSyncMode || needsRepairItems.isEmpty()) {
-                                                    Button(
-                                                        onClick = { executeBatchSync(filteredList) },
-                                                        colors = ButtonDefaults.buttonColors(containerColor = if (needsRepairItems.isEmpty()) Color(0xFF7C4DFF) else Color(0xFF382A54)),
-                                                        border = if (needsRepairItems.isNotEmpty()) BorderStroke(1.dp, Color(0xFF7C4DFF).copy(alpha = 0.5f)) else null,
-                                                        shape = RoundedCornerShape(8.dp),
-                                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                                                    ) {
-                                                        Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                                        Spacer(modifier = Modifier.width(4.dp))
-                                                        Text("Deep Sync All (${filteredList.size})", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                                    }
-                                                }
-                                            }
-                                            else -> {
-                                                val targetItems = if (deepSyncMode) filteredList else filteredList.filter { (issuesMap[it] ?: emptyList()).isNotEmpty() }.ifEmpty { filteredList }
-                                                Button(
-                                                    onClick = { executeBatchSync(targetItems) },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
-                                                    shape = RoundedCornerShape(8.dp),
-                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                                                ) {
-                                                    Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Text("Fix Filtered (${targetItems.size})", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                                }
+                                            Button(
+                                                onClick = { executeBatchSync(filteredList, forceDeepSync = true) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = if (activeNeedsRepairItems.isEmpty()) PrimaryRed else MaterialTheme.colorScheme.surfaceContainerHigh),
+                                                border = if (activeNeedsRepairItems.isNotEmpty()) BorderStroke(1.dp, CardBorderDark) else null,
+                                                shape = RoundedCornerShape(12.dp),
+                                                modifier = Modifier.weight(1f),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+                                            ) {
+                                                Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Deep Sync (${filteredList.size})", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                             }
                                         }
                                     }
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
 
-                            // Deep Sync Switch
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFF281E3C))
-                                    .padding(horizontal = 10.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                            // 3. Deep Sync Switch
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                    Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color(0xFFD0BCFF), modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Column {
-                                        Text(
-                                            text = "Deep Re-Sync from Source (TMDb / AniList)",
-                                            color = Color.White,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                        Text(
-                                            text = if (deepSyncMode) "Will overwrite older metadata with fresh official API data & AniList specs" else "Conservative: backfills missing fields and standardizes codecs",
-                                            color = Color(0xFFB0A0D0),
-                                            fontSize = 10.sp
-                                        )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                        Icon(Icons.Default.CloudSync, contentDescription = null, tint = PrimaryRed, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(
+                                                text = "Deep Re-Sync from Official Source (AniList / TMDb)",
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            Spacer(modifier = Modifier.height(1.dp))
+                                            Text(
+                                                text = if (deepSyncMode) "Refreshes voice actor photos, 24 min format & official metadata" else "Conservative: backfills missing fields and standardizes codecs",
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontSize = 10.5.sp
+                                            )
+                                        }
                                     }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Switch(
+                                        checked = deepSyncMode,
+                                        onCheckedChange = { deepSyncMode = it },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Color.White,
+                                            checkedTrackColor = PrimaryRed,
+                                            uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            uncheckedTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                                        ),
+                                        modifier = Modifier.height(26.dp)
+                                    )
                                 }
-                                Switch(
-                                    checked = deepSyncMode,
-                                    onCheckedChange = { deepSyncMode = it },
-                                    colors = SwitchDefaults.colors(
-                                        checkedThumbColor = Color.White,
-                                        checkedTrackColor = Color(0xFF7C4DFF),
-                                        uncheckedThumbColor = Color(0xFF8A8A9E),
-                                        uncheckedTrackColor = Color(0xFF38384A)
-                                    ),
-                                    modifier = Modifier.height(26.dp)
-                                )
                             }
 
                             if (isBatchRepairing) {
@@ -996,8 +1055,8 @@ fun MetadataInspectorDialog(
                                         .fillMaxWidth()
                                         .height(4.dp)
                                         .clip(RoundedCornerShape(2.dp)),
-                                    color = Color(0xFFB388FF),
-                                    trackColor = Color(0xFF32244C)
+                                    color = PrimaryRed,
+                                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
                                 )
                             }
                         }
@@ -1005,7 +1064,7 @@ fun MetadataInspectorDialog(
                     Spacer(modifier = Modifier.height(10.dp))
                 }
 
-                // Search Bar, Selection Control & Sort Row
+                // Search Bar & Sort Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1014,7 +1073,7 @@ fun MetadataInspectorDialog(
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
-                        placeholder = { Text("Filter shows by title, studio, genre, ID...", color = TextSecondary, fontSize = 12.sp) },
+                        placeholder = { Text("Filter ${selectedCategory.label} by title, studio, ID...", color = TextSecondary, fontSize = 12.sp) },
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(16.dp)) },
                         trailingIcon = {
                             if (searchQuery.isNotBlank()) {
@@ -1025,23 +1084,22 @@ fun MetadataInspectorDialog(
                         },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = SurfaceDark,
-                            unfocusedContainerColor = SurfaceDark,
-                            focusedBorderColor = Color(0xFF7C4DFF),
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            focusedBorderColor = PrimaryRed,
                             unfocusedBorderColor = CardBorderDark,
                             focusedTextColor = TextPrimary,
                             unfocusedTextColor = TextPrimary
                         ),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
                             .weight(1f)
                             .height(44.dp)
                     )
 
-                    // Sort Order Selector Pill
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = SurfaceDark,
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
                         border = BorderStroke(1.dp, CardBorderDark),
                         modifier = Modifier
                             .height(44.dp)
@@ -1059,7 +1117,7 @@ fun MetadataInspectorDialog(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(horizontal = 10.dp)
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null, tint = Color(0xFFB388FF), modifier = Modifier.size(16.dp))
+                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = null, tint = PrimaryRed, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = sortOrder.label,
@@ -1072,9 +1130,9 @@ fun MetadataInspectorDialog(
 
                     if (isSelectionMode) {
                         Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = Color(0xFF2E1A47),
-                            border = BorderStroke(1.dp, Color(0xFF7C4DFF)),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainer,
+                            border = BorderStroke(1.dp, PrimaryRed),
                             modifier = Modifier
                                 .height(44.dp)
                                 .clickable {
@@ -1091,7 +1149,7 @@ fun MetadataInspectorDialog(
                                 modifier = Modifier.padding(horizontal = 10.dp)
                             ) {
                                 Text(
-                                    text = if (selectedCount == filteredList.size && filteredList.isNotEmpty()) "Deselect All" else "Select All (${filteredList.size})",
+                                    text = if (selectedCount == filteredList.size && filteredList.isNotEmpty()) "Deselect" else "Select All (${filteredList.size})",
                                     color = Color.White,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
@@ -1103,44 +1161,52 @@ fun MetadataInspectorDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Scrollable Filter Chips Row
+                // Scrollable Sub-Filter Chips Row
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    FilterPill("All Issues (${needsRepairItems.size})", isSelected = selectedFilter == InspectorFilter.ALL_ISSUES) { selectedFilter = InspectorFilter.ALL_ISSUES }
-                    if (animeItems.isNotEmpty()) {
-                        FilterPill("🌸 Anime (${animeItems.size})", isSelected = selectedFilter == InspectorFilter.ANIME) { selectedFilter = InspectorFilter.ANIME }
+                    if (failedItemsList.isNotEmpty()) {
+                        FilterPill(
+                            "⚠️ Failed Sync (${failedItemsList.size})",
+                            isSelected = selectedFilter == InspectorFilter.FAILED_SYNC
+                        ) { selectedFilter = InspectorFilter.FAILED_SYNC }
                     }
+                    FilterPill("All Issues (${activeNeedsRepairItems.size})", isSelected = selectedFilter == InspectorFilter.ALL_ISSUES) { selectedFilter = InspectorFilter.ALL_ISSUES }
                     if (unstandardizedSpecsCount > 0) {
-                        FilterPill("⚡ Unstandardized Specs ($unstandardizedSpecsCount)", isSelected = selectedFilter == InspectorFilter.UNSTANDARDIZED_SPECS) { selectedFilter = InspectorFilter.UNSTANDARDIZED_SPECS }
+                        FilterPill("⚡ Codecs ($unstandardizedSpecsCount)", isSelected = selectedFilter == InspectorFilter.UNSTANDARDIZED_SPECS) { selectedFilter = InspectorFilter.UNSTANDARDIZED_SPECS }
                     }
-                    if (noProducersCount > 0) {
-                        FilterPill("🏢 No Producers ($noProducersCount)", isSelected = selectedFilter == InspectorFilter.NO_PRODUCERS) { selectedFilter = InspectorFilter.NO_PRODUCERS }
+                    if (selectedCategory == InspectorCategory.ANIME && tmdbOnAnimeCount > 0) {
+                        FilterPill("⚠️ TMDb on Anime ($tmdbOnAnimeCount)", isSelected = selectedFilter == InspectorFilter.TMDB_ON_ANIME) { selectedFilter = InspectorFilter.TMDB_ON_ANIME }
                     }
-                    if (noSourceCount > 0) {
-                        FilterPill("📖 No Source ($noSourceCount)", isSelected = selectedFilter == InspectorFilter.NO_SOURCE) { selectedFilter = InspectorFilter.NO_SOURCE }
+                    if (noTrailerCount > 0) {
+                        FilterPill("🎬 No Trailer ($noTrailerCount)", isSelected = selectedFilter == InspectorFilter.NO_TRAILER) { selectedFilter = InspectorFilter.NO_TRAILER }
                     }
-                    if (noMaturityCount > 0) {
-                        FilterPill("🔞 No Maturity ($noMaturityCount)", isSelected = selectedFilter == InspectorFilter.NO_MATURITY) { selectedFilter = InspectorFilter.NO_MATURITY }
+                    if (brokenGenresCount > 0) {
+                        FilterPill("🏷️ Broken Genres ($brokenGenresCount)", isSelected = selectedFilter == InspectorFilter.BROKEN_GENRES) { selectedFilter = InspectorFilter.BROKEN_GENRES }
                     }
-                    if (movieItems.isNotEmpty()) {
-                        FilterPill("🎬 Movies (${movieItems.size})", isSelected = selectedFilter == InspectorFilter.MOVIES) { selectedFilter = InspectorFilter.MOVIES }
+                    if (noCastCount > 0) {
+                        FilterPill("🎭 No Cast ($noCastCount)", isSelected = selectedFilter == InspectorFilter.NO_CAST) { selectedFilter = InspectorFilter.NO_CAST }
                     }
-                    if (seriesItems.isNotEmpty()) {
-                        FilterPill("📺 Series (${seriesItems.size})", isSelected = selectedFilter == InspectorFilter.SERIES) { selectedFilter = InspectorFilter.SERIES }
+                    if (noSynopsisCount > 0) {
+                        FilterPill("📄 No Synopsis ($noSynopsisCount)", isSelected = selectedFilter == InspectorFilter.NO_SYNOPSIS) { selectedFilter = InspectorFilter.NO_SYNOPSIS }
                     }
-                    FilterPill("No Trailer ($noTrailerCount)", isSelected = selectedFilter == InspectorFilter.NO_TRAILER) { selectedFilter = InspectorFilter.NO_TRAILER }
-                    FilterPill("Broken Genres ($brokenGenresCount)", isSelected = selectedFilter == InspectorFilter.BROKEN_GENRES) { selectedFilter = InspectorFilter.BROKEN_GENRES }
-                    FilterPill("No Cast ($noCastCount)", isSelected = selectedFilter == InspectorFilter.NO_CAST) { selectedFilter = InspectorFilter.NO_CAST }
-                    FilterPill("No Synopsis ($noSynopsisCount)", isSelected = selectedFilter == InspectorFilter.NO_SYNOPSIS) { selectedFilter = InspectorFilter.NO_SYNOPSIS }
-                    FilterPill("No Backdrop ($noBackdropCount)", isSelected = selectedFilter == InspectorFilter.NO_BACKDROP) { selectedFilter = InspectorFilter.NO_BACKDROP }
-                    FilterPill("No Rating ($noRatingCount)", isSelected = selectedFilter == InspectorFilter.NO_RATING) { selectedFilter = InspectorFilter.NO_RATING }
-                    FilterPill("No Specs ($noSpecsCount)", isSelected = selectedFilter == InspectorFilter.NO_SPECS) { selectedFilter = InspectorFilter.NO_SPECS }
-                    FilterPill("All Shows (${catalog.size})", isSelected = selectedFilter == InspectorFilter.ALL) { selectedFilter = InspectorFilter.ALL }
-                    FilterPill("100% Healthy (${healthyItems.size})", isSelected = selectedFilter == InspectorFilter.HEALTHY) { selectedFilter = InspectorFilter.HEALTHY }
+                    if (noBackdropCount > 0) {
+                        FilterPill("🌄 No Backdrop ($noBackdropCount)", isSelected = selectedFilter == InspectorFilter.NO_BACKDROP) { selectedFilter = InspectorFilter.NO_BACKDROP }
+                    }
+                    if (noRatingCount > 0) {
+                        FilterPill("⭐ No Rating ($noRatingCount)", isSelected = selectedFilter == InspectorFilter.NO_RATING) { selectedFilter = InspectorFilter.NO_RATING }
+                    }
+                    if (noSpecsCount > 0) {
+                        FilterPill("⏱️ No Specs ($noSpecsCount)", isSelected = selectedFilter == InspectorFilter.NO_SPECS) { selectedFilter = InspectorFilter.NO_SPECS }
+                    }
+                    if (selectedCategory == InspectorCategory.SERIES && noEpisodesCount > 0) {
+                        FilterPill("📺 No Episodes ($noEpisodesCount)", isSelected = selectedFilter == InspectorFilter.NO_EPISODES) { selectedFilter = InspectorFilter.NO_EPISODES }
+                    }
+                    FilterPill("Show All (${activeCategoryCatalog.size})", isSelected = selectedFilter == InspectorFilter.ALL) { selectedFilter = InspectorFilter.ALL }
+                    FilterPill("100% Healthy (${activeHealthyItems.size})", isSelected = selectedFilter == InspectorFilter.HEALTHY) { selectedFilter = InspectorFilter.HEALTHY }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
@@ -1154,10 +1220,10 @@ fun MetadataInspectorDialog(
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(40.dp))
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(44.dp))
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = if (selectedFilter == InspectorFilter.ALL_ISSUES) "All shows have 100% complete metadata! 🎉" else "No matching shows found",
+                                text = if (selectedFilter == InspectorFilter.ALL_ISSUES) "All shows in this view have 100% complete metadata! 🎉" else "No matching shows found",
                                 color = TextPrimary,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold
@@ -1199,7 +1265,7 @@ fun MetadataInspectorDialog(
                                                 val fullyUpdated = repaired.copy(mediaInfo = normalizedMediaInfo)
                                                 val writeRes = repository.saveMediaItemSuspending(fullyUpdated)
                                                 if (writeRes.isSuccess) {
-                                                    ToastManager.showToast("Repaired & Standardized \"${item.title}\"!", Icons.Default.CheckCircle)
+                                                    ToastManager.showToast("Repaired \"${item.title}\"!", Icons.Default.CheckCircle)
                                                 } else {
                                                     ToastManager.showToast("Save failed: ${writeRes.exceptionOrNull()?.message}", Icons.Default.Warning)
                                                 }
@@ -1236,11 +1302,12 @@ private fun InspectorItemRow(
     onEdit: () -> Unit
 ) {
     val needsAttention = issues.isNotEmpty()
+    val isAnime = item.category.equals("ANIME", ignoreCase = true) || item.type.equals("ANIME", ignoreCase = true)
 
     Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = if (isSelected) Color(0xFF281E38) else Color(0xFF181824),
-        border = BorderStroke(1.dp, if (isSelected) Color(0xFF7C4DFF) else if (needsAttention) Color(0x66FF9800) else CardBorderDark),
+        shape = RoundedCornerShape(16.dp),
+        color = if (isSelected) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, if (isSelected) PrimaryRed else if (needsAttention) Color(0x66FF9800) else CardBorderDark),
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = isSelectionMode) { onToggleSelect() }
@@ -1251,13 +1318,12 @@ private fun InspectorItemRow(
                 .padding(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Selection Checkbox
             if (isSelectionMode) {
                 Checkbox(
                     checked = isSelected,
                     onCheckedChange = { onToggleSelect() },
                     colors = CheckboxDefaults.colors(
-                        checkedColor = Color(0xFF7C4DFF),
+                        checkedColor = PrimaryRed,
                         checkmarkColor = Color.White,
                         uncheckedColor = TextSecondary
                     ),
@@ -1265,27 +1331,33 @@ private fun InspectorItemRow(
                 )
             }
 
-            // Thumbnail
-            AsyncImage(
-                model = item.posterUrl.ifBlank { item.bannerUrl },
-                contentDescription = item.title,
-                contentScale = ContentScale.Crop,
+            Box(
                 modifier = Modifier
-                    .width(44.dp)
+                    .width(46.dp)
                     .aspectRatio(0.7f)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFF282836))
-            )
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            ) {
+                AsyncImage(
+                    model = item.posterUrl.ifBlank { item.bannerUrl },
+                    contentDescription = item.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Details Column
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Line 1: Title + Year + Category Badge
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Text(
                         text = item.title,
-                        color = TextPrimary,
-                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 13.5.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -1294,142 +1366,114 @@ private fun InspectorItemRow(
                     if (item.releaseYear.isNotBlank()) {
                         Text(
                             text = " (${item.releaseYear})",
-                            color = TextSecondary,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 12.sp
                         )
                     }
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "• ${item.category}",
-                        color = Color(0xFF7C4DFF),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    val catColor = if (isAnime) PrimaryRed else if (item.type.equals("MOVIE", ignoreCase = true)) Color(0xFF38BDF8) else AccentGold
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = catColor.copy(alpha = 0.15f),
+                        border = BorderStroke(1.dp, catColor.copy(alpha = 0.4f))
+                    ) {
+                        Text(
+                            text = item.category.uppercase(),
+                            color = catColor,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(3.dp))
 
-                // Metadata Status Badges
+                // Line 2: Spec Meta Row (Studio • Rating • Duration / Ep Count)
+                val studioText = item.studio.ifBlank { item.producers }.take(20)
+                val cleanDur = item.duration.replace(" min. per ep.", " min").replace(" min.", " min")
+                val metaParts = mutableListOf<String>()
+                if (studioText.isNotBlank()) metaParts.add("🏢 $studioText")
+                if (item.rating.isNotBlank()) metaParts.add("⭐ ${item.rating}")
+                if (cleanDur.isNotBlank()) metaParts.add("⏱️ $cleanDur")
+                if (item.totalEpisodes.isNotBlank() && item.type.equals("SERIES", ignoreCase = true)) metaParts.add("📺 ${item.totalEpisodes} Eps")
+
+                Text(
+                    text = if (metaParts.isNotEmpty()) metaParts.joinToString(" • ") else "No technical specs",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.height(5.dp))
+
+                // Line 3: ONLY ACTIVE ISSUES or Clean Healthy Badge
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    // Genres
-                    if (MetadataIssueType.GENRE in issues) {
-                        BadgeTag("⚠️ Genre: \"${item.genres.joinToString().ifBlank { "None" }}\"", Color(0xFFFF9800))
+                    if (issues.isEmpty()) {
+                        BadgeTag("✅ 100% Healthy", Color(0xFF10B981))
                     } else {
-                        BadgeTag("✅ ${item.genres.take(2).joinToString(", ")}", Color(0xFF10B981))
-                    }
-
-                    // Codecs / Standardization
-                    if (MetadataIssueType.UNSTANDARDIZED_SPECS in issues) {
-                        BadgeTag("⚡ Unstandardized Codecs", Color(0xFF00E5FF))
-                    }
-
-                    // Trailer
-                    if (MetadataIssueType.TRAILER in issues) {
-                        BadgeTag("⚠️ No Trailer", Color(0xFFFF9800))
-                    } else {
-                        BadgeTag("🎬 Trailer", Color(0xFF10B981))
-                    }
-
-                    // Synopsis
-                    if (MetadataIssueType.SYNOPSIS in issues) {
-                        BadgeTag("⚠️ No Synopsis", Color(0xFFFF9800))
-                    } else {
-                        BadgeTag("📄 Synopsis", Color(0xFF10B981))
-                    }
-
-                    // Poster
-                    if (MetadataIssueType.POSTER in issues) {
-                        BadgeTag("⚠️ No Poster", Color(0xFFEF4444))
-                    }
-
-                    // Backdrop
-                    if (MetadataIssueType.BACKDROP in issues) {
-                        BadgeTag("⚠️ No Backdrop", Color(0xFFFF9800))
-                    } else {
-                        BadgeTag("🌄 Backdrop", Color(0xFF10B981))
-                    }
-
-                    // Rating
-                    if (MetadataIssueType.RATING in issues) {
-                        BadgeTag("⚠️ No Rating", Color(0xFFFF9800))
-                    } else {
-                        BadgeTag("⭐ ${item.rating}", Color(0xFF10B981))
-                    }
-
-                    // Cast
-                    if (MetadataIssueType.CAST in issues) {
-                        BadgeTag("⚠️ No Cast", Color(0xFFFF9800))
-                    } else {
-                        BadgeTag("🎭 ${item.castList.size} Cast", Color(0xFF10B981))
-                    }
-
-                    // Studio
-                    if (MetadataIssueType.STUDIO in issues) {
-                        BadgeTag("⚠️ No Studio", Color(0xFFFF9800))
-                    } else {
-                        val studioName = (item.studio.ifBlank { item.producers }).take(16)
-                        BadgeTag("🏢 $studioName", Color(0xFF10B981))
-                    }
-
-                    // Producers
-                    if (MetadataIssueType.PRODUCERS in issues) {
-                        BadgeTag("⚠️ No Producers", Color(0xFFFF9800))
-                    } else if (item.producers.isNotBlank()) {
-                        BadgeTag("🏢 ${item.producers.take(16)}", Color(0xFF10B981))
-                    }
-
-                    // Source
-                    if (MetadataIssueType.SOURCE in issues) {
-                        BadgeTag("⚠️ No Source", Color(0xFFFF9800))
-                    } else if (item.source.isNotBlank()) {
-                        BadgeTag("📖 ${item.source}", Color(0xFF10B981))
-                    }
-
-                    // Maturity Rating
-                    if (MetadataIssueType.MATURITY in issues) {
-                        BadgeTag("⚠️ No Maturity", Color(0xFFFF9800))
-                    } else if (item.maturityRating.isNotBlank()) {
-                        BadgeTag("🔞 ${item.maturityRating}", Color(0xFF10B981))
-                    }
-
-                    // Duration
-                    if (MetadataIssueType.DURATION in issues) {
-                        BadgeTag("⚠️ No Runtime", Color(0xFFFF9800))
-                    } else {
-                        BadgeTag("⏱️ ${item.duration}", Color(0xFF10B981))
-                    }
-
-                    // Episodes (if Series)
-                    if (item.type.equals("SERIES", ignoreCase = true)) {
+                        if (MetadataIssueType.TMDB_ON_ANIME in issues) {
+                            BadgeTag("⚠️ Legacy TMDb Link", PrimaryRed)
+                        }
+                        if (MetadataIssueType.UNSTANDARDIZED_SPECS in issues) {
+                            BadgeTag("⚡ Codecs", Color(0xFF00E5FF))
+                        }
+                        if (MetadataIssueType.TRAILER in issues) {
+                            BadgeTag("⚠️ No Trailer", AccentGold)
+                        }
+                        if (MetadataIssueType.GENRE in issues) {
+                            BadgeTag("⚠️ Bad Genres", AccentGold)
+                        }
+                        if (MetadataIssueType.SYNOPSIS in issues) {
+                            BadgeTag("⚠️ No Synopsis", AccentGold)
+                        }
+                        if (MetadataIssueType.CAST in issues) {
+                            BadgeTag("⚠️ No Cast", AccentGold)
+                        }
+                        if (MetadataIssueType.BACKDROP in issues) {
+                            BadgeTag("⚠️ No Backdrop", AccentGold)
+                        }
+                        if (MetadataIssueType.RATING in issues) {
+                            BadgeTag("⚠️ No Rating", AccentGold)
+                        }
+                        if (MetadataIssueType.SOURCE in issues) {
+                            BadgeTag("⚠️ No Source", AccentGold)
+                        }
+                        if (MetadataIssueType.MATURITY in issues) {
+                            BadgeTag("⚠️ No Maturity", AccentGold)
+                        }
+                        if (MetadataIssueType.DURATION in issues) {
+                            BadgeTag("⚠️ No Runtime", AccentGold)
+                        }
                         if (MetadataIssueType.EPISODES in issues) {
-                            BadgeTag("⚠️ No Ep Count", Color(0xFFFF9800))
-                        } else {
-                            BadgeTag("📺 ${item.totalEpisodes}", Color(0xFF10B981))
+                            BadgeTag("⚠️ No Ep Count", AccentGold)
                         }
                     }
 
-                    // Source IDs
                     if (item.anilistId.isNotBlank()) {
                         BadgeTag("AniList: ${item.anilistId}", Color(0xFF02A9FF))
                     } else if (item.tmdbId.isNotBlank()) {
-                        BadgeTag("TMDB: ${item.tmdbId}", Color(0xFF64748B))
+                        BadgeTag("TMDb: ${item.tmdbId}", Color(0xFF64748B))
                     }
                 }
             }
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Action Buttons Row
+            // Action Buttons
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Quick Fix Button
                 Button(
                     onClick = onQuickRepair,
                     enabled = !isRepairing,
-                    colors = ButtonDefaults.buttonColors(containerColor = if (needsAttention) Color(0xFF7C4DFF) else Color(0xFF28283C)),
-                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (needsAttention) PrimaryRed else MaterialTheme.colorScheme.surfaceContainerHigh
+                    ),
+                    border = if (!needsAttention) BorderStroke(1.dp, CardBorderDark) else null,
+                    shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     if (isRepairing) {
@@ -1459,12 +1503,12 @@ private fun InspectorItemRow(
 
                 IconButton(
                     onClick = onEdit,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(34.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Edit,
                         contentDescription = "Edit Show",
-                        tint = TextSecondary,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -1478,7 +1522,7 @@ private fun MetricChip(label: String, color: Color, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(8.dp),
         color = color.copy(alpha = 0.15f),
-        border = BorderStroke(1.dp, color.copy(alpha = 0.4f)),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.45f)),
         modifier = Modifier.clickable { onClick() }
     ) {
         Text(
@@ -1494,16 +1538,16 @@ private fun MetricChip(label: String, color: Color, onClick: () -> Unit) {
 @Composable
 private fun BadgeTag(label: String, color: Color) {
     Surface(
-        shape = RoundedCornerShape(4.dp),
+        shape = RoundedCornerShape(6.dp),
         color = color.copy(alpha = 0.15f),
-        border = BorderStroke(1.dp, color.copy(alpha = 0.4f))
+        border = BorderStroke(1.dp, color.copy(alpha = 0.45f))
     ) {
         Text(
             text = label,
             color = color,
             fontSize = 10.sp,
             fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
         )
     }
 }
@@ -1511,14 +1555,14 @@ private fun BadgeTag(label: String, color: Color) {
 @Composable
 private fun FilterPill(label: String, isSelected: Boolean, onClick: () -> Unit) {
     Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = if (isSelected) Color(0xFF7C4DFF) else SurfaceDark,
-        border = BorderStroke(1.dp, if (isSelected) Color(0xFFB388FF) else CardBorderDark),
+        shape = RoundedCornerShape(10.dp),
+        color = if (isSelected) PrimaryRed else MaterialTheme.colorScheme.surfaceContainer,
+        border = BorderStroke(1.dp, if (isSelected) PrimaryRed else CardBorderDark),
         modifier = Modifier.clickable { onClick() }
     ) {
         Text(
             text = label,
-            color = if (isSelected) Color.White else TextSecondary,
+            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 11.sp,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)

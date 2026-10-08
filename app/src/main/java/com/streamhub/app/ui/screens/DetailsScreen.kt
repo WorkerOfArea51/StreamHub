@@ -277,8 +277,12 @@ fun DetailsScreen(
 
     LaunchedEffect(mediaItem?.id, mediaItem?.tmdbId, mediaItem?.anilistId) {
         if (mediaItem != null) {
+            val isAnimeMedia = mediaItem.category.equals("ANIME", ignoreCase = true) ||
+                               mediaItem.category.equals("ANIMES", ignoreCase = true) ||
+                               mediaItem.type.equals("ANIME", ignoreCase = true) ||
+                               mediaItem.category.contains("Anime", ignoreCase = true)
             val cached = MetadataFetchManager.getCachedExtendedDetails(mediaItem.id.ifBlank { mediaItem.title })
-            if (cached != null && cached.castMembers.isNotEmpty() && cached.castMembers.any { it.profileUrl.isNotBlank() }) {
+            if (cached != null && cached.castMembers.isNotEmpty()) {
                 extendedDetails = cached
             } else if (mediaItem.castMembers.isNotEmpty() && (mediaItem.trailers.isNotEmpty() || mediaItem.director.isNotBlank())) {
                 extendedDetails = ExtendedMediaDetails(
@@ -289,9 +293,10 @@ fun DetailsScreen(
                 )
             }
 
-            // Live dynamic sync: Fetch latest TMDb / AniList metadata in background so cast photos, full ensemble cast, and trailers auto-refresh
+            // Live dynamic sync: Fetch latest TMDb / AniList metadata in background so real voice actor photos, full ensemble cast, and trailers auto-refresh
             try {
-                val force = mediaItem.castMembers.isEmpty() || mediaItem.castMembers.any { it.profileUrl.isBlank() } || mediaItem.trailers.isEmpty()
+                val hasAnimeCartoonAvatars = isAnimeMedia && mediaItem.castMembers.any { it.profileUrl.contains("/character/") }
+                val force = hasAnimeCartoonAvatars || mediaItem.castMembers.isEmpty() || mediaItem.castMembers.any { it.profileUrl.isBlank() } || mediaItem.trailers.isEmpty()
                 val fetchedExt = MetadataFetchManager.fetchExtendedDetails(mediaItem, forceRefresh = force)
                 if (fetchedExt.castMembers.isNotEmpty() || fetchedExt.trailers.isNotEmpty() || fetchedExt.director.isNotBlank()) {
                     extendedDetails = fetchedExt
@@ -301,10 +306,25 @@ fun DetailsScreen(
             }
         }
 
+        val isAnimeMedia = mediaItem?.category.equals("ANIME", ignoreCase = true) ||
+                           mediaItem?.category.equals("ANIMES", ignoreCase = true) ||
+                           mediaItem?.type.equals("ANIME", ignoreCase = true) ||
+                           mediaItem?.category?.contains("Anime", ignoreCase = true) == true
         val tId = mediaItem?.tmdbId?.trim() ?: ""
         val aId = mediaItem?.anilistId?.trim() ?: ""
 
-        if (tId.isNotBlank()) {
+        if (isAnimeMedia) {
+            if (aId.isNotBlank()) {
+                try {
+                    val fetched = MetadataFetchManager.fetchAniListRecommendations(aId)
+                    if (fetched.isNotEmpty()) {
+                        recommendations = fetched
+                    }
+                } catch (e: Exception) {
+                    Log.w("DetailsScreen", "Failed to load AniList recs: ${e.message}")
+                }
+            }
+        } else if (tId.isNotBlank()) {
             try {
                 val fetched = MetadataFetchManager.fetchTMDBRecommendations(tId, isMovie)
                 if (fetched.isNotEmpty()) {
@@ -312,15 +332,6 @@ fun DetailsScreen(
                 }
             } catch (e: Exception) {
                 Log.w("DetailsScreen", "Failed to load TMDB recs: ${e.message}")
-            }
-        } else if (aId.isNotBlank()) {
-            try {
-                val fetched = MetadataFetchManager.fetchAniListRecommendations(aId)
-                if (fetched.isNotEmpty()) {
-                    recommendations = fetched
-                }
-            } catch (e: Exception) {
-                Log.w("DetailsScreen", "Failed to load AniList recs: ${e.message}")
             }
         }
     }
@@ -797,7 +808,8 @@ fun DetailsScreen(
                             }
 
                             val studioDisplay = if (mediaItem.studio.isNotBlank()) mediaItem.studio else if (isAnime) "Anime Studio" else "Production Studio"
-                            val durationDisplay = if (mediaItem.duration.isNotBlank()) " • ${mediaItem.duration}" else ""
+                            val cleanDuration = mediaItem.duration.replace(" min. per ep.", " min").replace(" min.", " min")
+                            val durationDisplay = if (cleanDuration.isNotBlank()) " • $cleanDuration" else ""
                             Text(
                                 text = "${mediaItem.category} • $studioDisplay$durationDisplay",
                                 color = TextSecondary,
@@ -1551,7 +1563,8 @@ fun DetailsScreen(
                         if (allTrailers.isNotEmpty()) InfoDetailRow("Trailers & Clips", "${allTrailers.size} available")
 
                         if (mediaItem.trailerId.isNotBlank() && !mediaItem.trailerId.equals("null", ignoreCase = true)) InfoDetailRow("YouTube Trailer ID", mediaItem.trailerId)
-                        if (mediaItem.tmdbId.isNotEmpty()) InfoDetailRow("TMDB ID", mediaItem.tmdbId)
+                        if (!isAnime && mediaItem.tmdbId.isNotEmpty()) InfoDetailRow("TMDB ID", mediaItem.tmdbId)
+                        if (mediaItem.anilistId.isNotEmpty()) InfoDetailRow("AniList ID", mediaItem.anilistId)
                     }
                 }
             }
