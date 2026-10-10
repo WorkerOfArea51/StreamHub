@@ -29,6 +29,13 @@
 -keep class com.streamhub.app.data.api.** { *; }
 # Keep all domain models — Firestore uses reflection too.
 -keep class com.streamhub.app.data.models.** { *; }
+# Keep backup & bundle importer classes for JSON serialization
+-keep class com.streamhub.app.data.importer.** { *; }
+
+# --- Gson & TypeToken (preserve generics and reflection for deserialization) ---
+-keep class com.google.gson.** { *; }
+-keep class * extends com.google.gson.reflect.TypeToken
+-keepclassmembers class * extends com.google.gson.reflect.TypeToken { *; }
 
 # Per-field @SerializedName safety net
 -keepclassmembers class * {

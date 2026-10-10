@@ -15,7 +15,7 @@ import com.google.android.gms.tasks.Tasks
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonParser
-import com.google.gson.reflect.TypeToken
+import com.google.gson.annotations.SerializedName
 import com.streamhub.app.BuildConfig
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.repository.FirebaseRepository
@@ -29,18 +29,18 @@ import java.util.Date
 import java.util.Locale
 
 data class CatalogBackupHeader(
-    val formatVersion: Int = 1,
-    val appVersion: String = BuildConfig.VERSION_NAME,
-    val exportedAt: Long = System.currentTimeMillis(),
-    val exportDateFormatted: String = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()),
-    val totalMediaCount: Int = 0,
-    val totalEpisodeCount: Int = 0,
-    val categoryFilter: String = "ALL"
+    @SerializedName("formatVersion") val formatVersion: Int = 1,
+    @SerializedName("appVersion") val appVersion: String = BuildConfig.VERSION_NAME,
+    @SerializedName("exportedAt") val exportedAt: Long = System.currentTimeMillis(),
+    @SerializedName("exportDateFormatted") val exportDateFormatted: String = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()),
+    @SerializedName("totalMediaCount") val totalMediaCount: Int = 0,
+    @SerializedName("totalEpisodeCount") val totalEpisodeCount: Int = 0,
+    @SerializedName("categoryFilter") val categoryFilter: String = "ALL"
 )
 
 data class CatalogBackupPayload(
-    val header: CatalogBackupHeader,
-    val mediaCatalog: List<MediaItem>
+    @SerializedName("header") val header: CatalogBackupHeader,
+    @SerializedName("mediaCatalog") val mediaCatalog: List<MediaItem>
 )
 
 data class BackupExportResult(
@@ -350,39 +350,42 @@ object CatalogBackupManager {
             if (jsonElement.isJsonObject) {
                 val obj = jsonElement.asJsonObject
 
-                // Extract MediaCatalog list supporting various field namings
-                val itemType = object : TypeToken<List<MediaItem>>() {}.type
+                // Extract MediaCatalog list supporting various field namings (Reified Array prevents TypeToken R8 stripping)
                 val items: List<MediaItem> = when {
                     obj.has("mediaCatalog") && obj.get("mediaCatalog").isJsonArray -> {
-                        gson.fromJson(obj.get("mediaCatalog"), itemType)
+                        gson.fromJson(obj.get("mediaCatalog"), Array<MediaItem>::class.java)?.toList() ?: emptyList()
+                    }
+                    obj.has("b") && obj.get("b").isJsonArray -> {
+                        // Supports minified release backup payload
+                        gson.fromJson(obj.get("b"), Array<MediaItem>::class.java)?.toList() ?: emptyList()
                     }
                     obj.has("items") && obj.get("items").isJsonArray -> {
-                        gson.fromJson(obj.get("items"), itemType)
+                        gson.fromJson(obj.get("items"), Array<MediaItem>::class.java)?.toList() ?: emptyList()
                     }
                     obj.has("shows") && obj.get("shows").isJsonArray -> {
-                        gson.fromJson(obj.get("shows"), itemType)
+                        gson.fromJson(obj.get("shows"), Array<MediaItem>::class.java)?.toList() ?: emptyList()
                     }
                     obj.has("catalog") && obj.get("catalog").isJsonArray -> {
-                        gson.fromJson(obj.get("catalog"), itemType)
+                        gson.fromJson(obj.get("catalog"), Array<MediaItem>::class.java)?.toList() ?: emptyList()
                     }
                     // Multi-collection export: animes, movies, web_series
                     obj.has("animes") || obj.has("movies") || obj.has("web_series") -> {
                         val list = mutableListOf<MediaItem>()
                         if (obj.has("animes") && obj.get("animes").isJsonArray) {
-                            list.addAll(gson.fromJson(obj.get("animes"), itemType))
+                            gson.fromJson(obj.get("animes"), Array<MediaItem>::class.java)?.let { list.addAll(it) }
                         }
                         if (obj.has("movies") && obj.get("movies").isJsonArray) {
-                            list.addAll(gson.fromJson(obj.get("movies"), itemType))
+                            gson.fromJson(obj.get("movies"), Array<MediaItem>::class.java)?.let { list.addAll(it) }
                         }
                         if (obj.has("web_series") && obj.get("web_series").isJsonArray) {
-                            list.addAll(gson.fromJson(obj.get("web_series"), itemType))
+                            gson.fromJson(obj.get("web_series"), Array<MediaItem>::class.java)?.let { list.addAll(it) }
                         }
                         list
                     }
                     // Single show object
                     obj.has("id") && obj.has("title") -> {
                         val singleItem = gson.fromJson(obj, MediaItem::class.java)
-                        listOf(singleItem)
+                        listOfNotNull(singleItem)
                     }
                     else -> {
                         return Result.failure(IllegalArgumentException("Unrecognized backup format: Missing 'mediaCatalog' or show list"))
@@ -390,9 +393,15 @@ object CatalogBackupManager {
                 }
 
                 // Extract or synthesize Header
-                val header: CatalogBackupHeader = if (obj.has("header") && obj.get("header").isJsonObject) {
+                val headerObj = when {
+                    obj.has("header") && obj.get("header").isJsonObject -> obj.get("header")
+                    obj.has("a") && obj.get("a").isJsonObject -> obj.get("a")
+                    else -> null
+                }
+
+                val header: CatalogBackupHeader = if (headerObj != null) {
                     try {
-                        gson.fromJson(obj.get("header"), CatalogBackupHeader::class.java)
+                        gson.fromJson(headerObj, CatalogBackupHeader::class.java)
                     } catch (e: Exception) {
                         CatalogBackupHeader(
                             formatVersion = 1,
@@ -410,8 +419,7 @@ object CatalogBackupManager {
 
                 Result.success(CatalogBackupPayload(header, items))
             } else if (jsonElement.isJsonArray) {
-                val itemType = object : TypeToken<List<MediaItem>>() {}.type
-                val items: List<MediaItem> = gson.fromJson(jsonElement.asJsonArray, itemType)
+                val items: List<MediaItem> = gson.fromJson(jsonElement.asJsonArray, Array<MediaItem>::class.java)?.toList() ?: emptyList()
                 val totalEps = items.sumOf { it.episodes.size }
                 val header = CatalogBackupHeader(
                     formatVersion = 1,

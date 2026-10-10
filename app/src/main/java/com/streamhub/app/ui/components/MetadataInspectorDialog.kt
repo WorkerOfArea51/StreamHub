@@ -69,8 +69,7 @@ enum class MetadataIssueType(val title: String, val shortBadge: String) {
     YEAR("Missing Release Year", "⚠️ Year"),
     DURATION("Missing Runtime", "⚠️ Runtime"),
     EPISODES("Missing Episode Count", "⚠️ Episodes"),
-    UNSTANDARDIZED_SPECS("Unstandardized Codecs/Tracks", "⚡ Codecs"),
-    TMDB_ON_ANIME("Legacy TMDb Link on Anime", "⚠️ TMDb Link")
+    UNSTANDARDIZED_SPECS("Unstandardized Codecs/Tracks", "⚡ Codecs")
 }
 
 private val GENERIC_GENRES = setOf("movie", "movies", "tv series", "series", "anime")
@@ -109,9 +108,6 @@ fun getMediaItemIssues(item: MediaItem): List<MetadataIssueType> {
     if (isAnime) {
         if (item.producers.isBlank()) issues.add(MetadataIssueType.PRODUCERS)
         if (item.source.isBlank()) issues.add(MetadataIssueType.SOURCE)
-        if (item.posterUrl.contains("tmdb.org", ignoreCase = true) || item.bannerUrl.contains("tmdb.org", ignoreCase = true) || item.tmdbId.isNotBlank()) {
-            issues.add(MetadataIssueType.TMDB_ON_ANIME)
-        }
     }
 
     // Codec & Track standardization checks
@@ -133,7 +129,7 @@ enum class InspectorFilter(val label: String) {
     FAILED_SYNC("⚠️ Failed Sync"),
     ALL_ISSUES("All Issues"),
     UNSTANDARDIZED_SPECS("⚡ Codecs"),
-    TMDB_ON_ANIME("⚠️ TMDb on Anime"),
+    TMDB_ON_ANIME("🎬 TMDb Source"),
     NO_TRAILER("🎬 No Trailer"),
     BROKEN_GENRES("🏷️ Bad Genres"),
     NO_CAST("🎭 No Cast"),
@@ -722,7 +718,7 @@ fun MetadataInspectorDialog(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 if (selectedCategory == InspectorCategory.ANIME && tmdbOnAnimeCount > 0) {
-                                    MetricChip("⚠️ $tmdbOnAnimeCount TMDb Links", PrimaryRed) {
+                                    MetricChip("🎬 $tmdbOnAnimeCount TMDb Source", Color(0xFF38BDF8)) {
                                         selectedFilter = InspectorFilter.TMDB_ON_ANIME
                                     }
                                 }
@@ -1179,7 +1175,7 @@ fun MetadataInspectorDialog(
                         FilterPill("⚡ Codecs ($unstandardizedSpecsCount)", isSelected = selectedFilter == InspectorFilter.UNSTANDARDIZED_SPECS) { selectedFilter = InspectorFilter.UNSTANDARDIZED_SPECS }
                     }
                     if (selectedCategory == InspectorCategory.ANIME && tmdbOnAnimeCount > 0) {
-                        FilterPill("⚠️ TMDb on Anime ($tmdbOnAnimeCount)", isSelected = selectedFilter == InspectorFilter.TMDB_ON_ANIME) { selectedFilter = InspectorFilter.TMDB_ON_ANIME }
+                        FilterPill("🎬 TMDb Source ($tmdbOnAnimeCount)", isSelected = selectedFilter == InspectorFilter.TMDB_ON_ANIME) { selectedFilter = InspectorFilter.TMDB_ON_ANIME }
                     }
                     if (noTrailerCount > 0) {
                         FilterPill("🎬 No Trailer ($noTrailerCount)", isSelected = selectedFilter == InspectorFilter.NO_TRAILER) { selectedFilter = InspectorFilter.NO_TRAILER }
@@ -1413,12 +1409,11 @@ private fun InspectorItemRow(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    val usesTmdb = (item.category.equals("ANIME", ignoreCase = true) || item.type.equals("ANIME", ignoreCase = true)) &&
+                                   (item.posterUrl.contains("tmdb.org", ignoreCase = true) || item.bannerUrl.contains("tmdb.org", ignoreCase = true) || item.tmdbId.isNotBlank())
                     if (issues.isEmpty()) {
                         BadgeTag("✅ 100% Healthy", Color(0xFF10B981))
                     } else {
-                        if (MetadataIssueType.TMDB_ON_ANIME in issues) {
-                            BadgeTag("⚠️ Legacy TMDb Link", PrimaryRed)
-                        }
                         if (MetadataIssueType.UNSTANDARDIZED_SPECS in issues) {
                             BadgeTag("⚡ Codecs", Color(0xFF00E5FF))
                         }
@@ -1457,7 +1452,9 @@ private fun InspectorItemRow(
                     if (item.anilistId.isNotBlank()) {
                         BadgeTag("AniList: ${item.anilistId}", Color(0xFF02A9FF))
                     } else if (item.tmdbId.isNotBlank()) {
-                        BadgeTag("TMDb: ${item.tmdbId}", Color(0xFF64748B))
+                        BadgeTag("TMDb: ${item.tmdbId}", Color(0xFF38BDF8))
+                    } else if (usesTmdb) {
+                        BadgeTag("🎬 TMDb Backdrop", Color(0xFF38BDF8))
                     }
                 }
             }

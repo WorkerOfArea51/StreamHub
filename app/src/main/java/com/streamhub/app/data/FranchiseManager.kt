@@ -153,8 +153,8 @@ object FranchiseManager {
         val partNum = getEffectivePartNumber(item) ?: 0
         val year = item.releaseYear.trim().toIntOrNull() ?: 0
         val format = getMediaFormatLabel(item)
-        val isExplicitPrequel = item.relationType.trim().equals("PREQUEL", ignoreCase = true) || item.relationType.trim().startsWith("PREQUEL •", ignoreCase = true)
-        val isExplicitSequel = item.relationType.trim().equals("SEQUEL", ignoreCase = true) || item.relationType.trim().startsWith("SEQUEL •", ignoreCase = true)
+        val isExplicitPrequel = item.relationType.contains("PREQUEL", ignoreCase = true)
+        val isExplicitSequel = item.relationType.contains("SEQUEL", ignoreCase = true)
 
         val baseScore = when {
             // Priority 1: Admin explicitly specified a Season / Sequence Number (e.g. 1, 2, 3...)
@@ -234,47 +234,84 @@ object FranchiseManager {
 
     /**
      * Extracts all individual relation tags for displaying on franchise cards.
-     * Supports arbitrary multi-relations without truncating to 2 items.
+     * Preserves directional roles (SEQUEL / PREQUEL) alongside non-linear tags
+     * (SIDE STORY, SPIN-OFF, etc.) and format labels without dropping any tags.
      */
     fun getFranchiseTags(candidate: MediaItem, currentItem: MediaItem): List<FranchiseTag> {
         val format = getMediaFormatLabel(candidate)
         val isCurrent = candidate.id == currentItem.id
 
-        val role = if (isCurrent) {
-            "CURRENT"
-        } else {
-            val explicitRelation = candidate.relationType.trim().uppercase(Locale.ROOT)
-            when {
-                // Non-linear / Side stories / Spin-offs maintain their distinct non-linear role
-                explicitRelation.contains("SIDE STORY") -> "SIDE STORY"
-                explicitRelation.contains("SPIN-OFF") || explicitRelation.contains("SPINOFF") -> "SPIN-OFF"
-                explicitRelation.contains("ALTERNATIVE") -> "ALTERNATIVE"
-                explicitRelation.contains("PARODY") -> "PARODY"
-                explicitRelation.contains("RECAP") -> "RECAP"
-                else -> {
-                    val candidateScore = getChronologicalScore(candidate)
-                    val currentScore = getChronologicalScore(currentItem)
-                    when {
-                        candidateScore > currentScore -> "SEQUEL"
-                        candidateScore < currentScore -> "PREQUEL"
-                        else -> "RELATED"
-                    }
+        if (isCurrent) {
+            val formatType = when {
+                format == "MOVIE" -> FranchiseTagType.MOVIE
+                format in listOf("OVA", "ONA", "SPECIAL", "TV SPECIAL") -> FranchiseTagType.SPECIAL
+                else -> FranchiseTagType.FORMAT
+            }
+            return listOf(
+                FranchiseTag("CURRENT", FranchiseTagType.CURRENT),
+                FranchiseTag(format, formatType)
+            )
+        }
+
+        val explicitRelation = candidate.relationType.trim().uppercase(Locale.ROOT)
+        val isExplicitSequel = explicitRelation.contains("SEQUEL")
+        val isExplicitPrequel = explicitRelation.contains("PREQUEL")
+        val hasNonLinearTag = explicitRelation.contains("SIDE STORY") ||
+                explicitRelation.contains("SPIN-OFF") ||
+                explicitRelation.contains("SPINOFF") ||
+                explicitRelation.contains("ALTERNATIVE") ||
+                explicitRelation.contains("PARODY") ||
+                explicitRelation.contains("RECAP")
+
+        val directionalRole = when {
+            isExplicitSequel && isExplicitPrequel -> {
+                val candidateScore = getChronologicalScore(candidate)
+                val currentScore = getChronologicalScore(currentItem)
+                if (candidateScore >= currentScore) "SEQUEL" else "PREQUEL"
+            }
+            isExplicitSequel -> {
+                val candidateScore = getChronologicalScore(candidate)
+                val currentScore = getChronologicalScore(currentItem)
+                if (candidateScore < currentScore) "PREQUEL" else "SEQUEL"
+            }
+            isExplicitPrequel -> {
+                val candidateScore = getChronologicalScore(candidate)
+                val currentScore = getChronologicalScore(currentItem)
+                if (candidateScore > currentScore) "SEQUEL" else "PREQUEL"
+            }
+            hasNonLinearTag -> null // Pure side-story/spin-off without explicit sequel/prequel tag
+            else -> {
+                val candidateScore = getChronologicalScore(candidate)
+                val currentScore = getChronologicalScore(currentItem)
+                when {
+                    candidateScore > currentScore -> "SEQUEL"
+                    candidateScore < currentScore -> "PREQUEL"
+                    else -> null
                 }
             }
         }
 
         val tags = mutableListOf<FranchiseTag>()
-        val roleType = when (role) {
-            "CURRENT" -> FranchiseTagType.CURRENT
-            "SEQUEL" -> FranchiseTagType.SEQUEL
-            "PREQUEL" -> FranchiseTagType.PREQUEL
-            "SIDE STORY" -> FranchiseTagType.SIDE_STORY
-            "SPIN-OFF" -> FranchiseTagType.SPIN_OFF
-            else -> FranchiseTagType.FORMAT
+
+        if (directionalRole != null) {
+            val roleType = if (directionalRole == "SEQUEL") FranchiseTagType.SEQUEL else FranchiseTagType.PREQUEL
+            tags.add(FranchiseTag(directionalRole, roleType))
         }
 
-        if (role != format && role != "RELATED") {
-            tags.add(FranchiseTag(role, roleType))
+        if (explicitRelation.contains("SIDE STORY")) {
+            tags.add(FranchiseTag("SIDE STORY", FranchiseTagType.SIDE_STORY))
+        }
+        if (explicitRelation.contains("SPIN-OFF") || explicitRelation.contains("SPINOFF")) {
+            tags.add(FranchiseTag("SPIN-OFF", FranchiseTagType.SPIN_OFF))
+        }
+        if (explicitRelation.contains("ALTERNATIVE")) {
+            tags.add(FranchiseTag("ALTERNATIVE", FranchiseTagType.FORMAT))
+        }
+        if (explicitRelation.contains("PARODY")) {
+            tags.add(FranchiseTag("PARODY", FranchiseTagType.FORMAT))
+        }
+        if (explicitRelation.contains("RECAP")) {
+            tags.add(FranchiseTag("RECAP", FranchiseTagType.FORMAT))
         }
 
         val formatType = when {

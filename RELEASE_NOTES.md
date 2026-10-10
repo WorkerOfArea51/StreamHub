@@ -1,14 +1,19 @@
-### What's New in StreamHub v4.8.406 🚀
+### What's New in StreamHub v4.8.407 🚀
 
-- 🌸 **Zero-Failure Direct AniList URL & ID Resolution**:
-  - Direct AniList URLs (e.g. `https://anilist.co/anime/162314/Attack-on-Titan-Final-Season-THE-FINAL-CHAPTERS-Special-2/`) and numeric IDs (`162314`, `110277`) now completely bypass heuristic season filtering. Direct IDs are treated as absolute user intent and will never be rejected or overwritten during fetch.
-  - Added URL slug title extraction (`/anime/<id>/<slug>`) and filtered raw URL strings from text search queries, preventing false "Anime Not Found" errors.
-  - Deep Re-Sync and Repair strictly prioritize and preserve existing valid `anilistId` without discarding known IDs for raw title searches.
-- 🎨 **Pristine Catalog Card Symmetry (`MediaCard.kt`)**:
-  - Removed redundant generic `"MOVIE"` badge from movie cards for 100% clean visual symmetry across Movies, Series, and Anime cards while preserving smart franchise badges (`S2/S3`, `M2/M3`, `OVA`, `SPECIAL`).
-- 🎭 **Real Japanese Voice Actor Photos & Duration Parity**:
-  - AniList GraphQL queries fetch real human portraits for Japanese voice actors instead of cartoon illustrations.
-  - Standardized anime episode runtime formatting to clean `"24 min"`.
-- 🩺 **M3 Expressive Metadata Health Inspector & 1:1 Category Parity**:
-  - Aligned styling with StreamHub VIP design language, and synchronized category filters 1:1 with Firestore bundles (**🌐 All 493 = 🌸 Anime 223 + 🎬 Movies 185 + 📺 Series 85**).
-  - Non-destructive deep re-sync preserves custom user-provided backdrops and trailers without data loss.
+- 🎬 **Franchise Multi-Relation Tag Preservation**:
+  - Shows with multi-tiered relationships (such as `Sequel • Side Story • Movie`, like *The Last: Naruto the Movie*) now display both their directional connection (`SEQUEL` / `PREQUEL`) and nature (`SIDE STORY`, `SPIN-OFF`) alongside format (`MOVIE`, `TV`, `OVA`).
+  - Canon sequel movies and specials are no longer obscured or mistaken for skippable non-canon side stories.
+
+- ✨ **Clean Cinema Catalog Aesthetics (`MediaCard.kt`)**:
+  - Removed top-right resolution badges (`1080p`, `4K`) from catalog cards across Home, Search, and Recommendations for a sleek, minimal poster presentation.
+  - Streamlined Creator Studio Specs tab by removing the redundant resolution picker and giving the Codec selector full width.
+
+- 💾 **Rock-Solid Full Catalog Backup & Restore**:
+  - Completely eradicated R8 release build restore crashes by switching from generic `TypeToken` to reflection-safe array deserialization with explicit ProGuard keep rules.
+  - Added clipboard transaction size protection in backup exports, preventing system `TransactionTooLargeException` crashes on large 6+ MB catalog JSONs.
+
+- 📦 **Deterministic Bundle Sync (`CatalogBundleManager.kt`)**:
+  - Mutex-locked catalog bundle operations with deterministic ID sorting ensure multi-part bundle exports never skip records or suffer from boundary race conditions.
+
+- 🌸 **Anime Special & Backdrop Integrity**:
+  - Non-destructive metadata inspector and re-sync engine fully preserve anime specials (like *Guardian Fitz*, *Memory Snow*) and custom 16:9 backdrops without false defect warnings or accidental overwrites.

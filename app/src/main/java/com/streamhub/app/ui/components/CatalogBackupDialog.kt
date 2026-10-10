@@ -449,14 +449,25 @@ fun CatalogBackupDialog(
                                 Text("Downloads", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
 
-                            // 2. Copy JSON
+                            // 2. Copy JSON (Crash-Protected against TransactionTooLargeException)
                             Button(
                                 onClick = {
                                     val json = CatalogBackupManager.generateBackupJson(catalog, selectedCategoryFilter)
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("StreamHub Catalog Backup", json))
-                                    exportSuccessMessage = "Copied ${targetCatalog.size} titles JSON to clipboard (${json.length} characters)!"
-                                    exportErrorMessage = null
+                                    if (json.length > 500_000) {
+                                        val mbFormatted = String.format(java.util.Locale.US, "%.1f", json.length / (1024.0 * 1024.0))
+                                        exportErrorMessage = "Catalog backup is $mbFormatted MB (exceeds Android's 1 MB clipboard limit). Please use 'Downloads' or 'Share'!"
+                                        ToastManager.showToast("Backup is $mbFormatted MB. Use Downloads or Share!", Icons.Default.Info)
+                                    } else {
+                                        try {
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(ClipData.newPlainText("StreamHub Catalog Backup", json))
+                                            exportSuccessMessage = "Copied ${targetCatalog.size} titles JSON to clipboard (${json.length} characters)!"
+                                            exportErrorMessage = null
+                                            ToastManager.showToast("Copied JSON to clipboard!", Icons.Default.CheckCircle)
+                                        } catch (e: Exception) {
+                                            exportErrorMessage = "Clipboard error: ${e.message}. Use 'Downloads' or 'Share' instead."
+                                        }
+                                    }
                                 },
                                 enabled = !isExporting && targetCatalog.isNotEmpty(),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),

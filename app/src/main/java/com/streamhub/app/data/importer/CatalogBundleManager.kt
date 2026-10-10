@@ -10,6 +10,8 @@ import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.repository.FirebaseRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Smart Catalog Bundler Engine with 970 KB Auto-Split Partitioning.
@@ -31,6 +33,8 @@ object CatalogBundleManager {
 
     // Overhead for bundle envelope fields (bundleId, category, partIndex, counts, timestamps)
     private const val BASE_ENVELOPE_BYTES = 600L
+
+    private val bundleSyncMutex = Mutex()
 
     private val gson: Gson by lazy { GsonBuilder().create() }
 
@@ -57,12 +61,15 @@ object CatalogBundleManager {
     ): List<CatalogBundle> {
         if (items.isEmpty()) return emptyList()
 
+        // Deterministic sorting and ID deduplication prevents boundary shifts and missing titles across parts
+        val sortedItems = items.distinctBy { it.id }.sortedBy { it.id.lowercase() }
+
         val bundles = mutableListOf<CatalogBundle>()
         var currentPart = 1
         val currentItems = mutableListOf<MediaItem>()
         var currentBytes = 0L
 
-        for (item in items) {
+        for (item in sortedItems) {
             val itemBytes = estimateItemBytes(item)
 
             // If current part already has items and adding this item would exceed 970 KB:
@@ -223,7 +230,8 @@ object CatalogBundleManager {
         type: String,
         fullCatalog: List<MediaItem>
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
+        bundleSyncMutex.withLock {
+            try {
             val isAnime = category.equals("ANIME", ignoreCase = true)
             val isMovie = !isAnime && (category.equals("MOVIE", ignoreCase = true) || category.equals("MOVIES", ignoreCase = true) || type.equals("MOVIE", ignoreCase = true))
 
@@ -262,6 +270,7 @@ object CatalogBundleManager {
         } catch (e: Exception) {
             Log.w(TAG, "Failed incremental bundle sync for category $category", e)
             Result.failure(e)
+        }
         }
     }
 }

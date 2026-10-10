@@ -178,26 +178,6 @@ fun MediaCard(
                 }
             }
 
-            // Quality Badge Top Right
-            val primaryColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
-            if (item.mediaInfo.resolution.isNotBlank()) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(6.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(primaryColor)
-                        .padding(horizontal = 5.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = item.mediaInfo.resolution,
-                        color = Color.White,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
             // Rating Bottom Left
             if (item.rating.isNotBlank()) {
                 Row(

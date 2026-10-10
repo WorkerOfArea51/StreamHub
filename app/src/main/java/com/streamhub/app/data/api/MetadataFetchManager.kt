@@ -2254,8 +2254,41 @@ object MetadataFetchManager {
                         if (aniIdNum != null && aniIdNum > 0) {
                             // Fetch fresh official AniList data using exact AniList ID
                             fetchFromAniList(item.title, targetSeason = detectedSeason, directAniListId = aniIdNum)
+                        } else if (item.tmdbId.isNotBlank() && item.tmdbId.toIntOrNull() != null) {
+                            // Respect official TMDb metadata for anime specials/movies that only exist on TMDb
+                            val effectiveCat = if (isMovie) "Movies" else "Series"
+                            fetchFromTMDB(item.title, effectiveCat, targetSeason = item.seasonNumber.coerceAtLeast(1), directTmdbId = item.tmdbId.toInt(), explicitIsMovie = isMovie)
+                        } else if (item.posterUrl.isNotBlank() && item.description.isNotBlank() && item.description != "No synopsis available.") {
+                            // High-integrity preservation: Never destroy manually curated MAL/TMDb anime with fuzzy search!
+                            Result.success(
+                                FetchedMetadata(
+                                    title = item.title,
+                                    synopsis = item.description,
+                                    posterUrl = item.posterUrl,
+                                    backdropUrl = item.bannerUrl,
+                                    releaseYear = item.releaseYear.toIntOrNull() ?: 0,
+                                    rating = item.rating,
+                                    category = if (isMovie) "Movie" else "Series",
+                                    genres = item.genres,
+                                    resolution = "1080p",
+                                    studio = item.studio,
+                                    producers = item.producers,
+                                    source = item.source,
+                                    duration = item.duration,
+                                    status = item.status,
+                                    totalEpisodes = item.totalEpisodes,
+                                    anilistId = item.anilistId,
+                                    tmdbId = item.tmdbId,
+                                    castList = item.castList.joinToString(", "),
+                                    youtubeTrailerId = item.trailerId,
+                                    aired = item.aired,
+                                    maturityRating = item.maturityRating,
+                                    castMembers = item.castMembers,
+                                    trailers = item.trailers
+                                )
+                            )
                         } else {
-                            // Fetch fresh official AniList data by title and detected season
+                            // Only search AniList by title if the anime lacks metadata
                             fetchFromAniList(item.title, targetSeason = detectedSeason)
                         }
                     }
@@ -2281,18 +2314,17 @@ object MetadataFetchManager {
                         }
 
                         val repairedItem = if (isAnime) {
-                            // 100% AniList Data for Anime - Purge all TMDb leftovers!
-                            val repairedPoster = meta.posterUrl.ifBlank { item.posterUrl.takeIf { !it.contains("tmdb.org") && !it.equals("null", ignoreCase = true) } ?: "" }
+                            // Preserve valid posters & backdrops (including high-res TMDb & MAL assets)
+                            val repairedPoster = meta.posterUrl.ifBlank { item.posterUrl.takeIf { !it.equals("null", ignoreCase = true) } ?: "" }
                             val hasCustomValidBanner = item.bannerUrl.isNotBlank() && 
                                                        item.bannerUrl != item.posterUrl && 
-                                                       !item.bannerUrl.equals("null", ignoreCase = true) && 
-                                                       !item.bannerUrl.contains("tmdb.org")
+                                                       !item.bannerUrl.equals("null", ignoreCase = true)
                             val repairedBanner = if (meta.backdropUrl.isNotBlank() && !meta.backdropUrl.equals("null", ignoreCase = true)) {
                                 meta.backdropUrl
                             } else if (hasCustomValidBanner) {
-                                item.bannerUrl // Preserve custom user-provided 16:9 backdrop banner!
+                                item.bannerUrl // Preserve custom or TMDb 16:9 backdrop banner!
                             } else {
-                                meta.posterUrl.ifBlank { item.posterUrl.takeIf { !it.contains("tmdb.org") && !it.equals("null", ignoreCase = true) } ?: "" }
+                                meta.posterUrl.ifBlank { item.posterUrl.takeIf { !it.equals("null", ignoreCase = true) } ?: "" }
                             }
 
                             val hasCustomValidTrailer = item.trailerId.isNotBlank() && !item.trailerId.equals("null", ignoreCase = true)

@@ -426,4 +426,69 @@ class FranchiseManagerTest {
         org.junit.Assert.assertNotEquals("IDs must be distinct to prevent Firestore overwrite", fitzId, s2Id)
         org.junit.Assert.assertTrue("fitzId should contain guardian_fitz", fitzId.contains("guardian_fitz"))
     }
+
+    @Test
+    fun testFranchiseTags_multiRelationPreservesSequelAndSideStoryAndFormat() {
+        // Scenario reported by user: Naruto: Shippuden (Current) vs The Last: Naruto the Movie (Sequel • Side Story • Movie)
+        val shippuden = MediaItem(
+            id = "naruto_shippuden",
+            title = "Naruto: Shippuden",
+            category = "Anime",
+            type = "SERIES",
+            releaseYear = "2007",
+            seasonNumber = 2,
+            franchiseId = "naruto"
+        )
+        val theLastMovie = MediaItem(
+            id = "naruto_the_last",
+            title = "The Last: Naruto the Movie",
+            category = "Anime",
+            type = "MOVIE",
+            relationType = "Sequel • Side Story • Movie",
+            releaseYear = "2014",
+            seasonNumber = 0,
+            franchiseId = "naruto"
+        )
+
+        val tags = FranchiseManager.getFranchiseTags(theLastMovie, shippuden)
+        val tagLabels = tags.map { it.label }
+
+        assertEquals("Must contain 3 tags: SEQUEL, SIDE STORY, MOVIE", listOf("SEQUEL", "SIDE STORY", "MOVIE"), tagLabels)
+        assertEquals("SEQUEL • SIDE STORY • MOVIE", FranchiseManager.getFranchiseTag(theLastMovie, shippuden))
+
+        // When viewing The Last: Naruto the Movie, Shippuden must be tagged PREQUEL • TV
+        val shippudenTags = FranchiseManager.getFranchiseTags(shippuden, theLastMovie)
+        assertEquals(listOf("PREQUEL", "TV"), shippudenTags.map { it.label })
+        assertEquals("PREQUEL • TV", FranchiseManager.getFranchiseTag(shippuden, theLastMovie))
+    }
+
+    @Test
+    fun testFranchiseTags_multiRelationPreservesPrequelAndSideStoryAndOva() {
+        val currentShow = MediaItem(
+            id = "main_show",
+            title = "Main Series Season 2",
+            category = "Anime",
+            type = "SERIES",
+            releaseYear = "2020",
+            seasonNumber = 2,
+            franchiseId = "universe"
+        )
+        val prequelOva = MediaItem(
+            id = "prequel_side_ova",
+            title = "Origins Story",
+            category = "Anime",
+            type = "SERIES",
+            relationType = "Prequel • Side Story • OVA",
+            releaseYear = "2018",
+            seasonNumber = 0,
+            franchiseId = "universe"
+        )
+
+        val tags = FranchiseManager.getFranchiseTags(prequelOva, currentShow)
+        val tagLabels = tags.map { it.label }
+
+        assertEquals(listOf("PREQUEL", "SIDE STORY", "OVA"), tagLabels)
+        assertEquals("PREQUEL • SIDE STORY • OVA", FranchiseManager.getFranchiseTag(prequelOva, currentShow))
+    }
 }
+
