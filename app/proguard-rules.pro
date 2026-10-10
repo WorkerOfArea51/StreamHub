@@ -102,6 +102,8 @@
 -dontwarn androidx.compose.**
 -keep class androidx.compose.runtime.** { *; }
 -keepclassmembers class * extends androidx.compose.runtime.** { *; }
+-keep class com.streamhub.app.ui.components.AdminEditorDialogKt { *; }
+-keep class com.streamhub.app.ui.components.**Dialog*Kt { *; }
 
 # --- Media3 OkHttp & ExoPlayer ---
 -keep class androidx.media3.datasource.okhttp.** { *; }

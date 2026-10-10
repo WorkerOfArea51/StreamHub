@@ -1,4 +1,8 @@
-### What's New in StreamHub v4.8.407 🚀
+### What's New in StreamHub v4.8.408 🚀
+
+- 🛠️ **Creator Studio Launch Fix (`VerifyError` Bytecode Guard)**:
+  - Fixed an immediate crash when opening the Creator Studio (`+` icon) on modern Android versions (Android 14 & 15 / HyperOS).
+  - Resolved an R8 compiler full-mode bytecode verification defect (`PositiveByteConstant` invalid field access) and added explicit ProGuard keep rules for Creator Studio dialog composables.
 
 - 🎬 **Franchise Multi-Relation Tag Preservation**:
   - Shows with multi-tiered relationships (such as `Sequel • Side Story • Movie`, like *The Last: Naruto the Movie*) now display both their directional connection (`SEQUEL` / `PREQUEL`) and nature (`SIDE STORY`, `SPIN-OFF`) alongside format (`MOVIE`, `TV`, `OVA`).
