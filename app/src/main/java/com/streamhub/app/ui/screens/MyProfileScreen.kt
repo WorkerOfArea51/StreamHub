@@ -162,9 +162,6 @@ fun MyProfileScreen(
                     isAdmin = isAdminMode,
                     isAccessKeyVerified = isAccessKeyUnlocked,
                     remainingDays = remainingVoucherDays,
-                    inProgressCount = inProgressCount,
-                    libraryCount = libraryCount,
-                    streakDays = streakDays,
                     primaryColor = primaryColor
                 )
             }
@@ -290,7 +287,7 @@ fun MyProfileScreen(
 }
 
 /**
- * Hero Profile Card (Avatar with 5-tap easter egg, Name + Tier Badge, Tagline, Member ID, and 3 Quick Metrics)
+ * Hero Profile Card (Avatar, Name + Tier Badge, Tagline, and Member ID)
  */
 @Composable
 private fun MyProfileHeroCard(
@@ -298,9 +295,6 @@ private fun MyProfileHeroCard(
     isAdmin: Boolean,
     isAccessKeyVerified: Boolean,
     remainingDays: Int,
-    inProgressCount: Int,
-    libraryCount: Int,
-    streakDays: Int,
     primaryColor: Color
 ) {
     val context = LocalContext.current
@@ -340,11 +334,10 @@ private fun MyProfileHeroCard(
                 )
             }
 
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(20.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -436,67 +429,7 @@ private fun MyProfileHeroCard(
                         }
                     }
                 }
-
-                // Quick Metric Pills (In progress, Library, Streak)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    QuickMetricPill(
-                        value = inProgressCount.toString(),
-                        label = "In progress",
-                        modifier = Modifier.weight(1f)
-                    )
-                    QuickMetricPill(
-                        value = libraryCount.toString(),
-                        label = "Library",
-                        modifier = Modifier.weight(1f)
-                    )
-                    QuickMetricPill(
-                        value = "${streakDays}d",
-                        label = "Streak",
-                        modifier = Modifier.weight(1f)
-                    )
-                }
             }
-        }
-    }
-}
-
-/**
- * Compact stat pill inside Hero Card (e.g. "2 In progress", "0 Library", "1d Streak")
- */
-@Composable
-private fun QuickMetricPill(
-    value: String,
-    label: String,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.7f),
-        modifier = modifier
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 10.dp, horizontal = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = value,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
-            )
-            Text(
-                text = label,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Medium,
-                color = TextSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
         }
     }
 }

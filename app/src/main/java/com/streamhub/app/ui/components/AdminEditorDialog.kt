@@ -1680,41 +1680,90 @@ fun AdminEditorDialog(
                         Text("Technical Specs & Quality Badges", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(6.dp))
 
-                        // Codec with Quick-Pick Chips
-                        OutlinedTextField(
-                            value = videoCodec,
-                            onValueChange = { videoCodec = it },
-                            label = { Text("Codec (e.g. HEVC/x265)", color = TextSecondary) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
+                        // Resolution & Codec with Quick-Pick Chips
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            val codecPills = listOf("HEVC/x265", "x264", "AV1")
-                            codecPills.forEach { c ->
-                                val isSelected = videoCodec.equals(c, ignoreCase = true)
-                                Surface(
-                                    shape = CircleShape,
-                                    color = if (isSelected) AccentOrange else MaterialTheme.colorScheme.surfaceContainerLowest,
+                            // Resolution Column
+                            Column(modifier = Modifier.weight(1f)) {
+                                OutlinedTextField(
+                                    value = resolution,
+                                    onValueChange = { resolution = it },
+                                    label = { Text("Resolution (e.g. 1080p)", color = TextSecondary) },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
                                     modifier = Modifier
-                                        .clip(CircleShape)
-                                        .bouncyTouch()
-                                        .clickable {
-                                            videoCodec = if (isSelected) "" else c
-                                        }
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Text(
-                                        text = c,
-                                        color = if (isSelected) Color.Black else TextSecondary,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                    )
+                                    val resPills = listOf("1080p", "720p", "480p")
+                                    resPills.forEach { res ->
+                                        val isSelected = resolution.equals(res, ignoreCase = true)
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (isSelected) AccentGold else MaterialTheme.colorScheme.surfaceContainerLowest,
+                                            modifier = Modifier
+                                                .clip(CircleShape)
+                                                .bouncyTouch()
+                                                .clickable {
+                                                    resolution = if (isSelected) "" else res
+                                                }
+                                        ) {
+                                            Text(
+                                                text = res,
+                                                color = if (isSelected) Color.Black else TextSecondary,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Codec Column
+                            Column(modifier = Modifier.weight(1f)) {
+                                OutlinedTextField(
+                                    value = videoCodec,
+                                    onValueChange = { videoCodec = it },
+                                    label = { Text("Codec (e.g. HEVC/x265)", color = TextSecondary) },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    val codecPills = listOf("HEVC/x265", "x264", "AV1")
+                                    codecPills.forEach { c ->
+                                        val isSelected = videoCodec.equals(c, ignoreCase = true)
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (isSelected) AccentOrange else MaterialTheme.colorScheme.surfaceContainerLowest,
+                                            modifier = Modifier
+                                                .clip(CircleShape)
+                                                .bouncyTouch()
+                                                .clickable {
+                                                    videoCodec = if (isSelected) "" else c
+                                                }
+                                        ) {
+                                            Text(
+                                                text = c,
+                                                color = if (isSelected) Color.Black else TextSecondary,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
