@@ -1,4 +1,11 @@
-### What's New in StreamHub v4.8.411 🚀
+### What's New in StreamHub v4.8.412 🚀
+
+- 🎯 **Strict Episode Progress Isolation & Cross-Episode Bleed Resolution (`DetailsScreen.kt`, `StreamPlayerViewModel.kt`, `MediaCard.kt`)**:
+  - Fixed an issue where watching Episode 1 caused Episode 2 to inadvertently mirror Episode 1's progress, showing the orange active card highlight, thumbnail resume progress bar, and "Xm left" badge on both episodes.
+  - Standardized watch progress persistence to use the 0-based episode index (`epIdx`), eliminating 1-based index collisions where `episodeNumber == 1` matched Episode 2's list index (`1`) and caused Episode 2 to erroneously resume at Episode 1's timestamp.
+  - Enhanced episode matching across Details, Home Continue Watching, History, and Quick Actions to prioritize exact episode title and season matching before index fallbacks, ensuring existing history records gracefully resolve without cross-episode bleed.
+  - Tapping Episode 2 now cleanly begins playback from 00:00 without inheriting Episode 1's resume position.
+
 
 - 📦 **Collapsible Series Grouping in Offline Downloads (`DownloadsScreen.kt`)**:
   - Eliminated endless duplicate title scrolling by grouping downloaded episodes under their parent show.

@@ -272,8 +272,18 @@ fun DetailsScreen(
     val prewarmCoroutineScope = rememberCoroutineScope()
     val savedProgress = remember(currentMediaId) { com.streamhub.app.data.WatchHistoryManager.getProgress(currentMediaId) }
     val detailsTargetPlayIndex = remember(savedProgress, mediaItem?.episodes) {
-        if (savedProgress != null && mediaItem?.episodes != null && savedProgress.episodeNumber in mediaItem.episodes.indices) {
-            savedProgress.episodeNumber
+        if (savedProgress != null && mediaItem?.episodes != null) {
+            val titleMatchIdx = if (savedProgress.episodeTitle.isNotBlank()) {
+                mediaItem.episodes.indexOfFirst {
+                    it.title.equals(savedProgress.episodeTitle, ignoreCase = true) &&
+                    (it.seasonNumber == savedProgress.seasonNumber || isMovie)
+                }
+            } else -1
+            if (titleMatchIdx >= 0) {
+                titleMatchIdx
+            } else if (savedProgress.episodeNumber in mediaItem.episodes.indices) {
+                savedProgress.episodeNumber
+            } else 0
         } else 0
     }
 
@@ -867,14 +877,28 @@ fun DetailsScreen(
                     val completedDownloads = remember(downloads, mediaItem.id) {
                         downloads.filter { it.mediaId == mediaItem.id && it.isCompleted }
                     }
-                    val targetPlayIndex = if (savedHistory != null && savedHistory.episodeNumber in mediaItem.episodes.indices) {
-                        savedHistory.episodeNumber
+                    val targetPlayIndex = if (savedHistory != null && mediaItem.episodes.isNotEmpty()) {
+                        val titleMatchIdx = if (savedHistory.episodeTitle.isNotBlank()) {
+                            mediaItem.episodes.indexOfFirst {
+                                it.title.equals(savedHistory.episodeTitle, ignoreCase = true) &&
+                                (it.seasonNumber == savedHistory.seasonNumber || isMovie)
+                            }
+                        } else -1
+                        if (titleMatchIdx >= 0) {
+                            titleMatchIdx
+                        } else if (savedHistory.episodeNumber in mediaItem.episodes.indices) {
+                            savedHistory.episodeNumber
+                        } else 0
                     } else 0
                     val playButtonText = when {
                         !isOnline && completedDownloads.isEmpty() -> "Requires Internet"
                         !isOnline && completedDownloads.isNotEmpty() -> "Play Offline 📥"
                         isMovie -> if (savedHistory != null && savedHistory.positionMs > 5000L) "Resume Movie" else "Play Movie"
-                        savedHistory != null && savedHistory.episodeNumber in mediaItem.episodes.indices -> "Resume Ep ${savedHistory.episodeNumber + 1}"
+                        savedHistory != null && targetPlayIndex in mediaItem.episodes.indices -> {
+                            val ep = mediaItem.episodes[targetPlayIndex]
+                            val displayEpNum = ep.episodeNumber.takeIf { it > 0 } ?: (targetPlayIndex + 1)
+                            "Resume Ep $displayEpNum"
+                        }
                         else -> "Play"
                     }
 
@@ -1882,11 +1906,16 @@ fun EpisodeRowItem(
         mediaProgress.isCompleted ||
         mediaProgress.completedEpisodeIndices.contains(index)
     )
-    val isCurrentEp = mediaProgress != null && (
-        mediaProgress.episodeNumber == episode.episodeNumber - 1 ||
-        mediaProgress.episodeNumber == index ||
-        (mediaProgress.episodeTitle.isNotBlank() && mediaProgress.episodeTitle.equals(episode.title, ignoreCase = true))
-    )
+    val isCurrentEp = mediaProgress != null && when {
+        mediaProgress.episodeTitle.isNotBlank() && episode.title.isNotBlank() -> {
+            mediaProgress.episodeTitle.equals(episode.title, ignoreCase = true) &&
+            (mediaProgress.seasonNumber == episode.seasonNumber || isMovie)
+        }
+        else -> {
+            mediaProgress.episodeNumber == index &&
+            (mediaProgress.seasonNumber == episode.seasonNumber || isMovie)
+        }
+    }
     val hasEpProgress = !isEpisodeWatched && isCurrentEp && mediaProgress.positionMs > 5000L && mediaProgress.durationMs > 0L
     val epFraction = if (hasEpProgress) {
         (mediaProgress.positionMs.toFloat() / mediaProgress.durationMs.toFloat()).coerceIn(0.04f, 1f)

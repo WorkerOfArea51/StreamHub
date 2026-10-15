@@ -105,8 +105,8 @@ fun MediaCard(
     val progress = watchHistory[item.id]
     val isCompleted = progress?.isFullyCompleted(item.episodes.size) == true
     val isWatchingInProgress = progress != null && progress.positionMs > 5000L && progress.durationMs > 0L && !isCompleted
-    val progressFraction = if (isWatchingInProgress && progress != null) {
-        (progress.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0.04f, 1f)
+    val progressFraction = if (isWatchingInProgress) {
+        (progress!!.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0.04f, 1f)
     } else 0f
 
     val haptic = LocalHapticFeedback.current
@@ -256,12 +256,16 @@ fun MediaCard(
             modifier = titleModifier
         )
 
-        val metaSubtitle = if (isWatchingInProgress && progress != null) {
-            val remainingMs = (progress.durationMs - progress.positionMs).coerceAtLeast(0L)
+        val metaSubtitle = if (isWatchingInProgress) {
+            val p = progress!!
+            val remainingMs = (p.durationMs - p.positionMs).coerceAtLeast(0L)
             val remainingMin = (remainingMs / 60000).toInt()
             val remainingText = if (remainingMin > 0) "${remainingMin}m left" else "<1m left"
-            if (!isMovie && progress.episodeNumber > 0) {
-                "Ep ${progress.episodeNumber} • $remainingText"
+            if (!isMovie) {
+                val epNum = if (item.episodes.isNotEmpty()) {
+                    item.episodes.getOrNull(progress.episodeNumber)?.episodeNumber ?: (progress.episodeNumber + 1)
+                } else (progress.episodeNumber + 1)
+                "Ep $epNum • $remainingText"
             } else {
                 remainingText
             }

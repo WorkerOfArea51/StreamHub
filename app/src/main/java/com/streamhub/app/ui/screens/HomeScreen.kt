@@ -1021,7 +1021,12 @@ fun HomeScreen(
             },
             onRestart = {
                 selectedQuickActionMedia = null
-                val epIndex = progress?.episodeNumber ?: 0
+                val epIndex = if (progress != null && progress.episodeTitle.isNotBlank()) {
+                    val idx = media.episodes.indexOfFirst { it.title.equals(progress.episodeTitle, ignoreCase = true) }
+                    if (idx >= 0) idx else progress.episodeNumber
+                } else {
+                    progress?.episodeNumber ?: 0
+                }
                 WatchHistoryManager.saveProgress(media.id, epIndex, 0L, progress?.durationMs ?: 0L)
                 onPlayEpisode(media, epIndex)
             },
@@ -1262,10 +1267,16 @@ fun ContinueWatchingSection(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 items(continueWatchingList, key = { it.first.id }) { (media, progress) ->
+                    val targetEpIndex = if (progress.episodeTitle.isNotBlank()) {
+                        val idx = media.episodes.indexOfFirst { it.title.equals(progress.episodeTitle, ignoreCase = true) }
+                        if (idx >= 0) idx else progress.episodeNumber
+                    } else {
+                        progress.episodeNumber
+                    }
                     ContinueWatchingRowItem(
                         media = media,
                         progress = progress,
-                        onPlay = { onPlayEpisode(media, progress.episodeNumber) },
+                        onPlay = { onPlayEpisode(media, targetEpIndex) },
                         onRemove = { onRemove(media, progress) },
                         onLongClick = { onLongClick(media to progress) }
                     )
@@ -1298,7 +1309,12 @@ fun ContinueWatchingRowItem(
             progress.mediaType.equals("Movie", ignoreCase = true) ||
             progress.mediaType.equals("Movies", ignoreCase = true)
 
-    val currentEp = media.episodes.getOrNull(progress.episodeNumber)
+    val currentEp = if (progress.episodeTitle.isNotBlank()) {
+        media.episodes.firstOrNull { it.title.equals(progress.episodeTitle, ignoreCase = true) }
+            ?: media.episodes.getOrNull(progress.episodeNumber)
+    } else {
+        media.episodes.getOrNull(progress.episodeNumber)
+    }
 
     Card(
         shape = RoundedCornerShape(14.dp),
@@ -1436,10 +1452,11 @@ fun ContinueWatchingRowItem(
                         "Movie"
                     } else {
                         val seasonNum = if (progress.seasonNumber > 0) progress.seasonNumber else (currentEp?.seasonNumber ?: 1)
+                        val epNum = currentEp?.episodeNumber?.takeIf { it > 0 } ?: (progress.episodeNumber + 1)
                         if (currentEp != null && currentEp.title.isNotBlank() && !currentEp.title.equals(media.title, ignoreCase = true)) {
-                            "S$seasonNum:E${progress.episodeNumber + 1} • ${currentEp.title}"
+                            "S$seasonNum:E$epNum • ${currentEp.title}"
                         } else {
-                            "S$seasonNum:E${progress.episodeNumber + 1}"
+                            "S$seasonNum:E$epNum"
                         }
                     },
                     color = AccentOrange,

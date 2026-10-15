@@ -118,6 +118,7 @@ fun BatchDownloadSheet(
         { origIndex ->
             if (mediaProgress == null) false
             else if (mediaProgress.isCompleted) true
+            else if (mediaProgress.completedEpisodeIndices.contains(origIndex)) true
             else if (mediaProgress.episodeNumber > origIndex) true
             else if (mediaProgress.episodeNumber == origIndex && mediaProgress.durationMs > 0 &&
                 mediaProgress.positionMs >= (mediaProgress.durationMs * 0.85).toLong()

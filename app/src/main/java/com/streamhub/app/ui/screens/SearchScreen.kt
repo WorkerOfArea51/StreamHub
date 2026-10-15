@@ -1312,7 +1312,12 @@ fun SearchScreen(
             },
             onRestart = {
                 selectedQuickActionMedia = null
-                val epIndex = progress?.episodeNumber ?: 0
+                val epIndex = if (progress != null && progress.episodeTitle.isNotBlank()) {
+                    val idx = media.episodes.indexOfFirst { it.title.equals(progress.episodeTitle, ignoreCase = true) }
+                    if (idx >= 0) idx else progress.episodeNumber
+                } else {
+                    progress?.episodeNumber ?: 0
+                }
                 WatchHistoryManager.saveProgress(media.id, epIndex, 0L, progress?.durationMs ?: 0L)
                 if (onPlayEpisode != null) {
                     onPlayEpisode(media, epIndex)

@@ -408,7 +408,11 @@ fun HistoryScreen(
                                         }
                                     } else {
                                         if (matchedMedia != null) {
-                                            onPlayEpisode(matchedMedia, progress.episodeNumber)
+                                            val targetIdx = if (progress.episodeTitle.isNotBlank()) {
+                                                val idx = matchedMedia.episodes.indexOfFirst { it.title.equals(progress.episodeTitle, ignoreCase = true) }
+                                                if (idx >= 0) idx else progress.episodeNumber
+                                            } else progress.episodeNumber
+                                            onPlayEpisode(matchedMedia, targetIdx)
                                         } else if (completedForShow.isNotEmpty()) {
                                             val targetDownload = completedForShow.firstOrNull { it.episodeIndex == progress.episodeNumber } ?: completedForShow.first()
                                             val targetIndex = completedForShow.indexOfFirst { it.episodeIndex == targetDownload.episodeIndex }.coerceAtLeast(0)
@@ -548,7 +552,16 @@ fun HistoryItemCard(
     val subtitle = buildString {
         if (!isMovie) {
             val season = if (progress.seasonNumber > 0) progress.seasonNumber else 1
-            append("S$season:E${progress.episodeNumber + 1}")
+            val effectiveEpIndex = if (progress.episodeTitle.isNotBlank() && mediaItem != null) {
+                val idx = mediaItem.episodes.indexOfFirst { it.title.equals(progress.episodeTitle, ignoreCase = true) }
+                if (idx >= 0) idx else progress.episodeNumber
+            } else {
+                progress.episodeNumber
+            }
+            val epNum = if (mediaItem != null) {
+                mediaItem.episodes.getOrNull(effectiveEpIndex)?.episodeNumber?.takeIf { it > 0 } ?: (effectiveEpIndex + 1)
+            } else (effectiveEpIndex + 1)
+            append("S$season:E$epNum")
             if (progress.episodeTitle.isNotBlank() && !progress.episodeTitle.equals(displayTitle, ignoreCase = true)) {
                 append(" • ${progress.episodeTitle}")
             }

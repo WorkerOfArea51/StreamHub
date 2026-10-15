@@ -91,7 +91,12 @@ fun MediaQuickActionsSheet(
     val isWatchingInProgress = progress != null && progress.positionMs > 5000L &&
             progress.durationMs > 0L && !isCompleted
 
-    val currentEpIndex = progress?.episodeNumber ?: 0
+    val currentEpIndex = if (progress != null && progress.episodeTitle.isNotBlank()) {
+        val idx = media.episodes.indexOfFirst { it.title.equals(progress.episodeTitle, ignoreCase = true) }
+        if (idx >= 0) idx else (progress.episodeNumber)
+    } else {
+        progress?.episodeNumber ?: 0
+    }
     val currentEp = media.episodes.getOrNull(currentEpIndex)
 
     val remainingMs = if (progress != null && progress.durationMs > progress.positionMs) {
@@ -228,7 +233,8 @@ fun MediaQuickActionsSheet(
                             if (media.releaseYear.isNotBlank()) "Movie • ${media.releaseYear}" else "Movie"
                         } else {
                             val seasonNum = if ((progress?.seasonNumber ?: 0) > 0) progress!!.seasonNumber else (currentEp?.seasonNumber ?: 1)
-                            "S$seasonNum:E${currentEpIndex + 1}"
+                            val epNum = currentEp?.episodeNumber?.takeIf { it > 0 } ?: (currentEpIndex + 1)
+                            "S$seasonNum:E$epNum"
                         }
                         Text(
                             text = metaText,
