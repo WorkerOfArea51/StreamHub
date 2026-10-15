@@ -1,9 +1,8 @@
 package com.streamhub.app.ui.components
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,86 +16,49 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.CloudSync
-import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.ElectricBolt
-import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.HealthAndSafety
-import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.Whatshot
-import java.util.Locale
-import com.streamhub.app.data.models.isActivelyTrending
-import com.streamhub.app.data.StreamBackendConfig
-import com.streamhub.app.data.repository.FirebaseRepository
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import coil.compose.AsyncImage
 import com.streamhub.app.data.TelegramLinkResolver
-import com.streamhub.app.data.api.MetadataFetchManager
 import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.models.MediaInfo
 import com.streamhub.app.data.models.MediaItem
-import com.streamhub.app.data.models.remainingTrendingDays
-import com.streamhub.app.ui.theme.AccentGold
-import com.streamhub.app.ui.theme.AccentOrange
+import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
@@ -106,10 +68,9 @@ import kotlinx.coroutines.launch
 /**
  * Modernized VIP Creator & Admin Studio Dialog.
  *
- * Expands horizontally (usePlatformDefaultWidth = false) for maximum viewing area.
- * Dynamically switches Telegram link mode based on Movie vs Series format!
+ * Decomposed into isolated tab composables (AdminOverviewTab, AdminLinksTab, AdminSpecsTab, AdminToolsTab)
+ * to prevent DEX register allocation overflow and ART runtime VerifyError.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AdminEditorDialog(
     initialItem: MediaItem? = null,
@@ -119,180 +80,13 @@ fun AdminEditorDialog(
     onDelete: ((String) -> Unit)? = null
 ) {
     val scope = rememberCoroutineScope()
-    var selectedTab by remember { mutableIntStateOf(0) } // 0: Overview & Auto-Fetch, 1: Telegram Links, 2: All Metadata & Tech Specs
+    val state = rememberAdminEditorState(initialItem)
+    var selectedTab by remember { mutableIntStateOf(0) }
 
-    // --- State: Core Metadata ---
-    var activeEditItem by remember(initialItem) { mutableStateOf(initialItem) }
-    var title by remember(initialItem) { mutableStateOf(initialItem?.title ?: "") }
-    var type by remember(initialItem) { mutableStateOf(initialItem?.type ?: "SERIES") }
-    var category by remember(initialItem) { mutableStateOf(initialItem?.category ?: "ANIME") }
-    var anilistId by remember(initialItem) { mutableStateOf(initialItem?.anilistId ?: "") }
-    var tmdbId by remember(initialItem) { mutableStateOf(initialItem?.tmdbId ?: "") }
-    var trailerId by remember(initialItem) { mutableStateOf(initialItem?.trailerId?.takeIf { !it.equals("null", ignoreCase = true) } ?: "") }
-    var rating by remember(initialItem) { mutableStateOf(initialItem?.rating ?: "") }
-    var maturityRating by remember(initialItem) { mutableStateOf(initialItem?.maturityRating ?: "") }
-    var studio by remember(initialItem) { mutableStateOf(initialItem?.studio ?: "") }
-    var synonyms by remember(initialItem) { mutableStateOf(initialItem?.synonyms ?: "") }
-    var totalEpisodes by remember(initialItem) { mutableStateOf(initialItem?.totalEpisodes ?: "") }
-    var status by remember(initialItem) { mutableStateOf(initialItem?.status ?: "") }
-    var aired by remember(initialItem) { mutableStateOf(initialItem?.aired ?: "") }
-    var premiered by remember(initialItem) { mutableStateOf(initialItem?.premiered ?: "") }
-    var producers by remember(initialItem) { mutableStateOf(initialItem?.producers ?: "") }
-    var source by remember(initialItem) { mutableStateOf(initialItem?.source ?: "") }
-    var duration by remember(initialItem) { mutableStateOf(initialItem?.duration ?: "") }
-    var genresText by remember(initialItem) { mutableStateOf(initialItem?.genres?.joinToString(", ") ?: "") }
-    var castText by remember(initialItem) { mutableStateOf(initialItem?.castList?.joinToString(", ") ?: "") }
-    var posterUrl by remember(initialItem) {
-        mutableStateOf(initialItem?.posterUrl?.takeIf { !it.equals("null", ignoreCase = true) } ?: "")
-    }
-    var bannerUrl by remember(initialItem) {
-        mutableStateOf(
-            initialItem?.bannerUrl?.takeIf { !it.equals("null", ignoreCase = true) && it.isNotBlank() }
-                ?: initialItem?.posterUrl?.takeIf { !it.equals("null", ignoreCase = true) }
-                ?: ""
-        )
-    }
-    var description by remember(initialItem) { mutableStateOf(initialItem?.description ?: "") }
-    var isFeatured by remember(initialItem) { mutableStateOf(initialItem?.isFeatured ?: false) }
-    var isTrending by remember(initialItem) { mutableStateOf(initialItem?.isActivelyTrending() ?: false) }
-    var trendingAt by remember(initialItem) { mutableStateOf(if (initialItem?.isActivelyTrending() == true) initialItem.trendingAt else 0L) }
-    val isAnimeCat = category.equals("Anime", ignoreCase = true) ||
-                     category.equals("ANIMES", ignoreCase = true) ||
-                     category.contains("Anime", ignoreCase = true) ||
-                     type.equals("ANIME", ignoreCase = true)
-
-    // --- State: Franchise & Sequel Grouping ---
-    var franchiseId by remember(initialItem) { mutableStateOf(initialItem?.franchiseId ?: "") }
-    var franchiseTitle by remember(initialItem) { mutableStateOf(initialItem?.franchiseTitle ?: "") }
-    val isInitMovie = initialItem?.type?.equals("MOVIE", ignoreCase = true) == true ||
-                      initialItem?.category?.equals("Movie", ignoreCase = true) == true ||
-                      initialItem?.category?.equals("Movies", ignoreCase = true) == true ||
-                      initialItem?.relationType?.equals("Movie", ignoreCase = true) == true
-    var seasonNumberText by remember(initialItem) {
-        mutableStateOf(
-            if (initialItem != null && initialItem.seasonNumber > 0) {
-                initialItem.seasonNumber.toString()
-            } else if (isInitMovie) {
-                ""
-            } else {
-                "1"
-            }
-        )
-    }
-    var partNumberText by remember(initialItem) {
-        mutableStateOf(if ((initialItem?.partNumber ?: 0) > 0) initialItem!!.partNumber.toString() else "")
-    }
-    var franchiseOrderText by remember(initialItem) {
-        mutableStateOf(
-            if ((initialItem?.franchiseOrder ?: 0.0) > 0.0) {
-                val ord = initialItem!!.franchiseOrder
-                if (ord % 1.0 == 0.0) ord.toInt().toString() else ord.toString()
-            } else ""
-        )
-    }
-    var seasonTitle by remember(initialItem) { mutableStateOf(initialItem?.seasonTitle ?: "") }
-    var relationType by remember(initialItem) { mutableStateOf(initialItem?.relationType?.takeIf { it.isNotBlank() && !it.equals("Main Story", ignoreCase = true) } ?: if (isInitMovie) "Movie" else "TV") }
-
-    // --- State: Technical Specs ---
-    var resolution by remember(initialItem) { mutableStateOf(initialItem?.mediaInfo?.resolution ?: "") }
-    var videoCodec by remember(initialItem) { mutableStateOf(initialItem?.mediaInfo?.videoCodec ?: "") }
-    var bitrate by remember(initialItem) { mutableStateOf(initialItem?.mediaInfo?.bitrate ?: "") }
-    var frameRate by remember(initialItem) { mutableStateOf(initialItem?.mediaInfo?.frameRate ?: "") }
-    var aspectRatio by remember(initialItem) { mutableStateOf(initialItem?.mediaInfo?.aspectRatio ?: "") }
-    var fileSize by remember(initialItem) { mutableStateOf(initialItem?.mediaInfo?.fileSize ?: "") }
-    var audioTracksText by remember(initialItem) { mutableStateOf(initialItem?.mediaInfo?.audioTracks?.joinToString(", ") ?: "") }
-    var subtitleTracksText by remember(initialItem) { mutableStateOf(initialItem?.mediaInfo?.subtitleTracks?.joinToString(", ") ?: "") }
-
-    // --- State: Stream Links / Single Movie / Multi-Arc ---
-    val isMovieFormat = type.equals("MOVIE", ignoreCase = true) || category.equals("MOVIE", ignoreCase = true)
-    val currentEpisodes = remember(initialItem) {
-        mutableStateListOf<Episode>().apply {
-            addAll(initialItem?.episodes ?: emptyList())
-        }
-    }
-    var startBatchLink by remember(initialItem) {
-        mutableStateOf(if (isMovieFormat && (initialItem?.episodes?.size ?: 0) <= 1) (initialItem?.episodes?.firstOrNull()?.streamUrl ?: "") else "")
-    }
-    var endBatchLink by remember { mutableStateOf("") }
-    var arcNameText by remember { mutableStateOf("") }
-    var generatedEpisodesText by remember { mutableStateOf("") }
-    var f2lBatchInput by remember { mutableStateOf("") }
-    var isFetchingF2l by remember { mutableStateOf(false) }
-    var isFetchingMeta by remember { mutableStateOf(false) }
-    var fetchedFileName by remember(initialItem) { mutableStateOf(initialItem?.episodes?.firstOrNull()?.fileName ?: "") }
-    var fetchedDurationMs by remember(initialItem) { mutableLongStateOf(initialItem?.episodes?.firstOrNull()?.durationMs ?: 0L) }
-    var isTestingMovieLink by remember { mutableStateOf(false) }
-    var movieLinkProbeResult by remember { mutableStateOf<com.streamhub.app.data.api.EpisodeHealthResult?>(null) }
-
-    // --- State: UI Feedback ---
-    var isFetchingApi by remember { mutableStateOf(false) }
-    var fetchError by remember { mutableStateOf<String?>(null) }
-    var batchError by remember { mutableStateOf<String?>(null) }
-    var batchSuccess by remember { mutableStateOf<String?>(null) }
-    var validationError by remember { mutableStateOf<String?>(null) }
-    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
-    var isCheckingHealth by remember { mutableStateOf(false) }
-    var healthReport by remember { mutableStateOf<com.streamhub.app.data.api.StreamHealthReport?>(null) }
-    var showBackupDialog by remember { mutableStateOf(false) }
-    var showMigrationDialog by remember { mutableStateOf(false) }
-    var showVoucherDialog by remember { mutableStateOf(false) }
-    var showMetadataInspector by remember { mutableStateOf(false) }
-
-    val loadItemForEditing: (MediaItem) -> Unit = { itemToEdit ->
-        activeEditItem = itemToEdit
-        title = itemToEdit.title
-        type = itemToEdit.type
-        category = itemToEdit.category
-        anilistId = itemToEdit.anilistId
-        tmdbId = itemToEdit.tmdbId
-        trailerId = itemToEdit.trailerId.takeIf { !it.equals("null", ignoreCase = true) } ?: ""
-        rating = itemToEdit.rating
-        maturityRating = itemToEdit.maturityRating
-        studio = itemToEdit.studio
-        synonyms = itemToEdit.synonyms
-        totalEpisodes = itemToEdit.totalEpisodes
-        status = itemToEdit.status
-        aired = itemToEdit.aired
-        premiered = itemToEdit.premiered
-        producers = itemToEdit.producers
-        source = itemToEdit.source
-        duration = itemToEdit.duration
-        genresText = itemToEdit.genres.joinToString(", ")
-        castText = itemToEdit.castList.joinToString(", ")
-        posterUrl = itemToEdit.posterUrl.takeIf { !it.equals("null", ignoreCase = true) } ?: ""
-        bannerUrl = itemToEdit.bannerUrl.takeIf { !it.equals("null", ignoreCase = true) && it.isNotBlank() }
-            ?: itemToEdit.posterUrl.takeIf { !it.equals("null", ignoreCase = true) } ?: ""
-        description = itemToEdit.description
-        isFeatured = itemToEdit.isFeatured
-        isTrending = itemToEdit.isActivelyTrending()
-        trendingAt = if (itemToEdit.isActivelyTrending()) itemToEdit.trendingAt else 0L
-        franchiseId = itemToEdit.franchiseId
-        franchiseTitle = itemToEdit.franchiseTitle
-        seasonNumberText = if (itemToEdit.seasonNumber > 0) itemToEdit.seasonNumber.toString() else ""
-        partNumberText = if (itemToEdit.partNumber > 0) itemToEdit.partNumber.toString() else ""
-        franchiseOrderText = if (itemToEdit.franchiseOrder > 0.0) {
-            val ord = itemToEdit.franchiseOrder
-            if (ord % 1.0 == 0.0) ord.toInt().toString() else ord.toString()
-        } else ""
-        seasonTitle = itemToEdit.seasonTitle
-        relationType = itemToEdit.relationType
-        resolution = itemToEdit.mediaInfo.resolution
-        videoCodec = itemToEdit.mediaInfo.videoCodec
-        bitrate = itemToEdit.mediaInfo.bitrate
-        frameRate = itemToEdit.mediaInfo.frameRate
-        aspectRatio = itemToEdit.mediaInfo.aspectRatio
-        fileSize = itemToEdit.mediaInfo.fileSize
-        audioTracksText = itemToEdit.mediaInfo.audioTracks.joinToString(", ")
-        subtitleTracksText = itemToEdit.mediaInfo.subtitleTracks.joinToString(", ")
-        currentEpisodes.clear()
-        currentEpisodes.addAll(itemToEdit.episodes)
-        selectedTab = 0
-    }
-
-    val itemForDeletion = activeEditItem ?: initialItem
-    if (showDeleteConfirmDialog && itemForDeletion != null) {
+    val itemForDeletion = state.activeEditItem ?: initialItem
+    if (state.showDeleteConfirmDialog && itemForDeletion != null) {
         AlertDialog(
-            onDismissRequest = { showDeleteConfirmDialog = false },
+            onDismissRequest = { state.showDeleteConfirmDialog = false },
             title = {
                 Text(
                     "Delete Media?",
@@ -313,7 +107,7 @@ fun AdminEditorDialog(
             confirmButton = {
                 Button(
                     onClick = {
-                        showDeleteConfirmDialog = false
+                        state.showDeleteConfirmDialog = false
                         if (onDelete != null) {
                             onDelete(itemForDeletion.id)
                         } else {
@@ -331,7 +125,7 @@ fun AdminEditorDialog(
             },
             dismissButton = {
                 TextButton(
-                    onClick = { showDeleteConfirmDialog = false },
+                    onClick = { state.showDeleteConfirmDialog = false },
                     shape = CircleShape
                 ) {
                     Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -342,33 +136,34 @@ fun AdminEditorDialog(
         )
     }
 
-    if (showBackupDialog) {
+    if (state.showBackupDialog) {
         CatalogBackupDialog(
             repository = FirebaseRepository.getInstance(),
-            onDismiss = { showBackupDialog = false }
+            onDismiss = { state.showBackupDialog = false }
         )
     }
 
-    if (showMigrationDialog) {
+    if (state.showMigrationDialog) {
         ServerMigrationDialog(
             repository = FirebaseRepository.getInstance(),
-            onDismiss = { showMigrationDialog = false }
+            onDismiss = { state.showMigrationDialog = false }
         )
     }
 
-    if (showVoucherDialog) {
+    if (state.showVoucherDialog) {
         VoucherManagerDialog(
-            onDismiss = { showVoucherDialog = false }
+            onDismiss = { state.showVoucherDialog = false }
         )
     }
 
-    if (showMetadataInspector) {
+    if (state.showMetadataInspector) {
         MetadataInspectorDialog(
             repository = FirebaseRepository.getInstance(),
-            onDismiss = { showMetadataInspector = false },
+            onDismiss = { state.showMetadataInspector = false },
             onEditShow = { itemToEdit ->
-                showMetadataInspector = false
-                loadItemForEditing(itemToEdit)
+                state.showMetadataInspector = false
+                state.loadItem(itemToEdit)
+                selectedTab = 0
             }
         )
     }
@@ -400,33 +195,30 @@ fun AdminEditorDialog(
                 ) {
                     Column {
                         Text(
-                            text = "Creator Studio",
+                            text = if (state.activeEditItem != null || initialItem != null) "Edit Media Catalog" else "Creator Studio",
                             style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
+                                fontWeight = FontWeight.Black,
+                                color = TextPrimary
                             )
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (initialItem == null) "Publish New Show to Catalog" else "Edit Show Details",
+                            text = "Professional anime & movie publication dashboard",
                             style = MaterialTheme.typography.bodySmall.copy(
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontWeight = FontWeight.Medium
+                                color = TextSecondary
                             )
                         )
                     }
-
                     IconButton(
                         onClick = onDismiss,
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Close",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = TextSecondary,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -434,2063 +226,288 @@ fun AdminEditorDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // M3 Expressive Segmented Tab Dock (Overview, Links, Specs, Tools)
+                // Custom Tab Switcher Pills
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surfaceContainerLowest)
-                        .padding(4.dp),
+                        .padding(4.dp)
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    TabButton(Icons.Default.Movie, "Overview", isSelected = selectedTab == 0, modifier = Modifier.weight(1f)) { selectedTab = 0 }
-                    TabButton(Icons.Default.Link, "Links", isSelected = selectedTab == 1, modifier = Modifier.weight(1f)) { selectedTab = 1 }
-                    TabButton(Icons.Default.Tune, "Specs", isSelected = selectedTab == 2, modifier = Modifier.weight(1f)) { selectedTab = 2 }
-                    TabButton(Icons.Default.Build, "Tools", isSelected = selectedTab == 3, modifier = Modifier.weight(1f)) { selectedTab = 3 }
+                    TabButton(
+                        icon = Icons.Default.Star,
+                        title = "Overview",
+                        isSelected = selectedTab == 0,
+                        onClick = { selectedTab = 0 }
+                    )
+                    TabButton(
+                        icon = Icons.Default.Link,
+                        title = if (state.isMovieFormat) "Movie Stream" else "Episodes (${state.currentEpisodes.size})",
+                        isSelected = selectedTab == 1,
+                        onClick = { selectedTab = 1 }
+                    )
+                    TabButton(
+                        icon = Icons.Default.Tune,
+                        title = "Specs",
+                        isSelected = selectedTab == 2,
+                        onClick = { selectedTab = 2 }
+                    )
+                    TabButton(
+                        icon = Icons.Default.Build,
+                        title = "Studio Tools",
+                        isSelected = selectedTab == 3,
+                        onClick = { selectedTab = 3 }
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Scrollable Content Area (Tabs)
+                // Scrollable Content Body with Isolated Tabs
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
-                        .padding(vertical = 4.dp)
                 ) {
                     when (selectedTab) {
-                        0 -> {
-                        // ==========================================
-                        // TAB 0: OVERVIEW & TITLE AUTO-FETCH
-                        // ==========================================
-                        Text("1. Category & Type", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(8.dp))
+                        0 -> AdminOverviewTab(state = state, scope = scope)
+                        1 -> AdminLinksTab(state = state, scope = scope)
+                        2 -> AdminSpecsTab(state = state)
+                        3 -> AdminToolsTab(state = state)
+                    }
+                }
 
-                        // Category Chips Row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            listOf("ANIME", "MOVIE", "SERIES").forEach { cat ->
-                                val isSelected = category.equals(cat, ignoreCase = true)
-                                Surface(
-                                    shape = CircleShape,
-                                    color = if (isSelected) PrimaryRed else MaterialTheme.colorScheme.surfaceContainerLowest,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .bouncyTouch()
-                                        .clip(CircleShape)
-                                        .clickable {
-                                            category = cat
-                                            if (cat == "MOVIE") type = "MOVIE"
-                                        }
-                                ) {
-                                    Text(
-                                        text = cat,
-                                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(vertical = 9.dp),
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                    )
-                                }
-                            }
-                        }
+                Spacer(modifier = Modifier.height(10.dp))
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                state.validationError?.let {
+                    Text(it, color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
 
-                        // Type Switch (Movie vs Series)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            listOf("MOVIE", "SERIES").forEach { t ->
-                                val isSelected = type.equals(t, ignoreCase = true)
-                                Surface(
-                                    shape = CircleShape,
-                                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLowest,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .bouncyTouch()
-                                        .clip(CircleShape)
-                                        .clickable { type = t }
-                                ) {
-                                    Text(
-                                        text = "FORMAT: $t",
-                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(vertical = 7.dp),
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Featured & Trending Automated Badge Chips
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = if (isFeatured) AccentGold.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceContainerLowest,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .bouncyTouch()
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .clickable { isFeatured = !isFeatured }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Star,
-                                        contentDescription = null,
-                                        tint = if (isFeatured) AccentGold else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = if (isFeatured) "Featured Hero" else "Feature Show",
-                                        color = if (isFeatured) AccentGold else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-
-                            val remainingTrendingDays = if (isTrending) {
-                                val dummyItem = com.streamhub.app.data.models.MediaItem(
-                                    isTrending = true,
-                                    trendingAt = trendingAt,
-                                    updatedAt = initialItem?.updatedAt ?: 0L,
-                                    createdAt = initialItem?.createdAt ?: 0L
-                                )
-                                dummyItem.remainingTrendingDays()
-                            } else 0
-                            val trendingLabel = when {
-                                !isTrending -> "Set Trending"
-                                remainingTrendingDays in 1..7 -> "Trending ($remainingTrendingDays d left)"
-                                else -> "Trending Now (7d)"
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = if (isTrending) PrimaryRed.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceContainerLowest,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .bouncyTouch()
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .clickable {
-                                        isTrending = !isTrending
-                                        if (isTrending) {
-                                            trendingAt = System.currentTimeMillis()
-                                        } else {
-                                            trendingAt = 0L
-                                        }
-                                    }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Whatshot,
-                                        contentDescription = null,
-                                        tint = if (isTrending) PrimaryRed else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = trendingLabel,
-                                        color = if (isTrending) PrimaryRed else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Title Input (Supports exact title name, AniList URL/ID, TMDB URL/ID)
-                        OutlinedTextField(
-                            value = title,
-                            onValueChange = { title = it; validationError = null },
-                            label = { Text(if (isAnimeCat) "Exact Title or AniList Link / ID *" else "Exact Title or TMDb Link / ID *", color = TextSecondary) },
-                            placeholder = { Text(if (isAnimeCat) "Title or AniList link (e.g. Solo Leveling Season 2 or https://anilist.co/anime/176496)" else "Title or TMDb link (e.g. Inception or https://themoviedb.org/movie/27205)", color = TextSecondary) },
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFFFFD700),
-                                unfocusedBorderColor = Color(0xFF2C2C3E),
-                                focusedTextColor = TextPrimary
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Auto-Fetch Hero Button
+                if (selectedTab != 3) {
+                    // ==========================================
+                    // BOTTOM SAVE BAR (Fixed Footer)
+                    // ==========================================
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Button(
-                            onClick = {
-                                isFetchingApi = true
-                                fetchError = null
-                                scope.launch {
-                                    val parsedSeason = seasonNumberText.toIntOrNull()?.takeIf { it > 1 } ?: MetadataFetchManager.extractTargetSeasonNumber(title, 1)
-                                    val result = MetadataFetchManager.fetchMetadata(title, category, targetSeason = parsedSeason)
-                                    result.fold(
-                                        onSuccess = { meta ->
-                                            if (meta.title.isNotBlank() && !meta.title.equals("null", ignoreCase = true)) {
-                                                title = meta.title
-                                            }
-                                            description = meta.synopsis
-                                            posterUrl = meta.posterUrl
-                                            bannerUrl = if (meta.backdropUrl.isNotBlank() && !meta.backdropUrl.equals("null", ignoreCase = true)) {
-                                                meta.backdropUrl
-                                            } else {
-                                                meta.posterUrl
-                                            }
-                                            rating = meta.rating
-                                            category = if (isAnimeCat) "ANIME" else meta.category
-                                            resolution = meta.resolution
-                                            if (meta.genres.isNotEmpty()) {
-                                                genresText = meta.genres.joinToString(", ")
-                                            }
-                                            if (meta.releaseYear > 0) {
-                                                premiered = meta.releaseYear.toString()
-                                            }
-                                            if (meta.studio.isNotBlank()) studio = meta.studio
-                                            if (meta.producers.isNotBlank()) producers = meta.producers
-                                            if (meta.source.isNotBlank()) source = meta.source
-                                            if (meta.duration.isNotBlank()) duration = meta.duration
-                                            if (meta.status.isNotBlank()) status = meta.status
-                                            if (meta.totalEpisodes.isNotBlank()) totalEpisodes = meta.totalEpisodes
-                                            if (meta.alternativeTitles.isNotBlank()) synonyms = meta.alternativeTitles
-                                            if (isAnimeCat) {
-                                                anilistId = meta.anilistId
-                                                tmdbId = "" // Eradicate TMDB ID for Anime
-                                            } else {
-                                                tmdbId = meta.tmdbId
-                                                anilistId = ""
-                                            }
-                                            if (meta.castList.isNotBlank()) castText = meta.castList
-                                            if (meta.youtubeTrailerId.isNotBlank() && !meta.youtubeTrailerId.equals("null", ignoreCase = true)) trailerId = meta.youtubeTrailerId
-                                            if (meta.aired.isNotBlank()) aired = meta.aired
-                                            if (meta.maturityRating.isNotBlank()) maturityRating = meta.maturityRating
-                                            if (meta.franchiseId.isNotBlank()) franchiseId = meta.franchiseId
-                                            if (meta.franchiseTitle.isNotBlank()) franchiseTitle = meta.franchiseTitle
-                                            if (meta.seasonNumber > 0) seasonNumberText = meta.seasonNumber.toString()
-                                            if (meta.seasonTitle.isNotBlank()) seasonTitle = meta.seasonTitle
-                                            if (meta.relationType.isNotBlank()) relationType = meta.relationType
-                                        },
-                                        onFailure = { err ->
-                                            fetchError = "Auto-fetch failed: ${err.message}"
-                                        }
-                                    )
-                                    isFetchingApi = false
-                                }
-                            },
-                            enabled = title.isNotBlank() && !isFetchingApi,
-                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                            onClick = onDismiss,
                             shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
+                                contentColor = TextSecondary
+                            ),
+                            contentPadding = PaddingValues(horizontal = 14.dp),
                             modifier = Modifier
-                                .fillMaxWidth()
+                                .weight(0.9f)
                                 .height(46.dp)
                                 .bouncyTouch()
                         ) {
-                            if (isFetchingApi) {
-                                ExpressiveLoadingIndicator(size = 16.dp, color = Color.White, accentColor = AccentGold)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(if (isAnimeCat) "Searching AniList..." else "Searching TMDb...", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            } else {
-                                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Auto-Fetch Metadata", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
+                            Text("Cancel", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                         }
 
-                        fetchError?.let {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(it, color = PrimaryRed, fontSize = 11.sp)
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Live Poster Preview & Image URLs
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            // Live Poster Preview Box
-                            Box(
-                                modifier = Modifier
-                                    .width(95.dp)
-                                    .height(135.dp)
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerLowest),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (posterUrl.isNotBlank()) {
-                                    AsyncImage(
-                                        model = posterUrl,
-                                        contentDescription = "Poster Preview",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                } else {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Icon(Icons.Default.Movie, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text("Poster Preview", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 9.sp)
-                                    }
-                                }
-                            }
-
-                            // Poster URL & Banner URL Fields
-                            Column(modifier = Modifier.weight(1f)) {
-                                OutlinedTextField(
-                                    value = posterUrl,
-                                    onValueChange = { posterUrl = it },
-                                    label = { Text("Poster Image URL", color = TextSecondary) },
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                OutlinedTextField(
-                                    value = bannerUrl,
-                                    onValueChange = { bannerUrl = it },
-                                    label = { Text("Backdrop / Banner URL", color = TextSecondary) },
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Synopsis / Description Input
-                        OutlinedTextField(
-                            value = description,
-                            onValueChange = { description = it },
-                            label = { Text("Synopsis / Overview", color = TextSecondary) },
-                            minLines = 3,
-                            maxLines = 5,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-
-                    1 -> {
-                        // ==========================================
-                        // TAB 1: EPISODES & STREAM LINKS
-                        // ==========================================
-                        if (isMovieFormat) {
-                            // --- MOVIE FORMAT: SMART STREAM LINK & READY PREVIEW (SERIES-PARITY) ---
-                            val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
-
-                            Text("2. Movie Direct Stream Link", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                "Paste the direct stream URL, Serv00 link, or Telegram F2L link for this movie.",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 11.sp,
-                                lineHeight = 15.sp
-                            )
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            val isF2lLink = StreamBackendConfig.isBackendHost(startBatchLink)
-                            val isF2lTruncated = isF2lLink && (
-                                (startBatchLink.contains("/dl/") && startBatchLink.substringAfter("/dl/").trim().length < 32) ||
-                                (startBatchLink.contains("/stream/") && startBatchLink.substringAfter("/stream/").trim().length < 32)
-                            )
-
-                            OutlinedTextField(
-                                value = startBatchLink,
-                                onValueChange = {
-                                    startBatchLink = it
-                                    generatedEpisodesText = it
-                                    batchError = null
-                                    movieLinkProbeResult = null
+                        if (state.activeEditItem != null || initialItem != null) {
+                            Button(
+                                onClick = {
+                                    state.showDeleteConfirmDialog = true
                                 },
-                                label = { Text("Movie Stream URL / Direct Link *", color = TextSecondary) },
-                                placeholder = { Text("https://midnighthawk.serv00.net/dl/xxx or direct link", color = TextSecondary) },
-                                singleLine = true,
-                                isError = isF2lTruncated,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            if (isF2lTruncated) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    "⚠️ Incomplete Link: The F2L code appears truncated. Please paste the full 48-character link from the bot.",
-                                    color = Color(0xFFFFB74D),
-                                    fontSize = 11.sp,
-                                    lineHeight = 14.sp
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                shape = CircleShape,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = PrimaryRed.copy(alpha = 0.15f),
+                                    contentColor = PrimaryRed
+                                ),
+                                contentPadding = PaddingValues(horizontal = 10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(46.dp)
+                                    .bouncyTouch()
                             ) {
-                                Button(
-                                    onClick = {
-                                        batchError = null
-                                        val clipText = clipboardManager.getText()?.text?.trim()
-                                        if (clipText.isNullOrBlank()) {
-                                            batchError = "Clipboard is empty"
-                                            return@Button
-                                        }
-                                        val cleanLink = TelegramLinkResolver.sanitizePlayableUrl(clipText)
-                                        startBatchLink = cleanLink
-                                        generatedEpisodesText = cleanLink
-                                        movieLinkProbeResult = null
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                                    shape = CircleShape,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Icon(Icons.Default.ContentPaste, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Paste from Clipboard", color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-
-                                if (startBatchLink.isNotBlank() || generatedEpisodesText.isNotBlank()) {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = PrimaryRed.copy(alpha = 0.15f),
-                                        modifier = Modifier
-                                            .bouncyTouch()
-                                            .clip(CircleShape)
-                                            .clickable {
-                                                startBatchLink = ""
-                                                generatedEpisodesText = ""
-                                                fetchedFileName = ""
-                                                fetchedDurationMs = 0L
-                                                batchError = null
-                                                movieLinkProbeResult = null
-                                            }
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(Icons.Default.DeleteOutline, contentDescription = "Clear", tint = PrimaryRed, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Clear", color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                }
+                                Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = PrimaryRed, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Delete", color = PrimaryRed, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
+                        }
 
-                            batchError?.let {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(it, color = PrimaryRed, fontSize = 11.sp)
-                            }
-
-                            // Movie Stream Ready Preview Card (Series-Parity)
-                            val cleanActiveLink = TelegramLinkResolver.sanitizePlayableUrl(startBatchLink.ifBlank { generatedEpisodesText }.trim())
-                            if (cleanActiveLink.isNotBlank()) {
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = MaterialTheme.colorScheme.surfaceContainerLowest,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(modifier = Modifier.padding(14.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.weight(1f)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.CheckCircle,
-                                                    contentDescription = null,
-                                                    tint = Color(0xFF10B981),
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text(
-                                                    text = "1 Movie Stream Ready",
-                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-
-                                            // Health Check Action (Series-Parity: on-demand, non-blocking)
-                                            Surface(
-                                                shape = CircleShape,
-                                                color = if (isTestingMovieLink) Color(0xFFFF9800).copy(alpha = 0.2f)
-                                                        else if (movieLinkProbeResult?.isAlive == true) Color(0xFF10B981).copy(alpha = 0.2f)
-                                                        else if (movieLinkProbeResult?.isAlive == false) PrimaryRed.copy(alpha = 0.2f)
-                                                        else MaterialTheme.colorScheme.surfaceContainerHighest,
-                                                modifier = Modifier
-                                                    .clip(CircleShape)
-                                                    .clickable(enabled = !isTestingMovieLink) {
-                                                        isTestingMovieLink = true
-                                                        scope.launch {
-                                                            val result = com.streamhub.app.data.api.StreamHealthChecker.probeUrl(cleanActiveLink)
-                                                            movieLinkProbeResult = result
-                                                            isTestingMovieLink = false
-                                                        }
-                                                    }
-                                            ) {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                                ) {
-                                                    if (isTestingMovieLink) {
-                                                        ExpressiveLoadingIndicator(
-                                                            modifier = Modifier.size(11.dp),
-                                                            color = Color(0xFFFF9800),
-                                                            accentColor = AccentGold,
-                                                            size = 11.dp
-                                                        )
-                                                        Text(
-                                                            "Checking...",
-                                                            color = Color(0xFFFF9800),
-                                                            fontSize = 10.sp,
-                                                            fontWeight = FontWeight.Bold
-                                                        )
-                                                    } else {
-                                                        Text(
-                                                            text = when {
-                                                                movieLinkProbeResult?.isAlive == true -> "Live (${movieLinkProbeResult?.latencyMs}ms)"
-                                                                movieLinkProbeResult?.isAlive == false -> "Unreachable (${movieLinkProbeResult?.errorMessage ?: "Error"})"
-                                                                else -> "Check Link"
-                                                            },
-                                                            color = when {
-                                                                movieLinkProbeResult?.isAlive == true -> Color(0xFF10B981)
-                                                                movieLinkProbeResult?.isAlive == false -> PrimaryRed
-                                                                else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                                            },
-                                                            fontSize = 10.sp,
-                                                            fontWeight = FontWeight.Bold
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.height(10.dp))
-
-                                        // Stream link metadata row
-                                        val isBackend = StreamBackendConfig.isBackendHost(cleanActiveLink)
-                                        val streamBadge = when {
-                                            isBackend && cleanActiveLink.contains("/dl/") -> "Serv00 Direct Stream"
-                                            isBackend && cleanActiveLink.contains("/stream/") -> "F2L Direct Stream"
-                                            cleanActiveLink.contains("t.me/") -> "Telegram Direct"
-                                            else -> "Web Stream URL"
-                                        }
-
-                                        Surface(
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Icon(
-                                                    Icons.Default.Movie,
-                                                    contentDescription = null,
-                                                    tint = Color(0xFF81C784),
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(10.dp))
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        Text(
-                                                            text = title.ifBlank { "Main Feature Movie" },
-                                                            color = MaterialTheme.colorScheme.onSurface,
-                                                            fontSize = 12.sp,
-                                                            fontWeight = FontWeight.SemiBold,
-                                                            maxLines = 1,
-                                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                                            modifier = Modifier.weight(1f, fill = false)
-                                                        )
-                                                        Spacer(modifier = Modifier.width(6.dp))
-                                                        Surface(
-                                                            shape = CircleShape,
-                                                            color = Color(0xFF38BDF8).copy(alpha = 0.15f)
-                                                        ) {
-                                                            Text(
-                                                                text = streamBadge,
-                                                                color = Color(0xFF38BDF8),
-                                                                fontSize = 9.sp,
-                                                                fontWeight = FontWeight.Bold,
-                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                            )
-                                                        }
-                                                    }
-                                                    Spacer(modifier = Modifier.height(2.dp))
-                                                    Text(
-                                                        text = cleanActiveLink,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        fontSize = 10.sp,
-                                                        maxLines = 1,
-                                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        Button(
+                            onClick = {
+                                state.validationError = null
+                                when {
+                                    state.title.isBlank() -> state.validationError = "Title is required (Type title in Tab 1)"
+                                    state.category.isBlank() -> state.validationError = "Category is required"
+                                    else -> {
+                                        val isMovieItem = state.isMovieFormat ||
+                                                state.relationType.equals("Movie", ignoreCase = true) ||
+                                                state.category.equals("Movie", ignoreCase = true) ||
+                                                state.category.equals("Movies", ignoreCase = true)
+                                        val parsedSeasonNum = state.seasonNumberText.trim().toIntOrNull() ?: if (isMovieItem) 0 else 1
+                                        val episodes = when {
+                                            state.isMovieFormat && state.currentEpisodes.size <= 1 && (state.startBatchLink.isNotBlank() || state.generatedEpisodesText.isNotBlank()) -> {
+                                                val link = TelegramLinkResolver.sanitizePlayableUrl(state.startBatchLink.ifBlank { state.generatedEpisodesText }.trim())
+                                                val existingEp = initialItem?.episodes?.firstOrNull()
+                                                listOf(
+                                                    Episode(
+                                                        episodeNumber = 1,
+                                                        seasonNumber = if (isMovieItem) 0 else 1,
+                                                        title = state.title.ifBlank { "Movie Stream" },
+                                                        streamUrl = link,
+                                                        mirrorStreamUrl = link,
+                                                        telegramFileId = TelegramLinkResolver.extractTelegramMessageOrFileId(link),
+                                                        fileSize = state.fileSize.ifBlank { existingEp?.fileSize ?: "" },
+                                                        durationMs = if (state.fetchedDurationMs > 0) state.fetchedDurationMs else (existingEp?.durationMs ?: 0L),
+                                                        fileName = state.fetchedFileName.ifBlank { existingEp?.fileName ?: "" }
                                                     )
-                                                }
+                                                )
                                             }
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            // --- SERIES / ANIME FORMAT: SMART F2L, RAW TEXT PARSER & SEQUENTIAL GENERATOR ---
-                            val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
-                            val parsedSeasonNum = seasonNumberText.toIntOrNull() ?: 1
-
-                            Text("2. Stream Links & Episodes Importer", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                "Paste raw links, Telegram posts, or 1-Click F2L Bot Batch ID to import episodes.",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 11.sp,
-                                lineHeight = 15.sp
-                            )
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // Season / Arc configuration for Anime / Sagas
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedTextField(
-                                    value = seasonNumberText,
-                                    onValueChange = { seasonNumberText = it },
-                                    label = { Text("Season # *", color = TextSecondary) },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                OutlinedTextField(
-                                    value = arcNameText,
-                                    onValueChange = { arcNameText = it },
-                                    label = { Text("Arc / Saga Name (Optional)", color = TextSecondary) },
-                                    placeholder = { Text("e.g. Shibuya Incident Arc", color = TextSecondary) },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(2f)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            // --- 1-CLICK F2L REST API IMPORTER ---
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerLowest,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.AutoAwesome,
-                                            contentDescription = null,
-                                            tint = Color(0xFF38BDF8),
-                                            modifier = Modifier.size(15.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "1-Click F2L Bot REST API Importer",
-                                            color = Color(0xFF38BDF8),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        OutlinedTextField(
-                                            value = f2lBatchInput,
-                                            onValueChange = { f2lBatchInput = it; batchError = null },
-                                            label = { Text("F2L Batch ID or URL", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp) },
-                                            placeholder = { Text("e.g. eb76ab230b4d...", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp) },
-                                            singleLine = true,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        Button(
-                                            onClick = {
-                                                if (f2lBatchInput.isBlank()) {
-                                                    batchError = "Please enter Batch ID or URL"
-                                                    return@Button
-                                                }
-                                                isFetchingF2l = true
-                                                batchError = null
-                                                batchSuccess = null
-                                                scope.launch {
-                                                    val res = com.streamhub.app.data.api.F2lApiClient.fetchBatch(f2lBatchInput, parsedSeasonNum, arcNameText)
-                                                    res.fold(
-                                                        onSuccess = { eps ->
-                                                            if (eps.isNotEmpty()) {
-                                                                val map = currentEpisodes.associateBy { (it.arcName.ifBlank { "S${it.seasonNumber}" }) to it.episodeNumber }.toMutableMap()
-                                                                eps.forEach { ep ->
-                                                                    val key = (ep.arcName.ifBlank { "S${ep.seasonNumber}" }) to ep.episodeNumber
-                                                                    map[key] = ep
-                                                                }
-                                                                currentEpisodes.clear()
-                                                                currentEpisodes.addAll(com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(map.values.toList()))
-                                                                val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(currentEpisodes)
-                                                                startBatchLink = jsonDump
-                                                                generatedEpisodesText = jsonDump
-                                                                f2lBatchInput = ""
-                                                                batchSuccess = "Fetched & Loaded ${eps.size} episodes! Check JSON below."
-                                                            } else {
-                                                                batchError = "No episodes returned by F2L API"
-                                                            }
-                                                        },
-                                                        onFailure = { err ->
-                                                            batchError = "F2L API Import Failed: ${err.message}"
-                                                        }
-                                                    )
-                                                    isFetchingF2l = false
-                                                }
-                                            },
-                                            enabled = f2lBatchInput.isNotBlank() && !isFetchingF2l,
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                                            shape = CircleShape,
-                                            modifier = Modifier
-                                                .height(50.dp)
-                                                .bouncyTouch()
-                                        ) {
-                                            if (isFetchingF2l) {
-                                                ExpressiveLoadingIndicator(size = 14.dp, color = Color.White, accentColor = AccentGold)
-                                            } else {
-                                                Text("Fetch API", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            // Smart F2L Bot Output / JSON / Links Input Area
-                            OutlinedTextField(
-                                value = generatedEpisodesText.ifBlank { startBatchLink },
-                                onValueChange = { newText ->
-                                    startBatchLink = newText
-                                    generatedEpisodesText = newText
-                                    batchError = null
-                                    batchSuccess = null
-
-                                    val trimmed = newText.trim()
-                                    val isBatchUrl = (trimmed.startsWith("http://") || trimmed.startsWith("https://")) &&
-                                                     (trimmed.contains("/batch/", ignoreCase = true) || trimmed.contains("api/batch", ignoreCase = true))
-                                    if (isBatchUrl && !isFetchingF2l) {
-                                        f2lBatchInput = trimmed
-                                        isFetchingF2l = true
-                                        scope.launch {
-                                            val res = com.streamhub.app.data.api.F2lApiClient.fetchBatch(trimmed, parsedSeasonNum, arcNameText)
-                                            res.fold(
-                                                onSuccess = { eps ->
-                                                    if (eps.isNotEmpty()) {
-                                                        val map = currentEpisodes.associateBy { (it.arcName.ifBlank { "S${it.seasonNumber}" }) to it.episodeNumber }.toMutableMap()
-                                                        eps.forEach { ep ->
+                                            else -> {
+                                                val pendingText = state.generatedEpisodesText.ifBlank { state.startBatchLink }.trim()
+                                                if (pendingText.isNotBlank()) {
+                                                    val parsedPending = com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(pendingText, defaultSeason = parsedSeasonNum, defaultArc = state.arcNameText)
+                                                        .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(pendingText, seasonNumber = parsedSeasonNum, arcName = state.arcNameText) }
+                                                    if (parsedPending.isNotEmpty()) {
+                                                        val map = state.currentEpisodes.associateBy { (it.arcName.ifBlank { "S${it.seasonNumber}" }) to it.episodeNumber }.toMutableMap()
+                                                        parsedPending.forEach { ep ->
                                                             val key = (ep.arcName.ifBlank { "S${ep.seasonNumber}" }) to ep.episodeNumber
                                                             map[key] = ep
                                                         }
-                                                        currentEpisodes.clear()
-                                                        currentEpisodes.addAll(com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(map.values.toList()))
-                                                        val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps)
-                                                        startBatchLink = jsonDump
-                                                        generatedEpisodesText = jsonDump
-                                                        batchSuccess = "Fetched & Loaded ${eps.size} episodes! Check JSON below."
+                                                        com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(map.values.toList())
+                                                    } else {
+                                                        state.currentEpisodes.toList()
                                                     }
-                                                },
-                                                onFailure = { err ->
-                                                    batchError = "F2L API Import: ${err.message}"
-                                                }
-                                            )
-                                            isFetchingF2l = false
-                                        }
-                                    }
-                                },
-                                label = { Text("Smart Raw Dump / Episode Links / Telegram Post *", color = TextSecondary) },
-                                placeholder = { Text("Paste raw links, Telegram posts, or JSON here...\n> Ep 01: https://cdn.example.com/ep01.mp4\n> Ep 02: https://cdn.example.com/ep02.mp4", color = TextSecondary) },
-                                minLines = 4,
-                                maxLines = 8,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Color(0xFFFFD700),
-                                    unfocusedBorderColor = Color(0xFF2C2C3E),
-                                    focusedTextColor = TextPrimary
-                                ),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = {
-                                        batchError = null
-                                        batchSuccess = null
-                                        val clipText = clipboardManager.getText()?.text?.trim()
-                                        if (clipText.isNullOrBlank()) {
-                                            batchError = "Clipboard is empty"
-                                            return@Button
-                                        }
-
-                                        val isBatchUrlOrId = clipText.contains("/batch/", ignoreCase = true) ||
-                                                             clipText.contains("api/batch", ignoreCase = true) ||
-                                                             (clipText.length in 32..64 && clipText.matches(Regex("^[a-fA-F0-9]+$")))
-
-                                        if (isBatchUrlOrId) {
-                                            f2lBatchInput = clipText
-                                            isFetchingF2l = true
-                                            scope.launch {
-                                                val res = com.streamhub.app.data.api.F2lApiClient.fetchBatch(clipText, parsedSeasonNum, arcNameText)
-                                                res.fold(
-                                                    onSuccess = { eps ->
-                                                        if (eps.isNotEmpty()) {
-                                                            val map = currentEpisodes.associateBy { (it.arcName.ifBlank { "S${it.seasonNumber}" }) to it.episodeNumber }.toMutableMap()
-                                                            eps.forEach { ep ->
-                                                                val key = (ep.arcName.ifBlank { "S${ep.seasonNumber}" }) to ep.episodeNumber
-                                                                map[key] = ep
-                                                            }
-                                                            currentEpisodes.clear()
-                                                            currentEpisodes.addAll(com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(map.values.toList()))
-                                                            val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps)
-                                                            startBatchLink = jsonDump
-                                                            generatedEpisodesText = jsonDump
-                                                            batchSuccess = "Fetched & Loaded ${eps.size} episodes! Check JSON below."
-                                                        } else {
-                                                            batchError = "No episodes returned by F2L API"
-                                                        }
-                                                    },
-                                                    onFailure = { err ->
-                                                        batchError = "F2L API Import Failed: ${err.message}"
-                                                    }
-                                                )
-                                                isFetchingF2l = false
-                                            }
-                                            return@Button
-                                        }
-
-                                        val parsed = com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(clipText, parsedSeasonNum, arcNameText)
-                                            .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(clipText, parsedSeasonNum, arcNameText) }
-                                        if (parsed.isNotEmpty()) {
-                                            val map = currentEpisodes.associateBy { (it.arcName.ifBlank { "S${it.seasonNumber}" }) to it.episodeNumber }.toMutableMap()
-                                            parsed.forEach { ep ->
-                                                val key = (ep.arcName.ifBlank { "S${ep.seasonNumber}" }) to ep.episodeNumber
-                                                map[key] = ep
-                                            }
-                                            currentEpisodes.clear()
-                                            currentEpisodes.addAll(com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(map.values.toList()))
-                                            startBatchLink = clipText
-                                            generatedEpisodesText = clipText
-                                            batchSuccess = "Parsed & Loaded ${parsed.size} episodes! Check JSON below."
-                                        } else {
-                                            batchError = "Could not parse episodes from clipboard text."
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                                    shape = CircleShape,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Icon(Icons.Default.ContentPaste, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Paste & Auto-Parse", color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-
-                                if (startBatchLink.isNotBlank() || generatedEpisodesText.isNotBlank() || currentEpisodes.isNotEmpty()) {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = PrimaryRed.copy(alpha = 0.15f),
-                                        modifier = Modifier
-                                            .bouncyTouch()
-                                            .clip(CircleShape)
-                                            .clickable {
-                                                startBatchLink = ""
-                                                endBatchLink = ""
-                                                generatedEpisodesText = ""
-                                                currentEpisodes.clear()
-                                                batchError = null
-                                                batchSuccess = null
-                                            }
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(Icons.Default.DeleteOutline, contentDescription = "Clear", tint = PrimaryRed, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Clear All", color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                }
-                            }
-
-                            batchError?.let {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(it, color = PrimaryRed, fontSize = 11.sp)
-                            }
-
-                            batchSuccess?.let {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(it, color = Color(0xFF81C784), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-
-                            // Live Parsed Episodes Preview & Batch Tools
-                            if (currentEpisodes.isNotEmpty()) {
-                                val validation = remember(currentEpisodes.size) {
-                                    com.streamhub.app.data.parser.BatchEpisodeParser.validateEpisodes(currentEpisodes)
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = MaterialTheme.colorScheme.surfaceContainerLowest,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(modifier = Modifier.padding(14.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.weight(1f)
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (validation.isValid) Icons.Default.CheckCircle else Icons.Default.ErrorOutline,
-                                                    contentDescription = null,
-                                                    tint = if (validation.isValid) Color(0xFF10B981) else Color(0xFFFFB74D),
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text(
-                                                    text = if (validation.isValid) "${currentEpisodes.size} Episodes Ready" else "${currentEpisodes.size} Episodes Ready (${validation.warningMessages.size} Warnings)",
-                                                    color = if (validation.isValid) Color(0xFF81C784) else Color(0xFFFFB74D),
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-
-                                            Row(
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                // Health Check Action
-                                                Surface(
-                                                    shape = CircleShape,
-                                                    color = if (isCheckingHealth) Color(0xFFFF9800).copy(alpha = 0.2f) else if ((healthReport?.deadCount ?: 0) > 0) PrimaryRed.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceContainerHighest,
-                                                    modifier = Modifier
-                                                        .clip(CircleShape)
-                                                        .clickable(enabled = !isCheckingHealth && currentEpisodes.isNotEmpty()) {
-                                                            isCheckingHealth = true
-                                                            scope.launch {
-                                                                com.streamhub.app.data.api.StreamHealthChecker.checkEpisodesHealth(currentEpisodes).collect { report ->
-                                                                    healthReport = report
-                                                                    if (!report.isChecking) {
-                                                                        isCheckingHealth = false
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                ) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-                                                    ) {
-                                                        if (isCheckingHealth) {
-                                                            ExpressiveLoadingIndicator(
-                                                                modifier = Modifier.size(11.dp),
-                                                                color = Color(0xFFFF9800),
-                                                                accentColor = AccentGold,
-                                                                size = 11.dp
-                                                            )
-                                                            Text(
-                                                                "Checking (${healthReport?.checkedCount ?: 0}/${currentEpisodes.size})...",
-                                                                color = Color(0xFFFF9800),
-                                                                fontSize = 10.sp,
-                                                                fontWeight = FontWeight.Bold
-                                                            )
-                                                        } else {
-                                                            Text(
-                                                                text = if (healthReport != null) "${healthReport?.aliveCount} Live / ${healthReport?.deadCount} Dead" else "Check Links",
-                                                                color = if ((healthReport?.deadCount ?: 0) > 0) PrimaryRed else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                                fontSize = 10.sp,
-                                                                fontWeight = FontWeight.Bold
-                                                            )
-                                                        }
-                                                    }
-                                                }
-
-                                                // Quick Batch Renumbering Action
-                                                Surface(
-                                                    shape = CircleShape,
-                                                    color = Color(0xFF0284C7).copy(alpha = 0.2f),
-                                                    modifier = Modifier
-                                                        .clip(CircleShape)
-                                                        .clickable {
-                                                            val sortedBase = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(currentEpisodes)
-                                                            val renumbered = sortedBase.groupBy { it.seasonNumber }.flatMap { (_, epList) ->
-                                                                epList.mapIndexed { idx, ep ->
-                                                                    ep.copy(
-                                                                        episodeNumber = idx + 1,
-                                                                        title = if (ep.title.matches(Regex("^Episode \\d+$", RegexOption.IGNORE_CASE))) "Episode ${idx + 1}" else ep.title
-                                                                    )
-                                                                }
-                                                            }
-                                                            currentEpisodes.clear()
-                                                            currentEpisodes.addAll(renumbered)
-                                                        }
-                                                ) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(3.dp),
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
-                                                    ) {
-                                                        Icon(Icons.Default.Refresh, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(12.dp))
-                                                        Text(
-                                                            "Re-Index",
-                                                            color = Color(0xFF38BDF8),
-                                                            fontSize = 10.sp,
-                                                            fontWeight = FontWeight.Bold
-                                                        )
-                                                    }
+                                                } else {
+                                                    state.currentEpisodes.toList()
                                                 }
                                             }
                                         }
 
-                                        if (validation.warningMessages.isNotEmpty()) {
-                                            Spacer(modifier = Modifier.height(6.dp))
-                                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                                validation.warningMessages.forEach { msg ->
-                                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                        Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = Color(0xFFFFB74D), modifier = Modifier.size(12.dp))
-                                                        Text(msg, color = Color(0xFFFFB74D), fontSize = 10.sp)
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        healthReport?.let { hr ->
-                                            if (hr.deadCount > 0) {
-                                                Spacer(modifier = Modifier.height(6.dp))
-                                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                    Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = PrimaryRed, modifier = Modifier.size(12.dp))
-                                                    Text(
-                                                        "${hr.deadCount} stream link(s) broken/dead!",
-                                                        color = PrimaryRed,
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.height(10.dp))
-                                        Column(
-                                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            currentEpisodes.take(5).forEachIndexed { idx, ep ->
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    modifier = Modifier.fillMaxWidth()
-                                                ) {
-                                                    Surface(
-                                                        shape = CircleShape,
-                                                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                                        modifier = Modifier.padding(end = 6.dp)
-                                                    ) {
-                                                        Text(
-                                                            text = "E${ep.episodeNumber.toString().padStart(2, '0')}",
-                                                            color = AccentGold,
-                                                            fontSize = 9.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                        )
-                                                    }
-                                                    Text(
-                                                        text = ep.title.removePrefix("Ep ${ep.episodeNumber}: ").ifBlank { ep.fileName },
-                                                        color = MaterialTheme.colorScheme.onSurface,
-                                                        fontSize = 11.sp,
-                                                        maxLines = 1,
-                                                        modifier = Modifier.weight(1f)
-                                                    )
-                                                    val durationText = if (ep.durationMs > 0) {
-                                                        val totalSec = (ep.durationMs / 1000).toInt()
-                                                        val h = totalSec / 3600
-                                                        val m = (totalSec % 3600) / 60
-                                                        val s = totalSec % 60
-                                                        if (h > 0) {
-                                                            String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, s)
-                                                        } else {
-                                                            String.format(java.util.Locale.US, "%02d:%02d", m, s)
-                                                        }
-                                                    } else ""
-                                                    val metaChips = listOfNotNull(
-                                                        durationText.takeIf { it.isNotBlank() },
-                                                        ep.fileSize.takeIf { it.isNotBlank() }
-                                                    ).joinToString(" • ")
-
-                                                    if (metaChips.isNotBlank()) {
-                                                        Spacer(modifier = Modifier.width(6.dp))
-                                                        Text(
-                                                            text = metaChips,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                            fontSize = 10.sp,
-                                                            fontWeight = FontWeight.Medium
-                                                        )
-                                                    }
-
-                                                    val key = "${ep.seasonNumber}_${ep.arcName}_${ep.episodeNumber}"
-                                                    val epHealth = healthReport?.results?.get(key)
-                                                    if (epHealth != null) {
-                                                        Spacer(modifier = Modifier.width(6.dp))
-                                                        Surface(
-                                                            shape = CircleShape,
-                                                            color = if (epHealth.isAlive) Color(0xFF10B981).copy(alpha = 0.15f) else PrimaryRed.copy(alpha = 0.15f)
-                                                        ) {
-                                                            Text(
-                                                                text = if (epHealth.isAlive) "${epHealth.httpCode} (${epHealth.latencyMs}ms)" else (epHealth.errorMessage ?: "HTTP ${epHealth.httpCode}"),
-                                                                color = if (epHealth.isAlive) Color(0xFF10B981) else PrimaryRed,
-                                                                fontSize = 9.sp,
-                                                                fontWeight = FontWeight.Bold,
-                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            if (currentEpisodes.size > 5) {
-                                                Text(
-                                                    text = "+ ${currentEpisodes.size - 5} more episodes",
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    modifier = Modifier.padding(start = 4.dp, top = 2.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    2 -> {
-                        // ==========================================
-                        // TAB 2: FULL METADATA & TECHNICAL SPECS
-                        // ==========================================
-                        Text("3. All Metadata & Technical Specifications", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        MetadataRow(rating, { rating = it }, "Rating (e.g. 8.5)", maturityRating, { maturityRating = it }, "Maturity (e.g. 16+)")
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        MetadataRow(studio, { studio = it }, "Studio", producers, { producers = it }, "Producers")
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        MetadataRow(source, { source = it }, "Source (Manga/Novel)", duration, { duration = it }, "Duration (e.g. 24m)")
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        MetadataRow(status, { status = it }, "Status", totalEpisodes, { totalEpisodes = it }, "Total Episodes")
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        MetadataRow(premiered, { premiered = it }, "Premiered (e.g. 2024)", aired, { aired = it }, "Aired Date Range")
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        OutlinedTextField(
-                            value = trailerId,
-                            onValueChange = { trailerId = it },
-                            label = { Text("YouTube Trailer ID", color = TextSecondary) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        OutlinedTextField(
-                            value = synonyms,
-                            onValueChange = { synonyms = it },
-                            label = { Text("Alternative Titles / Synonyms", color = TextSecondary) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        OutlinedTextField(
-                            value = genresText,
-                            onValueChange = { genresText = it },
-                            label = { Text("Genres (comma-separated)", color = TextSecondary) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        OutlinedTextField(
-                            value = castText,
-                            onValueChange = { castText = it },
-                            label = { Text("Cast List (comma-separated)", color = TextSecondary) },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        if (isAnimeCat) {
-                            OutlinedTextField(
-                                value = anilistId,
-                                onValueChange = { anilistId = it },
-                                label = { Text("AniList Media ID (Recommended)", color = TextSecondary) },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        } else {
-                            OutlinedTextField(
-                                value = tmdbId,
-                                onValueChange = { tmdbId = it },
-                                label = { Text("TMDB ID (Recommended)", color = TextSecondary) },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Text("Technical Specs & Quality Badges", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        // Resolution & Codec with Quick-Pick Chips
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            // Resolution Column
-                            Column(modifier = Modifier.weight(1f)) {
-                                OutlinedTextField(
-                                    value = resolution,
-                                    onValueChange = { resolution = it },
-                                    label = { Text("Resolution (e.g. 1080p)", color = TextSecondary) },
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    val resPills = listOf("1080p", "720p", "480p")
-                                    resPills.forEach { res ->
-                                        val isSelected = resolution.equals(res, ignoreCase = true)
-                                        Surface(
-                                            shape = CircleShape,
-                                            color = if (isSelected) AccentGold else MaterialTheme.colorScheme.surfaceContainerLowest,
-                                            modifier = Modifier
-                                                .clip(CircleShape)
-                                                .bouncyTouch()
-                                                .clickable {
-                                                    resolution = if (isSelected) "" else res
-                                                }
-                                        ) {
-                                            Text(
-                                                text = res,
-                                                color = if (isSelected) Color.Black else TextSecondary,
-                                                fontSize = 11.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Codec Column
-                            Column(modifier = Modifier.weight(1f)) {
-                                OutlinedTextField(
-                                    value = videoCodec,
-                                    onValueChange = { videoCodec = it },
-                                    label = { Text("Codec (e.g. HEVC/x265)", color = TextSecondary) },
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    val codecPills = listOf("HEVC/x265", "x264", "AV1")
-                                    codecPills.forEach { c ->
-                                        val isSelected = videoCodec.equals(c, ignoreCase = true)
-                                        Surface(
-                                            shape = CircleShape,
-                                            color = if (isSelected) AccentOrange else MaterialTheme.colorScheme.surfaceContainerLowest,
-                                            modifier = Modifier
-                                                .clip(CircleShape)
-                                                .bouncyTouch()
-                                                .clickable {
-                                                    videoCodec = if (isSelected) "" else c
-                                                }
-                                        ) {
-                                            Text(
-                                                text = c,
-                                                color = if (isSelected) Color.Black else TextSecondary,
-                                                fontSize = 11.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        OutlinedTextField(
-                            value = fileSize,
-                            onValueChange = { fileSize = it },
-                            label = { Text("File Size (e.g. 1.4 GB)", color = TextSecondary) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // Audio Tracks with Multi-Select Language Chips
-                        OutlinedTextField(
-                            value = audioTracksText,
-                            onValueChange = { audioTracksText = it },
-                            label = { Text("Audio Tracks (comma-separated)", color = TextSecondary) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            val audioLanguages = listOf(
-                                "English", "Spanish", "Japanese", "Korean", "Chinese",
-                                "Bengali", "Hindi", "Urdu", "Tamil", "Telugu", "Malayalam", "Kannada"
-                            )
-                            val currentTokens = audioTracksText.split(",").map { it.trim() }.filter { it.isNotBlank() }
-
-                            audioLanguages.forEach { lang ->
-                                val isSelected = currentTokens.any { it.equals(lang, ignoreCase = true) }
-                                Surface(
-                                    shape = CircleShape,
-                                    color = if (isSelected) Color(0xFF10B981) else MaterialTheme.colorScheme.surfaceContainerLowest,
-                                    modifier = Modifier
-                                        .clip(CircleShape)
-                                        .bouncyTouch()
-                                        .clickable {
-                                            val list = audioTracksText.split(",").map { it.trim() }.filter { it.isNotBlank() }.toMutableList()
-                                            if (isSelected) {
-                                                list.removeAll { it.equals(lang, ignoreCase = true) }
-                                            } else {
-                                                list.add(lang)
-                                            }
-                                            audioTracksText = list.joinToString(", ")
-                                        }
-                                ) {
-                                    Text(
-                                        text = if (isSelected) "✓ $lang" else lang,
-                                        color = if (isSelected) Color.Black else TextSecondary,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        // Subtitle Tracks with Quick-Pick Chips
-                        OutlinedTextField(
-                            value = subtitleTracksText,
-                            onValueChange = { subtitleTracksText = it },
-                            label = { Text("Subtitle Tracks (comma-separated)", color = TextSecondary) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            val subtitleOptions = listOf("English", "English, Bengali", "Multi Subs", "None")
-                            subtitleOptions.forEach { opt ->
-                                val isSelected = when (opt) {
-                                    "None" -> subtitleTracksText.isBlank()
-                                    else -> subtitleTracksText.equals(opt, ignoreCase = true)
-                                }
-                                Surface(
-                                    shape = CircleShape,
-                                    color = if (isSelected) Color(0xFF8B5CF6) else MaterialTheme.colorScheme.surfaceContainerLowest,
-                                    modifier = Modifier
-                                        .clip(CircleShape)
-                                        .bouncyTouch()
-                                        .clickable {
-                                            subtitleTracksText = if (opt == "None") "" else opt
-                                        }
-                                ) {
-                                    Text(
-                                        text = opt,
-                                        color = if (isSelected) Color.White else TextSecondary,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Text("Franchise Universe & Sequel Grouping", color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        MetadataRow(franchiseTitle, { franchiseTitle = it }, "Franchise Name (e.g. Solo Leveling)", franchiseId, { franchiseId = it }, "Franchise Slug (e.g. solo-leveling)")
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        MetadataRow(
-                            val1 = seasonNumberText,
-                            onVal1Change = { seasonNumberText = it },
-                            label1 = "Season # (1, 2, 3...)",
-                            val2 = partNumberText,
-                            onVal2Change = { partNumberText = it },
-                            label2 = "Part # (e.g. 2, or blank)"
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        OutlinedTextField(
-                            value = franchiseOrderText,
-                            onValueChange = { franchiseOrderText = it },
-                            label = { Text("Franchise Watch Order # (e.g. 1, 2, 3... or 1.5)", color = TextSecondary) },
-                            placeholder = { Text("Master order slot (overrides auto sorting)", color = Color(0x66FFFFFF)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text("Relation Type & Story Role (Multi-Selectable)", color = TextSecondary, fontSize = 11.sp)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                        ) {
-                            val relationPills = listOf("Sequel", "Prequel", "Movie", "Side Story", "Spin-Off", "TV", "TV Special", "OVA", "Special", "ONA")
-                            val currentTokens = relationType.split("•", ",").map { it.trim() }.filter { it.isNotBlank() }
-
-                            relationPills.forEach { rel ->
-                                val isSelected = currentTokens.any { it.equals(rel, ignoreCase = true) }
-                                Surface(
-                                    shape = CircleShape,
-                                    color = if (isSelected) PrimaryRed else MaterialTheme.colorScheme.surfaceContainerLowest,
-                                    modifier = Modifier
-                                        .clip(CircleShape)
-                                        .bouncyTouch()
-                                        .clickable {
-                                            val tokens = relationType.split("•", ",").map { it.trim() }.filter { it.isNotBlank() }.toMutableList()
-                                            if (tokens.any { it.equals(rel, ignoreCase = true) }) {
-                                                tokens.removeAll { it.equals(rel, ignoreCase = true) }
-                                            } else {
-                                                // Only exclude mutually conflicting directional roles
-                                                if (rel.equals("Sequel", ignoreCase = true)) {
-                                                    tokens.removeAll { it.equals("Prequel", ignoreCase = true) }
-                                                } else if (rel.equals("Prequel", ignoreCase = true)) {
-                                                    tokens.removeAll { it.equals("Sequel", ignoreCase = true) }
-                                                }
-                                                tokens.add(rel)
-                                            }
-
-                                            // Role tokens first, Format tokens second
-                                            val roleWeights = mapOf(
-                                                "Sequel" to 1, "Prequel" to 2, "Side Story" to 3, "Spin-Off" to 4,
-                                                "Movie" to 5, "TV" to 6, "TV Special" to 7, "OVA" to 8, "ONA" to 9, "Special" to 10
-                                            )
-                                            tokens.sortBy { roleWeights[it] ?: 99 }
-                                            relationType = tokens.joinToString(" • ")
-                                        }
-                                ) {
-                                    Text(
-                                        text = rel,
-                                        color = if (isSelected) Color.White else TextSecondary,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        // Live Card Tag Preview
-                        val activeTokens = relationType.split("•", ",").map { it.trim() }.filter { it.isNotBlank() }
-                        if (activeTokens.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Card Preview:", color = TextSecondary, fontSize = 10.sp)
-                                activeTokens.forEach { t ->
-                                    val chipColor = when {
-                                        t.equals("Sequel", ignoreCase = true) -> Color(0xFF00E676)
-                                        t.equals("Prequel", ignoreCase = true) -> Color(0xFF7C4DFF)
-                                        t.equals("Movie", ignoreCase = true) -> Color(0xFFFF5722)
-                                        t.equals("Side Story", ignoreCase = true) || t.equals("Spin-Off", ignoreCase = true) -> Color(0xFF38BDF8)
-                                        t.equals("OVA", ignoreCase = true) || t.equals("Special", ignoreCase = true) -> Color(0xFFFFB300)
-                                        else -> PrimaryRed
-                                    }
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = chipColor.copy(alpha = 0.15f)
-                                    ) {
-                                        Text(
-                                            text = t.uppercase(),
-                                            color = chipColor,
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Black,
-                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                        val generatedId = generateReadableMediaId(
+                                            title = state.title,
+                                            releaseYear = state.premiered.take(4),
+                                            seasonTitle = state.seasonTitle,
+                                            partNumber = state.partNumberText.toIntOrNull() ?: 0
                                         )
-                                    }
-                                }
-                            }
-                        }
 
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-
-                    3 -> {
-                        // ==========================================
-                        // TAB 3: STUDIO TOOLS & METADATA INSPECTOR
-                        // ==========================================
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            Text("Studio Tools & Catalog Management", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-
-                            // 1. Metadata Health Inspector Hero Card
-                            val catalog by FirebaseRepository.getInstance().mediaCatalog.collectAsState()
-                            val itemsNeedingRepair = remember(catalog) { catalog.filter { getMediaItemIssues(it).isNotEmpty() } }
-                            val totalIssues = itemsNeedingRepair.size
-                            val healthScore = remember(catalog, totalIssues) {
-                                if (catalog.isEmpty()) 100 else (((catalog.size - totalIssues).coerceAtLeast(0).toFloat() / catalog.size.toFloat()) * 100).toInt()
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(20.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerLowest,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.padding(16.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(42.dp)
-                                                .clip(CircleShape)
-                                                .background(Color(0xFF7C4DFF).copy(alpha = 0.2f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(Icons.Default.HealthAndSafety, contentDescription = null, tint = Color(0xFFB388FF), modifier = Modifier.size(22.dp))
+                                        val editTarget = state.activeEditItem ?: initialItem
+                                        val finalId = if (editTarget != null && editTarget.id.isNotBlank()) {
+                                            editTarget.id
+                                        } else {
+                                            var uniqueId = generatedId
+                                            var suffix = 2
+                                            while (existingIds.contains(uniqueId)) {
+                                                uniqueId = "${generatedId}_$suffix"
+                                                suffix++
+                                            }
+                                            uniqueId
                                         }
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(
-                                                    text = "Metadata Health Inspector",
-                                                    color = TextPrimary,
-                                                    fontSize = 15.sp,
-                                                    fontWeight = FontWeight.Bold
+
+                                        val cleanTitle = state.title.trim()
+                                        val finalFranchiseId = state.franchiseId.ifBlank {
+                                            com.streamhub.app.data.FranchiseManager.getFranchiseId(MediaItem(title = cleanTitle))
+                                        }
+                                        val finalFranchiseTitle = state.franchiseTitle.ifBlank {
+                                            com.streamhub.app.data.FranchiseManager.getFranchiseTitle(MediaItem(title = cleanTitle))
+                                        }
+
+                                        val baseItem = state.activeEditItem ?: initialItem ?: MediaItem(id = finalId)
+                                        val mediaItem = baseItem.copy(
+                                            id = finalId,
+                                            title = cleanTitle,
+                                            type = state.type,
+                                            category = state.category,
+                                            genres = state.genresText.split(",").map { it.trim() }.filter { it.isNotBlank() },
+                                            rating = state.rating,
+                                            releaseYear = state.premiered.take(4),
+                                            maturityRating = state.maturityRating,
+                                            studio = state.studio,
+                                            trailerId = state.trailerId.trim().takeIf { !it.equals("null", ignoreCase = true) } ?: "",
+                                            anilistId = if (state.isAnimeCat) state.anilistId.trim() else "",
+                                            tmdbId = if (state.isAnimeCat) "" else state.tmdbId.trim(),
+                                            synonyms = state.synonyms,
+                                            totalEpisodes = state.totalEpisodes,
+                                            status = state.status,
+                                            aired = state.aired,
+                                            premiered = state.premiered,
+                                            producers = state.producers,
+                                            source = state.source,
+                                            duration = state.duration,
+                                            castList = state.castText.split(",").map { it.trim() }.filter { it.isNotBlank() },
+                                            posterUrl = state.posterUrl,
+                                            bannerUrl = state.bannerUrl.ifBlank { state.posterUrl },
+                                            description = state.description,
+                                            isFeatured = state.isFeatured,
+                                            isTrending = state.isTrending,
+                                            trendingAt = if (state.isTrending) {
+                                                if (state.trendingAt > 0L) state.trendingAt else System.currentTimeMillis()
+                                            } else 0L,
+                                            franchiseId = finalFranchiseId,
+                                            franchiseTitle = finalFranchiseTitle,
+                                            seasonNumber = parsedSeasonNum,
+                                            partNumber = state.partNumberText.toIntOrNull() ?: 0,
+                                            franchiseOrder = state.franchiseOrderText.toDoubleOrNull() ?: 0.0,
+                                            seasonTitle = state.seasonTitle,
+                                            relationType = state.relationType,
+                                            mediaInfo = MediaInfo(
+                                                resolution = state.resolution,
+                                                videoCodec = state.videoCodec,
+                                                bitrate = state.bitrate,
+                                                frameRate = state.frameRate,
+                                                aspectRatio = state.aspectRatio,
+                                                fileSize = state.fileSize,
+                                                audioTracks = state.audioTracksText.split(",").map { it.trim() }.filter { it.isNotBlank() },
+                                                subtitleTracks = state.subtitleTracksText.split(",").map { it.trim() }.filter { it.isNotBlank() },
+                                                qualityBadges = listOfNotNull(
+                                                    state.resolution.takeIf { it.isNotBlank() },
+                                                    state.videoCodec.takeIf { it.isNotBlank() }
                                                 )
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Surface(
-                                                    shape = CircleShape,
-                                                    color = if (totalIssues > 0) Color(0x33FF9800) else Color(0x2210B981)
-                                                ) {
-                                                    Text(
-                                                        text = "$healthScore% Quality",
-                                                        color = if (totalIssues > 0) Color(0xFFFFB74D) else Color(0xFF34D399),
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                                    )
-                                                }
-                                            }
-                                            Text(
-                                                text = if (totalIssues > 0) "$totalIssues shows have missing trailers, cast, genres or specs" else "All ${catalog.size} shows have healthy, complete metadata",
-                                                color = if (totalIssues > 0) Color(0xFFFFB74D) else TextSecondary,
-                                                fontSize = 12.sp
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(10.dp))
-
-                                    Text(
-                                        text = "Scan all shows across your catalog, audit 11 critical metadata fields (trailers, cast, genres, synopses, backdrops, ratings, runtime, studios), and auto-repair them from TMDb / AniList with a single tap.",
-                                        color = TextSecondary,
-                                        fontSize = 12.sp,
-                                        lineHeight = 16.sp
-                                    )
-
-                                    Spacer(modifier = Modifier.height(14.dp))
-
-                                    Button(
-                                        onClick = { showMetadataInspector = true },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
-                                        shape = CircleShape,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(46.dp)
-                                            .bouncyTouch()
-                                    ) {
-                                        Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Launch Metadata Inspector & Auto-Repair", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            ),
+                                            episodes = episodes
+                                        )
+                                        onSave(mediaItem)
                                     }
                                 }
-                            }
-
-                            // 2. User Codes & Voucher Manager Card
-                            Surface(
-                                shape = RoundedCornerShape(20.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerLowest,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        modifier = Modifier.weight(1f),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(38.dp)
-                                                .clip(CircleShape)
-                                                .background(Color(0xFFF59E0B).copy(alpha = 0.15f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(Icons.Default.Key, contentDescription = null, tint = Color(0xFFFBBF24), modifier = Modifier.size(18.dp))
-                                        }
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column {
-                                            Text("Access Codes & Vouchers", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                            Text("Manage private community gate access codes", color = TextSecondary, fontSize = 11.sp)
-                                        }
-                                    }
-                                    Button(
-                                        onClick = { showVoucherDialog = true },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B)),
-                                        shape = CircleShape,
-                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                                        modifier = Modifier
-                                            .height(36.dp)
-                                            .bouncyTouch()
-                                    ) {
-                                        Text("Manage", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-
-                            // 3. Backup / Restore Card with M3 Expressive Split Button
-                            Surface(
-                                shape = RoundedCornerShape(20.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerLowest,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        modifier = Modifier.weight(1f),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(38.dp)
-                                                .clip(CircleShape)
-                                                .background(Color(0xFF0284C7).copy(alpha = 0.15f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
-                                        }
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column {
-                                            Text("Database Backup & Restore", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                            Text("Export, share snapshots & manage device archives", color = TextSecondary, fontSize = 11.sp)
-                                        }
-                                    }
-                                    // Official M3 Expressive Split Button: [ Backup (18.dp, 6.dp) ] <3.dp gap> [ Restore ▾ (6.dp, 18.dp) ]
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.height(36.dp)
-                                    ) {
-                                        // Leading Button: Backup
-                                        Surface(
-                                            shape = RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp, topEnd = 6.dp, bottomEnd = 6.dp),
-                                            color = Color(0xFF0284C7),
-                                            modifier = Modifier
-                                                .fillMaxHeight()
-                                                .bouncyTouch(pressedScale = 0.94f)
-                                                .clickable { showBackupDialog = true }
-                                        ) {
-                                            Box(
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text("Backup", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.width(3.dp))
-
-                                        // Trailing Button: Restore
-                                        Surface(
-                                            shape = RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp, topEnd = 18.dp, bottomEnd = 18.dp),
-                                            color = Color(0xFF0284C7),
-                                            modifier = Modifier
-                                                .fillMaxHeight()
-                                                .bouncyTouch(pressedScale = 0.94f)
-                                                .clickable { showBackupDialog = true }
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                            ) {
-                                                Text("Restore", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                                Spacer(modifier = Modifier.width(2.dp))
-                                                Icon(Icons.Default.ArrowDropDown, contentDescription = "Restore", tint = Color.White, modifier = Modifier.size(14.dp))
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // 4. Server Migrate Card
-                            Surface(
-                                shape = RoundedCornerShape(20.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerLowest,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        modifier = Modifier.weight(1f),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(38.dp)
-                                                .clip(CircleShape)
-                                                .background(Color(0xFF10B981).copy(alpha = 0.15f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color(0xFF34D399), modifier = Modifier.size(18.dp))
-                                        }
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column {
-                                            Text("Server Migration", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                            Text("Migrate database between Firestore servers", color = TextSecondary, fontSize = 11.sp)
-                                        }
-                                    }
-                                    Button(
-                                        onClick = { showMigrationDialog = true },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
-                                        shape = CircleShape,
-                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                                        modifier = Modifier
-                                            .height(36.dp)
-                                            .bouncyTouch()
-                                    ) {
-                                        Text("Migrate", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
+                            shape = CircleShape,
+                            contentPadding = PaddingValues(horizontal = 14.dp),
+                            modifier = Modifier
+                                .weight(1.8f)
+                                .height(46.dp)
+                                .bouncyTouch()
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (initialItem == null) "Save & Publish" else "Save Changes",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
                         }
                     }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            validationError?.let {
-                Text(it, color = PrimaryRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(6.dp))
-            }
-
-            if (selectedTab != 3) {
-                // ==========================================
-                // BOTTOM SAVE BAR (Fixed Footer)
-                // ==========================================
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                } else {
+                    // Fixed Footer for Tools Tab
                     Button(
                         onClick = onDismiss,
                         shape = CircleShape,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
-                            contentColor = TextSecondary
+                            contentColor = TextPrimary
                         ),
-                        contentPadding = PaddingValues(horizontal = 14.dp),
                         modifier = Modifier
-                            .weight(0.9f)
+                            .fillMaxWidth()
                             .height(46.dp)
                             .bouncyTouch()
                     ) {
-                        Text("Cancel", color = TextSecondary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Text("Close Studio", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
-
-                    if (activeEditItem != null || initialItem != null) {
-                        Button(
-                            onClick = {
-                                showDeleteConfirmDialog = true
-                            },
-                            shape = CircleShape,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = PrimaryRed.copy(alpha = 0.15f),
-                                contentColor = PrimaryRed
-                            ),
-                            contentPadding = PaddingValues(horizontal = 10.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(46.dp)
-                                .bouncyTouch()
-                        ) {
-                            Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = PrimaryRed, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Delete", color = PrimaryRed, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                        }
-                    }
-
-                    Button(
-                        onClick = {
-                            validationError = null
-                            when {
-                                title.isBlank() -> validationError = "Title is required (Type title in Tab 1)"
-                                category.isBlank() -> validationError = "Category is required"
-                                else -> {
-                                    val isMovieItem = isMovieFormat ||
-                                                      relationType.equals("Movie", ignoreCase = true) ||
-                                                      category.equals("Movie", ignoreCase = true) ||
-                                                      category.equals("Movies", ignoreCase = true)
-                                    val parsedSeasonNum = seasonNumberText.trim().toIntOrNull() ?: if (isMovieItem) 0 else 1
-                                    val episodes = when {
-                                        isMovieFormat && currentEpisodes.size <= 1 && (startBatchLink.isNotBlank() || generatedEpisodesText.isNotBlank()) -> {
-                                            val link = TelegramLinkResolver.sanitizePlayableUrl(startBatchLink.ifBlank { generatedEpisodesText }.trim())
-                                            val existingEp = initialItem?.episodes?.firstOrNull()
-                                            listOf(
-                                                Episode(
-                                                    episodeNumber = 1,
-                                                    seasonNumber = if (isMovieItem) 0 else 1,
-                                                    title = title.ifBlank { "Movie Stream" },
-                                                    streamUrl = link,
-                                                    mirrorStreamUrl = link,
-                                                    telegramFileId = TelegramLinkResolver.extractTelegramMessageOrFileId(link),
-                                                    fileSize = fileSize.ifBlank { existingEp?.fileSize ?: "" },
-                                                    durationMs = if (fetchedDurationMs > 0) fetchedDurationMs else (existingEp?.durationMs ?: 0L),
-                                                    fileName = fetchedFileName.ifBlank { existingEp?.fileName ?: "" }
-                                                )
-                                            )
-                                        }
-                                        else -> {
-                                            val pendingText = generatedEpisodesText.ifBlank { startBatchLink }.trim()
-                                            if (pendingText.isNotBlank()) {
-                                                val parsedPending = com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(pendingText, defaultSeason = parsedSeasonNum, defaultArc = arcNameText)
-                                                    .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(pendingText, seasonNumber = parsedSeasonNum, arcName = arcNameText) }
-                                                if (parsedPending.isNotEmpty()) {
-                                                    val map = currentEpisodes.associateBy { (it.arcName.ifBlank { "S${it.seasonNumber}" }) to it.episodeNumber }.toMutableMap()
-                                                    parsedPending.forEach { ep ->
-                                                        val key = (ep.arcName.ifBlank { "S${ep.seasonNumber}" }) to ep.episodeNumber
-                                                        map[key] = ep
-                                                    }
-                                                    com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(map.values.toList())
-                                                } else {
-                                                    currentEpisodes.toList()
-                                                }
-                                            } else {
-                                                currentEpisodes.toList()
-                                            }
-                                        }
-                                    }
-
-                                    val generatedId = generateReadableMediaId(
-                                        title = title,
-                                        releaseYear = premiered.take(4),
-                                        seasonTitle = seasonTitle,
-                                        partNumber = partNumberText.toIntOrNull() ?: 0
-                                    )
-
-                                    val editTarget = activeEditItem ?: initialItem
-                                    val finalId = if (editTarget != null && editTarget.id.isNotBlank()) {
-                                        editTarget.id
-                                    } else {
-                                        var uniqueId = generatedId
-                                        var suffix = 2
-                                        while (existingIds.contains(uniqueId)) {
-                                            uniqueId = "${generatedId}_$suffix"
-                                            suffix++
-                                        }
-                                        uniqueId
-                                    }
-
-                                    val cleanTitle = title.trim()
-                                    val finalFranchiseId = franchiseId.ifBlank {
-                                        com.streamhub.app.data.FranchiseManager.getFranchiseId(MediaItem(title = cleanTitle))
-                                    }
-                                    val finalFranchiseTitle = franchiseTitle.ifBlank {
-                                        com.streamhub.app.data.FranchiseManager.getFranchiseTitle(MediaItem(title = cleanTitle))
-                                    }
-
-                                    val baseItem = activeEditItem ?: initialItem ?: MediaItem(id = finalId)
-                                    val mediaItem = baseItem.copy(
-                                        id = finalId,
-                                        title = cleanTitle,
-                                        type = type,
-                                        category = category,
-                                        genres = genresText.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                                        rating = rating,
-                                        releaseYear = premiered.take(4),
-                                        maturityRating = maturityRating,
-                                        studio = studio,
-                                        trailerId = trailerId.trim().takeIf { !it.equals("null", ignoreCase = true) } ?: "",
-                                        anilistId = if (isAnimeCat) anilistId.trim() else "",
-                                        tmdbId = if (isAnimeCat) "" else tmdbId.trim(),
-                                        synonyms = synonyms,
-                                        totalEpisodes = totalEpisodes,
-                                        status = status,
-                                        aired = aired,
-                                        premiered = premiered,
-                                        producers = producers,
-                                        source = source,
-                                        duration = duration,
-                                        castList = castText.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                                        posterUrl = posterUrl,
-                                        bannerUrl = bannerUrl.ifBlank { posterUrl },
-                                        description = description,
-                                        isFeatured = isFeatured,
-                                        isTrending = isTrending,
-                                        trendingAt = if (isTrending) {
-                                            if (trendingAt > 0L) trendingAt else System.currentTimeMillis()
-                                        } else 0L,
-                                        franchiseId = finalFranchiseId,
-                                        franchiseTitle = finalFranchiseTitle,
-                                        seasonNumber = parsedSeasonNum,
-                                        partNumber = partNumberText.toIntOrNull() ?: 0,
-                                        franchiseOrder = franchiseOrderText.toDoubleOrNull() ?: 0.0,
-                                        seasonTitle = seasonTitle,
-                                        relationType = relationType,
-                                        mediaInfo = MediaInfo(
-                                            resolution = resolution,
-                                            videoCodec = videoCodec,
-                                            bitrate = bitrate,
-                                            frameRate = frameRate,
-                                            aspectRatio = aspectRatio,
-                                            fileSize = fileSize,
-                                            audioTracks = audioTracksText.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                                            subtitleTracks = subtitleTracksText.split(",").map { it.trim() }.filter { it.isNotBlank() },
-                                            qualityBadges = listOfNotNull(
-                                                resolution.takeIf { it.isNotBlank() },
-                                                videoCodec.takeIf { it.isNotBlank() }
-                                            )
-                                        ),
-                                        episodes = episodes
-                                    )
-                                    onSave(mediaItem)
-                                }
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryRed),
-                        shape = CircleShape,
-                        contentPadding = PaddingValues(horizontal = 14.dp),
-                        modifier = Modifier
-                            .weight(1.8f)
-                            .height(46.dp)
-                            .bouncyTouch()
-                    ) {
-                        Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (initialItem == null) "Save & Publish" else "Save Changes",
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1
-                        )
-                    }
-                }
-            } else {
-                // Fixed Footer for Tools Tab
-                Button(
-                    onClick = onDismiss,
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
-                        contentColor = TextPrimary
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(46.dp)
-                        .bouncyTouch()
-                ) {
-                    Text("Close Studio", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
     }
-}
 }
 
 @Composable
@@ -2510,7 +527,7 @@ private fun TabButton(
             .clickable(onClick = onClick)
     ) {
         Row(
-            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+            modifier = Modifier.padding(vertical = 8.dp, horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
@@ -2529,36 +546,6 @@ private fun TabButton(
                 maxLines = 1
             )
         }
-    }
-}
-
-@Composable
-private fun MetadataRow(
-    val1: String,
-    onVal1Change: (String) -> Unit,
-    label1: String,
-    val2: String,
-    onVal2Change: (String) -> Unit,
-    label2: String
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        OutlinedTextField(
-            value = val1,
-            onValueChange = onVal1Change,
-            label = { Text(label1, color = TextSecondary) },
-            singleLine = true,
-            modifier = Modifier.weight(1f)
-        )
-        OutlinedTextField(
-            value = val2,
-            onValueChange = onVal2Change,
-            label = { Text(label2, color = TextSecondary) },
-            singleLine = true,
-            modifier = Modifier.weight(1f)
-        )
     }
 }
 

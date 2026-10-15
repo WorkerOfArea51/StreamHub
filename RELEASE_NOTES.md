@@ -32,3 +32,7 @@
   - Eliminated frozen black screens when finishing a movie or the final episode of a series.
   - When the final video completes with no subsequent episodes to advance to, StreamHub gives a smooth 800ms settling pause and automatically returns you to the Details screen or Downloads list.
   - Tapping center Play on an ended video now replays from 00:00 instead of staying frozen.
+
+- 🛠️ **Creator Studio Stability & DEX Register Optimization (`AdminEditorDialog.kt`)**:
+  - Resolved immediate app crash (`VerifyError`) when opening Creator Studio on physical devices running modern Android (14/15/HyperOS).
+  - Decomposed the 2,598-line monolithic dialog into isolated tab composables (`AdminOverviewTab`, `AdminLinksTab`, `AdminSpecsTab`, `AdminToolsTab`) with hoisted state, eliminating Dalvik/ART register overflows and ensuring smooth, crash-free catalog publishing.
