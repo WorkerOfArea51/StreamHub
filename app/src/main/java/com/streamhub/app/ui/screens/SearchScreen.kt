@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.models.isActivelyTrending
+import com.streamhub.app.data.models.isFullyCompleted
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.components.EmptyStateCard
 import com.streamhub.app.ui.components.MediaCard
@@ -1359,7 +1360,7 @@ fun SearchScreen(
                 selectedQuickActionMedia = null
                 onMediaClick(media)
             },
-            onRemoveFromHistory = if (progress != null && !progress.isCompleted) {
+            onRemoveFromHistory = if (progress != null && !progress.isFullyCompleted(media.episodes.size)) {
                 {
                     selectedQuickActionMedia = null
                     val previousProgress = progress

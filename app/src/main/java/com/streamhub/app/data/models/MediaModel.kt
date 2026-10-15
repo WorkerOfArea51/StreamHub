@@ -137,8 +137,21 @@ data class PlaybackProgress(
     val mediaType: String = "",       // "Movie", "Anime", "Series"
     val episodeTitle: String = "",
     val seasonNumber: Int = 1,
-    val isCompleted: Boolean = false
+    val isCompleted: Boolean = false,
+    val completedEpisodeIndices: Set<Int> = emptySet()
 )
+
+/**
+ * Canonical helper for completion checking across all cards, screens, and dialogs.
+ * Ensures single source of truth for both movies and multi-episode series.
+ */
+fun PlaybackProgress.isFullyCompleted(totalEpisodes: Int = 0): Boolean {
+    if (isCompleted) return true
+    if (totalEpisodes > 0) {
+        return (0 until totalEpisodes).all { completedEpisodeIndices.contains(it) }
+    }
+    return false
+}
 
 /**
  * Canonical helper for category matching across StreamHub.

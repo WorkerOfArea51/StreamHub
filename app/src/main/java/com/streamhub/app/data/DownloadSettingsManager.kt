@@ -17,13 +17,15 @@ import kotlinx.coroutines.launch
 
 data class DownloadSettings(
     val autoResumeOnWifi: Boolean = true,
-    val downloadOverWifiOnly: Boolean = false
+    val downloadOverWifiOnly: Boolean = false,
+    val downloadTtlDays: Int = 30 // Default: 30 Days (Options: 1, 3, 7, 14, 30, 60, 90 — no Never)
 )
 
 /**
  * Production Download Preferences & Wi-Fi Auto-Recovery Manager:
  * - Allows users to toggle auto-resume on Wi-Fi recovery on/off
  * - Allows users to restrict downloads strictly to Wi-Fi
+ * - Allows users to set Download Auto-Delete TTL retention lifespan (1d, 3d, 7d, 14d, 30d, 60d, 90d)
  * - Dynamically registers a ConnectivityManager network callback for seamless auto-resume
  */
 object DownloadSettingsManager {
@@ -32,6 +34,7 @@ object DownloadSettingsManager {
     private const val PREFS_NAME = "streamhub_download_settings"
     private const val KEY_AUTO_RESUME_WIFI = "auto_resume_wifi"
     private const val KEY_WIFI_ONLY = "download_wifi_only"
+    private const val KEY_DOWNLOAD_TTL_DAYS = "download_ttl_days"
 
     private lateinit var appContext: Context
     private var prefs: SharedPreferences? = null
@@ -54,9 +57,11 @@ object DownloadSettingsManager {
         val p = prefs ?: return
         val autoResume = p.getBoolean(KEY_AUTO_RESUME_WIFI, true)
         val wifiOnly = p.getBoolean(KEY_WIFI_ONLY, false)
+        val ttlDays = p.getInt(KEY_DOWNLOAD_TTL_DAYS, 30)
         _settingsFlow.value = DownloadSettings(
             autoResumeOnWifi = autoResume,
-            downloadOverWifiOnly = wifiOnly
+            downloadOverWifiOnly = wifiOnly,
+            downloadTtlDays = if (ttlDays in listOf(1, 3, 7, 14, 30, 60, 90)) ttlDays else 30
         )
     }
 
@@ -74,6 +79,20 @@ object DownloadSettingsManager {
         if (enabled && !isWifiConnected()) {
             pauseActiveDownloadsForCellular()
         }
+    }
+
+    fun updateDownloadTtlDays(days: Int) {
+        val safeDays = if (days in listOf(1, 3, 7, 14, 30, 60, 90)) days else 30
+        _settingsFlow.value = _settingsFlow.value.copy(downloadTtlDays = safeDays)
+        prefs?.edit()?.putInt(KEY_DOWNLOAD_TTL_DAYS, safeDays)?.apply()
+        Log.i(TAG, "Download auto-delete TTL updated: $safeDays days")
+        DownloadManager.enforceDownloadTtlPolicy()
+    }
+
+    fun restoreSettings(settings: DownloadSettings) {
+        updateAutoResumeOnWifi(settings.autoResumeOnWifi)
+        updateDownloadOverWifiOnly(settings.downloadOverWifiOnly)
+        updateDownloadTtlDays(settings.downloadTtlDays)
     }
 
     private fun registerNetworkObserver() {

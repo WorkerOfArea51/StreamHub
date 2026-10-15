@@ -52,7 +52,9 @@ data class DownloadedItem(
     val isQueued: Boolean = false,
     val streamUrl: String = "",
     // FIX: Persist already-downloaded byte count for true HTTP Range resume.
-    val resumeFromBytes: Long = 0L
+    val resumeFromBytes: Long = 0L,
+    // Timestamp when download reached 100% completion (for TTL retention calculations)
+    val completedAt: Long = 0L
 )
 
 object DownloadManager {
@@ -99,6 +101,7 @@ object DownloadManager {
 
         loadFromDisk(context)
         registerCompletionReceiver()
+        enforceDownloadTtlPolicy()
         if (_downloads.value.any { !it.isCompleted && !it.isPaused && it.downloadId != -1L }) {
             startProgressPolling()
         }
@@ -159,7 +162,8 @@ object DownloadManager {
                     isPaused = false,
                     isQueued = false,
                     fileSizeMb = realSizeMb,
-                    resumeFromBytes = 0L
+                    resumeFromBytes = 0L,
+                    completedAt = System.currentTimeMillis()
                 )
                 appContext?.let { ctx ->
                     DownloadNotificationHelper.showCompleted(
@@ -354,6 +358,9 @@ object DownloadManager {
                 val file = File(filePath)
                 val realSizeMb = if (file.exists()) file.length() / (1024.0 * 1024.0) else 0.0
 
+                val savedCompletedAt = obj.optLong("completedAt", 0L)
+                val effectiveCompletedAt = if (savedCompletedAt > 0L) savedCompletedAt else if (file.exists()) file.lastModified() else 0L
+
                 list.add(
                     DownloadedItem(
                         mediaId = obj.getString("mediaId"),
@@ -370,7 +377,8 @@ object DownloadManager {
                         isCanceled = obj.optBoolean("isCanceled", false),
                         isQueued = obj.optBoolean("isQueued", false),
                         streamUrl = obj.optString("streamUrl", ""),
-                        resumeFromBytes = obj.optLong("resumeFromBytes", 0L)
+                        resumeFromBytes = obj.optLong("resumeFromBytes", 0L),
+                        completedAt = effectiveCompletedAt
                     )
                 )
             }
@@ -401,6 +409,7 @@ object DownloadManager {
                 // FIX: Persist streamUrl AS-IS — Telegram CDN tokens are required for resume.
                 put("streamUrl", item.streamUrl)
                 put("resumeFromBytes", item.resumeFromBytes)
+                put("completedAt", item.completedAt)
             }
             array.put(obj)
         }
@@ -908,7 +917,8 @@ object DownloadManager {
                                 isPaused = false,
                                 isQueued = false,
                                 resumeFromBytes = 0L,
-                                fileSizeMb = realMb
+                                fileSizeMb = realMb,
+                                completedAt = System.currentTimeMillis()
                             )
                         }
                         mutableList
@@ -1052,6 +1062,31 @@ object DownloadManager {
     fun deleteDownloadsForMedia(mediaId: String) {
         val targets = _downloads.value.filter { it.mediaId == mediaId }
         targets.forEach { deleteDownload(it) }
+    }
+
+    /**
+     * Downloads Auto-Delete TTL Enforcement:
+     * Automatically evicts completed offline downloads whose age exceeds the configured TTL retention window.
+     */
+    fun enforceDownloadTtlPolicy() {
+        val ttlDays = DownloadSettingsManager.settingsFlow.value.downloadTtlDays
+        if (ttlDays <= 0) return
+        val ttlMillis = ttlDays * 24L * 3600_000L
+        val now = System.currentTimeMillis()
+
+        scope.launch {
+            val completedItems = _downloads.value.filter { it.isCompleted }
+            for (item in completedItems) {
+                val file = File(item.localFilePath)
+                val effectiveTime = if (item.completedAt > 0L) item.completedAt else if (file.exists()) file.lastModified() else now
+                val age = now - effectiveTime
+                if (age >= ttlMillis) {
+                    val ageDays = age / (24L * 3600_000L)
+                    Log.i(TAG, "Download TTL Expired for ${item.mediaTitle} - ${item.episodeTitle} (Age: ${ageDays}d >= ${ttlDays}d). Evicting offline file.")
+                    deleteDownload(item)
+                }
+            }
+        }
     }
 
     /**

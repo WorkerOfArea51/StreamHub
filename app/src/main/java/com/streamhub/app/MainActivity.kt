@@ -868,29 +868,45 @@ fun StreamHubApp(
                 val downloadsList by com.streamhub.app.data.DownloadManager.downloads.collectAsState()
 
                 // FIX: Handle offline playback — if mediaId starts with "offline:", construct
-                // a MediaItem from the DownloadManager instead of looking up the catalog.
-                // This allows playing downloaded files without internet (true offline mode).
+                // a complete MediaItem containing all downloaded episodes for this show in sequence.
+                // This enables continuous offline binge auto-advance and unifies watch history.
                 val mediaItem = remember(mediaId, catalog, downloadsList) {
                     if (mediaId.startsWith("offline:")) {
-                        // Format: offline:{mediaId}:{episodeIndex}
-                        val parts = mediaId.removePrefix("offline:").split(":")
+                        val raw = mediaId.removePrefix("offline:")
+                        val parts = raw.split(":")
                         val realMediaId = parts.getOrNull(0) ?: ""
-                        val epIdx = parts.getOrNull(1)?.toIntOrNull() ?: 0
-                        downloadsList
-                            .firstOrNull { it.mediaId == realMediaId && it.episodeIndex == epIdx }
-                            ?.let { downloadItem ->
-                                val localEpisode = com.streamhub.app.data.models.Episode(
-                                    episodeNumber = epIdx,
-                                    title = downloadItem.episodeTitle,
-                                    streamUrl = downloadItem.localFilePath
-                                )
-                                MediaItem(
-                                    id = realMediaId,
-                                    title = downloadItem.mediaTitle,
-                                    posterUrl = downloadItem.posterUrl,
-                                    episodes = listOf(localEpisode)
+                        val showDownloads = downloadsList
+                            .filter { it.mediaId == realMediaId && it.isCompleted }
+                            .sortedBy { it.episodeIndex }
+
+                        if (showDownloads.isNotEmpty()) {
+                            val playlist = showDownloads.map { dl ->
+                                com.streamhub.app.data.models.Episode(
+                                    episodeNumber = dl.episodeIndex,
+                                    title = dl.episodeTitle,
+                                    streamUrl = dl.localFilePath
                                 )
                             }
+                            val first = showDownloads.first()
+                            val catalogMatch = catalog.firstOrNull { it.id == realMediaId }
+                            if (catalogMatch != null) {
+                                catalogMatch.copy(episodes = playlist)
+                            } else {
+                                val existingHistory = com.streamhub.app.data.WatchHistoryManager.getProgress(realMediaId)
+                                val mediaType = existingHistory?.mediaType?.ifBlank { null }
+                                    ?: if (showDownloads.size > 1 || showDownloads.any { it.episodeIndex > 0 }) "SERIES" else "MOVIE"
+                                MediaItem(
+                                    id = realMediaId,
+                                    title = first.mediaTitle,
+                                    posterUrl = first.posterUrl,
+                                    type = mediaType,
+                                    category = mediaType,
+                                    episodes = playlist
+                                )
+                            }
+                        } else {
+                            null
+                        }
                     } else {
                         catalog.firstOrNull { 
                             it.id == mediaId ||
@@ -898,6 +914,29 @@ fun StreamHubApp(
                             (it.anilistId.isNotBlank() && (it.anilistId == mediaId || it.anilistId == mediaId.removePrefix("anilist_rec_").removePrefix("mal_rec_").removePrefix("mal_"))) ||
                             (it.title.isNotBlank() && (it.title.equals(mediaId, ignoreCase = true) || it.title.replace(":", "").equals(mediaId.replace(":", ""), ignoreCase = true)))
                         }
+                    }
+                }
+
+                val resolvedEpisodeIndex = remember(mediaId, episodeIndex, downloadsList) {
+                    if (mediaId.startsWith("offline:")) {
+                        val raw = mediaId.removePrefix("offline:")
+                        val parts = raw.split(":")
+                        val realMediaId = parts.getOrNull(0) ?: ""
+                        val specificEpIdx = parts.getOrNull(1)?.toIntOrNull()
+                        val showDownloads = downloadsList
+                            .filter { it.mediaId == realMediaId && it.isCompleted }
+                            .sortedBy { it.episodeIndex }
+
+                        if (showDownloads.isEmpty()) {
+                            0
+                        } else if (specificEpIdx != null) {
+                            val matched = showDownloads.indexOfFirst { it.episodeIndex == specificEpIdx }
+                            if (matched >= 0) matched else 0
+                        } else {
+                            episodeIndex.coerceIn(0, (showDownloads.size - 1).coerceAtLeast(0))
+                        }
+                    } else {
+                        episodeIndex
                     }
                 }
 
@@ -913,7 +952,7 @@ fun StreamHubApp(
                     else -> {
                         PlayerScreen(
                             mediaItem = mediaItem,
-                            initialEpisodeIndex = episodeIndex,
+                            initialEpisodeIndex = resolvedEpisodeIndex,
                             viewModel = playerViewModel,
                             onBackClick = { navController.popBackStack() }
                         )

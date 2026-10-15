@@ -5,6 +5,7 @@ import com.streamhub.app.data.models.MediaInfo
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.models.isActivelyTrending
 import com.streamhub.app.data.models.remainingTrendingDays
+import com.streamhub.app.data.models.isFullyCompleted
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -85,5 +86,31 @@ class MediaModelTest {
 
         val expiredCreated = MediaItem(isTrending = true, trendingAt = 0L, updatedAt = 0L, createdAt = eightDaysAgo)
         assertFalse(expiredCreated.isActivelyTrending(now))
+    }
+
+    @Test
+    fun playbackProgress_isFullyCompleted_validatesAccurately() {
+        val baseProgress = com.streamhub.app.data.models.PlaybackProgress(
+            mediaId = "show_1",
+            episodeNumber = 0,
+            positionMs = 1000L,
+            durationMs = 2000L
+        )
+
+        // 1. Explicitly completed flag returns true
+        assertTrue(baseProgress.copy(isCompleted = true).isFullyCompleted())
+        assertTrue(baseProgress.copy(isCompleted = true).isFullyCompleted(totalEpisodes = 12))
+
+        // 2. Uncompleted, no episodes watched
+        assertFalse(baseProgress.copy(isCompleted = false, completedEpisodeIndices = emptySet()).isFullyCompleted(totalEpisodes = 3))
+
+        // 3. Partially completed series (2 of 3 episodes)
+        assertFalse(baseProgress.copy(isCompleted = false, completedEpisodeIndices = setOf(0, 1)).isFullyCompleted(totalEpisodes = 3))
+
+        // 4. Fully completed series via episode set (all 3 episodes)
+        assertTrue(baseProgress.copy(isCompleted = false, completedEpisodeIndices = setOf(0, 1, 2)).isFullyCompleted(totalEpisodes = 3))
+
+        // 5. Total episodes 0 with isCompleted = false
+        assertFalse(baseProgress.copy(isCompleted = false, completedEpisodeIndices = setOf(0, 1)).isFullyCompleted(totalEpisodes = 0))
     }
 }

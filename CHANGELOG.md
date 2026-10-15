@@ -4,175 +4,31 @@ All notable changes, architectural milestones, and performance optimizations for
 
 ---
 
-## 🌟 [v4.8.366] - 2026-09-26 (Material 3 Expressive & Cinema Tonal Elevation Release)
+## 🌟 [v4.8.410] - 2026-10-15 (Batch Episode Deletion, Watch History Parity & Complete Offline Polish Release)
 
 ### 🚀 Major Upgrades & Features
 
-- **Full Material 3 Expressive & Cinema Tonal Elevation Architecture**:
-  - **5-Level M3 Dark Tonal Surfaces**: Extirpated all artificial 1.dp glowing borders and neon strokes. Replaced with native M3 dark tonal elevation (`surfaceContainerLowest` through `surfaceContainerHighest`) and contiguous grouped containers separated by subtle `outlineVariant` dividers.
-  - **M3 Split-Button Navigation Dock & Header Protection**: Clean black status bar padding preventing hero carousel bleed, pinned icon-only category split-button top bar with tactile hold popups, and an M3 Expressive segmented bottom dock.
-  - **Borderless Pill Standards (`CircleShape`)**: Tactile spring physics (`bouncyTouch()`) across category filters, search bars, action buttons, and filter chips.
-  - **Global Unicode Emoji Purge**: Replaced emojis across all shelf titles, search filter tags, settings cards, profile badges, and dialogs with official Android vector icons.
-
-- **App-Wide Screen Modernization**:
-  - **Creator Studio (`AdminEditorDialog.kt`, `MetadataInspectorDialog.kt`)**: Edge-to-edge `RoundedCornerShape(28.dp)` card with `surfaceContainerHigh`, segmented tab dock, borderless category/format/specs chips, and M3 split buttons (`[ Backup ] [ Restore ▾ ]`).
-  - **Downloads & My List (`DownloadsScreen.kt`, `MyListScreen.kt`)**: Modernized with borderless 20/24.dp cards, `CircleShape` pills, and clean M3 action controls.
-  - **Live Audience Telemetry (`LiveAudienceTelemetryDialog.kt`)**: Borderless 28.dp modal with `surfaceContainerLow` elevation, active viewer counter card with pulsing green beacon badge, tactile global broadcast trigger pill, and emoji-purged device detail inspector.
-  - **Watch History (`HistoryScreen.kt`)**: Standardized 2-line header, tactile `CircleShape` back/search/clear-all pills in `surfaceContainerHigh`, search field, category chips, and 16:9 preview cards.
-  - **Storage & Cache Management (`StorageManagementScreen.kt`, `CachedStreamsSheet.kt`)**: Standardized top bar, borderless `RoundedCornerShape(24.dp)` storage gauge card with capsule bar, contiguous cache breakdown container with `outlineVariant` dividers, master clear pill, and edge-to-edge 28.dp cached streams bottom sheet with interactive TTL policy dropdown.
-
-- **Smart Batch Download & Sequential Queue Engine**:
-  - **Smart Batch Download Selector**: Dedicated "Download" capsule button in Details Screen with intelligent pre-selection (auto-excludes watched episodes $\ge 85\%$).
-  - **Quick Action Filter Pills**: `[Unwatched Only]`, `[Select All]`, `[Next 3]`, and `[Deselect All]`.
-  - **Sequential Batch Queue Engine**: Downloads 1 episode at a time at maximum 2–3+ MB/s line speed while remaining episodes sit in `isQueued = true`, auto-advancing on completion to avoid Telegram MTProto `FloodWait` (420).
-
-- **Turbo OkHttp Download Engine & Dual Notification Elimination**:
-  - **High-Throughput OkHttp Engine**: Replaced Android's throttled `SystemDownloadManager` with `HttpRangeResumeEngine` wired to `SharedHttpClient.streamingClient` (1 MB TCP window scaling, 45s read timeout) achieving full 2–3+ MB/s line speed.
-  - **Dual Notification Elimination**: Added `<uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />` to silence OS download notifications, displaying strictly 1 branded StreamHub notification.
-
-- **Live Online Subtitle Search & 1-Tap Injection**:
-  - **Online Subtitle Service**: Native `OnlineSubtitleService` powered by OpenSubtitles & Cinemeta CDN with zero authentication.
-  - **Interactive Player Sheet**: Live search, Season & Episode steppers, multilingual language filter chips, and 1-tap player injection with HUD confirmation pill.
-
----
-
-## 🌟 [v4.8.202] - 2026-08-30 (Ultra Reliability & Bulk Sync Release)
-
-### 🚀 Major Upgrades & Features
-
-- **Multi-URL Parallel Bulk Sync & Import Engine (Creator Studio)**:
-  - **Concurrent Parallel Fetching**: Concurrently downloads and parses multiple JSON endpoints or F2L batch IDs across background I/O threads using coroutine concurrency (`async` / `awaitAll`).
-  - **Interactive Visual Preview Grid**: High-impact cards with poster thumbnails, categories, ratings, episode badges, and individual checkbox selection controls.
-  - **3-Way Smart Conflict Engine**: Support for `Merge New Episodes` (preserves existing show, merges non-duplicate episodes), `Overwrite Entire Show`, and `Skip Duplicates`.
-  - **Full Library JSON Backup**: 1-click complete catalog export.
-
-- **Intelligent Batch Episode Formatter & Parser**:
-  - **Smart Raw Dump Parser**: Extracts episode numbers, direct stream links, download mirrors, resolutions (`4K`, `1080p`, `720p`), and file sizes from arbitrary text dumps or Telegram channel posts.
-  - **Sequential Batch Pattern Generator**: Generates $1 \rightarrow N$ episode sequences with placeholder substitutions (`{n}`, `{0n}`, `{ep}`).
-  - **Live Duplicate & Error Validator**: Real-time validation warning badges with 1-tap `🔄 Re-Index 1..N` sequential renumbering tool.
-
-- **Smart Multi-Relation Format Badging**:
-  - **Compound Relation & Format Badges**: Franchise cards dynamically compute and display both relation role and format type (`CURRENT • TV`, `SEQUEL • MOVIE`, `PREQUEL • TV`, `SIDE STORY • OVA`, `SPECIAL`).
-  - **Color-Coded Badges**: Gold for `CURRENT`, Emerald Green for `SEQUEL`, Deep Purple for `PREQUEL`, Sunset Orange for `SEASON X`, Neon Cyan for `SIDE STORY/OVA/SPECIAL`.
-  - **Expanded Creator Studio Relation Picker**: 1-tap chips for `Main Story`, `Sequel`, `Prequel`, `Movie`, `Side Story`, `Spin-Off`, `OVA`, `Special`, `ONA`.
-
-- **Playback Reliability & Visual Polish**:
-  - **Smart Auto-Reconnect & Stream Recovery**: Exponential backoff reconnect engine for dropped streams without restarting playback from scratch.
-  - **Netflix-Style "Next Episode" Countdown Overlay**: Floating circular countdown overlay on episode endings with configurable trigger timer toggle in Video Settings.
-  - **Picture-in-Picture (PiP) Aspect Ratio Locking**: PiP aspect ratio automatically matches the active video with Next / Previous media actions.
-  - **Glowing Double-Tap Ripple Feedback**: Vibrant seeking animations with subtle tactile haptic responses.
-
-- **Home & Media Loading Performance**:
-  - **Dynamic "Continue Watching" Top Rail**: Instant resume progress rail at the top of the Home screen.
-  - **Coil Thumbnail Prefetching Engine**: Background prefetching for butter-smooth 120Hz scrolling.
-
-- **Search & Discovery Engine**:
-  - **Instant Multi-Tag Filter Chips**: Real-time filtering by genre, resolution (`4K`, `1080p`), and audio tags.
-  - **Recent Search History & Popular Queries**: Search query suggestions with 1-tap delete and clear history.
-
-- **Offline Engine & Storage Reliability**:
-  - **Wi-Fi Auto-Resume for Downloads**: Automatically resumes paused downloads when connecting to Wi-Fi, with full user toggle controls.
-  - **150 MB Storage Headroom Safety Check**: Pre-allocates and validates storage space to prevent incomplete downloads and device freeze crashes.
-
----
-
-## 🌟 [v2.4.0] - 2026-08-30 (Master Release)
-
-### 🚀 Major Upgrades & Features
-
-- **Luxury Persona & Profile Customization (No-Login VIP Passport)**:
-  - **Custom Display Name & Bio Tagline**: Users can set custom streamer aliases (e.g. *Shadow Walker*, *OtakuKing*) and personal taglines.
-  - **12 Curated Aesthetic Avatars + Custom Photo Uploader**: Select from 12 stylish cyberpunk/anime avatars or upload photos directly from phone storage.
-  - **Unique VIP Member ID**: Auto-generated persistent client badge (`#SH-XXXX`) with 1-tap clipboard copy.
-  - **Interactive Edit Persona Sheet**: Live real-time preview card modal with instant profile saving.
-
-- **Upgraded "My List & VIP Watchlist" Hub**:
-  - **Live In-Progress Tracking**: Displays real-time watch progress bars and completion percentages directly under episode/movie cards.
-  - **Status Category Navigation Tabs**: Dynamic scrollable filters for `All Saved`, `In Progress ▶️`, `Watch Later ⏳`, `Favorites ❤️`, `Completed ✅`, and `Custom Collections 📁`.
-  - **User-Defined Custom Collections & Folders**: Build custom playlist folders (e.g. *"Date Night"*, *"Must Watch"*, *"Rewatch"*, *"Anime Sagas"*).
-  - **Smart Sorting Engine**: Sort by `Recently Saved (Timestamped)`, `Highest Rated (8.0+ ⭐)`, `Release Year`, or `Alphabetical (A - Z)`.
-  - **Dual Display Modes**: Seamless instant switching between adaptive **Poster Grid View** and rich **Detailed List View**.
-  - **One-Click Batch Clear**: Quick-purge all finished/completed titles with a single tap.
-
-- **Real-Time Audience & Live Telemetry Dashboard (Owner Exclusive)**:
-  - **Live Active Users Pulse**: Real-time Firestore session heartbeats monitoring active app users.
-  - **Audience Tier Breakdown**: Live distribution metrics comparing **VIP Access Key Unlocked**, **12-Hour Ad-Pass**, and **Guest** users.
-  - **Live Watching Stream Feeds**: Real-time view of which anime and movies are actively streaming across connected client devices.
-  - **Automated Ghost Session Eviction**: Auto-prunes inactive client sessions (> 3 minutes).
-
-- **Official Telegram Support Bot Integration**:
-  - Dedicated support integration for [@Fil3Stor3_bot](https://t.me/Fil3Stor3_bot).
-  - One-tap access to instant developer assistance, bot commands, and issue reporting.
-
-- **Professional App About & "What's New" Ecosystem**:
-  - High-impact glowing branding hero banner with Android 15 native architecture specs.
-  - Interactive What's New release highlights modal dialog.
-  - Quick access to GitHub issues, open-source MIT license, and tech stack details.
-
----
-
-### ⚡ Streaming Engine & Parser Enhancements
-
-- **Direct F2L Binary Range Streaming**:
-  - Automatically converts `/stream/{code}` web player links into high-speed raw binary `/dl/{code}` byte streams supporting HTTP `Range: bytes` chunks.
-  - Zero-lag seeking and instant playback initiation on ExoPlayer / Media3.
-- **Smart Bot & Duration Extraction**:
-  - Added support for floating-point duration seconds (e.g. `"duration": 1421.0`) and formatted timestamps (e.g. `"duration_formatted": "23:41"`).
-  - Display exact episode runtime badges on episode thumbnail cards.
-- **Filename & Title Preservation**:
-  - Preserves exact creator filenames without aggressive rewriting (e.g. `"EP - 01 - Undertaker"`, `"EP - 11.5 - What Should Be Had (Special)"`).
-
----
-
-### 🛠️ Bug Fixes & Refinements
-
-- **Activity Watch Time Precision**:
-  - Fixed a 1000x multiplier bug in `UserStatsManager` where timer tick milliseconds were treated as whole seconds.
-  - Migrated to millisecond-precise tracking (`addWatchTimeMillis`) and auto-healed corrupted legacy stats on launch.
-- **Top Spacing & Header Alignment**:
-  - Eliminated redundant `statusBarsPadding()` and nested `Scaffold` in `HistoryScreen`, `StorageManagementScreen`, and `SettingsScreen`.
-  - Headers now sit evenly and tightly aligned with the Home, Downloads, and My List tabs.
-- **Settings Screen Cleanup**:
-  - Removed duplicate Creator Studio tile from `SettingsScreen`, keeping publishing controls exclusively on the Owner profile.
-
----
-
-### 🔧 Technical Architecture & Layer Separation
-
-- **Domain Layer Contracts**: Immutable `MyListItem` data class supporting timestamped saves, favorite flags, and folder categorizations.
-- **Concurrency & Memory**: Background dispatching (`Dispatchers.IO`) for SharedPreferences JSON serialization, Firestore session snapshots, and TDLib RPC queries.
-- **ExoPlayer Cache Pipeline**: `StreamCacheManager` disk caching with LRU eviction and zero-buffering instant resume.
-
----
-
-## 📦 [v2.3.0] - 2026-08-28
-
-- **Added**: 12-Hour Ad-Pass Access System with countdown timer and instant unlock.
-- **Added**: Creator Studio Batch Import with Telegram Link Resolver and F2L REST API support.
-- **Added**: Storage & Cache Manager with granular stream buffer cleaner and image thumbnail cache pruning.
-- **Improved**: ExoPlayer Media3 background playback service (`StreamMediaService`).
-
----
-
-## 📦 [v2.2.0] - 2026-08-25
-
-- **Added**: Adaptive Theme Accent Customizer (Netflix Red, Crunchyroll Orange, Cyberpunk Cyan, Emerald Green, Neon Purple).
-- **Added**: Customizable Home Screen Layout manager (reorder sections, hero carousel, trending feeds).
-- **Added**: Network Speed Test & diagnostics tool.
-- **Fixed**: Subtitle rendering and font size scaling in landscape player.
-
----
-
-## 📦 [v2.1.0] - 2026-08-20
-
-- **Added**: Offline Download Engine with background task management and pause/resume support.
-- **Added**: Watch History chronological timeline with grouped sections (*Today*, *Yesterday*, *Older*).
-- **Added**: Multi-Season & Multi-Arc episode selector sheet for long-running anime series.
-
----
-
-## 📦 [v2.0.0] - 2026-08-15
-
-- **Major**: Total codebase migration to 100% Jetpack Compose and Material 3 design system.
-- **Major**: Cloud Firestore real-time media catalog synchronization.
-- **Added**: Native TDLib MTProto direct streaming layer.
+- **Collapsible Series Grouping & Accordion in Downloads (`DownloadsScreen.kt`)**:
+  - Replaced endless scrolling flat download lists with a high-performance `DownloadedSeriesGroup` data model. Multi-episode series downloads are cleanly grouped under an elegant single series card displaying poster, episode count, cumulative storage size, and live downloading status.
+  - Smooth spring-animated accordion drawer reveals and collapses episodes. Standalone movies and single features remain clean individual cards with 0 redundant chevron nesting.
+- **Multi-Select & Batch Episode Deletion (`DownloadsScreen.kt`)**:
+  - Added an intuitive "Select" mode inside the series accordion drawer with "Select All" / "Deselect All", live item counter, and Checkbox controls per row.
+  - Allows users to delete specific batches of episodes (e.g. episodes 1–5 after watching) while keeping subsequent episodes, protected by an explicit storage reclamation dialog detailing exact count and reclaimed MB.
+- **Watch History Screen Parity & Offline Continuity (`HistoryScreen.kt`)**:
+  - Integrated canonical `progress.isFullyCompleted(totalEpisodes)` and the signature emerald `✓ Watched` chip into History cards.
+  - Added live episodic progress counter (e.g. `• 4/12 Watched` / `• All Watched ✓`), matching the visual polish of Details and Downloads.
+  - Resuming playback from Watch History in Airplane Mode seamlessly uses the local sequential offline playlist.
+- **Downloads Auto-Delete TTL & Safe Expiration Countdown (`DownloadSettingsManager.kt`, `DownloadManager.kt`, `StorageCacheManager.kt`)**:
+  - Replaced aggressive watch-based deletion with a safe, predictable Time-To-Live (TTL) retention lifespan (`1d`, `3d`, `7d`, `14d`, `30d (Default)`, `60d`, `90d`).
+  - Purged the unreasonable *"Never (Keep Forever)"* option from both Cache and Downloads auto-delete policies to permanently preserve device storage health.
+  - Every downloaded item displays a real-time countdown badge (e.g. `Expires in 18d`, `Expires tomorrow`), configurable via a 1-tap top pill on Downloads.
+- **Real-Time Offline Search (`DownloadsScreen.kt`)**:
+  - Integrated an M3 tonal search bar directly on the Downloads screen for 0ms filtering across titles, episodes, and quality formats in Airplane Mode.
+- **Offline Binge Auto-Advance (`DownloadsScreen.kt`, `PlayerScreen.kt`)**:
+  - Playing an episode from offline downloads passes the entire local series playlist. When Episode 1 ends offline, ExoPlayer seamlessly auto-advances directly into Episode 2 with 0ms delay.
+- **Seamless Auto-Return on Movie & Series Finale Completion (`StreamPlayerViewModel.kt`, `PlayerScreen.kt`)**:
+  - Eradicated frozen black screens when finishing a movie or series finale. Gives a smooth 800ms settling pause and returns automatically to Details or Downloads.
+- **Per-Episode Watched Badges & Season Tracking (`DetailsScreen.kt`, `WatchHistoryManager.kt`)**:
+  - Emerald `✓ Watched` chip in the details column, real-time season watched counter (`• X/Y Watched` / `• All Watched ✓`), 1-tap season batch toggle, and haptic long-press episode toggle.
+- **Zero Compiler Warnings (`DetailsScreen.kt`)**:
+  - Tidied all redundant non-null checks, achieving a clean 0-warning build.

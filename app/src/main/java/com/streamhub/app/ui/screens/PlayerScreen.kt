@@ -290,6 +290,15 @@ fun PlayerScreen(
         previousPipMode = isPipMode
     }
 
+    // Auto-return to Details/previous screen when playback completes at the end of playlist/movie
+    LaunchedEffect(uiState.shouldAutoExit) {
+        if (uiState.shouldAutoExit) {
+            viewModel.resetAutoExit()
+            delay(800L)
+            onBackClick()
+        }
+    }
+
     // ──────────────────────────────────────────────────────────────
     // 1. True Immersive Fullscreen (Hide Status & Navigation Bars)
     // ──────────────────────────────────────────────────────────────
@@ -374,11 +383,17 @@ fun PlayerScreen(
         ToastManager.showToast("Screen is locked. Tap unlock to exit 🔒")
     }
 
-    val isMovie = mediaItem.type.equals("MOVIE", ignoreCase = true) ||
+    val isSeries = mediaItem.type.equals("SERIES", ignoreCase = true) ||
+                  mediaItem.category.equals("Anime", ignoreCase = true) ||
+                  mediaItem.category.equals("Web Series", ignoreCase = true) ||
+                  mediaItem.category.equals("Series", ignoreCase = true)
+    val isMovie = !isSeries && (
+                  mediaItem.type.equals("MOVIE", ignoreCase = true) ||
                   mediaItem.category.equals("Movie", ignoreCase = true) ||
                   mediaItem.category.equals("Movies", ignoreCase = true) ||
                   mediaItem.relationType.equals("Movie", ignoreCase = true) ||
                   mediaItem.episodes.size <= 1
+    )
 
     val currentEpisode = mediaItem.episodes.getOrNull(uiState.currentEpisodeIndex)
     val hasNextEpisode = (uiState.currentEpisodeIndex + 1) in mediaItem.episodes.indices

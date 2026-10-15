@@ -32,6 +32,16 @@ object WatchHistoryManager {
     private fun parseProgress(jsonStr: String): PlaybackProgress? {
         return try {
             val json = JSONObject(jsonStr)
+            val completedIndices = mutableSetOf<Int>()
+            val compArr = json.optJSONArray("completedEpisodes")
+            if (compArr != null) {
+                for (i in 0 until compArr.length()) {
+                    completedIndices.add(compArr.optInt(i))
+                }
+            } else if (json.optBoolean("isCompleted", false)) {
+                completedIndices.add(json.optInt("episodeNumber", 0))
+            }
+
             PlaybackProgress(
                 mediaId = json.getString("mediaId"),
                 episodeNumber = json.optInt("episodeNumber", 0),
@@ -44,7 +54,8 @@ object WatchHistoryManager {
                 mediaType = json.optString("mediaType", ""),
                 episodeTitle = json.optString("episodeTitle", ""),
                 seasonNumber = json.optInt("seasonNumber", 0),
-                isCompleted = json.optBoolean("isCompleted", false)
+                isCompleted = json.optBoolean("isCompleted", false),
+                completedEpisodeIndices = completedIndices
             )
         } catch (e: Exception) {
             Log.w(TAG, "Failed to parse progress JSON", e)
@@ -73,6 +84,42 @@ object WatchHistoryManager {
             }
         }
         _historyFlow.value = historyMap
+    }
+
+    private fun persistProgressInternal(progress: PlaybackProgress, evictedKeys: List<String> = emptyList()) {
+        try {
+            val json = JSONObject().apply {
+                put("mediaId", progress.mediaId)
+                put("episodeNumber", progress.episodeNumber)
+                put("positionMs", progress.positionMs)
+                put("durationMs", progress.durationMs)
+                put("lastUpdated", progress.lastUpdated)
+                put("title", progress.title)
+                put("posterUrl", progress.posterUrl)
+                put("backdropUrl", progress.backdropUrl)
+                put("mediaType", progress.mediaType)
+                put("episodeTitle", progress.episodeTitle)
+                put("seasonNumber", progress.seasonNumber)
+                put("isCompleted", progress.isCompleted)
+                val compArr = org.json.JSONArray()
+                progress.completedEpisodeIndices.forEach { compArr.put(it) }
+                put("completedEpisodes", compArr)
+            }
+            val prefs = getPrefs()
+            val currentIds = (prefs.getStringSet(KEY_ALL_HISTORY_IDS, emptySet()) ?: emptySet()).toMutableSet()
+            currentIds.add(progress.mediaId)
+            currentIds.removeAll(evictedKeys)
+
+            val editor = prefs.edit()
+                .putString(progress.mediaId, json.toString())
+                .putStringSet(KEY_ALL_HISTORY_IDS, currentIds)
+            for (evictedKey in evictedKeys) {
+                editor.remove(evictedKey)
+            }
+            editor.apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to persist progress for ${progress.mediaId}", e)
+        }
     }
 
     @Synchronized
@@ -107,6 +154,11 @@ object WatchHistoryManager {
         val isAtEndOfMedia = effectiveDuration >= 30_000L && (positionMs.toFloat() / effectiveDuration.toFloat()) >= 0.92f
         val isCompleted = if (isLastEpisode) isAtEndOfMedia else false
 
+        val completedSet = existing?.completedEpisodeIndices?.toMutableSet() ?: mutableSetOf()
+        if (isAtEndOfMedia) {
+            completedSet.add(episodeNumber)
+        }
+
         val progress = PlaybackProgress(
             mediaId = mediaId,
             episodeNumber = episodeNumber,
@@ -119,7 +171,8 @@ object WatchHistoryManager {
             mediaType = mediaType.ifEmpty { existing?.mediaType ?: "" },
             episodeTitle = episodeTitle.ifEmpty { existing?.episodeTitle ?: "" },
             seasonNumber = if (seasonNumber >= 0) seasonNumber else (existing?.seasonNumber ?: 0),
-            isCompleted = isCompleted
+            isCompleted = isCompleted,
+            completedEpisodeIndices = completedSet
         )
 
         val updatedMap = _historyFlow.value.toMutableMap()
@@ -136,37 +189,7 @@ object WatchHistoryManager {
         }
 
         _historyFlow.value = updatedMap
-
-        try {
-            val json = JSONObject().apply {
-                put("mediaId", progress.mediaId)
-                put("episodeNumber", progress.episodeNumber)
-                put("positionMs", progress.positionMs)
-                put("durationMs", progress.durationMs)
-                put("lastUpdated", progress.lastUpdated)
-                put("title", progress.title)
-                put("posterUrl", progress.posterUrl)
-                put("backdropUrl", progress.backdropUrl)
-                put("mediaType", progress.mediaType)
-                put("episodeTitle", progress.episodeTitle)
-                put("seasonNumber", progress.seasonNumber)
-                put("isCompleted", progress.isCompleted)
-            }
-            val prefs = getPrefs()
-            val currentIds = (prefs.getStringSet(KEY_ALL_HISTORY_IDS, emptySet()) ?: emptySet()).toMutableSet()
-            currentIds.add(mediaId)
-            currentIds.removeAll(evictedKeys)
-
-            val editor = prefs.edit()
-                .putString(mediaId, json.toString())
-                .putStringSet(KEY_ALL_HISTORY_IDS, currentIds)
-            for (evictedKey in evictedKeys) {
-                editor.remove(evictedKey)
-            }
-            editor.apply()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to persist progress for $mediaId", e)
-        }
+        persistProgressInternal(progress, evictedKeys)
     }
 
     fun getProgress(mediaId: String): PlaybackProgress? {
@@ -272,6 +295,8 @@ object WatchHistoryManager {
 
         val existing = _historyFlow.value[mediaId]
         val effectiveDuration = if ((existing?.durationMs ?: 0L) > 0L) existing!!.durationMs else 1000L
+        val completedSet = existing?.completedEpisodeIndices?.toMutableSet() ?: mutableSetOf()
+        completedSet.add(episodeNumber)
 
         val progress = PlaybackProgress(
             mediaId = mediaId,
@@ -285,39 +310,14 @@ object WatchHistoryManager {
             mediaType = mediaType.ifEmpty { existing?.mediaType ?: "" },
             episodeTitle = existing?.episodeTitle ?: "",
             seasonNumber = if (seasonNumber >= 0) seasonNumber else (existing?.seasonNumber ?: 0),
-            isCompleted = true
+            isCompleted = true,
+            completedEpisodeIndices = completedSet
         )
 
         val updatedMap = _historyFlow.value.toMutableMap()
         updatedMap[mediaId] = progress
         _historyFlow.value = updatedMap
-
-        try {
-            val json = JSONObject().apply {
-                put("mediaId", progress.mediaId)
-                put("episodeNumber", progress.episodeNumber)
-                put("positionMs", progress.positionMs)
-                put("durationMs", progress.durationMs)
-                put("lastUpdated", progress.lastUpdated)
-                put("title", progress.title)
-                put("posterUrl", progress.posterUrl)
-                put("backdropUrl", progress.backdropUrl)
-                put("mediaType", progress.mediaType)
-                put("episodeTitle", progress.episodeTitle)
-                put("seasonNumber", progress.seasonNumber)
-                put("isCompleted", true)
-            }
-            val prefs = getPrefs()
-            val currentIds = (prefs.getStringSet(KEY_ALL_HISTORY_IDS, emptySet()) ?: emptySet()).toMutableSet()
-            currentIds.add(mediaId)
-
-            prefs.edit()
-                .putString(mediaId, json.toString())
-                .putStringSet(KEY_ALL_HISTORY_IDS, currentIds)
-                .apply()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to persist markAsCompleted for $mediaId", e)
-        }
+        persistProgressInternal(progress)
     }
 
     /**
@@ -325,15 +325,156 @@ object WatchHistoryManager {
      */
     fun markAsCompleted(media: com.streamhub.app.data.models.MediaItem) {
         val lastEpIndex = (media.episodes.size - 1).coerceAtLeast(0)
-        markAsCompleted(
+        val allIndices = if (media.episodes.isNotEmpty()) media.episodes.indices.toSet() else setOf(0)
+        val existing = _historyFlow.value[media.id]
+        val effectiveDuration = if ((existing?.durationMs ?: 0L) > 0L) existing!!.durationMs else 1000L
+
+        val progress = PlaybackProgress(
             mediaId = media.id,
+            episodeNumber = lastEpIndex,
+            positionMs = effectiveDuration,
+            durationMs = effectiveDuration,
+            lastUpdated = System.currentTimeMillis(),
             title = media.title,
             posterUrl = media.posterUrl,
             backdropUrl = media.bannerUrl,
             mediaType = media.category,
-            episodeNumber = lastEpIndex,
-            seasonNumber = media.episodes.getOrNull(lastEpIndex)?.seasonNumber ?: 1
+            episodeTitle = media.episodes.getOrNull(lastEpIndex)?.title ?: (existing?.episodeTitle ?: ""),
+            seasonNumber = media.episodes.getOrNull(lastEpIndex)?.seasonNumber ?: 1,
+            isCompleted = true,
+            completedEpisodeIndices = allIndices
         )
+
+        val updatedMap = _historyFlow.value.toMutableMap()
+        updatedMap[media.id] = progress
+        _historyFlow.value = updatedMap
+        persistProgressInternal(progress)
+    }
+
+    /**
+     * Marks or unmarks a specific episode as watched.
+     * Updates reactive _historyFlow and persists immediately.
+     */
+    @Synchronized
+    fun markEpisodeWatched(
+        mediaId: String,
+        episodeIndex: Int,
+        isWatched: Boolean,
+        mediaItem: com.streamhub.app.data.models.MediaItem? = null,
+        title: String = "",
+        posterUrl: String = "",
+        backdropUrl: String = "",
+        mediaType: String = "",
+        episodeTitle: String = ""
+    ) {
+        if (!::appContext.isInitialized || mediaId.isBlank()) return
+        val existing = _historyFlow.value[mediaId]
+        val completedSet = existing?.completedEpisodeIndices?.toMutableSet() ?: mutableSetOf()
+        if (isWatched) {
+            completedSet.add(episodeIndex)
+        } else {
+            completedSet.remove(episodeIndex)
+        }
+
+        val totalEpCount = mediaItem?.episodes?.size ?: 0
+        val allEpisodesCompleted = totalEpCount > 0 && mediaItem!!.episodes.indices.all { completedSet.contains(it) }
+        val isCompleted = if (isWatched) {
+            if (totalEpCount > 0) allEpisodesCompleted else (existing?.isCompleted ?: false)
+        } else {
+            false
+        }
+
+        val ep = mediaItem?.episodes?.getOrNull(episodeIndex)
+        val effectiveDuration = existing?.durationMs?.takeIf { it > 0L } ?: (ep?.durationMs ?: 0L)
+
+        val resolvedTitle = mediaItem?.title?.ifEmpty { existing?.title?.ifEmpty { title } ?: title }
+            ?: existing?.title?.ifEmpty { title } ?: title
+        val resolvedPoster = mediaItem?.posterUrl?.ifEmpty { existing?.posterUrl?.ifEmpty { posterUrl } ?: posterUrl }
+            ?: existing?.posterUrl?.ifEmpty { posterUrl } ?: posterUrl
+        val resolvedBackdrop = mediaItem?.bannerUrl?.ifEmpty { existing?.backdropUrl?.ifEmpty { backdropUrl } ?: backdropUrl }
+            ?: existing?.backdropUrl?.ifEmpty { backdropUrl } ?: backdropUrl
+        val resolvedCategory = mediaItem?.category?.ifEmpty { existing?.mediaType?.ifEmpty { mediaType } ?: mediaType }
+            ?: existing?.mediaType?.ifEmpty { mediaType } ?: mediaType
+        val resolvedEpTitle = ep?.title?.ifEmpty { existing?.episodeTitle?.ifEmpty { episodeTitle } ?: episodeTitle }
+            ?: existing?.episodeTitle?.ifEmpty { episodeTitle } ?: episodeTitle
+
+        val progress = PlaybackProgress(
+            mediaId = mediaId,
+            episodeNumber = if (isWatched) episodeIndex else (existing?.episodeNumber ?: episodeIndex),
+            positionMs = if (isWatched) (existing?.positionMs ?: 0L) else 0L,
+            durationMs = effectiveDuration,
+            lastUpdated = System.currentTimeMillis(),
+            title = resolvedTitle,
+            posterUrl = resolvedPoster,
+            backdropUrl = resolvedBackdrop,
+            mediaType = resolvedCategory,
+            episodeTitle = resolvedEpTitle,
+            seasonNumber = ep?.seasonNumber ?: (existing?.seasonNumber ?: 1),
+            isCompleted = isCompleted,
+            completedEpisodeIndices = completedSet
+        )
+
+        val updatedMap = _historyFlow.value.toMutableMap()
+        updatedMap[mediaId] = progress
+        _historyFlow.value = updatedMap
+        persistProgressInternal(progress)
+    }
+
+    /**
+     * Batch marks or unmarks all episodes in a season or collection as watched.
+     */
+    @Synchronized
+    fun markSeasonWatched(
+        mediaId: String,
+        episodeIndices: Collection<Int>,
+        isWatched: Boolean,
+        mediaItem: com.streamhub.app.data.models.MediaItem? = null
+    ) {
+        if (!::appContext.isInitialized || mediaId.isBlank() || episodeIndices.isEmpty()) return
+        val existing = _historyFlow.value[mediaId]
+        val completedSet = existing?.completedEpisodeIndices?.toMutableSet() ?: mutableSetOf()
+        if (isWatched) {
+            completedSet.addAll(episodeIndices)
+        } else {
+            completedSet.removeAll(episodeIndices.toSet())
+        }
+
+        val totalEpCount = mediaItem?.episodes?.size ?: 0
+        val allEpisodesCompleted = totalEpCount > 0 && mediaItem!!.episodes.indices.all { completedSet.contains(it) }
+        val isCompleted = if (isWatched) {
+            if (totalEpCount > 0) allEpisodesCompleted else (existing?.isCompleted ?: false)
+        } else {
+            false
+        }
+
+        val progress = PlaybackProgress(
+            mediaId = mediaId,
+            episodeNumber = existing?.episodeNumber ?: 0,
+            positionMs = existing?.positionMs ?: 0L,
+            durationMs = existing?.durationMs ?: 0L,
+            lastUpdated = System.currentTimeMillis(),
+            title = mediaItem?.title?.ifEmpty { existing?.title ?: "" } ?: (existing?.title ?: ""),
+            posterUrl = mediaItem?.posterUrl?.ifEmpty { existing?.posterUrl ?: "" } ?: (existing?.posterUrl ?: ""),
+            backdropUrl = mediaItem?.bannerUrl?.ifEmpty { existing?.backdropUrl ?: "" } ?: (existing?.backdropUrl ?: ""),
+            mediaType = mediaItem?.category?.ifEmpty { existing?.mediaType ?: "" } ?: (existing?.mediaType ?: ""),
+            episodeTitle = existing?.episodeTitle ?: "",
+            seasonNumber = existing?.seasonNumber ?: 1,
+            isCompleted = isCompleted,
+            completedEpisodeIndices = completedSet
+        )
+
+        val updatedMap = _historyFlow.value.toMutableMap()
+        updatedMap[mediaId] = progress
+        _historyFlow.value = updatedMap
+        persistProgressInternal(progress)
+    }
+
+    /**
+     * Checks if a specific episode index is marked watched.
+     */
+    fun isEpisodeWatched(mediaId: String, episodeIndex: Int): Boolean {
+        val progress = _historyFlow.value[mediaId] ?: return false
+        return progress.isCompleted || progress.completedEpisodeIndices.contains(episodeIndex)
     }
 
     /**
@@ -347,30 +488,11 @@ object WatchHistoryManager {
 
     @Synchronized
     fun restoreMediaProgress(progress: PlaybackProgress) {
-        if (progress.isCompleted) {
-            markAsCompleted(
-                mediaId = progress.mediaId,
-                title = progress.title,
-                posterUrl = progress.posterUrl,
-                backdropUrl = progress.backdropUrl,
-                mediaType = progress.mediaType,
-                episodeNumber = progress.episodeNumber,
-                seasonNumber = progress.seasonNumber
-            )
-        } else {
-            saveProgress(
-                mediaId = progress.mediaId,
-                episodeNumber = progress.episodeNumber,
-                positionMs = progress.positionMs,
-                durationMs = progress.durationMs,
-                title = progress.title,
-                posterUrl = progress.posterUrl,
-                backdropUrl = progress.backdropUrl,
-                mediaType = progress.mediaType,
-                episodeTitle = progress.episodeTitle,
-                seasonNumber = progress.seasonNumber
-            )
-        }
+        if (!::appContext.isInitialized || progress.mediaId.isBlank()) return
+        val updatedMap = _historyFlow.value.toMutableMap()
+        updatedMap[progress.mediaId] = progress
+        _historyFlow.value = updatedMap
+        persistProgressInternal(progress)
     }
 
     @Synchronized
@@ -417,6 +539,9 @@ object WatchHistoryManager {
                         put("episodeTitle", item.episodeTitle)
                         put("seasonNumber", item.seasonNumber)
                         put("isCompleted", item.isCompleted)
+                        val compArr = org.json.JSONArray()
+                        item.completedEpisodeIndices.forEach { compArr.put(it) }
+                        put("completedEpisodes", compArr)
                     }
                     prefs.putString(item.mediaId, json.toString())
                 }
@@ -444,6 +569,9 @@ object WatchHistoryManager {
                     put("episodeTitle", item.episodeTitle)
                     put("seasonNumber", item.seasonNumber)
                     put("isCompleted", item.isCompleted)
+                    val compArr = org.json.JSONArray()
+                    item.completedEpisodeIndices.forEach { compArr.put(it) }
+                    put("completedEpisodes", compArr)
                 }
                 prefs.putString(item.mediaId, json.toString())
             }

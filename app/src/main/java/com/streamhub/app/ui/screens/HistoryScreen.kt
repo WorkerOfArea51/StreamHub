@@ -58,6 +58,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -73,9 +75,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.streamhub.app.data.DownloadManager
+import com.streamhub.app.data.NetworkMonitor
+import com.streamhub.app.ui.components.ToastManager
 import com.streamhub.app.data.WatchHistoryManager
+import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.models.PlaybackProgress
+import com.streamhub.app.data.models.isFullyCompleted
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
@@ -98,6 +105,8 @@ fun HistoryScreen(
     val historyMap by WatchHistoryManager.historyFlow.collectAsState()
     val catalog by repository.mediaCatalog.collectAsState()
     val catalogById = remember(catalog) { catalog.associateBy { it.id } }
+    val downloadsList by DownloadManager.downloads.collectAsState()
+    val isOnline by NetworkMonitor.isOnline.collectAsState(initial = true)
 
     var selectedFilter by remember { mutableStateOf("All") }
     var searchQuery by remember { mutableStateOf("") }
@@ -346,15 +355,81 @@ fun HistoryScreen(
 
                         items(items, key = { it.mediaId }) { progress ->
                             val matchedMedia = catalogById[progress.mediaId]
+                            val completedForShow = remember(downloadsList, progress.mediaId) {
+                                downloadsList.filter { it.mediaId == progress.mediaId && it.isCompleted }.sortedBy { it.episodeIndex }
+                            }
                             HistoryItemCard(
                                 progress = progress,
                                 mediaItem = matchedMedia,
                                 onCardClick = {
-                                    if (matchedMedia != null) onMediaClick(matchedMedia)
+                                    if (matchedMedia != null) {
+                                        onMediaClick(matchedMedia)
+                                    } else if (completedForShow.isNotEmpty()) {
+                                        val targetDownload = completedForShow.firstOrNull { it.episodeIndex == progress.episodeNumber } ?: completedForShow.first()
+                                        val offlineMedia = MediaItem(
+                                            id = "offline:${targetDownload.mediaId}:${targetDownload.episodeIndex}",
+                                            title = targetDownload.mediaTitle.ifEmpty { progress.title },
+                                            posterUrl = targetDownload.posterUrl.ifEmpty { progress.posterUrl },
+                                            category = progress.mediaType,
+                                            type = progress.mediaType,
+                                            episodes = completedForShow.map { dl ->
+                                                Episode(
+                                                    episodeNumber = dl.episodeIndex,
+                                                    title = dl.episodeTitle,
+                                                    streamUrl = dl.localFilePath
+                                                )
+                                            }
+                                        )
+                                        onMediaClick(offlineMedia)
+                                    }
                                 },
                                 onResumePlay = {
-                                    if (matchedMedia != null) {
-                                        onPlayEpisode(matchedMedia, progress.episodeNumber)
+                                    if (!isOnline) {
+                                        if (completedForShow.isEmpty()) {
+                                            ToastManager.showToast("Cannot stream while offline. No downloaded episodes found.", Icons.Default.WifiOff)
+                                        } else {
+                                            val targetDownload = completedForShow.firstOrNull { it.episodeIndex == progress.episodeNumber } ?: completedForShow.first()
+                                            val targetIndex = completedForShow.indexOfFirst { it.episodeIndex == targetDownload.episodeIndex }.coerceAtLeast(0)
+                                            val offlineMedia = MediaItem(
+                                                id = "offline:${targetDownload.mediaId}:${targetDownload.episodeIndex}",
+                                                title = targetDownload.mediaTitle.ifEmpty { progress.title.ifEmpty { matchedMedia?.title ?: "Offline Media" } },
+                                                posterUrl = targetDownload.posterUrl.ifEmpty { progress.posterUrl.ifEmpty { matchedMedia?.posterUrl ?: "" } },
+                                                category = matchedMedia?.category ?: progress.mediaType,
+                                                type = matchedMedia?.type ?: progress.mediaType,
+                                                episodes = completedForShow.map { dl ->
+                                                    Episode(
+                                                        episodeNumber = dl.episodeIndex,
+                                                        title = dl.episodeTitle,
+                                                        streamUrl = dl.localFilePath
+                                                    )
+                                                }
+                                            )
+                                            onPlayEpisode(offlineMedia, targetIndex)
+                                        }
+                                    } else {
+                                        if (matchedMedia != null) {
+                                            onPlayEpisode(matchedMedia, progress.episodeNumber)
+                                        } else if (completedForShow.isNotEmpty()) {
+                                            val targetDownload = completedForShow.firstOrNull { it.episodeIndex == progress.episodeNumber } ?: completedForShow.first()
+                                            val targetIndex = completedForShow.indexOfFirst { it.episodeIndex == targetDownload.episodeIndex }.coerceAtLeast(0)
+                                            val offlineMedia = MediaItem(
+                                                id = "offline:${targetDownload.mediaId}:${targetDownload.episodeIndex}",
+                                                title = targetDownload.mediaTitle.ifEmpty { progress.title },
+                                                posterUrl = targetDownload.posterUrl.ifEmpty { progress.posterUrl },
+                                                category = progress.mediaType,
+                                                type = progress.mediaType,
+                                                episodes = completedForShow.map { dl ->
+                                                    Episode(
+                                                        episodeNumber = dl.episodeIndex,
+                                                        title = dl.episodeTitle,
+                                                        streamUrl = dl.localFilePath
+                                                    )
+                                                }
+                                            )
+                                            onPlayEpisode(offlineMedia, targetIndex)
+                                        } else {
+                                            ToastManager.showToast("Loading media details...", Icons.Default.Info)
+                                        }
                                     }
                                 },
                                 onRemove = {
@@ -438,6 +513,10 @@ fun HistoryItemCard(
     onResumePlay: () -> Unit,
     onRemove: () -> Unit
 ) {
+    val totalEpisodes = mediaItem?.episodes?.size ?: 0
+    val isFullyDone = progress.isFullyCompleted(totalEpisodes)
+    val watchedEpisodesCount = if (progress.isCompleted && totalEpisodes > 0) totalEpisodes else progress.completedEpisodeIndices.size
+
     val progressFraction = if (progress.durationMs > 0) {
         (progress.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0f, 1f)
     } else 0f
@@ -550,7 +629,7 @@ fun HistoryItemCard(
                                 .fillMaxHeight()
                                 .fillMaxWidth(progressFraction.coerceIn(0.04f, 1f))
                                 .clip(CircleShape)
-                                .background(if (progress.isCompleted) Color(0xFF00E676) else PrimaryRed)
+                                .background(if (isFullyDone) Color(0xFF00E676) else PrimaryRed)
                         )
                     }
                 }
@@ -587,28 +666,44 @@ fun HistoryItemCard(
                 Spacer(modifier = Modifier.height(3.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (progress.isCompleted) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = "Completed",
-                                tint = Color(0xFF00E676),
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
+                    if (isFullyDone) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFF10B981).copy(alpha = 0.15f)
+                        ) {
                             Text(
-                                text = "Completed",
-                                color = Color(0xFF00E676),
+                                text = "✓ Watched",
+                                color = Color(0xFF10B981),
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 4.5.dp, vertical = 1.5.dp)
+                            )
+                        }
+                        if (!isMovie && totalEpisodes > 1) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "• All Watched ✓",
+                                color = Color(0xFF34D399),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                     } else {
+                        val progressText = if (remainingMinutes > 0) "$remainingMinutes min left" else "In Progress"
                         Text(
-                            text = if (remainingMinutes > 0) "$remainingMinutes min left" else "In Progress",
+                            text = progressText,
                             color = TextSecondary,
                             fontSize = 11.sp
                         )
+                        if (!isMovie && totalEpisodes > 0 && watchedEpisodesCount > 0) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "• $watchedEpisodesCount/$totalEpisodes Watched",
+                                color = Color(0xFF34D399),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
 
                     Text(

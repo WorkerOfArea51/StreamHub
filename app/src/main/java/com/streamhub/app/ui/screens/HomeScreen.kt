@@ -109,6 +109,7 @@ import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.models.PlaybackProgress
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.data.models.matchesCategory
+import com.streamhub.app.data.models.isFullyCompleted
 import com.streamhub.app.data.models.isActivelyTrending
 import com.streamhub.app.ui.components.AdminEditorDialog
 import com.streamhub.app.ui.components.MediaCard
@@ -242,8 +243,12 @@ fun HomeScreen(
     }
 
     val featuredItems = remember(filteredCatalog) {
-        val featured = filteredCatalog.filter { it.isFeatured }
-        if (featured.isNotEmpty()) featured else filteredCatalog.take(5)
+        val explicitFeatured = filteredCatalog.filter { it.isFeatured }
+        val pool = (explicitFeatured + filteredCatalog).distinctBy { it.id }
+        pool.sortedWith(
+            compareByDescending<MediaItem> { it.createdAt }
+                .thenByDescending { it.id }
+        ).take(5)
     }
 
     val continueWatchingList = remember(catalog, watchHistoryMap, selectedCategoryFilter) {
@@ -253,8 +258,17 @@ fun HomeScreen(
                 val media = catalogMap[progress.mediaId] ?: return@mapNotNull null
                 val isMatchingCategory = media.matchesCategory(selectedCategoryFilter)
                 if (!isMatchingCategory) return@mapNotNull null
-                val completed = progress.isCompleted || (progress.durationMs > 0 && progress.positionMs >= (progress.durationMs * 0.95))
-                if (completed) null else Pair(media, progress)
+                val isMovie = media.category.equals("Movie", ignoreCase = true) ||
+                        media.category.equals("Movies", ignoreCase = true) ||
+                        progress.mediaType.equals("Movie", ignoreCase = true) ||
+                        progress.mediaType.equals("Movies", ignoreCase = true) ||
+                        media.episodes.size <= 1
+                val isCompleted = if (isMovie) {
+                    progress.isFullyCompleted(1) || (progress.durationMs > 0 && progress.positionMs >= (progress.durationMs * 0.92f))
+                } else {
+                    progress.isFullyCompleted(media.episodes.size)
+                }
+                if (isCompleted) null else Pair(media, progress)
             }
             .sortedByDescending { it.second.lastUpdated }
     }
@@ -294,7 +308,7 @@ fun HomeScreen(
         .map { it.first }
 
         if (candidates.size >= 2) {
-            Pair("Because You Watched ${sourceMedia.title}", candidates.take(12))
+            Pair("💡 Because You Watched ${sourceMedia.title}", candidates.take(12))
         } else null
     }
 
@@ -317,26 +331,26 @@ fun HomeScreen(
         val acclaimed = filteredCatalog.filter { (it.rating.toDoubleOrNull() ?: 0.0) >= 8.0 }
             .sortedByDescending { it.rating.toDoubleOrNull() ?: 0.0 }
         if (acclaimed.size >= 2) {
-            shelves.add(Pair("Critically Acclaimed (8.0+)", acclaimed))
+            shelves.add(Pair("⭐ Critically Acclaimed (8.0+)", acclaimed))
         }
 
         // 2. Action & High Stakes
-        addGenreShelf("Action & High Stakes", "action", "adventure", "martial arts", "military")
+        addGenreShelf("💥 Action & High Stakes", "action", "adventure", "martial arts", "military")
 
         // 3. Fantasy & Supernatural
-        addGenreShelf("Fantasy & Supernatural", "fantasy", "supernatural", "magic", "isekai", "super power", "mythology")
+        addGenreShelf("🔮 Fantasy & Supernatural", "fantasy", "supernatural", "magic", "isekai", "super power", "mythology")
 
         // 4. Mystery, Crime & Psychological Thrillers
-        addGenreShelf("Mystery & Thrillers", "mystery", "thriller", "psychological", "crime", "detective", "suspense")
+        addGenreShelf("🕵️ Mystery & Thrillers", "mystery", "thriller", "psychological", "crime", "detective", "suspense")
 
         // 5. Romance & Drama
-        addGenreShelf("Romance & Drama", "romance", "drama", "school", "shoujo", "slice of life")
+        addGenreShelf("💖 Romance & Drama", "romance", "drama", "school", "shoujo", "slice of life")
 
         // 6. Sci-Fi & Futuristic
-        addGenreShelf("Sci-Fi & Cyberpunk", "sci-fi", "science fiction", "mecha", "space", "cyberpunk")
+        addGenreShelf("🚀 Sci-Fi & Cyberpunk", "sci-fi", "science fiction", "mecha", "space", "cyberpunk")
 
         // 7. Comedy & Feel-Good
-        addGenreShelf("Comedy & Satire", "comedy", "parody", "gag", "funny")
+        addGenreShelf("😂 Comedy & Satire", "comedy", "parody", "gag", "funny")
 
         shelves
     }
@@ -376,13 +390,13 @@ fun HomeScreen(
 
         val shelves = mutableListOf<CategoryShelf>()
         if (movies.isNotEmpty()) {
-            shelves.add(CategoryShelf("MOVIES", "Blockbuster Movies", movies, firstMovieIndex))
+            shelves.add(CategoryShelf("MOVIES", "🎬 Blockbuster Movies", movies, firstMovieIndex))
         }
         if (anime.isNotEmpty()) {
-            shelves.add(CategoryShelf("ANIME", "Top Rated Anime", anime, firstAnimeIndex))
+            shelves.add(CategoryShelf("ANIME", "🌸 Top Rated Anime", anime, firstAnimeIndex))
         }
         if (series.isNotEmpty()) {
-            shelves.add(CategoryShelf("SERIES", "Popular Web Series", series, firstSeriesIndex))
+            shelves.add(CategoryShelf("SERIES", "📺 Popular Web Series", series, firstSeriesIndex))
         }
 
         // Dynamically rank shelves so the category with the most recently added title appears on top!
@@ -762,18 +776,23 @@ fun HomeScreen(
                     OfflineDownloadsShelf(
                         downloads = completedDownloads,
                         onPlay = { downloadItem ->
+                            val completedForShow = completedDownloads.filter { it.mediaId == downloadItem.mediaId }.sortedBy { it.episodeIndex }
+                            val playlist = if (completedForShow.isNotEmpty()) completedForShow else listOf(downloadItem)
+                            val targetIndex = playlist.indexOfFirst { it.episodeIndex == downloadItem.episodeIndex }.coerceAtLeast(0)
                             val offlineMediaId = "offline:${downloadItem.mediaId}:${downloadItem.episodeIndex}"
-                            val localEpisode = com.streamhub.app.data.models.Episode(
-                                title = downloadItem.episodeTitle,
-                                streamUrl = downloadItem.localFilePath
-                            )
                             val offlineMedia = MediaItem(
                                 id = offlineMediaId,
                                 title = downloadItem.mediaTitle,
                                 posterUrl = downloadItem.posterUrl,
-                                episodes = listOf(localEpisode)
+                                episodes = playlist.map { dl ->
+                                    com.streamhub.app.data.models.Episode(
+                                        episodeNumber = dl.episodeIndex,
+                                        title = dl.episodeTitle,
+                                        streamUrl = dl.localFilePath
+                                    )
+                                }
                             )
-                            onPlayEpisode(offlineMedia, 0)
+                            onPlayEpisode(offlineMedia, targetIndex)
                         },
                         onViewAll = onNavigateToDownloads
                     )
@@ -849,10 +868,10 @@ fun HomeScreen(
             // 1. Trending & Popular Row (Contextual tab title & auto-vanishes when empty)
             if (layoutConfig.showTrendingSection && trendingItems.isNotEmpty()) {
                 val trendingSectionTitle = when (selectedCategoryFilter.uppercase()) {
-                    "MOVIES", "MOVIE" -> "Trending Movies"
-                    "ANIME" -> "Trending Anime"
-                    "SERIES", "WEB_SERIES" -> "Trending Series"
-                    else -> "Trending & Popular"
+                    "MOVIES", "MOVIE" -> "🔥 Trending Movies"
+                    "ANIME" -> "🔥 Trending Anime"
+                    "SERIES", "WEB_SERIES" -> "🔥 Trending Series"
+                    else -> "🔥 Trending & Popular"
                 }
                 item(key = "section_trending") {
                     MediaSectionRow(
@@ -868,7 +887,7 @@ fun HomeScreen(
             if (layoutConfig.showRecentlyAdded && recentlyAddedItems.isNotEmpty()) {
                 item(key = "section_recently_added") {
                     MediaSectionRow(
-                        title = "Recently Added",
+                        title = "✨ Recently Added",
                         items = recentlyAddedItems,
                         onMediaClick = onMediaClick,
                         onMediaLongClick = { item -> selectedQuickActionMedia = item }
@@ -1046,7 +1065,7 @@ fun HomeScreen(
                 selectedQuickActionMedia = null
                 onMediaClick(media)
             },
-            onRemoveFromHistory = if (progress != null && !progress.isCompleted) {
+            onRemoveFromHistory = if (progress != null && !progress.isFullyCompleted(media.episodes.size)) {
                 {
                     selectedQuickActionMedia = null
                     val previousProgress = progress
@@ -1183,7 +1202,7 @@ fun ContinueWatchingSection(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = "Continue Watching",
+                    text = "▶️ Continue Watching",
                     color = TextPrimary,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold

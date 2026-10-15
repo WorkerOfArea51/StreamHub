@@ -36,7 +36,7 @@ class StorageCacheManagerTest {
     fun cacheConfig_defaults_areStandard() {
         val config = CacheConfig()
         assertEquals(-1, config.cacheLimitMb)
-        assertEquals(-1, config.cacheTtlHours)
+        assertEquals(72, config.cacheTtlHours) // 3 Days default (no Never)
         assertTrue(config.keepWatchedForInstantResume)
     }
 }

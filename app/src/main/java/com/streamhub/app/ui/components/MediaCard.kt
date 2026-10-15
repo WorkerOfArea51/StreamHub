@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.streamhub.app.data.models.MediaItem
+import com.streamhub.app.data.models.isFullyCompleted
 import com.streamhub.app.ui.theme.AccentGold
 import com.streamhub.app.ui.theme.CardBorderDark
 import com.streamhub.app.ui.theme.PrimaryRed
@@ -102,7 +103,8 @@ fun MediaCard(
 
     val watchHistory by WatchHistoryManager.historyFlow.collectAsState()
     val progress = watchHistory[item.id]
-    val isWatchingInProgress = progress != null && progress.positionMs > 5000L && progress.durationMs > 0L && !progress.isCompleted
+    val isCompleted = progress?.isFullyCompleted(item.episodes.size) == true
+    val isWatchingInProgress = progress != null && progress.positionMs > 5000L && progress.durationMs > 0L && !isCompleted
     val progressFraction = if (isWatchingInProgress && progress != null) {
         (progress.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0.04f, 1f)
     } else 0f
@@ -218,7 +220,7 @@ fun MediaCard(
                             .background(PrimaryRed)
                     )
                 }
-            } else if (progress?.isCompleted == true) {
+            } else if (isCompleted) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)

@@ -77,7 +77,7 @@
             android:launchMode="singleTask"
             android:supportsPictureInPicture="true"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
-            android:label="@string/app_name"
+            android:label="${appName}"
             android:theme="@style/Theme.StreamHub">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

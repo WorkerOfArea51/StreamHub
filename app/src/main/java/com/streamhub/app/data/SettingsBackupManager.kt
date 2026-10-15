@@ -318,8 +318,7 @@ object SettingsBackupManager {
 
             // 7. Restore Download Settings
             payload.downloadSettings?.let { ds ->
-                DownloadSettingsManager.updateAutoResumeOnWifi(ds.autoResumeOnWifi)
-                DownloadSettingsManager.updateDownloadOverWifiOnly(ds.downloadOverWifiOnly)
+                DownloadSettingsManager.restoreSettings(ds)
             }
 
             // 8. Restore Search History

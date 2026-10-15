@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Whatshot
 import java.util.Locale
+import com.streamhub.app.data.models.isActivelyTrending
 import com.streamhub.app.data.StreamBackendConfig
 import com.streamhub.app.data.repository.FirebaseRepository
 import androidx.compose.material3.AlertDialog
@@ -152,9 +153,9 @@ fun AdminEditorDialog(
         )
     }
     var description by remember(initialItem) { mutableStateOf(initialItem?.description ?: "") }
-    var isFeatured by remember(initialItem) { mutableStateOf(initialItem?.isFeatured ?: true) }
-    var isTrending by remember(initialItem) { mutableStateOf(initialItem?.isTrending ?: true) }
-    var trendingAt by remember(initialItem) { mutableStateOf(initialItem?.trendingAt ?: 0L) }
+    var isFeatured by remember(initialItem) { mutableStateOf(initialItem?.isFeatured ?: false) }
+    var isTrending by remember(initialItem) { mutableStateOf(initialItem?.isActivelyTrending() ?: false) }
+    var trendingAt by remember(initialItem) { mutableStateOf(if (initialItem?.isActivelyTrending() == true) initialItem.trendingAt else 0L) }
     val isAnimeCat = category.equals("Anime", ignoreCase = true) ||
                      category.equals("ANIMES", ignoreCase = true) ||
                      category.contains("Anime", ignoreCase = true) ||
@@ -263,8 +264,8 @@ fun AdminEditorDialog(
             ?: itemToEdit.posterUrl.takeIf { !it.equals("null", ignoreCase = true) } ?: ""
         description = itemToEdit.description
         isFeatured = itemToEdit.isFeatured
-        isTrending = itemToEdit.isTrending
-        trendingAt = itemToEdit.trendingAt
+        isTrending = itemToEdit.isActivelyTrending()
+        trendingAt = if (itemToEdit.isActivelyTrending()) itemToEdit.trendingAt else 0L
         franchiseId = itemToEdit.franchiseId
         franchiseTitle = itemToEdit.franchiseTitle
         seasonNumberText = if (itemToEdit.seasonNumber > 0) itemToEdit.seasonNumber.toString() else ""
@@ -590,6 +591,8 @@ fun AdminEditorDialog(
                                         isTrending = !isTrending
                                         if (isTrending) {
                                             trendingAt = System.currentTimeMillis()
+                                        } else {
+                                            trendingAt = 0L
                                         }
                                     }
                             ) {
@@ -686,9 +689,6 @@ fun AdminEditorDialog(
                                             if (meta.seasonNumber > 0) seasonNumberText = meta.seasonNumber.toString()
                                             if (meta.seasonTitle.isNotBlank()) seasonTitle = meta.seasonTitle
                                             if (meta.relationType.isNotBlank()) relationType = meta.relationType
-                                            isFeatured = true
-                                            isTrending = true
-                                            trendingAt = System.currentTimeMillis()
                                         },
                                         onFailure = { err ->
                                             fetchError = "Auto-fetch failed: ${err.message}"

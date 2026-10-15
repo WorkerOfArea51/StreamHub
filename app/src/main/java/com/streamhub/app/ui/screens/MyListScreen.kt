@@ -104,6 +104,7 @@ import com.streamhub.app.data.MyListManager
 import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.models.PlaybackProgress
+import com.streamhub.app.data.models.isFullyCompleted
 import com.streamhub.app.data.repository.FirebaseRepository
 import com.streamhub.app.ui.components.FolderSelectionDialog
 import com.streamhub.app.ui.components.MediaCard
@@ -230,14 +231,15 @@ fun MyListScreen(
     val inProgressMedia = remember(allSavedMedia, historyMap) {
         allSavedMedia.filter { item ->
             val progress = historyMap[item.id]
-            progress != null && !progress.isCompleted && progress.positionMs > 5000L
+            val isCompleted = progress?.isFullyCompleted(item.episodes.size) == true
+            progress != null && !isCompleted && progress.positionMs > 5000L
         }
     }
 
     val completedMedia = remember(allSavedMedia, historyMap) {
         allSavedMedia.filter { item ->
             val progress = historyMap[item.id]
-            progress != null && progress.isCompleted
+            progress != null && progress.isFullyCompleted(item.episodes.size)
         }
     }
 

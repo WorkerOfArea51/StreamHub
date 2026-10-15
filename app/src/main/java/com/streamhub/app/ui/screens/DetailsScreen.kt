@@ -63,6 +63,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -72,6 +73,7 @@ import com.streamhub.app.data.api.ExtendedMediaDetails
 import com.streamhub.app.data.MyListManager
 import com.streamhub.app.data.NetworkMonitor
 import com.streamhub.app.data.WatchHistoryManager
+import com.streamhub.app.data.models.isFullyCompleted
 import com.streamhub.app.data.FranchiseTagType
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -890,19 +892,20 @@ fun DetailsScreen(
                                     }
                                     val targetDownload = completedDownloads.firstOrNull { it.episodeIndex == targetPlayIndex }
                                         ?: completedDownloads.first()
+                                    val targetIndex = completedDownloads.indexOfFirst { it.episodeIndex == targetDownload.episodeIndex }.coerceAtLeast(0)
                                     val offlineMedia = MediaItem(
                                         id = "offline:${targetDownload.mediaId}:${targetDownload.episodeIndex}",
                                         title = targetDownload.mediaTitle,
                                         posterUrl = targetDownload.posterUrl,
-                                        episodes = listOf(
+                                        episodes = completedDownloads.map { dl ->
                                             Episode(
-                                                episodeNumber = targetDownload.episodeIndex,
-                                                title = targetDownload.episodeTitle,
-                                                streamUrl = targetDownload.localFilePath
+                                                episodeNumber = dl.episodeIndex,
+                                                title = dl.episodeTitle,
+                                                streamUrl = dl.localFilePath
                                             )
-                                        )
+                                        }
                                     )
-                                    onPlayEpisode(offlineMedia, 0)
+                                    onPlayEpisode(offlineMedia, targetIndex)
                                     return@Button
                                 }
                                 onPlayEpisode(mediaItem, targetPlayIndex)
@@ -1364,7 +1367,21 @@ fun DetailsScreen(
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            // Row 2: Brought down Arc Title / Prologue Header (Fully visible & unclipped)
+                            val seasonWatchedCount = remember(seasonFilteredEpisodes, mediaProgress?.completedEpisodeIndices, mediaProgress?.isCompleted) {
+                                if (mediaProgress?.isCompleted == true) {
+                                    seasonFilteredEpisodes.size
+                                } else {
+                                    val completed = mediaProgress?.completedEpisodeIndices ?: emptySet()
+                                    seasonFilteredEpisodes.count { ep ->
+                                        val origIdx = mediaItem.episodes.indexOf(ep)
+                                        origIdx >= 0 && completed.contains(origIdx)
+                                    }
+                                }
+                            }
+                            val isEntireSeasonWatched = seasonFilteredEpisodes.isNotEmpty() && seasonWatchedCount == seasonFilteredEpisodes.size
+                            val watchedLabel = if (isEntireSeasonWatched) "• All Watched ✓" else "• $seasonWatchedCount/${seasonFilteredEpisodes.size} Watched"
+
+                            // Row 2: Brought down Arc Title / Prologue Header (Fully visible & unclipped) + Season Progress
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
@@ -1388,10 +1405,10 @@ fun DetailsScreen(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "• ${seasonFilteredEpisodes.size} Episodes",
-                                        color = TextSecondary,
+                                        text = watchedLabel,
+                                        color = if (isEntireSeasonWatched) Color(0xFF34D399) else TextSecondary,
                                         fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium
+                                        fontWeight = if (isEntireSeasonWatched) FontWeight.Bold else FontWeight.Medium
                                     )
                                 } else {
                                     Text(
@@ -1402,11 +1419,58 @@ fun DetailsScreen(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "• ${seasonFilteredEpisodes.size} Episodes",
-                                        color = TextSecondary,
+                                        text = watchedLabel,
+                                        color = if (isEntireSeasonWatched) Color(0xFF34D399) else TextSecondary,
                                         fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium
+                                        fontWeight = if (isEntireSeasonWatched) FontWeight.Bold else FontWeight.Medium
                                     )
+                                }
+
+                                if (seasonFilteredEpisodes.isNotEmpty() && (!isMovie || mediaItem.episodes.size > 1)) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    val haptics = LocalHapticFeedback.current
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isEntireSeasonWatched) Color(0x2210B981) else Color(0x1AFFFFFF),
+                                        border = BorderStroke(1.dp, if (isEntireSeasonWatched) Color(0x6610B981) else Color(0x26FFFFFF)),
+                                        modifier = Modifier
+                                            .bouncyTouch()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                val seasonIndices = seasonFilteredEpisodes.mapNotNull { ep ->
+                                                    val idx = mediaItem.episodes.indexOf(ep)
+                                                    if (idx >= 0) idx else null
+                                                }
+                                                if (seasonIndices.isNotEmpty()) {
+                                                    val newWatched = !isEntireSeasonWatched
+                                                    WatchHistoryManager.markSeasonWatched(mediaItem.id, seasonIndices, newWatched, mediaItem)
+                                                    ToastManager.showToast(
+                                                        if (newWatched) "Marked Season as Watched ✓" else "Marked Season as Unwatched ↺",
+                                                        if (newWatched) Icons.Default.Check else Icons.Default.Refresh
+                                                    )
+                                                }
+                                            }
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = if (isEntireSeasonWatched) Color(0xFF34D399) else TextSecondary,
+                                                modifier = Modifier.size(11.dp)
+                                            )
+                                            Text(
+                                                text = if (isEntireSeasonWatched) "Season Watched" else "Mark Watched",
+                                                color = if (isEntireSeasonWatched) Color(0xFF34D399) else TextSecondary,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1473,20 +1537,23 @@ fun DetailsScreen(
                             isGlowing = isEpisodeGlowing,
                             onPlay = {
                                 com.streamhub.app.player.StreamPreloadManager.cancelDetailsPrewarm()
-                                if (isDownloaded && downloadItem != null) {
+                                if (downloadItem != null && downloadItem.isCompleted) {
+                                    val completedForShow = downloads.filter { it.mediaId == mediaItem.id && it.isCompleted }.sortedBy { it.episodeIndex }
+                                    val playlist = if (completedForShow.isNotEmpty()) completedForShow else listOf(downloadItem)
+                                    val targetIndex = playlist.indexOfFirst { it.episodeIndex == downloadItem.episodeIndex }.coerceAtLeast(0)
                                     val offlineMedia = MediaItem(
                                         id = "offline:${downloadItem.mediaId}:${downloadItem.episodeIndex}",
                                         title = downloadItem.mediaTitle,
                                         posterUrl = downloadItem.posterUrl,
-                                        episodes = listOf(
+                                        episodes = playlist.map { dl ->
                                             Episode(
-                                                episodeNumber = downloadItem.episodeIndex,
-                                                title = downloadItem.episodeTitle,
-                                                streamUrl = downloadItem.localFilePath
+                                                episodeNumber = dl.episodeIndex,
+                                                title = dl.episodeTitle,
+                                                streamUrl = dl.localFilePath
                                             )
-                                        )
+                                        }
                                     )
-                                    onPlayEpisode(offlineMedia, 0)
+                                    onPlayEpisode(offlineMedia, targetIndex)
                                 } else if (!isOnline) {
                                     ToastManager.showToast("Cannot stream while offline. Connect to internet first.", Icons.Default.WifiOff)
                                 } else {
@@ -1750,7 +1817,7 @@ fun DetailsScreen(
         )
     }
 
-    if (showFolderSelectionDialog && mediaItem != null) {
+    if (showFolderSelectionDialog) {
         FolderSelectionDialog(
             mediaItem = mediaItem,
             onDismiss = { showFolderSelectionDialog = false }
@@ -1758,6 +1825,7 @@ fun DetailsScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun EpisodeRowItem(
     episode: Episode,
@@ -1810,13 +1878,17 @@ fun EpisodeRowItem(
     }.joinToString(" • ")
     val watchHistoryMap by WatchHistoryManager.historyFlow.collectAsState()
     val mediaProgress = watchHistoryMap[mediaItem.id]
+    val isEpisodeWatched = mediaProgress != null && (
+        mediaProgress.isCompleted ||
+        mediaProgress.completedEpisodeIndices.contains(index)
+    )
     val isCurrentEp = mediaProgress != null && (
         mediaProgress.episodeNumber == episode.episodeNumber - 1 ||
         mediaProgress.episodeNumber == index ||
         (mediaProgress.episodeTitle.isNotBlank() && mediaProgress.episodeTitle.equals(episode.title, ignoreCase = true))
     )
-    val hasEpProgress = isCurrentEp && mediaProgress != null && mediaProgress.positionMs > 5000L && mediaProgress.durationMs > 0L
-    val epFraction = if (hasEpProgress && mediaProgress != null) {
+    val hasEpProgress = !isEpisodeWatched && isCurrentEp && mediaProgress.positionMs > 5000L && mediaProgress.durationMs > 0L
+    val epFraction = if (hasEpProgress) {
         (mediaProgress.positionMs.toFloat() / mediaProgress.durationMs.toFloat()).coerceIn(0.04f, 1f)
     } else 0f
 
@@ -1866,12 +1938,24 @@ fun EpisodeRowItem(
                 .padding(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val haptics = LocalHapticFeedback.current
             // Playable left & center area
             Row(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable { onPlay() },
+                    .combinedClickable(
+                        onClick = { onPlay() },
+                        onLongClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            val newWatched = !isEpisodeWatched
+                            WatchHistoryManager.markEpisodeWatched(mediaItem.id, index, newWatched, mediaItem)
+                            ToastManager.showToast(
+                                if (newWatched) "Episode ${episode.episodeNumber} Marked as Watched ✓" else "Episode ${episode.episodeNumber} Marked as Unwatched ↺",
+                                if (newWatched) Icons.Default.Check else Icons.Default.Refresh
+                            )
+                        }
+                    ),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Thumbnail with Duration & Play overlay
@@ -2023,80 +2107,122 @@ fun EpisodeRowItem(
                         )
                     }
 
-                    when {
-                        isDownloaded -> {
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = Color(0x2610B981),
-                                border = BorderStroke(1.dp, Color(0x6610B981)),
-                                modifier = Modifier.padding(top = 4.dp)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    val hasStatusChips = isEpisodeWatched || isDownloaded || isDownloading || isQueued || !isOnline
+                    if (hasStatusChips) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = 4.dp)
+                        ) {
+                            if (isEpisodeWatched) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = Color(0x2610B981),
+                                    border = BorderStroke(1.dp, Color(0x6610B981)),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .clickable {
+                                            val newWatched = !isEpisodeWatched
+                                            WatchHistoryManager.markEpisodeWatched(mediaItem.id, index, newWatched, mediaItem)
+                                            ToastManager.showToast(
+                                                if (newWatched) "Episode ${episode.episodeNumber} Marked as Watched ✓" else "Episode ${episode.episodeNumber} Marked as Unwatched ↺",
+                                                if (newWatched) Icons.Default.Check else Icons.Default.Refresh
+                                            )
+                                        }
                                 ) {
-                                    Icon(
-                                        Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = Color(0xFF34D399),
-                                        modifier = Modifier.size(11.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        text = "Offline Ready",
-                                        color = Color(0xFF34D399),
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = Color(0xFF34D399),
+                                            modifier = Modifier.size(11.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = "Watched",
+                                            color = Color(0xFF34D399),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
                             }
-                        }
-                        isDownloading -> {
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = Color(0x2200E5FF),
-                                border = BorderStroke(0.5.dp, Color(0x5500E5FF)),
-                                modifier = Modifier.padding(top = 4.dp)
-                            ) {
-                                Text(
-                                    text = "Downloading $downloadProgress%",
-                                    color = Color(0xFF00E5FF),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                        isQueued -> {
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = Color(0x268B5CF6),
-                                border = BorderStroke(0.5.dp, Color(0x668B5CF6)),
-                                modifier = Modifier.padding(top = 4.dp)
-                            ) {
-                                Text(
-                                    text = "In Queue ⏳",
-                                    color = Color(0xFFB388FF),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                        !isOnline -> {
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = Color(0x1AFFFFFF),
-                                border = BorderStroke(0.5.dp, Color(0x33FFFFFF)),
-                                modifier = Modifier.padding(top = 4.dp)
-                            ) {
-                                Text(
-                                    text = "Requires Internet 🌐",
-                                    color = Color(0xFF9E9EA8),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
+
+                            when {
+                                isDownloaded -> {
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color(0x2610B981),
+                                        border = BorderStroke(1.dp, Color(0x6610B981))
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = Color(0xFF34D399),
+                                                modifier = Modifier.size(11.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                text = "Offline Ready",
+                                                color = Color(0xFF34D399),
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                                isDownloading -> {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = Color(0x2200E5FF),
+                                        border = BorderStroke(0.5.dp, Color(0x5500E5FF))
+                                    ) {
+                                        Text(
+                                            text = "Downloading $downloadProgress%",
+                                            color = Color(0xFF00E5FF),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                                isQueued -> {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = Color(0x268B5CF6),
+                                        border = BorderStroke(0.5.dp, Color(0x668B5CF6))
+                                    ) {
+                                        Text(
+                                            text = "In Queue ⏳",
+                                            color = Color(0xFFB388FF),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                                !isOnline -> {
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Color(0x1AFFFFFF),
+                                        border = BorderStroke(0.5.dp, Color(0x33FFFFFF))
+                                    ) {
+                                        Text(
+                                            text = "Requires Internet 🌐",
+                                            color = Color(0xFF9E9EA8),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -2162,7 +2288,7 @@ private fun FranchiseCard(
 
     val watchHistoryMap by WatchHistoryManager.historyFlow.collectAsState()
     val fProgress = watchHistoryMap[fItem.id] ?: remember(fItem.id) { WatchHistoryManager.getProgress(fItem.id) }
-    val isCompleted = fProgress?.isCompleted == true
+    val isCompleted = fProgress?.isFullyCompleted(fItem.episodes.size) == true
     val isWatchingInProgress = fProgress != null && fProgress.positionMs > 5000L && fProgress.durationMs > 0L && !isCompleted
     val progressFraction = if (isWatchingInProgress) {
         (fProgress!!.positionMs.toFloat() / fProgress.durationMs.toFloat()).coerceIn(0.04f, 1f)

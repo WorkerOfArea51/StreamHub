@@ -48,6 +48,7 @@ import coil.compose.AsyncImage
 import com.streamhub.app.data.MyListManager
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.models.PlaybackProgress
+import com.streamhub.app.data.models.isFullyCompleted
 import com.streamhub.app.ui.theme.AccentGold
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.CardBorderDark
@@ -86,7 +87,7 @@ fun MediaQuickActionsSheet(
             media.category.equals("Movies", ignoreCase = true) ||
             media.type.equals("Movie", ignoreCase = true)
 
-    val isCompleted = progress?.isCompleted == true
+    val isCompleted = progress?.isFullyCompleted(media.episodes.size) == true
     val isWatchingInProgress = progress != null && progress.positionMs > 5000L &&
             progress.durationMs > 0L && !isCompleted
 

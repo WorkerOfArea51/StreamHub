@@ -82,6 +82,7 @@ import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import com.streamhub.app.data.DownloadManager
+import com.streamhub.app.data.DownloadSettingsManager
 import kotlinx.coroutines.launch
 
 private data class ShowDownloadGroup(
@@ -103,6 +104,7 @@ fun StorageManagementScreen(
     val metrics by StorageCacheManager.metricsFlow.collectAsState()
     val config by StorageCacheManager.configFlow.collectAsState()
     val downloadsList by DownloadManager.downloads.collectAsState()
+    val downloadSettings by DownloadSettingsManager.settingsFlow.collectAsState()
 
     var showClearAllConfirmDialog by remember { mutableStateOf(false) }
     var showDeleteAllDownloadsConfirmDialog by remember { mutableStateOf(false) }
@@ -520,9 +522,9 @@ fun StorageManagementScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Section 2: Automated Cache Policies
+            // Section 2: Automated Storage Policies
             Text(
-                text = "AUTOMATED CACHE POLICIES",
+                text = "AUTOMATED STORAGE POLICIES",
                 color = AccentOrange,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
@@ -566,7 +568,7 @@ fun StorageManagementScreen(
                         modifier = Modifier.padding(vertical = 14.dp)
                     )
 
-                    // Cache TTL Auto-Delete Row
+                    // Cache TTL Auto-Delete Row (Finite lifespans, zero Never)
                     DropdownSettingRow(
                         title = "Cache Auto-Delete TTL",
                         subtitle = "Automatically purge watched video chunks older than",
@@ -575,24 +577,56 @@ fun StorageManagementScreen(
                             6 -> "6 Hours"
                             12 -> "12 Hours"
                             24 -> "1 Day (24h)"
-                            72 -> "3 Days"
+                            72 -> "3 Days (Default)"
                             168 -> "7 Days"
                             336 -> "14 Days"
                             720 -> "30 Days"
-                            else -> "Never (Keep Forever)"
+                            1440 -> "60 Days"
+                            else -> "3 Days (Default)"
                         },
                         options = listOf(
                             "1 Hour" to 1,
                             "6 Hours" to 6,
                             "12 Hours" to 12,
                             "1 Day (24h)" to 24,
-                            "3 Days" to 72,
+                            "3 Days (Default)" to 72,
                             "7 Days" to 168,
                             "14 Days" to 336,
                             "30 Days" to 720,
-                            "Never (Keep Forever)" to -1
+                            "60 Days" to 1440
                         ),
                         onSelect = { StorageCacheManager.updateConfig(config.copy(cacheTtlHours = it)) }
+                    )
+
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
+                        modifier = Modifier.padding(vertical = 14.dp)
+                    )
+
+                    // Downloads TTL Auto-Delete Row (Finite lifespans, zero Never)
+                    DropdownSettingRow(
+                        title = "Downloads Auto-Delete TTL",
+                        subtitle = "Automatically purge completed offline downloads older than",
+                        currentValue = when (downloadSettings.downloadTtlDays) {
+                            1 -> "1 Day (24h)"
+                            3 -> "3 Days"
+                            7 -> "7 Days"
+                            14 -> "14 Days"
+                            30 -> "30 Days (Recommended)"
+                            60 -> "60 Days"
+                            90 -> "90 Days"
+                            else -> "${downloadSettings.downloadTtlDays} Days"
+                        },
+                        options = listOf(
+                            "1 Day (24h)" to 1,
+                            "3 Days" to 3,
+                            "7 Days" to 7,
+                            "14 Days" to 14,
+                            "30 Days (Recommended)" to 30,
+                            "60 Days" to 60,
+                            "90 Days" to 90
+                        ),
+                        onSelect = { DownloadSettingsManager.updateDownloadTtlDays(it) }
                     )
 
                     HorizontalDivider(

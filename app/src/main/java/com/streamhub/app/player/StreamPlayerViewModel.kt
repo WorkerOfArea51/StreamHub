@@ -86,7 +86,8 @@ data class PlayerUiState(
     val isStreamPrecached: Boolean = false,
     val isResumedPlayback: Boolean = false,
     val isSeeking: Boolean = false,
-    val audioProfile: com.streamhub.app.data.AudioProfile = com.streamhub.app.data.AudioProfile.STANDARD
+    val audioProfile: com.streamhub.app.data.AudioProfile = com.streamhub.app.data.AudioProfile.STANDARD,
+    val shouldAutoExit: Boolean = false
 )
 
 data class PlaybackProgress(
@@ -333,9 +334,29 @@ class StreamPlayerViewModel : ViewModel() {
                         else -> currentPos >= 30_000L
                     }
 
-                    if (hasGenuinePlayback && com.streamhub.app.data.PlayerSettingsManager.settingsFlow.value.autoPlayNextEpisode) {
-                        Log.i("StreamPlayerViewModel", "STATE_ENDED reached with genuine playback ($currentPos ms / $totalDuration ms). Auto-playing next episode.")
-                        playNextEpisode()
+                    if (hasGenuinePlayback) {
+                        val currentState = _uiState.value
+                        currentMediaItem?.let { media ->
+                            viewModelScope.launch(Dispatchers.IO) {
+                                WatchHistoryManager.markEpisodeWatched(
+                                    mediaId = media.id,
+                                    episodeIndex = currentState.currentEpisodeIndex,
+                                    isWatched = true,
+                                    mediaItem = media
+                                )
+                            }
+                        }
+                        val nextIndex = currentState.currentEpisodeIndex + 1
+                        val hasNextEpisode = nextIndex in episodesList.indices
+                        val autoPlayNext = com.streamhub.app.data.PlayerSettingsManager.settingsFlow.value.autoPlayNextEpisode
+
+                        if (hasNextEpisode && autoPlayNext) {
+                            Log.i("StreamPlayerViewModel", "STATE_ENDED reached with genuine playback ($currentPos ms / $totalDuration ms). Auto-playing next episode.")
+                            playNextEpisode()
+                        } else {
+                            Log.i("StreamPlayerViewModel", "STATE_ENDED reached at end of playlist (hasNext=$hasNextEpisode, autoPlay=$autoPlayNext). Triggering auto-finish.")
+                            _uiState.update { it.copy(shouldAutoExit = true) }
+                        }
                     } else {
                         Log.w("StreamPlayerViewModel", "STATE_ENDED reached without genuine playback completion (pos=$currentPos ms, dur=$totalDuration ms, firstFrame=$isFirstFrameDone). Suppressing autoPlayNextEpisode to prevent runaway skip cascade.")
                     }
@@ -611,8 +632,10 @@ class StreamPlayerViewModel : ViewModel() {
         // FIX: Smart resume prompt — only resume saved position if playing the same episode
         val targetEpisodeIndex = if (episodesList.isNotEmpty()) initialEpisodeIndex.coerceIn(episodesList.indices) else 0
 
+        val targetEp = episodesList.getOrNull(targetEpisodeIndex)
+        val targetEpNum = targetEp?.episodeNumber ?: targetEpisodeIndex
         val savedProgress = WatchHistoryManager.getProgress(mediaItem.id)
-        val isSameEpisode = savedProgress != null && savedProgress.episodeNumber == targetEpisodeIndex
+        val isSameEpisode = savedProgress != null && (savedProgress.episodeNumber == targetEpisodeIndex || savedProgress.episodeNumber == targetEpNum)
         val savedPositionMs = if (isSameEpisode) savedProgress?.positionMs ?: 0L else 0L
 
         val initialDurationMs = when {
@@ -1201,6 +1224,12 @@ class StreamPlayerViewModel : ViewModel() {
         }
     }
 
+    fun resetAutoExit() {
+        if (_uiState.value.shouldAutoExit) {
+            _uiState.update { it.copy(shouldAutoExit = false) }
+        }
+    }
+
     fun retryCurrentEpisode() {
         val snapshot = _uiState.value
         val ep = episodesList.getOrNull(snapshot.currentEpisodeIndex)
@@ -1542,6 +1571,12 @@ class StreamPlayerViewModel : ViewModel() {
 
     fun togglePlayPause() {
         val player = exoPlayer ?: return
+        if (player.playbackState == Player.STATE_ENDED) {
+            resetAutoExit()
+            player.seekTo(0L)
+            player.play()
+            return
+        }
         if (player.playWhenReady) {
             lastPauseTimestampMs = System.currentTimeMillis()
             player.pause()
@@ -1610,6 +1645,7 @@ class StreamPlayerViewModel : ViewModel() {
     }
 
     fun seekTo(positionMs: Long) {
+        resetAutoExit()
         debouncedSeekJob?.cancel()
         debouncedSeekJob = null
         stallAccumulatorMs = 0L
@@ -1948,19 +1984,36 @@ class StreamPlayerViewModel : ViewModel() {
                         val now = System.currentTimeMillis()
                         if (now - lastProgressSaveMs >= 5_000L) {
                             currentMediaItem?.let { media ->
-                                val isMovie = media.type.equals("MOVIE", ignoreCase = true) ||
+                                val isSeries = media.type.equals("SERIES", ignoreCase = true) ||
+                                              media.category.equals("Anime", ignoreCase = true) ||
+                                              media.category.equals("Web Series", ignoreCase = true) ||
+                                              media.category.equals("Series", ignoreCase = true)
+                                val isMovie = !isSeries && (
+                                              media.type.equals("MOVIE", ignoreCase = true) ||
                                               media.category.equals("Movie", ignoreCase = true) ||
                                               media.category.equals("Movies", ignoreCase = true) ||
                                               media.relationType.equals("Movie", ignoreCase = true) ||
                                               episodesList.size <= 1
+                                )
                                 val epIdx = _uiState.value.currentEpisodeIndex
                                 val ep = episodesList.getOrNull(epIdx)
+                                val actualEpNum = if (isMovie) 0 else (ep?.episodeNumber ?: epIdx)
                                 val effectiveDur = if (totalDuration > 0L) totalDuration else _uiState.value.durationMs
-                                val isLastEp = isMovie || epIdx >= (episodesList.size - 1)
+
+                                val totalEpCount = media.totalEpisodes.filter { it.isDigit() }.toIntOrNull()
+                                    ?: (if (isSeries) 0 else episodesList.size)
+                                val isLastEp = if (isMovie) {
+                                    true
+                                } else if (totalEpCount > 0) {
+                                    actualEpNum >= (totalEpCount - 1)
+                                } else {
+                                    episodesList.size > 1 && epIdx >= (episodesList.size - 1)
+                                }
+
                                 viewModelScope.launch(Dispatchers.IO) {
                                     WatchHistoryManager.saveProgress(
                                         mediaId = media.id,
-                                        episodeNumber = if (isMovie) 0 else epIdx,
+                                        episodeNumber = actualEpNum,
                                         positionMs = currentPos,
                                         durationMs = effectiveDur,
                                         title = media.title,
@@ -2295,18 +2348,35 @@ class StreamPlayerViewModel : ViewModel() {
         exoPlayer?.let { player ->
             playerListener?.let { player.removeListener(it) }
             currentMediaItem?.let { media ->
-                val isMovie = media.type.equals("MOVIE", ignoreCase = true) ||
+                val isSeries = media.type.equals("SERIES", ignoreCase = true) ||
+                              media.category.equals("Anime", ignoreCase = true) ||
+                              media.category.equals("Web Series", ignoreCase = true) ||
+                              media.category.equals("Series", ignoreCase = true)
+                val isMovie = !isSeries && (
+                              media.type.equals("MOVIE", ignoreCase = true) ||
                               media.category.equals("Movie", ignoreCase = true) ||
                               media.category.equals("Movies", ignoreCase = true) ||
                               media.relationType.equals("Movie", ignoreCase = true) ||
                               episodesList.size <= 1
+                )
                 val epIdx = _uiState.value.currentEpisodeIndex
                 val ep = episodesList.getOrNull(epIdx)
+                val actualEpNum = if (isMovie) 0 else (ep?.episodeNumber ?: epIdx)
                 val effectiveDur = if (player.duration > 0L) player.duration else _uiState.value.durationMs
-                val isLastEp = isMovie || epIdx >= (episodesList.size - 1)
+
+                val totalEpCount = media.totalEpisodes.filter { it.isDigit() }.toIntOrNull()
+                    ?: (if (isSeries) 0 else episodesList.size)
+                val isLastEp = if (isMovie) {
+                    true
+                } else if (totalEpCount > 0) {
+                    actualEpNum >= (totalEpCount - 1)
+                } else {
+                    episodesList.size > 1 && epIdx >= (episodesList.size - 1)
+                }
+
                 WatchHistoryManager.saveProgress(
                     mediaId = media.id,
-                    episodeNumber = if (isMovie) 0 else epIdx,
+                    episodeNumber = actualEpNum,
                     positionMs = player.currentPosition.coerceAtLeast(0L),
                     durationMs = effectiveDur,
                     title = media.title,

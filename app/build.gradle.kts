@@ -45,8 +45,8 @@ android {
         minSdk = 24
         targetSdk = 35
         val envVersionName = System.getenv("VERSION_NAME")?.removePrefix("v")?.removePrefix("V")
-        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 409
-        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.409"
+        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 410
+        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.410"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -116,6 +116,7 @@ android {
 
     buildTypes {
         debug {
+            applicationIdSuffix = ".debug"
             manifestPlaceholders["appName"] = "StreamHub (Debug)"
             isMinifyEnabled = false
             isDebuggable = true

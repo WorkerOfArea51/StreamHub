@@ -38,7 +38,7 @@ data class StorageMetrics(
 
 data class CacheConfig(
     val cacheLimitMb: Int = -1, // Default: Unlimited (-1)
-    val cacheTtlHours: Int = -1, // Default: Never (-1) or 1h, 6h, 12h, 24h, 72h, 168h, 336h, 720h
+    val cacheTtlHours: Int = 72, // Default: 3 Days (72h); options: 1h, 6h, 12h, 24h, 72h, 168h, 336h, 720h, 1440h — no Never
     val keepWatchedForInstantResume: Boolean = true
 )
 
@@ -117,9 +117,12 @@ object StorageCacheManager {
 
     private fun loadConfig() {
         val p = getPrefs()
+        val rawTtl = p.getInt(KEY_CACHE_TTL, 72)
+        val validTtls = listOf(1, 6, 12, 24, 72, 168, 336, 720, 1440)
+        val safeTtl = if (rawTtl in validTtls) rawTtl else 72
         _configFlow.value = CacheConfig(
             cacheLimitMb = p.getInt(KEY_CACHE_LIMIT, -1),
-            cacheTtlHours = p.getInt(KEY_CACHE_TTL, -1),
+            cacheTtlHours = safeTtl,
             keepWatchedForInstantResume = p.getBoolean(KEY_INSTANT_RESUME, true)
         )
     }
@@ -615,6 +618,7 @@ object StorageCacheManager {
                 }
             }
             calculateStorageUsage()
+            DownloadManager.enforceDownloadTtlPolicy()
         }
     }
 
