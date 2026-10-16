@@ -256,7 +256,7 @@ fun AdminEditorDialog(
                     )
                     TabButton(
                         icon = Icons.Default.Build,
-                        title = "Studio Tools",
+                        title = "Tools",
                         isSelected = selectedTab == 3,
                         onClick = { selectedTab = 3 }
                     )
@@ -368,12 +368,7 @@ fun AdminEditorDialog(
                                                     val parsedPending = com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(pendingText, defaultSeason = parsedSeasonNum, defaultArc = state.arcNameText)
                                                         .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(pendingText, seasonNumber = parsedSeasonNum, arcName = state.arcNameText) }
                                                     if (parsedPending.isNotEmpty()) {
-                                                        val map = state.currentEpisodes.associateBy { (it.arcName.ifBlank { "S${it.seasonNumber}" }) to it.episodeNumber }.toMutableMap()
-                                                        parsedPending.forEach { ep ->
-                                                            val key = (ep.arcName.ifBlank { "S${ep.seasonNumber}" }) to ep.episodeNumber
-                                                            map[key] = ep
-                                                        }
-                                                        com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(map.values.toList())
+                                                        com.streamhub.app.data.EpisodeOrderingManager.mergeAndDeduplicate(state.currentEpisodes.toList(), parsedPending)
                                                     } else {
                                                         state.currentEpisodes.toList()
                                                     }

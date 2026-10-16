@@ -1,3 +1,23 @@
+### What's New in StreamHub v4.8.413 🚀
+
+- 🛡️ **Safe 700 KB Catalog Bundler with 300+ KB Firestore Headroom (`CatalogBundleManager.kt`)**:
+  - Lowered the bundle partition cap to 700 KB with an added 1.35x Firestore map-of-maps envelope safety factor, completely eliminating bundle upload rejections and preventing catalog bundles from exceeding Firestore's 1 MB document ceiling.
+  - Safely repacked all categories so bundles stay well under 520 KB, ensuring all newly added arcs (like Pokémon Arc 3) propagate instantly to all devices without disappearing.
+
+- 🔗 **URL-First High-Confidence Episode Deduplication (`EpisodeOrderingManager.kt`, `AdminLinksTab.kt`, `AdminEditorDialog.kt`)**:
+  - Implemented `mergeAndDeduplicate` across all Creator Studio link, post, and batch importers.
+  - Matches incoming episodes against existing episodes by clean playable URL (`streamUrl`) and `telegramFileId` first, updating existing episodes in-place and preserving their arc names if the incoming batch omitted an arc name.
+  - Permanently eliminates duplicate episode doubling (e.g. 82 + 82 = 164 episodes) when editing or re-importing batches.
+
+- 👻 **Deleted Show Tombstone Protection (`FirebaseRepository.kt`)**:
+  - Implemented instant memory-tombstoning (`tombstoneDeletedIds`) when deleting media items.
+  - Bundle snapshot listeners actively purge tombstoned show IDs, permanently preventing stale bundle snapshots from resurrecting deleted shows and eliminating the need to delete a show twice.
+
+- 🛠️ **Creator Studio Tab Simplification (`AdminEditorDialog.kt`, `AdminToolsTab.kt`)**:
+  - Streamlined Creator Studio Tab 3 label from "Studio Tools" to simply **"Tools"**.
+
+---
+
 ### What's New in StreamHub v4.8.412 🚀
 
 - 🎯 **Strict Episode Progress Isolation & Cross-Episode Bleed Resolution (`DetailsScreen.kt`, `StreamPlayerViewModel.kt`, `MediaCard.kt`)**:

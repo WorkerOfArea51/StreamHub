@@ -409,13 +409,9 @@ fun AdminLinksTab(
                                 res.fold(
                                     onSuccess = { eps ->
                                         if (eps.isNotEmpty()) {
-                                            val map = state.currentEpisodes.associateBy { (it.arcName.ifBlank { "S${it.seasonNumber}" }) to it.episodeNumber }.toMutableMap()
-                                            eps.forEach { ep ->
-                                                val key = (ep.arcName.ifBlank { "S${ep.seasonNumber}" }) to ep.episodeNumber
-                                                map[key] = ep
-                                            }
+                                            val merged = com.streamhub.app.data.EpisodeOrderingManager.mergeAndDeduplicate(state.currentEpisodes.toList(), eps)
                                             state.currentEpisodes.clear()
-                                            state.currentEpisodes.addAll(com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(map.values.toList()))
+                                            state.currentEpisodes.addAll(merged)
                                             val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(state.currentEpisodes)
                                             state.startBatchLink = jsonDump
                                             state.generatedEpisodesText = jsonDump
@@ -471,14 +467,10 @@ fun AdminLinksTab(
                         res.fold(
                             onSuccess = { eps ->
                                 if (eps.isNotEmpty()) {
-                                    val map = state.currentEpisodes.associateBy { (it.arcName.ifBlank { "S${it.seasonNumber}" }) to it.episodeNumber }.toMutableMap()
-                                    eps.forEach { ep ->
-                                        val key = (ep.arcName.ifBlank { "S${ep.seasonNumber}" }) to ep.episodeNumber
-                                        map[key] = ep
-                                    }
+                                    val merged = com.streamhub.app.data.EpisodeOrderingManager.mergeAndDeduplicate(state.currentEpisodes.toList(), eps)
                                     state.currentEpisodes.clear()
-                                    state.currentEpisodes.addAll(com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(map.values.toList()))
-                                    val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps)
+                                    state.currentEpisodes.addAll(merged)
+                                    val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(state.currentEpisodes)
                                     state.startBatchLink = jsonDump
                                     state.generatedEpisodesText = jsonDump
                                     state.batchSuccess = "Fetched & Loaded ${eps.size} episodes! Check JSON below."
@@ -532,14 +524,10 @@ fun AdminLinksTab(
                             res.fold(
                                 onSuccess = { eps ->
                                     if (eps.isNotEmpty()) {
-                                        val map = state.currentEpisodes.associateBy { (it.arcName.ifBlank { "S${it.seasonNumber}" }) to it.episodeNumber }.toMutableMap()
-                                        eps.forEach { ep ->
-                                            val key = (ep.arcName.ifBlank { "S${ep.seasonNumber}" }) to ep.episodeNumber
-                                            map[key] = ep
-                                        }
+                                        val merged = com.streamhub.app.data.EpisodeOrderingManager.mergeAndDeduplicate(state.currentEpisodes.toList(), eps)
                                         state.currentEpisodes.clear()
-                                        state.currentEpisodes.addAll(com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(map.values.toList()))
-                                        val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(eps)
+                                        state.currentEpisodes.addAll(merged)
+                                        val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(state.currentEpisodes)
                                         state.startBatchLink = jsonDump
                                         state.generatedEpisodesText = jsonDump
                                         state.batchSuccess = "Fetched & Loaded ${eps.size} episodes! Check JSON below."
@@ -559,13 +547,9 @@ fun AdminLinksTab(
                     val parsed = com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(clipText, parsedSeasonNum, state.arcNameText)
                         .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(clipText, parsedSeasonNum, state.arcNameText) }
                     if (parsed.isNotEmpty()) {
-                        val map = state.currentEpisodes.associateBy { (it.arcName.ifBlank { "S${it.seasonNumber}" }) to it.episodeNumber }.toMutableMap()
-                        parsed.forEach { ep ->
-                            val key = (ep.arcName.ifBlank { "S${ep.seasonNumber}" }) to ep.episodeNumber
-                            map[key] = ep
-                        }
+                        val merged = com.streamhub.app.data.EpisodeOrderingManager.mergeAndDeduplicate(state.currentEpisodes.toList(), parsed)
                         state.currentEpisodes.clear()
-                        state.currentEpisodes.addAll(com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(map.values.toList()))
+                        state.currentEpisodes.addAll(merged)
                         state.startBatchLink = clipText
                         state.generatedEpisodesText = clipText
                         state.batchSuccess = "Parsed & Loaded ${parsed.size} episodes! Check JSON below."

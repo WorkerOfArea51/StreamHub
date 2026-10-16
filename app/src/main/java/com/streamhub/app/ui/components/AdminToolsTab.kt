@@ -58,7 +58,7 @@ fun AdminToolsTab(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("Studio Tools & Catalog Management", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Text("Tools & Catalog Management", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
 
         // 1. Metadata Health Inspector Hero Card
         val catalog by FirebaseRepository.getInstance().mediaCatalog.collectAsState()

@@ -174,6 +174,7 @@ class FirebaseRepository private constructor() {
     private val rawCollectionListeners = mutableListOf<ListenerRegistration>()
     private var bundleListener: ListenerRegistration? = null
     private val collectionMap = java.util.concurrent.ConcurrentHashMap<String, List<MediaItem>>()
+    private val tombstoneDeletedIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     private val _isUsingBundles = MutableStateFlow(false)
     val isUsingBundles: StateFlow<Boolean> = _isUsingBundles.asStateFlow()
@@ -256,11 +257,11 @@ class FirebaseRepository private constructor() {
                         val rawItems = doc.get("items") as? List<Map<String, Any?>>
                         if (rawItems != null && rawItems.isNotEmpty()) {
                             val parsed = rawItems.mapNotNull { parseMediaItemMap(it, doc.id) }
-                            allBundleItems.addAll(parsed)
+                            allBundleItems.addAll(parsed.filterNot { tombstoneDeletedIds.contains(it.id) })
                         } else {
                             val bundle = doc.toObject(com.streamhub.app.data.models.CatalogBundle::class.java)
                             if (bundle != null && bundle.items.isNotEmpty()) {
-                                allBundleItems.addAll(bundle.items)
+                                allBundleItems.addAll(bundle.items.filterNot { tombstoneDeletedIds.contains(it.id) })
                             }
                         }
                     }
@@ -638,6 +639,7 @@ class FirebaseRepository private constructor() {
             episodes = normalizedEpisodes
         )
 
+        tombstoneDeletedIds.remove(itemToSave.id)
         // 1. Optimistic instant UI update
         _mediaCatalog.update { current ->
             val list = current.toMutableList()
@@ -816,6 +818,7 @@ class FirebaseRepository private constructor() {
             episodes = normalizedEpisodes
         )
 
+        tombstoneDeletedIds.remove(itemToSave.id)
         // 1. Optimistic instant UI update
         _mediaCatalog.update { current ->
             val list = current.toMutableList()
@@ -883,10 +886,11 @@ class FirebaseRepository private constructor() {
         val targetItem = _mediaCatalog.value.firstOrNull { it.id == itemId }
         val category = targetItem?.category ?: ""
         val type = targetItem?.type ?: ""
+        tombstoneDeletedIds.add(itemId)
+        _mediaCatalog.update { current -> current.filterNot { it.id == itemId } }
 
         val db = firestore
         if (db == null) {
-            _mediaCatalog.update { current -> current.filterNot { it.id == itemId } }
             _adminOperationState.value = AdminOperationState.Success()
             return
         }

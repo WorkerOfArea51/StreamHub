@@ -145,4 +145,71 @@ object EpisodeOrderingManager {
             )
         }
     }
+
+    /**
+     * Safely merges newly imported / fetched episodes into the existing episode catalog.
+     *
+     * Invariants:
+     * 1. Matches by exact stream URL or Telegram file ID first: if an incoming episode has the same
+     *    playable link/file ID as an existing episode, it updates that existing episode in-place and
+     *    preserves its existing arcName if incoming arcName was left blank.
+     * 2. Matches by composite key: (arcName to episodeNumber) when URLs are distinct or missing.
+     * 3. Appends truly new episodes (e.g. adding Arc 2 to Arc 1).
+     * 4. Completely prevents accidental episode doubling (e.g. 82 + 82 = 164 episodes) when Arc name is omitted.
+     * 5. Returns a fully normalized, sorted list with storyline continuity.
+     */
+    fun mergeAndDeduplicate(
+        existing: List<Episode>,
+        incoming: List<Episode>
+    ): List<Episode> {
+        if (incoming.isEmpty()) return normalizeAndSort(existing)
+        if (existing.isEmpty()) return normalizeAndSort(incoming)
+
+        val result = existing.toMutableList()
+
+        incoming.forEach { newEp ->
+            val cleanNewStream = TelegramLinkResolver.sanitizePlayableUrl(newEp.streamUrl)
+            val newFileId = newEp.telegramFileId.trim()
+
+            // 1. Try matching by identical stream URL or Telegram file ID (highest confidence identity)
+            val indexByUrl = if (cleanNewStream.isNotBlank() || newFileId.isNotBlank()) {
+                result.indexOfFirst { ex ->
+                    val cleanExStream = TelegramLinkResolver.sanitizePlayableUrl(ex.streamUrl)
+                    val exFileId = ex.telegramFileId.trim()
+                    (cleanNewStream.isNotBlank() && cleanExStream.isNotBlank() && cleanNewStream == cleanExStream) ||
+                    (newFileId.isNotBlank() && exFileId.isNotBlank() && newFileId == exFileId)
+                }
+            } else -1
+
+            if (indexByUrl >= 0) {
+                val ex = result[indexByUrl]
+                // Update fields, but preserve existing arcName if the incoming arc was left blank!
+                val resolvedArc = newEp.arcName.ifBlank { ex.arcName }
+                val resolvedTitle = if (newEp.title.isNotBlank() && !newEp.title.startsWith("Episode ", ignoreCase = true)) newEp.title else ex.title.ifBlank { newEp.title }
+                result[indexByUrl] = newEp.copy(
+                    arcName = resolvedArc,
+                    title = resolvedTitle,
+                    seasonNumber = if (newEp.seasonNumber > 0) newEp.seasonNumber else ex.seasonNumber
+                )
+            } else {
+                // 2. Try matching by composite key: (arcName to episodeNumber)
+                val newArcKey = newEp.arcName.trim().ifBlank { "S${newEp.seasonNumber}" }
+                val indexByKey = result.indexOfFirst { ex ->
+                    val exArcKey = ex.arcName.trim().ifBlank { "S${ex.seasonNumber}" }
+                    exArcKey.equals(newArcKey, ignoreCase = true) && ex.episodeNumber == newEp.episodeNumber
+                }
+
+                if (indexByKey >= 0) {
+                    val ex = result[indexByKey]
+                    val resolvedArc = newEp.arcName.ifBlank { ex.arcName }
+                    result[indexByKey] = newEp.copy(arcName = resolvedArc)
+                } else {
+                    // 3. Truly new episode (e.g. Arc 2 added to Arc 1)
+                    result.add(newEp)
+                }
+            }
+        }
+
+        return normalizeAndSort(result)
+    }
 }

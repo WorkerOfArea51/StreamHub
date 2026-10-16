@@ -28,25 +28,28 @@ object CatalogBundleManager {
     private const val TAG = "CatalogBundleManager"
     const val COLLECTION_BUNDLES = "catalog_bundles"
 
-    // Strict 970 KB auto-split limit (970 * 1024 = 993,280 bytes)
-    const val BUNDLE_MAX_BYTES = 970 * 1024L
+    // Safe 700 KB auto-split limit (700 * 1024 = 716,800 bytes)
+    // Leaves 300+ KB safety margin for Firestore proto/document envelope overhead (Firestore 1 MB limit = 1,048,576 bytes)
+    const val BUNDLE_MAX_BYTES = 700 * 1024L
 
     // Overhead for bundle envelope fields (bundleId, category, partIndex, counts, timestamps)
-    private const val BASE_ENVELOPE_BYTES = 600L
+    private const val BASE_ENVELOPE_BYTES = 1024L
 
     private val bundleSyncMutex = Mutex()
 
     private val gson: Gson by lazy { GsonBuilder().create() }
 
     /**
-     * Accurately calculates the UTF-8 byte size of a MediaItem when serialized.
+     * Accurately calculates the UTF-8 byte size of a MediaItem when serialized,
+     * including 35% safety factor for Firestore document field indexing & map-of-maps overhead.
      */
     fun estimateItemBytes(item: MediaItem): Long {
         return try {
-            gson.toJson(item).toByteArray(Charsets.UTF_8).size.toLong()
+            val rawBytes = gson.toJson(item).toByteArray(Charsets.UTF_8).size.toLong()
+            (rawBytes * 1.35).toLong()
         } catch (e: Exception) {
             Log.w(TAG, "Error estimating item bytes for ${item.id}", e)
-            4096L
+            8192L
         }
     }
 
@@ -264,7 +267,11 @@ object CatalogBundleManager {
             }
 
             val categoryBundles = packCategory(categoryName, prefix, items)
-            uploadBundlesToFirestore(db, categoryBundles)
+            if (categoryBundles.isEmpty()) {
+                cleanupStaleParts(db, prefix, emptySet())
+            } else {
+                uploadBundlesToFirestore(db, categoryBundles)
+            }
             Log.d(TAG, "Incremental sync complete for $categoryName (${categoryBundles.size} parts)")
             Result.success(Unit)
         } catch (e: Exception) {
