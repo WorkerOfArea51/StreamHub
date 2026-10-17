@@ -38,7 +38,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.streamhub.app.data.importer.CatalogBackupManager
 import com.streamhub.app.data.importer.CatalogBackupPayload
-import com.streamhub.app.data.importer.CatalogBundleManager
 import com.streamhub.app.data.importer.LocalBackupInfo
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.repository.FirebaseRepository

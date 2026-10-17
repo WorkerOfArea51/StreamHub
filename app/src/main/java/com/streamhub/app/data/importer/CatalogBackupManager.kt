@@ -535,11 +535,6 @@ object CatalogBackupManager {
                 onProgress(processedCount, items.size, lastItemTitle)
             }
 
-            // Sync bundles ONCE for the entire restored catalog
-            onProgress(items.size, items.size, "Packaging 970KB Bundles...")
-            val allBundles = CatalogBundleManager.packEntireCatalog(items)
-            CatalogBundleManager.uploadBundlesToFirestore(db, allBundles)
-
             // Refresh repository state
             repository.refreshCatalog()
 

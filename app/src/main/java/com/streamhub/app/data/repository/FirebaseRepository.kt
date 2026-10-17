@@ -46,7 +46,7 @@ class FirebaseRepository private constructor() {
         const val COLLECTION_MOVIES = "movies"
         const val COLLECTION_ANIMES = "animes"
         const val COLLECTION_SERIES = "web_series"
-        const val COLLECTION_BUNDLES = com.streamhub.app.data.importer.CatalogBundleManager.COLLECTION_BUNDLES
+        const val COLLECTION_BUNDLES = "catalog_bundles"
 
         val ALL_COLLECTIONS = listOf(COLLECTION_MOVIES, COLLECTION_ANIMES, COLLECTION_SERIES)
 
@@ -172,7 +172,6 @@ class FirebaseRepository private constructor() {
 
     private val activeListeners = mutableListOf<ListenerRegistration>()
     private val rawCollectionListeners = mutableListOf<ListenerRegistration>()
-    private var bundleListener: ListenerRegistration? = null
     private val collectionMap = java.util.concurrent.ConcurrentHashMap<String, List<MediaItem>>()
     private val tombstoneDeletedIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
@@ -232,92 +231,31 @@ class FirebaseRepository private constructor() {
         try {
             removeFirestoreListeners()
 
-            // 1. Primary path: Listen to catalog_bundles for ultra-fast, minimal-read sync (~6 reads)
-            bundleListener?.remove()
-            bundleListener = db.collection(COLLECTION_BUNDLES).addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.w(TAG, "catalog_bundles listener error: ${error.message}. Falling back to raw collections.")
-                    if (!_isUsingBundles.value && rawCollectionListeners.isEmpty()) {
-                        attachRawCollectionListeners(db)
-                    }
-                    return@addSnapshotListener
-                }
-
-                if (snapshot == null || snapshot.isEmpty) {
-                    Log.d(TAG, "No bundles found in '$COLLECTION_BUNDLES'. Falling back to raw collections.")
-                    if (!_isUsingBundles.value && rawCollectionListeners.isEmpty()) {
-                        attachRawCollectionListeners(db)
-                    }
-                    return@addSnapshotListener
-                }
-
-                try {
-                    val allBundleItems = mutableListOf<MediaItem>()
-                    for (doc in snapshot.documents) {
-                        val rawItems = doc.get("items") as? List<Map<String, Any?>>
-                        if (rawItems != null && rawItems.isNotEmpty()) {
-                            val parsed = rawItems.mapNotNull { parseMediaItemMap(it, doc.id) }
-                            allBundleItems.addAll(parsed.filterNot { tombstoneDeletedIds.contains(it.id) })
-                        } else {
-                            val bundle = doc.toObject(com.streamhub.app.data.models.CatalogBundle::class.java)
-                            if (bundle != null && bundle.items.isNotEmpty()) {
-                                allBundleItems.addAll(bundle.items.filterNot { tombstoneDeletedIds.contains(it.id) })
+            // 1. Ultra-fast Cloudflare Edge boot: 15ms response with 0 Firebase reads
+            scope.launch {
+                com.streamhub.app.data.api.CatalogEdgeClient.fetchCatalog()
+                    .onSuccess { edgeItems ->
+                        if (edgeItems.isNotEmpty()) {
+                            val currentCatalog = _mediaCatalog.value
+                            val currentById = currentCatalog.associateBy { it.id }
+                            val merged = edgeItems.map { incoming ->
+                                val local = currentById[incoming.id]
+                                if (local != null && local.updatedAt > incoming.updatedAt) local else incoming
                             }
+                            _mediaCatalog.value = merged
+                            _catalogState.value = CatalogState.Ready
+                            Log.d(TAG, "🚀 Loaded ${merged.size} shows from Cloudflare Edge (0 Firebase reads)!")
+                            triggerNotificationAlerts(merged)
                         }
                     }
-
-                    if (allBundleItems.isNotEmpty()) {
-                        _isUsingBundles.value = true
-                        removeRawCollectionListeners()
-
-                        val normalized = allBundleItems.map { item ->
-                            val migratedEpisodes = item.episodes.map { ep ->
-                                ep.copy(
-                                    streamUrl = StreamBackendConfig.migrateUrl(ep.streamUrl),
-                                    mirrorStreamUrl = StreamBackendConfig.migrateUrl(ep.mirrorStreamUrl)
-                                )
-                            }
-                            item.copy(
-                                episodes = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(migratedEpisodes)
-                            )
-                        }.distinctBy { it.id }
-
-                        // FIX: Timestamp merge protection — never allow a stale bundle snapshot to
-                        // overwrite an item that was freshly saved locally with a newer updatedAt!
-                        val currentCatalog = _mediaCatalog.value
-                        val currentById = currentCatalog.associateBy { it.id }
-
-                        val merged = normalized.map { incomingItem ->
-                            val localItem = currentById[incomingItem.id]
-                            if (localItem != null && localItem.updatedAt > incomingItem.updatedAt) {
-                                Log.d(TAG, "Preserving newer local show state for ${localItem.id} (local=${localItem.updatedAt} > incoming=${incomingItem.updatedAt})")
-                                localItem
-                            } else {
-                                incomingItem
-                            }
-                        }
-
-                        val incomingIds = normalized.map { it.id }.toSet()
-                        val pendingLocalItems = currentCatalog.filter { it.id !in incomingIds && it.updatedAt > 0L }
-                        val finalCatalog = (merged + pendingLocalItems).distinctBy { it.id }
-
-                        _mediaCatalog.value = finalCatalog
-                        _catalogState.value = CatalogState.Ready
-                        Log.d(TAG, "✅ Synced catalog via Bundles! ${snapshot.size()} bundle docs read, total shows = ${finalCatalog.size}")
-
-                        triggerNotificationAlerts(finalCatalog)
-                    } else {
-                        if (!_isUsingBundles.value && rawCollectionListeners.isEmpty()) {
-                            attachRawCollectionListeners(db)
-                        }
+                    .onFailure { err ->
+                        Log.d(TAG, "Cloudflare Edge catalog fallback (${err.message}). Firestore raw listeners active.")
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error parsing catalog bundles", e)
-                    if (!_isUsingBundles.value && rawCollectionListeners.isEmpty()) {
-                        attachRawCollectionListeners(db)
-                    }
-                }
             }
+
+            // 2. Permanent Raw Collection Listeners (Firestore Source of Truth)
+            // Kept active for real-time updates and Creator Studio sync
+            attachRawCollectionListeners(db)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to attach Firestore listeners", e)
             _catalogState.value = CatalogState.Error("Failed to attach Firestore listener: ${e.message}")
@@ -442,8 +380,6 @@ class FirebaseRepository private constructor() {
     }
 
     private fun removeFirestoreListeners() {
-        bundleListener?.remove()
-        bundleListener = null
         removeRawCollectionListeners()
         activeListeners.forEach { it.remove() }
         activeListeners.clear()
@@ -678,16 +614,9 @@ class FirebaseRepository private constructor() {
                 _adminOperationState.value = AdminOperationState.Success()
                 if (cont.isActive) cont.resume(Result.success(Unit))
 
-                // Background sync: update the affected category bundle in catalog_bundles
+                // Background sync: trigger Cloudflare Edge Cache refresh so all users see the update
                 scope.launch(Dispatchers.IO) {
-                    runCatching {
-                        com.streamhub.app.data.importer.CatalogBundleManager.syncCategoryBundles(
-                            db = db,
-                            category = itemToSave.category,
-                            type = itemToSave.type,
-                            fullCatalog = _mediaCatalog.value
-                        )
-                    }.onFailure { Log.w(TAG, "Non-fatal bundle sync error after save: ${it.message}") }
+                    com.streamhub.app.data.api.CatalogEdgeClient.refreshEdgeCatalog()
                 }
             }
             .addOnFailureListener { e ->
@@ -769,17 +698,9 @@ class FirebaseRepository private constructor() {
 
         _adminOperationState.value = AdminOperationState.Success()
 
-        // Single background category bundle sync at the end
-        val affectedCategories = preparedItems.map { it.category to it.type }.distinct()
-        for ((cat, typ) in affectedCategories) {
-            runCatching {
-                com.streamhub.app.data.importer.CatalogBundleManager.syncCategoryBundles(
-                    db = db,
-                    category = cat,
-                    type = typ,
-                    fullCatalog = _mediaCatalog.value
-                )
-            }.onFailure { Log.w(TAG, "Batch category bundle sync warning: ${it.message}") }
+        // Background sync: trigger Cloudflare Edge Cache refresh
+        scope.launch(Dispatchers.IO) {
+            com.streamhub.app.data.api.CatalogEdgeClient.refreshEdgeCatalog()
         }
 
         Result.success(savedCount)
@@ -855,16 +776,9 @@ class FirebaseRepository private constructor() {
                 Log.d(TAG, "Successfully synced media item to Firestore collection '$targetCollection': ${itemToSave.id}")
                 _adminOperationState.value = AdminOperationState.Success()
 
-                // Background sync: update the affected category bundle in catalog_bundles
+                // Background sync: trigger Cloudflare Edge Cache refresh
                 scope.launch(Dispatchers.IO) {
-                    runCatching {
-                        com.streamhub.app.data.importer.CatalogBundleManager.syncCategoryBundles(
-                            db = db,
-                            category = itemToSave.category,
-                            type = itemToSave.type,
-                            fullCatalog = _mediaCatalog.value
-                        )
-                    }.onFailure { Log.w(TAG, "Non-fatal bundle sync error after save: ${it.message}") }
+                    com.streamhub.app.data.api.CatalogEdgeClient.refreshEdgeCatalog()
                 }
             }
             .addOnFailureListener { e ->
@@ -912,19 +826,8 @@ class FirebaseRepository private constructor() {
                         com.streamhub.app.data.MyListManager.removeFromList(itemId)
                         com.streamhub.app.data.WatchHistoryManager.removeMediaProgress(itemId)
                         com.streamhub.app.data.DownloadManager.deleteDownloadsForMedia(itemId)
+                        com.streamhub.app.data.api.CatalogEdgeClient.refreshEdgeCatalog()
                     }.onFailure { Log.w(TAG, "Non-fatal cascade cleanup error after delete: ${it.message}") }
-                }
-
-                // Background sync: update the affected category bundle in catalog_bundles
-                scope.launch(Dispatchers.IO) {
-                    runCatching {
-                        com.streamhub.app.data.importer.CatalogBundleManager.syncCategoryBundles(
-                            db = db,
-                            category = category,
-                            type = type,
-                            fullCatalog = _mediaCatalog.value
-                        )
-                    }.onFailure { Log.w(TAG, "Non-fatal bundle sync error after delete: ${it.message}") }
                 }
             }
             .addOnFailureListener { e ->
