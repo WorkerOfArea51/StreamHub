@@ -190,6 +190,21 @@ class FirebaseRepository private constructor() {
     init {
         loadInitialCatalog()
         attachFirestoreListener()
+        // Listen to Admin Mode changes: only attach raw collection listeners when Owner unlocks Creator Studio!
+        scope.launch {
+            com.streamhub.app.data.AdminManager.isAdminMode.collect { isAdmin ->
+                if (isAdmin) {
+                    val db = firestore
+                    if (db != null) {
+                        Log.d(TAG, "👑 Creator Studio Admin Mode active: attaching real-time Firestore listeners")
+                        attachRawCollectionListeners(db)
+                    }
+                } else {
+                    Log.d(TAG, "Standard user mode: detaching Firestore listeners (100% Cloudflare Edge)")
+                    removeRawCollectionListeners()
+                }
+            }
+        }
         scope.launch {
             kotlinx.coroutines.delay(30_000L)
             if (_catalogState.value is CatalogState.Loading) {
@@ -246,16 +261,19 @@ class FirebaseRepository private constructor() {
                             _catalogState.value = CatalogState.Ready
                             Log.d(TAG, "🚀 Loaded ${merged.size} shows from Cloudflare Edge (0 Firebase reads)!")
                             triggerNotificationAlerts(merged)
+
+                            // Attach live listeners ONLY if currently in Admin Mode!
+                            if (com.streamhub.app.data.AdminManager.isAdminMode.value) {
+                                attachRawCollectionListeners(db)
+                            }
                         }
                     }
                     .onFailure { err ->
-                        Log.d(TAG, "Cloudflare Edge catalog fallback (${err.message}). Firestore raw listeners active.")
+                        Log.w(TAG, "Cloudflare Edge catalog fallback (${err.message}). Falling back to Firestore raw listeners.")
+                        // Only attach Firestore listeners if Cloudflare Edge failed!
+                        attachRawCollectionListeners(db)
                     }
             }
-
-            // 2. Permanent Raw Collection Listeners (Firestore Source of Truth)
-            // Kept active for real-time updates and Creator Studio sync
-            attachRawCollectionListeners(db)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to attach Firestore listeners", e)
             _catalogState.value = CatalogState.Error("Failed to attach Firestore listener: ${e.message}")

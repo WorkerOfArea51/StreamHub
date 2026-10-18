@@ -232,32 +232,36 @@ fun AdminEditorDialog(
                         .fillMaxWidth()
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surfaceContainerLowest)
-                        .padding(4.dp)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     TabButton(
                         icon = Icons.Default.Star,
                         title = "Overview",
                         isSelected = selectedTab == 0,
+                        modifier = Modifier.weight(1f),
                         onClick = { selectedTab = 0 }
                     )
                     TabButton(
                         icon = Icons.Default.Link,
-                        title = if (state.isMovieFormat) "Movie Stream" else "Episodes (${state.currentEpisodes.size})",
+                        title = if (state.isMovieFormat) "Movie" else "Episodes (${state.currentEpisodes.size})",
                         isSelected = selectedTab == 1,
+                        modifier = Modifier.weight(1f),
                         onClick = { selectedTab = 1 }
                     )
                     TabButton(
                         icon = Icons.Default.Tune,
                         title = "Specs",
                         isSelected = selectedTab == 2,
+                        modifier = Modifier.weight(1f),
                         onClick = { selectedTab = 2 }
                     )
                     TabButton(
                         icon = Icons.Default.Build,
                         title = "Tools",
                         isSelected = selectedTab == 3,
+                        modifier = Modifier.weight(1f),
                         onClick = { selectedTab = 3 }
                     )
                 }
@@ -522,7 +526,9 @@ private fun TabButton(
             .clickable(onClick = onClick)
     ) {
         Row(
-            modifier = Modifier.padding(vertical = 8.dp, horizontal = 12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp, horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
@@ -530,7 +536,7 @@ private fun TabButton(
                 imageVector = icon,
                 contentDescription = null,
                 tint = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(14.dp)
+                modifier = Modifier.size(13.dp)
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
@@ -538,7 +544,8 @@ private fun TabButton(
                 color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 11.sp,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                maxLines = 1
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
         }
     }
