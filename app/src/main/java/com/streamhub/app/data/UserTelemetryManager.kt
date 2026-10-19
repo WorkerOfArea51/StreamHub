@@ -689,16 +689,6 @@ object UserTelemetryManager {
                         }
                     }
                 }
-
-            // 2. One-time legacy cleanup: clean up legacy auto-generated documents (e.g. SIEMWHlDt18FuuQUfRM2)
-            db.collection(COLLECTION_BROADCASTS).get().addOnSuccessListener { snapshot ->
-                for (doc in snapshot.documents) {
-                    if (doc.id != "latest") {
-                        Log.i(TAG, "Cleaning up legacy broadcast doc: ${doc.id}")
-                        doc.reference.delete()
-                    }
-                }
-            }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to start global broadcast listener: ${e.message}")
         }

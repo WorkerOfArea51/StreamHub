@@ -53,41 +53,13 @@ class CatalogSyncWorker(
 
             val catalog = if (!edgeCatalog.isNullOrEmpty()) {
                 Log.d(TAG, "Background sync using Cloudflare Edge (0 Firebase reads) for ${edgeCatalog.size} items.")
+                com.streamhub.app.data.CatalogCacheManager.saveCatalogSnapshot(applicationContext, edgeCatalog)
                 edgeCatalog
             } else {
-                // Fallback to Firestore only if Cloudflare Edge is unreachable
-                val db = runCatching { FirebaseFirestore.getInstance() }.getOrNull()
-                if (db == null) {
-                    Log.w(TAG, "FirebaseFirestore instance unavailable")
-                    return Result.retry()
-                }
-
-                val allItems = mutableListOf<MediaItem>()
-                for (col in FirebaseRepository.ALL_COLLECTIONS) {
-                    try {
-                        val snapshot = runCatching {
-                            db.collection(col).get(Source.SERVER).await()
-                        }.recoverCatching {
-                            db.collection(col).get(Source.DEFAULT).await()
-                        }.getOrNull()
-
-                        if (snapshot != null) {
-                            val items = snapshot.documents.mapNotNull { doc ->
-                                try {
-                                    doc.toObject(MediaItem::class.java)?.let { item ->
-                                        if (item.id.isBlank()) item.copy(id = doc.id) else item
-                                    }
-                                } catch (e: Exception) {
-                                    null
-                                }
-                            }
-                            allItems.addAll(items)
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Error fetching collection '$col' in background sync fallback", e)
-                    }
-                }
-                allItems.distinctBy { it.id }
+                // Read from local disk cache if Cloudflare Edge is unreachable
+                val cached = com.streamhub.app.data.CatalogCacheManager.loadCachedCatalog(applicationContext)
+                Log.d(TAG, "Background sync using local disk cache (${cached.size} items, 0 Firebase reads)")
+                cached
             }
 
             if (catalog.isNotEmpty()) {

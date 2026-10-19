@@ -490,5 +490,36 @@ class FranchiseManagerTest {
         assertEquals(listOf("PREQUEL", "SIDE STORY", "OVA"), tagLabels)
         assertEquals("PREQUEL • SIDE STORY • OVA", FranchiseManager.getFranchiseTag(prequelOva, currentShow))
     }
+
+    @Test
+    fun testUnovaTitleDoesNotMatchOva() {
+        val unova = MediaItem(
+            id = "pokemon_unova",
+            title = "Pokémon BW: Adventures in Unova",
+            category = "Anime",
+            type = "SERIES",
+            relationType = "Sequel, TV",
+            releaseYear = "2013",
+            seasonNumber = 6,
+            totalEpisodes = "14",
+            franchiseId = "pokemon",
+            episodes = (1..14).map { 
+                com.streamhub.app.data.models.Episode(episodeNumber = it, seasonNumber = 6, title = "Episode $it")
+            }
+        )
+
+        // 1. Format label must be "TV", NOT "OVA"
+        val format = FranchiseManager.getMediaFormatLabel(unova)
+        assertEquals("TV", format)
+
+        // 2. Tags for current must be CURRENT, TV
+        val tags = FranchiseManager.getFranchiseTags(unova, unova)
+        assertEquals(listOf("CURRENT", "TV"), tags.map { it.label })
+
+        // 3. Subtitle must contain Season 6, 2013, 14 Episodes
+        val subtitle = FranchiseManager.getSeasonCardSubtitle(unova, includeDuration = false)
+        assertEquals("Season 6 • 2013 • 14 Episodes", subtitle)
+    }
 }
+
 

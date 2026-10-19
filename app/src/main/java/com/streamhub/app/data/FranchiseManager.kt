@@ -202,17 +202,21 @@ object FranchiseManager {
         val catUpper = item.category.trim().uppercase(Locale.ROOT)
         val typeUpper = item.type.trim().uppercase(Locale.ROOT)
         val titleUpper = item.title.trim().uppercase(Locale.ROOT)
+        val title = item.title.trim()
 
-        if (relUpper.contains("TV SPECIAL") || titleUpper.contains("TV SPECIAL") || relUpper.contains("TV-SPECIAL")) return "TV SPECIAL"
-        if (relUpper.contains("OVA") || titleUpper.contains(" OVA") || titleUpper.endsWith("OVA")) return "OVA"
-        if (relUpper.contains("ONA") || titleUpper.contains(" ONA") || titleUpper.endsWith("ONA")) return "ONA"
-        if (relUpper.contains("SPECIAL") || titleUpper.contains(" SPECIAL") || titleUpper.endsWith("SPECIAL")) return "SPECIAL"
+        val hasTitleWord = { word: String -> Regex("""\b${Regex.escape(word)}\b""", RegexOption.IGNORE_CASE).containsMatchIn(title) }
+        val hasRelWord = { word: String -> Regex("""\b${Regex.escape(word)}\b""", RegexOption.IGNORE_CASE).containsMatchIn(relUpper) }
 
-        val isExplicitMovie = relUpper.contains("MOVIE") ||
+        if (hasRelWord("TV SPECIAL") || hasTitleWord("TV SPECIAL") || hasRelWord("TV-SPECIAL")) return "TV SPECIAL"
+        if (hasRelWord("OVA") || hasTitleWord("OVA")) return "OVA"
+        if (hasRelWord("ONA") || hasTitleWord("ONA")) return "ONA"
+        if (hasRelWord("SPECIAL") || hasTitleWord("SPECIAL")) return "SPECIAL"
+
+        val isExplicitMovie = hasRelWord("MOVIE") ||
                 catUpper == "MOVIE" ||
                 catUpper == "MOVIES" ||
                 titleUpper.contains(" MOVIE") ||
-                titleUpper.endsWith("MOVIE") ||
+                titleUpper.endsWith(" MOVIE") ||
                 titleUpper.contains(" THE MOVIE")
 
         if (isExplicitMovie) {
@@ -220,7 +224,7 @@ object FranchiseManager {
         }
 
         if (catUpper == "WEB_SERIES" || catUpper == "SERIES" || typeUpper == "SERIES" ||
-            titleUpper.contains("SEASON") || relUpper.contains("TV") || item.episodes.size > 1
+            titleUpper.contains("SEASON") || hasRelWord("TV") || item.episodes.size > 1
         ) {
             return "TV"
         }

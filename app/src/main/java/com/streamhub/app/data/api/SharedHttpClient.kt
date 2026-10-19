@@ -79,5 +79,24 @@ object SharedHttpClient {
             .connectionPool(okhttp3.ConnectionPool(10, 10, TimeUnit.MINUTES)) // 10 minutes keep-alive
             .build()
     }
+
+    /**
+     * Dedicated OkHttpClient instance tailored for Cloudflare Edge Catalog fetching.
+     * Features:
+     * - HighThroughputSocketFactory (2 MB TCP window scaling + tcpNoDelay) for line saturation
+     * - 60s read timeout (prevents premature timeouts on slow 12 KB/s mobile networks)
+     * - 15s connect timeout
+     */
+    val edgeClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .socketFactory(HighThroughputSocketFactory())
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .retryOnConnectionFailure(true)
+            .build()
+    }
 }
 

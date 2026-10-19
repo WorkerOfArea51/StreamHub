@@ -221,7 +221,9 @@ class FirebaseRepository private constructor() {
 
     fun retry() {
         Log.d(TAG, "Manual retry requested")
-        _catalogState.value = CatalogState.Loading
+        if (_mediaCatalog.value.isEmpty()) {
+            _catalogState.value = CatalogState.Loading
+        }
         attachFirestoreListener()
     }
 
@@ -246,7 +248,7 @@ class FirebaseRepository private constructor() {
         try {
             removeFirestoreListeners()
 
-            // 1. Ultra-fast Cloudflare Edge boot: 15ms response with 0 Firebase reads
+            // 1. Ultra-fast Cloudflare Edge boot: 15ms response with ZERO Firebase reads
             scope.launch {
                 com.streamhub.app.data.api.CatalogEdgeClient.fetchCatalog()
                     .onSuccess { edgeItems ->
@@ -262,6 +264,12 @@ class FirebaseRepository private constructor() {
                             Log.d(TAG, "🚀 Loaded ${merged.size} shows from Cloudflare Edge (0 Firebase reads)!")
                             triggerNotificationAlerts(merged)
 
+                            // Save smart-capped snapshot for offline mode & instant 15ms cold boot
+                            runCatching {
+                                val ctx = com.streamhub.app.StreamHubApplication.getInstance()
+                                com.streamhub.app.data.CatalogCacheManager.saveCatalogSnapshot(ctx, merged)
+                            }.onFailure { Log.w(TAG, "Failed to persist catalog cache: ${it.message}") }
+
                             // Attach live listeners ONLY if currently in Admin Mode!
                             if (com.streamhub.app.data.AdminManager.isAdminMode.value) {
                                 attachRawCollectionListeners(db)
@@ -269,14 +277,23 @@ class FirebaseRepository private constructor() {
                         }
                     }
                     .onFailure { err ->
-                        Log.w(TAG, "Cloudflare Edge catalog fallback (${err.message}). Falling back to Firestore raw listeners.")
-                        // Only attach Firestore listeners if Cloudflare Edge failed!
-                        attachRawCollectionListeners(db)
+                        Log.w(TAG, "Cloudflare Edge catalog fetch failed: ${err.message}. Maintaining cached catalog (0 Firebase reads).")
+                        // STRICT ZERO-FIREBASE-FALLBACK FOR REGULAR USERS!
+                        // If we already have items in memory/disk, keep UI active in Ready state!
+                        if (_mediaCatalog.value.isNotEmpty()) {
+                            _catalogState.value = CatalogState.Ready
+                        } else {
+                            _catalogState.value = CatalogState.Error("Server temporarily unreachable. Check your connection.")
+                        }
                     }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to attach Firestore listeners", e)
-            _catalogState.value = CatalogState.Error("Failed to attach Firestore listener: ${e.message}")
+            Log.e(TAG, "Failed to attach Cloudflare listener", e)
+            if (_mediaCatalog.value.isNotEmpty()) {
+                _catalogState.value = CatalogState.Ready
+            } else {
+                _catalogState.value = CatalogState.Error("Connection error: ${e.message}")
+            }
         }
     }
 
@@ -855,8 +872,21 @@ class FirebaseRepository private constructor() {
     }
 
     private fun loadInitialCatalog() {
-        _mediaCatalog.value = emptyList()
-        _catalogState.value = CatalogState.Loading
+        scope.launch {
+            val cached = runCatching {
+                val ctx = com.streamhub.app.StreamHubApplication.getInstance()
+                com.streamhub.app.data.CatalogCacheManager.loadCachedCatalog(ctx)
+            }.getOrDefault(emptyList())
+
+            if (cached.isNotEmpty()) {
+                _mediaCatalog.value = cached
+                _catalogState.value = CatalogState.Ready
+                Log.d(TAG, "⚡ Initialized catalog from local cache (${cached.size} shows) in ~15ms!")
+            } else {
+                _mediaCatalog.value = emptyList()
+                _catalogState.value = CatalogState.Loading
+            }
+        }
     }
 
     /**

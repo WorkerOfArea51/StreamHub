@@ -74,10 +74,7 @@ fun ProfileScreen(
     var showAddContentDialog by remember { mutableStateOf(false) }
     var showLiveTelemetryDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(isAdminMode) {
-        if (isAdminMode) {
-            com.streamhub.app.data.UserTelemetryManager.startObservingLiveMetrics()
-        }
+    LaunchedEffect(Unit) {
         StorageCacheManager.calculateStorageUsage()
     }
 

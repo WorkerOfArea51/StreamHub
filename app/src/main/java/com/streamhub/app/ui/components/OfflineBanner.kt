@@ -50,6 +50,7 @@ fun OfflineBanner(
     modifier: Modifier = Modifier
 ) {
     val isOnline by NetworkMonitor.isOnline.collectAsState()
+    val edgeStatus by com.streamhub.app.data.api.CatalogEdgeClient.edgeStatus.collectAsState()
     val lastReconnectedAt by NetworkMonitor.lastReconnectedAt.collectAsState()
     val downloads by DownloadManager.downloads.collectAsState()
     val completedCount = remember(downloads) { downloads.count { it.isCompleted } }
@@ -58,9 +59,12 @@ fun OfflineBanner(
     var isManuallyDismissed by remember { mutableStateOf(false) }
     var showReconnectedPill by remember { mutableStateOf(false) }
 
-    // Reset manual dismiss state whenever connectivity changes from online -> offline
-    LaunchedEffect(isOnline) {
-        if (!isOnline) {
+    val isServerDown = isOnline && edgeStatus is com.streamhub.app.data.api.EdgeServerStatus.Down
+    val isOfflineOrServerDown = !isOnline || isServerDown
+
+    // Reset manual dismiss state whenever offline or server down state changes
+    LaunchedEffect(isOfflineOrServerDown) {
+        if (isOfflineOrServerDown) {
             isManuallyDismissed = false
         }
     }
@@ -76,7 +80,7 @@ fun OfflineBanner(
         }
     }
 
-    val isVisible = (!isOnline && !isManuallyDismissed) || showReconnectedPill
+    val isVisible = (isOfflineOrServerDown && !isManuallyDismissed) || showReconnectedPill
 
     AnimatedVisibility(
         visible = isVisible,
@@ -96,8 +100,8 @@ fun OfflineBanner(
                 .padding(horizontal = 16.dp),
             contentAlignment = Alignment.Center
         ) {
-            if (!isOnline && !isManuallyDismissed) {
-                // OFFLINE STATE (YouTube-style Floating Bottom Pill)
+            if (isOfflineOrServerDown && !isManuallyDismissed) {
+                // OFFLINE OR SERVER DOWN STATE (YouTube-style Floating Bottom Pill)
                 Surface(
                     shape = RoundedCornerShape(24.dp),
                     color = Color(0xF2161622),
@@ -110,7 +114,7 @@ fun OfflineBanner(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Cloud-off badge
+                        // Warning badge
                         Box(
                             modifier = Modifier
                                 .size(24.dp)
@@ -120,14 +124,14 @@ fun OfflineBanner(
                         ) {
                             Icon(
                                 Icons.Default.CloudOff,
-                                contentDescription = "Offline",
+                                contentDescription = if (!isOnline) "Offline" else "Server Down",
                                 tint = Color(0xFFFBBF24),
                                 modifier = Modifier.size(13.dp)
                             )
                         }
 
                         Text(
-                            text = "No connection",
+                            text = if (!isOnline) "No connection" else "Server offline • Showing cached catalog",
                             color = Color(0xFFF3F4F6),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
@@ -162,7 +166,11 @@ fun OfflineBanner(
                                 .background(Color(0xFF262638))
                                 .clickable {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    NetworkMonitor.forceRecheck()
+                                    if (!isOnline) {
+                                        NetworkMonitor.forceRecheck()
+                                    } else {
+                                        FirebaseRepository.getInstance().refreshCatalog()
+                                    }
                                 },
                             contentAlignment = Alignment.Center
                         ) {

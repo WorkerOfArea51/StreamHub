@@ -2353,9 +2353,19 @@ private fun FranchiseCard(
                     modifier = Modifier.fillMaxSize()
                 )
 
-                // Watch Order Badge (#1, #2...) on Top-Left of Poster
-                if (fItem.franchiseOrder > 0.0) {
-                    val orderStr = if (fItem.franchiseOrder % 1.0 == 0.0) "#${fItem.franchiseOrder.toInt()}" else "#${fItem.franchiseOrder}"
+                // Watch Order or Season Badge (#1, S1, S2...) on Top-Left of Poster
+                val effectiveSeason = com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(fItem)
+                val effectivePart = com.streamhub.app.data.FranchiseManager.getEffectivePartNumber(fItem)
+                val isMovieFormat = com.streamhub.app.data.FranchiseManager.getMediaFormatLabel(fItem) == "MOVIE"
+
+                val orderOrSeasonStr = when {
+                    fItem.franchiseOrder > 0.0 -> if (fItem.franchiseOrder % 1.0 == 0.0) "#${fItem.franchiseOrder.toInt()}" else "#${fItem.franchiseOrder}"
+                    !isMovieFormat && effectiveSeason > 0 -> if (effectivePart != null && effectivePart > 0) "S$effectiveSeason P$effectivePart" else "S$effectiveSeason"
+                    isMovieFormat && effectivePart != null && effectivePart > 1 -> "M$effectivePart"
+                    else -> null
+                }
+
+                if (orderOrSeasonStr != null) {
                     Surface(
                         shape = RoundedCornerShape(topStart = 8.dp, bottomEnd = 8.dp),
                         color = if (isCurrent) AccentGold else Color(0xD9000000),
@@ -2363,7 +2373,7 @@ private fun FranchiseCard(
                         modifier = Modifier.align(Alignment.TopStart)
                     ) {
                         Text(
-                            text = orderStr,
+                            text = orderOrSeasonStr,
                             color = if (isCurrent) Color.Black else Color.White,
                             fontSize = 8.5.sp,
                             fontWeight = FontWeight.Black,

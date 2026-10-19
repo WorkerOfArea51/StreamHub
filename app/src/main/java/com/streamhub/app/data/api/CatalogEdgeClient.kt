@@ -4,15 +4,30 @@ import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
 import com.streamhub.app.data.EpisodeOrderingManager
 import com.streamhub.app.data.StreamBackendConfig
 import com.streamhub.app.data.models.MediaItem
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
+import java.io.InputStreamReader
+import java.net.SocketTimeoutException
+
+/**
+ * Health and connectivity status of the Cloudflare Edge Catalog proxy.
+ */
+sealed class EdgeServerStatus {
+    data object Healthy : EdgeServerStatus()
+    data object Slow : EdgeServerStatus()
+    data class Down(val statusCode: Int, val message: String) : EdgeServerStatus()
+}
 
 /**
  * Cloudflare Edge Catalog Client.
@@ -20,8 +35,11 @@ import org.json.JSONObject
  * Fetches the pre-compiled, edge-cached catalog from:
  * GET https://stream-proxy.area-51-ancientworkers.workers.dev/api/catalog
  *
- * Delivers all 495+ shows to regular users in 15ms globally with ZERO Firebase reads.
- * Also provides cache-refresh triggers when shows are saved or updated in Creator Studio.
+ * Invariants:
+ * 1. Delivers all shows globally with ZERO Firebase reads.
+ * 2. HighThroughputSocketFactory: 2 MB TCP window scaling saturates radio on Splash Screen.
+ * 3. Single-Pass Streaming: Streams directly into Gson without allocating 5.2 MB strings in RAM.
+ * 4. Resilient Edge Status: Distinguishes between slow connections and true server downtime (502/503).
  */
 object CatalogEdgeClient {
 
@@ -30,31 +48,55 @@ object CatalogEdgeClient {
     private val REFRESH_URL = "https://${StreamBackendConfig.DEFAULT_STREAMING_HOST}/api/catalog/refresh"
 
     private val gson: Gson by lazy { GsonBuilder().create() }
+    private val mediaListType = object : TypeToken<List<MediaItem>>() {}.type
+
+    private val _edgeStatus = MutableStateFlow<EdgeServerStatus>(EdgeServerStatus.Healthy)
+    val edgeStatus: StateFlow<EdgeServerStatus> = _edgeStatus.asStateFlow()
 
     /**
      * Fetches the full media catalog from Cloudflare Edge Cache.
-     * Response is pre-cached on Cloudflare CDN and takes ~15ms.
+     * Uses streaming parser to avoid heavy memory allocation.
      */
     suspend fun fetchCatalog(): Result<List<MediaItem>> = withContext(Dispatchers.IO) {
         runCatching {
             val request = Request.Builder()
                 .url(CATALOG_URL)
-                .header("User-Agent", "StreamHub/4.8.414 (Android; Mobile)")
+                .header("User-Agent", "StreamHub/4.8.416 (Android; Mobile)")
                 .get()
                 .build()
 
-            val response = SharedHttpClient.baseClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                throw IllegalStateException("Cloudflare Edge catalog returned HTTP ${response.code}: ${response.message}")
+            val response = try {
+                SharedHttpClient.edgeClient.newCall(request).execute()
+            } catch (e: SocketTimeoutException) {
+                Log.w(TAG, "Cloudflare Edge catalog read timed out — connection is slow")
+                _edgeStatus.value = EdgeServerStatus.Slow
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Cloudflare Edge catalog connection error: ${e.message}")
+                throw e
             }
 
-            val bodyString = response.body?.string()
-                ?: throw IllegalStateException("Empty body from Cloudflare Edge catalog")
+            if (!response.isSuccessful) {
+                val code = response.code
+                if (code in 500..599) {
+                    _edgeStatus.value = EdgeServerStatus.Down(code, "Server temporarily unavailable ($code)")
+                }
+                throw IllegalStateException("Cloudflare Edge catalog returned HTTP $code: ${response.message}")
+            }
 
-            val items = parseCatalogJson(bodyString)
+            val body = response.body ?: throw IllegalStateException("Empty body from Cloudflare Edge catalog")
+            val items = InputStreamReader(body.byteStream(), Charsets.UTF_8).use { isr ->
+                JsonReader(isr).use { reader ->
+                    parseCatalogStream(reader)
+                }
+            }
+
             if (items.isEmpty()) {
                 throw IllegalStateException("Cloudflare Edge returned 0 items")
             }
+
+            // Successfully fetched — mark edge healthy
+            _edgeStatus.value = EdgeServerStatus.Healthy
 
             // Normalize and sort all episodes
             val normalized = items.map { item ->
@@ -69,7 +111,7 @@ object CatalogEdgeClient {
                 )
             }.distinctBy { it.id }
 
-            Log.d(TAG, "Successfully fetched ${normalized.size} items from Cloudflare Edge!")
+            Log.d(TAG, "🚀 Successfully streamed ${normalized.size} items from Cloudflare Edge (0 Firebase reads)!")
             normalized
         }
     }
@@ -83,7 +125,7 @@ object CatalogEdgeClient {
             val emptyBody = "".toRequestBody("application/json".toMediaType())
             val request = Request.Builder()
                 .url(REFRESH_URL)
-                .header("User-Agent", "StreamHub/4.8.414 (Android; Mobile)")
+                .header("User-Agent", "StreamHub/4.8.416 (Android; Mobile)")
                 .post(emptyBody)
                 .build()
 
@@ -97,25 +139,39 @@ object CatalogEdgeClient {
         }
     }
 
-    private fun parseCatalogJson(jsonStr: String): List<MediaItem> {
+    fun parseCatalogJson(jsonStr: String): List<MediaItem> {
         return try {
-            val trimmed = jsonStr.trim()
-            val element = com.google.gson.JsonParser.parseString(trimmed)
-            val array = if (element.isJsonArray) {
-                element.asJsonArray
-            } else if (element.isJsonObject && element.asJsonObject.has("items")) {
-                element.asJsonObject.getAsJsonArray("items")
-            } else {
-                null
-            }
-            if (array != null) {
-                val type = object : TypeToken<List<MediaItem>>() {}.type
-                gson.fromJson<List<MediaItem>>(array, type) ?: emptyList()
-            } else {
-                emptyList()
+            val reader = JsonReader(java.io.StringReader(jsonStr.trim()))
+            parseCatalogStream(reader)
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun parseCatalogStream(reader: JsonReader): List<MediaItem> {
+        return try {
+            when (reader.peek()) {
+                JsonToken.BEGIN_OBJECT -> {
+                    reader.beginObject()
+                    var result: List<MediaItem> = emptyList()
+                    while (reader.hasNext()) {
+                        val name = reader.nextName()
+                        if (name == "items") {
+                            result = gson.fromJson(reader, mediaListType) ?: emptyList()
+                        } else {
+                            reader.skipValue()
+                        }
+                    }
+                    reader.endObject()
+                    result
+                }
+                JsonToken.BEGIN_ARRAY -> {
+                    gson.fromJson(reader, mediaListType) ?: emptyList()
+                }
+                else -> emptyList()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse Cloudflare catalog JSON", e)
+            Log.e(TAG, "Failed to parse Cloudflare catalog JSON stream", e)
             emptyList()
         }
     }

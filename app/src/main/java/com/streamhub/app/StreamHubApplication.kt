@@ -128,6 +128,7 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
         Log.w(TAG, "Emergency cache flush invoked by user/system pressure")
         runCatching { StreamCacheManager.release() }
         runCatching { DownloadManager.pauseProgressPolling() }
+        runCatching { com.streamhub.app.data.CatalogCacheManager.clearCache(this) }
     }
 
     private fun initializeManagers() {

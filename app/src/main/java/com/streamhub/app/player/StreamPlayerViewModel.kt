@@ -16,6 +16,7 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.TelegramLinkResolver
 import com.streamhub.app.data.NetworkMonitor
+import com.streamhub.app.data.StreamBackendConfig
 import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.models.MediaItem
 import kotlinx.coroutines.Dispatchers
@@ -2232,14 +2233,23 @@ class StreamPlayerViewModel : ViewModel() {
             } catch (_: Exception) {}
 
             var targetUrl: String? = null
-            // Failover: from the 2nd attempt onward, switch to alternative mirror if available
-            if (autoRetryCount >= 2 && ep != null) {
+            // Failover: switch to alternative mirror or Serv00 origin on genuine 5xx outage or repeated failures
+            if ((serverDown || autoRetryCount >= 2) && ep != null) {
                 val currentUrl = snapshot.resolvedStreamUrl
-                val mirrorUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.mirrorStreamUrl)
-                if (mirrorUrl.isNotBlank() && mirrorUrl.startsWith("http") && mirrorUrl != currentUrl) {
-                    Log.i("StreamPlayerViewModel", "Auto-reconnecting using failover mirror URL: $mirrorUrl")
-                    targetUrl = mirrorUrl
-                    _uiState.update { it.copy(resolvedStreamUrl = mirrorUrl) }
+                if (serverDown && currentUrl.contains("workers.dev", ignoreCase = true)) {
+                    val serv00Url = StreamBackendConfig.migrateUrl(currentUrl, StreamBackendConfig.SERV00_ORIGIN_HOST)
+                    if (serv00Url != currentUrl) {
+                        Log.i("StreamPlayerViewModel", "Cloudflare 5xx outage detected — failing over directly to Serv00 origin: $serv00Url")
+                        targetUrl = serv00Url
+                        _uiState.update { it.copy(resolvedStreamUrl = serv00Url) }
+                    }
+                } else {
+                    val mirrorUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.mirrorStreamUrl)
+                    if (mirrorUrl.isNotBlank() && mirrorUrl.startsWith("http") && mirrorUrl != currentUrl) {
+                        Log.i("StreamPlayerViewModel", "Auto-reconnecting using failover mirror URL: $mirrorUrl")
+                        targetUrl = mirrorUrl
+                        _uiState.update { it.copy(resolvedStreamUrl = mirrorUrl) }
+                    }
                 }
             }
 
