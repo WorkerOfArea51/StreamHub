@@ -4,6 +4,23 @@ All notable changes, architectural milestones, and performance optimizations for
 
 ---
 
+## 🌟 [v4.8.418] - 2026-10-22 (Background App Update Notifications & Direct Dialog Routing)
+
+### 🚀 Major Upgrades & Performance Fixes
+
+- **🔔 Background App Update Notifications & Direct Dialog Routing (`AppUpdateManager.kt`, `NotificationAlertManager.kt`, `CatalogSyncWorker.kt`, `MainActivity.kt`, `HomeScreen.kt`, `NotificationPreferencesScreen.kt`)**:
+  - High-priority system notification channel (`streamhub_app_updates`) alerting users whenever a new StreamHub version is released on GitHub.
+  - Strict one-time delivery enforcement: Enforces single notification delivery per release version (`KEY_LAST_NOTIFIED_UPDATE_VERSION`), permanently suppressing duplicate alerts.
+  - Periodic background check integration: `CatalogSyncWorker` (running every 4 hours via Android WorkManager) performs lightweight release checks with 0 Firebase reads.
+  - Seamless 1-tap intent handling: Tapping the notification launches `MainActivity` with `open_update_dialog = true`, automatically presenting `UpdateBottomSheet` with changelog notes and direct in-app download & install actions.
+  - Granular user preference: Exposes "App Update Alerts" switch in `NotificationPreferencesScreen` under `ALERTS`, allowing users to independently toggle app update notifications on or off.
+- **⚡ Continuous 30m Stream Caching & Socket Cancellation Optimization (`StreamPlayerViewModel.kt`)**:
+  - Restored full 25m–30m continuous Akamai VOD forward buffering window for uninterrupted playback.
+- **📱 Custom Avatar Synchronization in Live Audience Telemetry (`UserTelemetryManager.kt`, `LiveAudienceTelemetryDialog.kt`)**:
+  - Synchronized custom profile avatar thumbnail with active device inspection card and Firestore heartbeats.
+
+---
+
 ## 🌟 [v4.8.417] - 2026-10-21 (High-Speed 2x Buffer Protection & Silent Socket Healing)
 
 ### 🚀 Major Upgrades & Performance Fixes
