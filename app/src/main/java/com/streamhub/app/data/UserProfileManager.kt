@@ -8,6 +8,10 @@ import com.streamhub.app.R
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.Base64
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.UUID
 
@@ -47,6 +51,8 @@ object UserProfileManager {
     private const val KEY_BACKGROUND_URI = "profile_background_uri"
 
     private lateinit var appContext: Context
+    @Volatile
+    private var cachedAvatarBase64: String = ""
 
     val PRESET_AVATARS = listOf(
         PresetAvatar(0, "Cyber Samurai", "Cyber", R.drawable.avatar_cyber_samurai),
@@ -117,6 +123,9 @@ object UserProfileManager {
             backgroundUri = backgroundUri.trim()
         )
 
+        if (updated.avatarUri.isBlank()) {
+            cachedAvatarBase64 = ""
+        }
         _profileFlow.value = updated
         getPrefs().edit()
             .putString(KEY_CUSTOM_NAME, updated.customName)
@@ -128,6 +137,7 @@ object UserProfileManager {
     }
 
     fun saveCustomAvatar(context: Context, sourceUri: Uri): String {
+        cachedAvatarBase64 = ""
         return try {
             val destFile = File(context.filesDir, "custom_avatar.jpg")
             context.contentResolver.openInputStream(sourceUri)?.use { input ->
@@ -138,6 +148,31 @@ object UserProfileManager {
             "file://${destFile.absolutePath}?t=${System.currentTimeMillis()}"
         } catch (e: Exception) {
             Log.e("UserProfileManager", "Failed to save custom avatar", e)
+            ""
+        }
+    }
+
+    /**
+     * Creates or retrieves a lightweight 80x80 compressed JPEG Base64 thumbnail data URI (~1.5-2 KB)
+     * for real-time telemetry syncing across devices.
+     */
+    fun getAvatarThumbnailBase64(context: Context? = null): String {
+        if (cachedAvatarBase64.isNotBlank()) return cachedAvatarBase64
+        val ctx = context ?: if (::appContext.isInitialized) appContext else return ""
+        val file = File(ctx.filesDir, "custom_avatar.jpg")
+        if (!file.exists() || file.length() == 0L) return ""
+        return try {
+            val bitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return ""
+            val size = 80
+            val scaled = Bitmap.createScaledBitmap(bitmap, size, size, true)
+            val baos = ByteArrayOutputStream()
+            scaled.compress(Bitmap.CompressFormat.JPEG, 70, baos)
+            val base64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
+            val result = "data:image/jpeg;base64,$base64"
+            cachedAvatarBase64 = result
+            result
+        } catch (e: Exception) {
+            Log.w("UserProfileManager", "Failed to create avatar thumbnail base64", e)
             ""
         }
     }
@@ -160,6 +195,7 @@ object UserProfileManager {
     @Synchronized
     fun resetToDefault() {
         if (!::appContext.isInitialized) return
+        cachedAvatarBase64 = ""
         val memberId = _profileFlow.value.memberId
         val defaultProfile = UserProfile(memberId = memberId)
         _profileFlow.value = defaultProfile

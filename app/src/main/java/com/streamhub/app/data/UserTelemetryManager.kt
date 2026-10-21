@@ -41,6 +41,7 @@ data class UserSessionInfo(
     // User Profile Identity
     val userName: String = "Dark Matter",
     val userAvatarPreset: Int = 0,
+    val userAvatarBase64: String = "",
     val memberId: String = "",
     // Playback Deep Telemetry
     val mediaTitle: String = "",
@@ -332,6 +333,9 @@ object UserTelemetryManager {
                 val profile = UserProfileManager.profileFlow.value
                 val profileName = profile.customName.ifBlank { "Dark Matter" }
                 val avatarPreset = profile.avatarPresetIndex
+                val avatarBase64 = if (profile.avatarUri.isNotBlank()) {
+                    UserProfileManager.getAvatarThumbnailBase64(ctx)
+                } else ""
                 val memberId = profile.memberId
                 val carrier = getCarrierName(ctx)
 
@@ -347,6 +351,7 @@ object UserTelemetryManager {
                     // User Identity
                     "userName" to profileName,
                     "userAvatarPreset" to avatarPreset,
+                    "userAvatarBase64" to avatarBase64,
                     "memberId" to memberId,
                     // Playback Deep Telemetry
                     "mediaTitle" to currentMediaTitle,
@@ -457,6 +462,7 @@ object UserTelemetryManager {
 
                         val userName = doc.getString("userName") ?: "Dark Matter"
                         val userAvatarPreset = doc.getLong("userAvatarPreset")?.toInt() ?: 0
+                        val userAvatarBase64 = doc.getString("userAvatarBase64") ?: ""
                         val memberId = doc.getString("memberId") ?: ""
                         val resolution = doc.getString("resolution") ?: ""
                         val videoCodec = doc.getString("videoCodec") ?: ""
@@ -476,6 +482,7 @@ object UserTelemetryManager {
                             sessionStartTimestamp = sessionStart,
                             userName = userName,
                             userAvatarPreset = userAvatarPreset,
+                            userAvatarBase64 = userAvatarBase64,
                             memberId = memberId,
                             mediaTitle = doc.getString("mediaTitle") ?: "",
                             episodeTitle = doc.getString("episodeTitle") ?: "",
@@ -523,6 +530,9 @@ object UserTelemetryManager {
                 if (isCurrentAdmin && clientId.isNotBlank() && activeList.none { it.clientId == clientId }) {
                     val (batteryPct, isCharging) = getBatteryInfo(appContext ?: return@addSnapshotListener)
                     val profile = UserProfileManager.profileFlow.value
+                    val avatarBase64 = if (profile.avatarUri.isNotBlank()) {
+                        UserProfileManager.getAvatarThumbnailBase64(appContext)
+                    } else ""
                     activeList.add(
                         UserSessionInfo(
                             clientId = clientId,
@@ -535,6 +545,7 @@ object UserTelemetryManager {
                             sessionStartTimestamp = sessionStartTimestamp,
                             userName = profile.customName.ifBlank { "Dark Matter" },
                             userAvatarPreset = profile.avatarPresetIndex,
+                            userAvatarBase64 = avatarBase64,
                             memberId = profile.memberId,
                             mediaTitle = currentMediaTitle,
                             episodeTitle = currentEpisodeTitle,

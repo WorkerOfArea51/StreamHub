@@ -98,9 +98,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import coil.compose.AsyncImage
 import java.util.Locale
 import com.streamhub.app.data.UserProfileManager
 import com.streamhub.app.data.UserSessionInfo
@@ -738,7 +740,17 @@ fun ActiveDeviceItem(
         else -> Pair(Color(0xFF38BDF8), "USER")
     }
 
+    val currentProfile = UserProfileManager.profileFlow.collectAsState().value
     val avatarRes = UserProfileManager.PRESET_AVATARS.getOrNull(session.userAvatarPreset)?.drawableResId
+
+    // Priority:
+    // 1. If this device and user has a custom gallery avatar, use local avatar URI
+    // 2. If remote session synced a custom avatar thumbnail base64
+    val customAvatarModel: Any? = when {
+        isThisDevice && currentProfile.avatarUri.isNotBlank() -> currentProfile.avatarUri
+        session.userAvatarBase64.isNotBlank() -> session.userAvatarBase64
+        else -> null
+    }
 
     Surface(
         shape = RoundedCornerShape(20.dp),
@@ -766,13 +778,23 @@ fun ActiveDeviceItem(
                         .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (avatarRes != null) {
+                    if (customAvatarModel != null) {
+                        AsyncImage(
+                            model = customAvatarModel,
+                            contentDescription = session.userName,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else if (avatarRes != null) {
                         Image(
                             painter = painterResource(id = avatarRes),
                             contentDescription = null,
                             modifier = Modifier
                                 .size(40.dp)
-                                .clip(CircleShape)
+                                .clip(CircleShape),
+                            contentScale = ContentScale.Crop
                         )
                     } else {
                         Icon(
@@ -977,7 +999,14 @@ fun DeviceTelemetryDetailDialog(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
+                            val isThisDevice = session.clientId == UserTelemetryManager.getClientId()
+                            val currentProfile = UserProfileManager.profileFlow.collectAsState().value
                             val avatarRes = UserProfileManager.PRESET_AVATARS.getOrNull(session.userAvatarPreset)?.drawableResId
+                            val customAvatarModel: Any? = when {
+                                isThisDevice && currentProfile.avatarUri.isNotBlank() -> currentProfile.avatarUri
+                                session.userAvatarBase64.isNotBlank() -> session.userAvatarBase64
+                                else -> null
+                            }
                             Box(
                                 modifier = Modifier
                                     .size(44.dp)
@@ -985,11 +1014,19 @@ fun DeviceTelemetryDetailDialog(
                                     .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                                 contentAlignment = Alignment.Center
                             ) {
-                                if (avatarRes != null) {
+                                if (customAvatarModel != null) {
+                                    AsyncImage(
+                                        model = customAvatarModel,
+                                        contentDescription = session.userName,
+                                        modifier = Modifier.size(44.dp).clip(CircleShape),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else if (avatarRes != null) {
                                     Image(
                                         painter = painterResource(id = avatarRes),
                                         contentDescription = null,
-                                        modifier = Modifier.size(44.dp).clip(CircleShape)
+                                        modifier = Modifier.size(44.dp).clip(CircleShape),
+                                        contentScale = ContentScale.Crop
                                     )
                                 } else {
                                     Text(text = session.flagEmoji, fontSize = 22.sp)
