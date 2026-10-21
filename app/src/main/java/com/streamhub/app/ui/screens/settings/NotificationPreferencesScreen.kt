@@ -47,6 +47,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationManagerCompat
@@ -54,6 +55,7 @@ import androidx.core.content.ContextCompat
 import com.streamhub.app.data.NotificationAlertManager
 import com.streamhub.app.ui.components.ToastManager
 import com.streamhub.app.ui.screens.settings.components.PreferenceCard
+import com.streamhub.app.ui.screens.settings.components.PreferenceDivider
 import com.streamhub.app.ui.screens.settings.components.PreferenceSectionHeader
 import com.streamhub.app.ui.screens.settings.components.PreferenceSwitchItem
 import com.streamhub.app.ui.theme.BackgroundDark
@@ -66,8 +68,9 @@ import com.streamhub.app.ui.theme.bouncyTouch
  * Production-grade Notification Preferences Screen.
  * Configures:
  * 1. Episode Release Alerts toggle
- * 2. Real-time Test Notification dispatcher
- * 3. System-level Notification permission status and direct settings launcher
+ * 2. App Update Alerts toggle
+ * 3. Real-time Test Notification dispatcher
+ * 4. System-level Notification permission status and direct settings launcher
  */
 @Composable
 fun NotificationPreferencesScreen(
@@ -78,6 +81,7 @@ fun NotificationPreferencesScreen(
     val currentAccent by ThemeManager.currentAccent.collectAsState()
     val isAmoled by ThemeManager.isAmoledBlack.collectAsState()
     val alertsEnabled by NotificationAlertManager.alertsEnabled.collectAsState()
+    val updateAlertsEnabled by NotificationAlertManager.updateAlertsEnabled.collectAsState()
 
     var isSystemNotificationEnabled by remember {
         mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled())
@@ -155,6 +159,16 @@ fun NotificationPreferencesScreen(
                         checked = alertsEnabled,
                         onCheckedChange = { NotificationAlertManager.setAlertsEnabled(context, it) },
                         icon = Icons.Outlined.NotificationsActive,
+                        iconTint = currentAccent.color,
+                        accentColor = currentAccent.color
+                    )
+                    PreferenceDivider()
+                    PreferenceSwitchItem(
+                        title = "App Update Alerts",
+                        subtitle = "Receive a system notification when a new version of StreamHub is released.",
+                        checked = updateAlertsEnabled,
+                        onCheckedChange = { NotificationAlertManager.setUpdateAlertsEnabled(context, it) },
+                        icon = Icons.Default.SystemUpdate,
                         iconTint = currentAccent.color,
                         accentColor = currentAccent.color
                     )

@@ -191,6 +191,7 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
                     }
                 } catch (_: Exception) { BuildConfig.VERSION_CODE.toLong() }
 
+                AppUpdateManager.init(applicationContext)
                 AppUpdateManager.checkForUpdate(
                     currentVersionCode = vCode,
                     currentVersionName = vName

@@ -196,6 +196,9 @@ class MainActivity : ComponentActivity() {
             savedInstanceState.getString("deep_link_media_id")?.let { deepLinkMediaId.value = it }
         }
         handleDeepLink(intent)
+        if (intent?.getBooleanExtra("open_update_dialog", false) == true) {
+            com.streamhub.app.data.AppUpdateManager.requestUpdatePrompt()
+        }
         registerPipActionReceiver()
         com.streamhub.app.data.NetworkMonitor.init(this)
 
@@ -251,6 +254,9 @@ class MainActivity : ComponentActivity() {
         // FIX: setIntent so subsequent onResume can re-read it if needed.
         setIntent(intent)
         handleDeepLink(intent)
+        if (intent.getBooleanExtra("open_update_dialog", false)) {
+            com.streamhub.app.data.AppUpdateManager.requestUpdatePrompt()
+        }
     }
 
     private fun handleDeepLink(intent: Intent?) {

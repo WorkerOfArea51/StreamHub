@@ -82,6 +82,26 @@ object AppUpdateManager {
     private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
+    private val _forceShowUpdatePrompt = MutableStateFlow(false)
+    val forceShowUpdatePrompt: StateFlow<Boolean> = _forceShowUpdatePrompt.asStateFlow()
+
+    private var appContext: Context? = null
+
+    fun init(context: Context) {
+        if (appContext == null) {
+            appContext = context.applicationContext
+        }
+    }
+
+    fun requestUpdatePrompt() {
+        _forceShowUpdatePrompt.value = true
+        checkForUpdate(forceCheck = true)
+    }
+
+    fun consumeUpdatePrompt() {
+        _forceShowUpdatePrompt.value = false
+    }
+
     var currentUpdateInfo: UpdateInfo? = null
         private set
 
@@ -259,6 +279,15 @@ object AppUpdateManager {
                 currentUpdateInfo = info
                 _updateState.value = UpdateState.UpdateAvailable(info)
 
+                // Dispatch one-time Android system notification to status bar
+                appContext?.let { ctx ->
+                    NotificationAlertManager.sendAppUpdateNotification(
+                        context = ctx,
+                        versionName = info.versionName,
+                        releaseNotes = info.releaseNotes
+                    )
+                }
+
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -266,6 +295,156 @@ object AppUpdateManager {
                 _updateState.value = UpdateState.Error(e.message ?: "Unknown update error")
             }
         }
+    }
+
+    /**
+     * Suspending call to check GitHub Releases and return [UpdateInfo] if a newer release exists.
+     * Can be invoked from background workers (e.g. [CatalogSyncWorker]) or coroutines without
+     * interfering with active foreground UI state.
+     */
+    suspend fun checkUpdateSuspending(
+        currentVersionName: String = com.streamhub.app.BuildConfig.VERSION_NAME,
+        repoOwner: String = "WorkerOfArea51",
+        repoName: String = "StreamHub"
+    ): UpdateInfo? = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        try {
+            var latestTag: String? = null
+
+            // Strategy 1: Check GitHub Releases web redirect (100% rate-limit proof)
+            try {
+                val redirectUrl = "https://github.com/$repoOwner/$repoName/releases/latest"
+                val redirectRequest = Request.Builder()
+                    .url(redirectUrl)
+                    .header("User-Agent", "Mozilla/5.0 (Android; Mobile)")
+                    .build()
+
+                redirectCheckingClient.newCall(redirectRequest).execute().use { response ->
+                    if (response.code in 300..399) {
+                        val location = response.header("Location") ?: response.header("location") ?: ""
+                        if (location.contains("/releases/tag/")) {
+                            latestTag = location.substringAfter("/releases/tag/").substringBefore("/").substringBefore("?").substringBefore("#").trim()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Suspending redirect check error: ${e.message}")
+            }
+
+            // Strategy 1b: Follow redirect to final URL if Location header was not exposed
+            if (latestTag == null) {
+                try {
+                    val req = Request.Builder()
+                        .url("https://github.com/$repoOwner/$repoName/releases/latest")
+                        .header("User-Agent", "Mozilla/5.0 (Android; Mobile)")
+                        .build()
+                    httpClient.newCall(req).execute().use { res ->
+                        val finalUrl = res.request.url.toString()
+                        if (finalUrl.contains("/releases/tag/")) {
+                            latestTag = finalUrl.substringAfter("/releases/tag/").substringBefore("/").substringBefore("?").substringBefore("#").trim()
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Suspending follow redirect check error: ${e.message}")
+                }
+            }
+
+            // Strategy 2: REST API fallback
+            var apiJson: JSONObject? = null
+            if (latestTag == null) {
+                val apiUrl = "https://api.github.com/repos/$repoOwner/$repoName/releases/latest"
+                val apiRequest = Request.Builder()
+                    .url(apiUrl)
+                    .header("Accept", "application/vnd.github+json")
+                    .header("User-Agent", "StreamHub-App")
+                    .build()
+
+                httpClient.newCall(apiRequest).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string()
+                        if (!body.isNullOrBlank()) {
+                            val parsed = JSONObject(body)
+                            apiJson = parsed
+                            val tag = parsed.optString("tag_name", "")
+                            if (tag.isNotBlank()) latestTag = tag
+                        }
+                    }
+                }
+            }
+
+            val tag = latestTag ?: return@withContext null
+            if (!isNewerVersion(tag, currentVersionName)) {
+                return@withContext null
+            }
+
+            var downloadUrl = ""
+            var releaseNotes = "StreamHub $tag is available with performance improvements and bug fixes."
+            var apkSizeBytes = 0L
+            var isPreRelease = false
+
+            if (apiJson == null) {
+                try {
+                    val tagApiUrl = "https://api.github.com/repos/$repoOwner/$repoName/releases/tags/$tag"
+                    val tagRequest = Request.Builder()
+                        .url(tagApiUrl)
+                        .header("Accept", "application/vnd.github+json")
+                        .header("User-Agent", "StreamHub-App")
+                        .build()
+
+                    httpClient.newCall(tagRequest).execute().use { response ->
+                        if (response.isSuccessful) {
+                            val body = response.body?.string()
+                            if (!body.isNullOrBlank()) {
+                                apiJson = JSONObject(body)
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            apiJson?.let { json ->
+                val bodyText = json.optString("body", "").trim()
+                if (bodyText.isNotBlank()) releaseNotes = bodyText
+                isPreRelease = json.optBoolean("prerelease", false)
+                val assets = json.optJSONArray("assets")
+                if (assets != null && assets.length() > 0) {
+                    downloadUrl = findBestAssetUrl(assets)
+                    apkSizeBytes = findBestAssetSize(assets)
+                }
+            }
+
+            if (downloadUrl.isBlank()) {
+                downloadUrl = "https://github.com/$repoOwner/$repoName/releases/download/$tag/StreamHub-arm64-release.apk"
+            }
+
+            val info = UpdateInfo(
+                versionName = tag,
+                versionCode = parseVersionCodeFromTag(tag),
+                downloadUrl = downloadUrl,
+                releaseNotes = releaseNotes,
+                isPreRelease = isPreRelease,
+                apkSizeBytes = apkSizeBytes
+            )
+            currentUpdateInfo = info
+            info
+        } catch (e: Exception) {
+            Log.e(TAG, "checkUpdateSuspending failed: ${e.message}", e)
+            null
+        }
+    }
+
+    /**
+     * Checks for updates in the background and dispatches a one-time system notification
+     * if a newer version is available. Safe to invoke from periodic background workers.
+     */
+    suspend fun checkAndNotifyIfUpdateAvailable(context: Context): Boolean {
+        init(context)
+        val info = checkUpdateSuspending() ?: return false
+        _updateState.value = UpdateState.UpdateAvailable(info)
+        return NotificationAlertManager.sendAppUpdateNotification(
+            context = context,
+            versionName = info.versionName,
+            releaseNotes = info.releaseNotes
+        )
     }
 
     /**

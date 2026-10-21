@@ -30,11 +30,22 @@ class CatalogSyncWorker(
     }
 
     override suspend fun doWork(): Result {
-        Log.d(TAG, "Executing periodic background catalog sync check...")
+        Log.d(TAG, "Executing periodic background sync check (updates + episodes)...")
 
         NotificationAlertManager.init(applicationContext)
+
+        // 1. Check for app updates in background (lightweight 10ms check, 0 Firebase reads)
+        if (NotificationAlertManager.updateAlertsEnabled.value) {
+            try {
+                com.streamhub.app.data.AppUpdateManager.checkAndNotifyIfUpdateAvailable(applicationContext)
+            } catch (e: Exception) {
+                Log.w(TAG, "Background app update check error: ${e.message}")
+            }
+        }
+
+        // 2. Check for new episodes & franchise releases if alerts are enabled
         if (!NotificationAlertManager.alertsEnabled.value) {
-            Log.d(TAG, "New episode & franchise alerts are disabled in settings. Skipping sync.")
+            Log.d(TAG, "New episode & franchise alerts are disabled in settings. Skipping catalog sync.")
             return Result.success()
         }
 
@@ -42,7 +53,7 @@ class CatalogSyncWorker(
             MyListManager.init(applicationContext)
             val myListIds = MyListManager.myListFlow.value
             if (myListIds.isEmpty()) {
-                Log.d(TAG, "My List is empty. No notifications to evaluate.")
+                Log.d(TAG, "My List is empty. No episode notifications to evaluate.")
                 return Result.success()
             }
 

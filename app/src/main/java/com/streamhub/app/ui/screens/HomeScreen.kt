@@ -164,6 +164,14 @@ fun HomeScreen(
     var selectedQuickActionMedia by remember { mutableStateOf<MediaItem?>(null) }
     var isUpdateSheetDismissed by rememberSaveable { mutableStateOf(false) }
 
+    val forceShowUpdatePrompt by com.streamhub.app.data.AppUpdateManager.forceShowUpdatePrompt.collectAsState()
+    LaunchedEffect(forceShowUpdatePrompt) {
+        if (forceShowUpdatePrompt) {
+            isUpdateSheetDismissed = false
+            com.streamhub.app.data.AppUpdateManager.consumeUpdatePrompt()
+        }
+    }
+
     val myListIds by com.streamhub.app.data.MyListManager.myListFlow.collectAsState()
 
     val appContext = context.applicationContext

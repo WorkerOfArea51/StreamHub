@@ -411,6 +411,7 @@ fun AppUpdatePreferenceItem(currentAccent: AppThemeAccent = AppThemeAccent.OCEAN
                 .clickable {
                     if (updateState !is UpdateState.Checking && updateState !is UpdateState.Downloading) {
                         userChecked = true
+                        AppUpdateManager.init(context)
                         AppUpdateManager.checkForUpdate(
                             currentVersionCode = currentVersionCode,
                             currentVersionName = currentVersionName,
@@ -505,6 +506,7 @@ fun AppUpdatePreferenceItem(currentAccent: AppThemeAccent = AppThemeAccent.OCEAN
                             .background(accentColor.copy(alpha = 0.15f))
                             .clickable {
                                 userChecked = true
+                                AppUpdateManager.init(context)
                                 AppUpdateManager.checkForUpdate(
                                     currentVersionCode = currentVersionCode,
                                     currentVersionName = currentVersionName,
