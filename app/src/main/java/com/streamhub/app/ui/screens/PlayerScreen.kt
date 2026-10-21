@@ -1645,7 +1645,7 @@ fun PlayerScreen(
                 .padding(top = 18.dp)
         )
 
-        // Content Warning / Parental Guidance Banner (Nuvio Signature Style)
+        // Content Warning / Parental Guidance Banner (Cinematic Signature Style)
         ContentWarningBanner(
             visible = showContentWarning && !uiState.isControlsVisible && playerSettings.contentWarningEnabled,
             maturityRating = mediaItem.maturityRating,

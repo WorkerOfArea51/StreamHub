@@ -4,25 +4,15 @@ All notable changes, architectural milestones, and performance optimizations for
 
 ---
 
-## 🌟 [v4.8.416] - 2026-10-19 (Capped Offline Snapshot, 15ms Cache Boot & True Zero-Read Edge)
+## 🌟 [v4.8.417] - 2026-10-21 (High-Speed 2x Buffer Protection & Silent Socket Healing)
 
 ### 🚀 Major Upgrades & Performance Fixes
 
-- **⚡ Instant 15ms Cache Cold Boot & Smart Capped Snapshot (`CatalogCacheManager.kt`, `FirebaseRepository.kt`)**:
-  - Implemented compressed GZIP local disk catalog persistence (`catalog_cache.json.gz`), achieving instant cold-boot catalog rendering in **~15ms** with zero network delay.
-  - Smart Recent Capping: Automatically retains up to 100 recent/trending shows per category (100 Anime, 100 Movies, 100 Series) plus user-saved items, permanently capping disk usage under **0.9 MB forever** even with 10,000+ cloud shows.
-- **🛡️ Strict Zero-Fallback Firebase Enforcement (`FirebaseRepository.kt`, `CatalogEdgeClient.kt`)**:
-  - Permanently eradicated the fallback in `CatalogEdgeClient.fetchCatalog().onFailure` that previously attached raw Firestore collection listeners and caused spikes of 4.3k reads during slow network conditions.
-  - Regular users strictly read from Cloudflare Edge and the local disk cache with **True 0 Firebase Reads**.
-- **🌐 High-Throughput Edge Pipeline & Resilient Status Distinctions (`CatalogEdgeClient.kt`, `SharedHttpClient.kt`, `OfflineBanner.kt`)**:
-  - `CatalogEdgeClient` now utilizes `HighThroughputSocketFactory` with **2 MB TCP window scaling**, 60s read timeout, and single-pass streaming deserialization via `JsonReader`.
-  - Smart Banner Distinctions: Differentiates between device offline (`No connection`), server downtime (`Server offline • Showing cached catalog`), and slow connections (silently streams in the background with no annoying error banner).
-- **🎬 Bulletproof Video Streaming Failover (`StreamPlayerViewModel.kt`)**:
-  - Streaming strictly runs through Cloudflare Edge (`stream-proxy.area-51-ancientworkers.workers.dev`) without unnecessary socket hopping during smooth playback.
-  - Automatically fails over directly to Serv00 Origin (`midnighthawk.serv00.net`) ONLY upon genuine Cloudflare 5xx server downtime (HTTP 502/503/504), returning seamlessly to Cloudflare on subsequent playback.
-- **🏷️ Word-Boundary Format Detection & Season Badge Display (`FranchiseManager.kt`, `DetailsScreen.kt`)**:
-  - **Fixed OVA Substring False Positive**: Replaced unbounded string matching with strict word-boundary regex (`\bOVA\b`). Previously, shows like *"Pokémon BW: Adventures in Unova"* were falsely identified as OVAs because `"Unova".endsWith("OVA")`, overriding the `TV` format, hiding the `Season 6` label, and producing `2013 • OVA`.
-  - **Poster Top-Left Season Badge**: Enhanced `FranchiseCard` on `DetailsScreen` to render the season badge (`S6`, `S5`, `S4`) when `franchiseOrder` is 0/blank, ensuring visual consistency across franchise rails.
-- **🔌 Telemetry & Background Worker Leak Plugs (`ProfileScreen.kt`, `CatalogSyncWorker.kt`, `UserTelemetryManager.kt`)**:
-  - Unhooked persistent `startObservingLiveMetrics()` from `ProfileScreen`, restricting live session listeners strictly to the active `LiveAudienceTelemetryDialog`.
-  - Removed `Source.SERVER` queries from `CatalogSyncWorker` and startup `.get()` queries from `UserTelemetryManager`.
+- **⚡ High-Speed 2x Playback Buffer Protection (`StreamPlayerViewModel.kt`, `DefaultLoadControl`)**:
+  - Adjusted `minBufferMs` to `150,000` (2.5m safe floor) while keeping `maxBufferMs = 360,000` (6m ceiling) and `targetBufferBytes = 288 MB`.
+  - When playing at up to 2.0x speed, `minBufferUs` scales smoothly to 5 minutes of media time without colliding with the 6-minute ceiling, permanently preventing start/stop loader throttling and buffer starvation.
+  - Retains strict 288 MB memory ceiling and 15s frame purging (`setBackBuffer(15_000, false)`), guaranteeing 0% OutOfMemory crashes across 1, 2, and 3-hour movies.
+- **🛡️ 20s Read Timeout & Pre-Emptive Silent Stream Healing (`SharedHttpClient.kt`, `StreamPlayerViewModel.kt`)**:
+  - Replaced infinite `readTimeout(0)` in `SharedHttpClient.streamingClient` with a 20-second timeout, allowing OkHttp to detect dropped or idle Cloudflare proxy sockets instead of hanging indefinitely at 0 KB/s in native read.
+  - Added Pre-Emptive Silent Socket Healing: When active playback buffer drains below 180s and incoming throughput has been completely dead (0 KB/s for >= 14s), StreamHub cancels the hung in-flight socket.
+  - Seamless 150ms HTTP Range reconnect fires in the background via `LoadErrorHandlingPolicy` while playback continues uninterrupted from forward buffer, preventing the buffer from ever starving to 0s.

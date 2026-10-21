@@ -67,7 +67,7 @@ import com.streamhub.app.ui.theme.ThemeManager
 import com.streamhub.app.ui.theme.bouncyTouch
 
 /**
- * Nuvio-grade Theme & Layout Preferences Screen.
+ * Expressive Theme & Layout Preferences Screen.
  * Features:
  * 1. Classic themes (White, Crimson, Ocean, Violet, Emerald, Amber, Rose)
  * 2. Enhanced themes (Messenger, Amethyst, Blossom, Lagoon, Sunset, Custom)
@@ -578,7 +578,7 @@ fun AppearancePreferencesScreen(
 }
 
 /**
- * 1:1 Nuvio-style Circular Theme Disc Item with active checkmark and accent underline indicator.
+ * Circular Theme Disc Item with active checkmark and accent underline indicator.
  */
 @Composable
 private fun ThemeDiscItem(

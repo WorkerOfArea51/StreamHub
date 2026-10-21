@@ -151,6 +151,7 @@ class StreamPlayerViewModel : ViewModel() {
     private var lastBackgroundTimestampMs: Long = 0L
     private var lastPauseTimestampMs: Long = 0L
     private var stallAccumulatorMs: Long = 0L
+    private var silentStallAccumulatorMs: Long = 0L
 
     init {
         viewModelScope.launch {
@@ -548,7 +549,8 @@ class StreamPlayerViewModel : ViewModel() {
                     .build()
 
                 // Cinema-grade progressive streaming with 6-minute continuous buffer charging:
-                // - minBufferMs = 240_000: 4-minute continuous aggressive charging floor. Never duty-cycles or pauses until full buffer is achieved!
+                // - minBufferMs = 150_000: 2.5-minute safe continuous buffer floor at 1x; scales up to 5m video time at 2x
+                //   without colliding with 6m maxBufferMs, preventing rapid start/stop loader throttling.
                 // - maxBufferMs = 360_000: Up to 6 full minutes aggressive forward buffer ahead (downloads at full line speed)
                 // - bufferForPlaybackMs = 150: Instant 150ms cold-start pad
                 // - bufferForPlaybackAfterRebufferMs = 600: Rapid 600ms safe buffer pad after seek or rebuffer (3.3x faster unfreeze)
@@ -558,8 +560,8 @@ class StreamPlayerViewModel : ViewModel() {
                 // - backBuffer = 15_000: Purges watched frames from RAM; disk cache handles persistence.
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        240_000,        // minBufferMs (Aggressive 4-minute continuous buffer floor: never throttles down)
-                        360_000,        // maxBufferMs (up to 6 minutes forward buffer ahead)
+                        150_000,        // minBufferMs (2.5m floor at 1x, scales up to 5m video time at 2x)
+                        360_000,        // maxBufferMs (up to 6 minutes forward buffer ahead, strictly safe within 288 MB RAM)
                         150,            // bufferForPlaybackMs (instant 150ms cold-start pad)
                         600             // bufferForPlaybackAfterRebufferMs (600ms rapid seek & scrub recovery pad)
                     )
@@ -1772,6 +1774,7 @@ class StreamPlayerViewModel : ViewModel() {
         val pitch = if (pitchCorrection) 1.0f else clamped
         exoPlayer?.playbackParameters = androidx.media3.common.PlaybackParameters(clamped, pitch)
         _uiState.update { it.copy(playbackSpeed = clamped, pitchCorrection = pitchCorrection) }
+        com.streamhub.app.data.UserTelemetryManager.recordAction("Speed changed to ${clamped}x")
     }
 
     fun cycleAspectRatio() {
@@ -1858,6 +1861,7 @@ class StreamPlayerViewModel : ViewModel() {
     private fun startPositionTracker() {
         var lastProgressSaveMs = 0L
         var watchTimeAccumulatorMs = 0L
+        var lastTelemetrySyncMs = 0L
         stallAccumulatorMs = 0L
         positionTrackerJob?.cancel()
         positionTrackerJob = viewModelScope.launch {
@@ -1896,6 +1900,13 @@ class StreamPlayerViewModel : ViewModel() {
                         _uiState.update { it.copy(isBuffering = isBuffering) }
                     }
 
+                    // Periodic real-time playback telemetry sync (every 5 seconds)
+                    val nowMs = System.currentTimeMillis()
+                    if (nowMs - lastTelemetrySyncMs >= 5000L) {
+                        lastTelemetrySyncMs = nowMs
+                        syncTelemetry(if (isBuffering) "BUFFERING" else if (player.isPlaying) "PLAYING" else "PAUSED")
+                    }
+
                     // Active Stream Stall Watchdog:
                     // Guard: Offline local files (downloads, storage files) are not network streams.
                     // StreamBandwidthTracker has 0 throughput for disk files, and buffer health
@@ -1907,6 +1918,7 @@ class StreamPlayerViewModel : ViewModel() {
 
                     if (isLocalStream) {
                         stallAccumulatorMs = 0L
+                        silentStallAccumulatorMs = 0L
                     } else {
                         // Detects if the player is buffering with 0s buffer while trying to play (playWhenReady == true).
                         // Startup grace: 25s before first frame renders, 15s after first frame renders.
@@ -1934,6 +1946,35 @@ class StreamPlayerViewModel : ViewModel() {
                             }
                         } else if (!isBuffering || bufferHealthSec > 0L || isActivelyTransferring) {
                             stallAccumulatorMs = 0L
+                        }
+
+                        // Pre-Emptive Silent Socket Healing for Draining Buffer:
+                        // If actively playing (user has buffer), but buffer is below safe floor (<= 180s)
+                        // and network socket has been completely dead (0 KB/s with no incoming bytes for >= 14s):
+                        // Cancel in-flight OkHttp calls so the hung socket aborts immediately.
+                        // This triggers loadErrorHandlingPolicy to open a fresh HTTP Range connection in 150ms SILENTLY
+                        // in the background without interrupting active playback or showing buffering spinners!
+                        val isSilentlyStalledWhilePlaying = player.isPlaying && !isBuffering &&
+                            bufferHealthSec in 1..180L &&
+                            speedKbps == 0L &&
+                            timeSinceLastByteMs >= 14_000L &&
+                            !isActivelyTransferring &&
+                            pendingSeekTargetMs == null &&
+                            !_uiState.value.isReconnecting &&
+                            isPastStartupGrace
+
+                        if (isSilentlyStalledWhilePlaying) {
+                            silentStallAccumulatorMs += 200L
+                            if (silentStallAccumulatorMs >= 4000L) { // confirmed dead for 4s (total >= 18s dead)
+                                silentStallAccumulatorMs = 0L
+                                Log.w("StreamPlayerViewModel", "Silent socket healing triggered: buffer at ${bufferHealthSec}s with dead socket (last byte: ${timeSinceLastByteMs}ms ago). Canceling hung socket for silent 150ms Range retry...")
+                                try {
+                                    com.streamhub.app.data.api.SharedHttpClient.streamingClient.dispatcher.cancelAll()
+                                    com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+                                } catch (_: Exception) {}
+                            }
+                        } else {
+                            silentStallAccumulatorMs = 0L
                         }
                     }
 
@@ -2450,6 +2491,24 @@ class StreamPlayerViewModel : ViewModel() {
         val pos = exoPlayer?.currentPosition?.coerceAtLeast(0L) ?: _uiState.value.currentPositionMs
         val dur = exoPlayer?.duration?.coerceAtLeast(0L) ?: _uiState.value.durationMs
         val epNum = if (ep != null && ep.episodeNumber > 0) ep.episodeNumber else (epIndex + 1)
+        val speedKbps = bandwidthTracker?.sampleSpeedKBps() ?: 0L
+        val speedText = if (speedKbps >= 1024L) String.format(java.util.Locale.US, "%.1f MB/s", speedKbps / 1024.0) else "$speedKbps KB/s"
+        val bufferSec = ((exoPlayer?.bufferedPosition ?: 0L) - pos).coerceAtLeast(0L) / 1000L
+
+        val vFmt = exoPlayer?.videoFormat
+        val vWidth = exoPlayer?.videoSize?.width ?: 0
+        val vHeight = exoPlayer?.videoSize?.height ?: 0
+        val res = if (vWidth > 0 && vHeight > 0) "${vWidth}x${vHeight}" else "1080p (FHD)"
+        val codec = vFmt?.sampleMimeType?.let { mime ->
+            when {
+                mime.contains("avc", ignoreCase = true) || mime.contains("h264", ignoreCase = true) -> "H.264 / AVC"
+                mime.contains("hevc", ignoreCase = true) || mime.contains("h265", ignoreCase = true) -> "H.265 / HEVC"
+                mime.contains("vp9", ignoreCase = true) -> "VP9"
+                mime.contains("av01", ignoreCase = true) || mime.contains("av1", ignoreCase = true) -> "AV1"
+                else -> mime.substringAfter("/")
+            }
+        } ?: "HEVC / H.265"
+
         com.streamhub.app.data.UserTelemetryManager.updatePlaybackState(
             mediaTitle = media.title,
             episodeTitle = ep?.title ?: "",
@@ -2457,7 +2516,12 @@ class StreamPlayerViewModel : ViewModel() {
             episodeNumber = epNum,
             positionMs = pos,
             durationMs = dur,
-            playerState = playerState
+            playerState = playerState,
+            speed = speedText,
+            resolution = res,
+            videoCodec = codec,
+            bufferHealthSec = bufferSec,
+            playbackSpeed = _uiState.value.playbackSpeed
         )
     }
 

@@ -307,7 +307,7 @@ fun SettingsScreen(
                     PreferenceCard {
                         PreferenceItem(
                             title = "Theme & Layout",
-                            subtitle = "Nuvio-grade classic & enhanced themes, AMOLED black & layout tuning",
+                            subtitle = "Expressive classic & enhanced themes, AMOLED black & layout tuning",
                             icon = Icons.Outlined.Palette,
                             iconTint = currentAccent.color,
                             onClick = onNavigateToAppearance

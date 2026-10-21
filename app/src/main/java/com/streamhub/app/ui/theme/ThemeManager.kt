@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * App Theme Accent models for both Classic solid themes and Enhanced dual-tonal/gradient themes.
- * Matches Nuvio aesthetic parity.
+ * Expressive aesthetic parity.
  */
 enum class AppThemeAccent(
     val key: String,

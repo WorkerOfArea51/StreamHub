@@ -38,7 +38,11 @@ data class UserSessionInfo(
     val currentScreen: String = "Home",
     val lastActiveTimestamp: Long = 0L,
     val sessionStartTimestamp: Long = 0L,
-    // 1 & 2 & 5: Playback Deep Telemetry
+    // User Profile Identity
+    val userName: String = "Dark Matter",
+    val userAvatarPreset: Int = 0,
+    val memberId: String = "",
+    // Playback Deep Telemetry
     val mediaTitle: String = "",
     val episodeTitle: String = "",
     val seasonNumber: Int = 1,
@@ -47,28 +51,36 @@ data class UserSessionInfo(
     val durationMs: Long = 0L,
     val playerState: String = "IDLE", // "PLAYING", "PAUSED", "BUFFERING", "SEEKING", "IDLE"
     val streamingSpeed: String = "",
-    // 9 & 10 & 11: Hardware & Network
+    val resolution: String = "",
+    val videoCodec: String = "",
+    val bufferHealthSec: Long = 0L,
+    val playbackSpeed: Float = 1.0f,
+    // Hardware & Network
     val networkType: String = "Wi-Fi 🛜",
+    val carrierName: String = "",
     val osVersion: String = "Android 14",
     val architecture: String = "ARM64",
     val batteryPercent: Int = 100,
     val isCharging: Boolean = false,
-    // 12: Location & Locale
+    // Location & Locale
     val countryCode: String = "US",
     val countryName: String = "United States",
     val flagEmoji: String = "🌐",
-    // 13 & 14: Security & Integrity
+    // Security & Integrity
     val isEmulator: Boolean = false,
     val isRooted: Boolean = false,
     val isVpnActive: Boolean = false,
     val isOfficialBuild: Boolean = true,
-    // 8: Downloads
+    // Downloads
     val activeDownloadsCount: Int = 0,
-    val downloadStatusText: String = ""
+    val downloadStatusText: String = "",
+    // Real-Time Action Journey (Breadcrumbs)
+    val actionTrail: List<String> = emptyList()
 )
 
 data class LiveAudienceMetrics(
     val totalOnline: Int = 0,
+    val currentlyWatching: Int = 0,
     val standardUsers: Int = 0,
     val vipUsers: Int = 0,
     val ownerUsers: Int = 0,
@@ -120,6 +132,11 @@ object UserTelemetryManager {
     private var currentDurationMs = 0L
     private var currentPlayerState = "IDLE"
     private var currentStreamingSpeed = ""
+    private var currentResolution = ""
+    private var currentVideoCodec = ""
+    private var currentBufferHealthSec = 0L
+    private var currentPlaybackSpeed = 1.0f
+    private val actionTrail = mutableListOf<String>()
 
     // Real Physical Country Cache
     private var cachedCountryCode: String = ""
@@ -152,6 +169,30 @@ object UserTelemetryManager {
         startHeartbeat()
         startListeningToRemoteCommands()
         startListeningToGlobalBroadcasts()
+
+        // Auto-attach live observer whenever Admin mode is active
+        scope.launch {
+            AdminManager.isAdminMode.collect { isAdmin ->
+                if (isAdmin) {
+                    startObservingLiveMetrics()
+                }
+            }
+        }
+        recordAction("Launched StreamHub")
+    }
+
+    fun recordAction(action: String) {
+        val time = java.text.SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(java.util.Date())
+        val entry = "$time • $action"
+        synchronized(actionTrail) {
+            if (actionTrail.firstOrNull() != entry) {
+                actionTrail.add(0, entry)
+                while (actionTrail.size > 15) {
+                    actionTrail.removeAt(actionTrail.size - 1)
+                }
+            }
+        }
+        publishHeartbeat()
     }
 
     fun updateCurrentActivity(activity: String) {
@@ -164,7 +205,7 @@ object UserTelemetryManager {
         if (currentPlayerState == "IDLE") {
             currentStatusText = "Viewing $screen"
         }
-        publishHeartbeat()
+        recordAction("Navigated to $screen")
     }
 
     fun updatePlaybackState(
@@ -175,7 +216,11 @@ object UserTelemetryManager {
         positionMs: Long = 0L,
         durationMs: Long = 0L,
         playerState: String = "PLAYING",
-        speed: String = ""
+        speed: String = "",
+        resolution: String = "",
+        videoCodec: String = "",
+        bufferHealthSec: Long = 0L,
+        playbackSpeed: Float = 1.0f
     ) {
         currentMediaTitle = mediaTitle
         currentEpisodeTitle = episodeTitle
@@ -185,6 +230,10 @@ object UserTelemetryManager {
         currentDurationMs = durationMs
         currentPlayerState = playerState
         if (speed.isNotBlank()) currentStreamingSpeed = speed
+        if (resolution.isNotBlank()) currentResolution = resolution
+        if (videoCodec.isNotBlank()) currentVideoCodec = videoCodec
+        currentBufferHealthSec = bufferHealthSec
+        currentPlaybackSpeed = playbackSpeed
 
         val epText = if (episodeNumber > 0) "Ep $episodeNumber" else ""
         currentStatusText = when (playerState) {
@@ -204,7 +253,12 @@ object UserTelemetryManager {
         currentDurationMs = 0L
         currentPlayerState = "IDLE"
         currentStreamingSpeed = ""
+        currentResolution = ""
+        currentVideoCodec = ""
+        currentBufferHealthSec = 0L
+        currentPlaybackSpeed = 1.0f
         currentStatusText = "Browsing $currentScreenName"
+        recordAction("Stopped playback")
         publishHeartbeat()
     }
 
@@ -275,6 +329,11 @@ object UserTelemetryManager {
                 val isRooted = detectRoot()
                 val (countryCode, countryName, flagEmoji) = getCountryInfo(ctx)
                 val (downloadCount, downloadText) = getActiveDownloadsInfo()
+                val profile = UserProfileManager.profileFlow.value
+                val profileName = profile.customName.ifBlank { "Dark Matter" }
+                val avatarPreset = profile.avatarPresetIndex
+                val memberId = profile.memberId
+                val carrier = getCarrierName(ctx)
 
                 val session = mapOf(
                     "clientId" to clientId,
@@ -285,7 +344,11 @@ object UserTelemetryManager {
                     "currentScreen" to currentScreenName,
                     "lastActiveTimestamp" to System.currentTimeMillis(),
                     "sessionStartTimestamp" to sessionStartTimestamp,
-                    // Playback
+                    // User Identity
+                    "userName" to profileName,
+                    "userAvatarPreset" to avatarPreset,
+                    "memberId" to memberId,
+                    // Playback Deep Telemetry
                     "mediaTitle" to currentMediaTitle,
                     "episodeTitle" to currentEpisodeTitle,
                     "seasonNumber" to currentSeasonNumber,
@@ -294,8 +357,13 @@ object UserTelemetryManager {
                     "durationMs" to currentDurationMs,
                     "playerState" to currentPlayerState,
                     "streamingSpeed" to currentStreamingSpeed,
+                    "resolution" to currentResolution,
+                    "videoCodec" to currentVideoCodec,
+                    "bufferHealthSec" to currentBufferHealthSec,
+                    "playbackSpeed" to currentPlaybackSpeed.toDouble(),
                     // Hardware & Network
                     "networkType" to networkType,
+                    "carrierName" to carrier,
                     "osVersion" to "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
                     "architecture" to (Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"),
                     "batteryPercent" to batteryPct,
@@ -311,7 +379,9 @@ object UserTelemetryManager {
                     "isOfficialBuild" to (BuildConfig.APPLICATION_ID == "com.streamhub.app"),
                     // Downloads
                     "activeDownloadsCount" to downloadCount,
-                    "downloadStatusText" to downloadText
+                    "downloadStatusText" to downloadText,
+                    // Real-Time Action Journey
+                    "actionTrail" to synchronized(actionTrail) { actionTrail.toList() }
                 )
 
                 db.collection(COLLECTION_SESSIONS).document(clientId)
@@ -385,6 +455,16 @@ object UserTelemetryManager {
                             countryCodeToEmoji(rawCode)
                         } else rawFlag
 
+                        val userName = doc.getString("userName") ?: "Dark Matter"
+                        val userAvatarPreset = doc.getLong("userAvatarPreset")?.toInt() ?: 0
+                        val memberId = doc.getString("memberId") ?: ""
+                        val resolution = doc.getString("resolution") ?: ""
+                        val videoCodec = doc.getString("videoCodec") ?: ""
+                        val bufferHealthSec = doc.getLong("bufferHealthSec") ?: 0L
+                        val playbackSpeed = doc.getDouble("playbackSpeed")?.toFloat() ?: 1.0f
+                        val carrierName = doc.getString("carrierName") ?: ""
+                        val rawTrail = (doc.get("actionTrail") as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
+
                         val session = UserSessionInfo(
                             clientId = doc.id,
                             tier = tier,
@@ -394,6 +474,9 @@ object UserTelemetryManager {
                             currentScreen = screen,
                             lastActiveTimestamp = lastActive,
                             sessionStartTimestamp = sessionStart,
+                            userName = userName,
+                            userAvatarPreset = userAvatarPreset,
+                            memberId = memberId,
                             mediaTitle = doc.getString("mediaTitle") ?: "",
                             episodeTitle = doc.getString("episodeTitle") ?: "",
                             seasonNumber = doc.getLong("seasonNumber")?.toInt() ?: 1,
@@ -402,7 +485,12 @@ object UserTelemetryManager {
                             durationMs = doc.getLong("durationMs") ?: 0L,
                             playerState = doc.getString("playerState") ?: "IDLE",
                             streamingSpeed = doc.getString("streamingSpeed") ?: "",
+                            resolution = resolution,
+                            videoCodec = videoCodec,
+                            bufferHealthSec = bufferHealthSec,
+                            playbackSpeed = playbackSpeed,
                             networkType = doc.getString("networkType") ?: "Wi-Fi 🛜",
+                            carrierName = carrierName,
                             osVersion = doc.getString("osVersion") ?: "Android",
                             architecture = doc.getString("architecture") ?: "ARM64",
                             batteryPercent = doc.getLong("batteryPercent")?.toInt() ?: 100,
@@ -415,7 +503,8 @@ object UserTelemetryManager {
                             isVpnActive = doc.getBoolean("isVpnActive") ?: false,
                             isOfficialBuild = doc.getBoolean("isOfficialBuild") ?: true,
                             activeDownloadsCount = doc.getLong("activeDownloadsCount")?.toInt() ?: 0,
-                            downloadStatusText = doc.getString("downloadStatusText") ?: ""
+                            downloadStatusText = doc.getString("downloadStatusText") ?: "",
+                            actionTrail = rawTrail
                         )
                         activeList.add(session)
 
@@ -430,10 +519,54 @@ object UserTelemetryManager {
                     }
                 }
 
+                // Self-Presence Guarantee: Ensure the current active Admin session is counted immediately on boot
+                if (isCurrentAdmin && clientId.isNotBlank() && activeList.none { it.clientId == clientId }) {
+                    val (batteryPct, isCharging) = getBatteryInfo(appContext ?: return@addSnapshotListener)
+                    val profile = UserProfileManager.profileFlow.value
+                    activeList.add(
+                        UserSessionInfo(
+                            clientId = clientId,
+                            tier = "OWNER",
+                            deviceModel = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}",
+                            appVersion = BuildConfig.VERSION_NAME,
+                            currentActivity = currentStatusText,
+                            currentScreen = currentScreenName,
+                            lastActiveTimestamp = System.currentTimeMillis(),
+                            sessionStartTimestamp = sessionStartTimestamp,
+                            userName = profile.customName.ifBlank { "Dark Matter" },
+                            userAvatarPreset = profile.avatarPresetIndex,
+                            memberId = profile.memberId,
+                            mediaTitle = currentMediaTitle,
+                            episodeTitle = currentEpisodeTitle,
+                            seasonNumber = currentSeasonNumber,
+                            episodeNumber = currentEpisodeNumber,
+                            positionMs = currentPositionMs,
+                            durationMs = currentDurationMs,
+                            playerState = currentPlayerState,
+                            streamingSpeed = currentStreamingSpeed,
+                            resolution = currentResolution,
+                            videoCodec = currentVideoCodec,
+                            bufferHealthSec = currentBufferHealthSec,
+                            playbackSpeed = currentPlaybackSpeed,
+                            networkType = getNetworkType(appContext ?: return@addSnapshotListener),
+                            carrierName = getCarrierName(appContext ?: return@addSnapshotListener),
+                            batteryPercent = batteryPct,
+                            isCharging = isCharging,
+                            countryCode = cachedCountryCode.ifBlank { "US" },
+                            countryName = cachedCountryName.ifBlank { "United States" },
+                            flagEmoji = cachedCountryFlag.ifBlank { "🌐" },
+                            actionTrail = synchronized(actionTrail) { actionTrail.toList() }
+                        )
+                    )
+                    owner++
+                }
+
+                val watchingCount = activeList.count { it.playerState == "PLAYING" || it.playerState == "BUFFERING" }
                 val topTitles = titleCountMap.toList().sortedByDescending { it.second }
 
                 _liveMetrics.value = LiveAudienceMetrics(
                     totalOnline = activeList.size,
+                    currentlyWatching = watchingCount,
                     standardUsers = standardUsersCount,
                     vipUsers = vip,
                     adPassUsers = adPass,
@@ -767,6 +900,17 @@ object UserTelemetryManager {
             "Connected 🌐"
         } catch (e: Exception) {
             "Connected 🌐"
+        }
+    }
+
+    private fun getCarrierName(context: Context): String {
+        return try {
+            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+            val carrier = tm?.networkOperatorName?.takeIf { it.isNotBlank() }
+                ?: tm?.simOperatorName?.takeIf { it.isNotBlank() }
+            carrier ?: ""
+        } catch (_: Exception) {
+            ""
         }
     }
 

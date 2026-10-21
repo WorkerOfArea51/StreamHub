@@ -78,6 +78,13 @@ fun ProfileScreen(
         StorageCacheManager.calculateStorageUsage()
     }
 
+    DisposableEffect(isAdminMode) {
+        if (isAdminMode) {
+            com.streamhub.app.data.UserTelemetryManager.startObservingLiveMetrics()
+        }
+        onDispose { }
+    }
+
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
@@ -117,8 +124,8 @@ fun ProfileScreen(
             )
         }
 
-        // ── Nuvio-Style "My Profile" Preview Card ──
-        item(key = "nuvio_profile_preview_card") {
+        // ── "My Profile" Preview Card ──
+        item(key = "main_profile_preview_card") {
             ProfilePreviewCard(
                 userProfile = userProfile,
                 isAdmin = isAdminMode,
@@ -258,12 +265,20 @@ fun ProfileScreen(
             ) {
                 Column {
                     if (isAdminMode) {
+                        val onlineCount = liveMetrics.totalOnline.coerceAtLeast(1)
+                        val watchingCount = liveMetrics.currentlyWatching
+                        val liveBadgeText = if (watchingCount > 0) {
+                            "🟢 $onlineCount LIVE • $watchingCount Watching"
+                        } else {
+                            "🟢 $onlineCount LIVE"
+                        }
+
                         ProfileListItem(
                             icon = Icons.Default.Sensors,
                             iconTint = Color(0xFF00E676),
                             title = "Live Audience & Telemetry",
                             subtitle = "Real-time active users, audience breakdown & live streams",
-                            badge = "LIVE (${liveMetrics.totalOnline})",
+                            badge = liveBadgeText,
                             onClick = { showLiveTelemetryDialog = true }
                         )
                         HorizontalDivider(
@@ -363,7 +378,7 @@ fun ProfileScreen(
 }
 
 /**
- * Nuvio-style "My Profile" Preview Card
+ * "My Profile" Preview Card
  * Displays Avatar (with 5-tap easter egg), Display Name + Tier Badge, Subtitle, Member ID pill, and Chevron.
  * Tapping the card opens the full profile screen.
  */

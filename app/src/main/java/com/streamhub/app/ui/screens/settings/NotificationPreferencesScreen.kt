@@ -63,7 +63,7 @@ import com.streamhub.app.ui.theme.ThemeManager
 import com.streamhub.app.ui.theme.bouncyTouch
 
 /**
- * 1:1 Nuvio-grade Notification Preferences Screen.
+ * Production-grade Notification Preferences Screen.
  * Configures:
  * 1. Episode Release Alerts toggle
  * 2. Real-time Test Notification dispatcher

@@ -76,7 +76,7 @@ fun MyProfileScreen(
     val historyMap by WatchHistoryManager.historyFlow.collectAsState()
     val myListItems by MyListManager.itemsFlow.collectAsState()
 
-    // Calculated Overview Metrics (Matching Nuvio 6-Grid)
+    // Calculated Overview Metrics (6-Grid Dashboard)
     val inProgressCount = remember(historyMap) {
         historyMap.values.count { !it.isCompleted && it.positionMs > 0 && (it.durationMs == 0L || it.positionMs < it.durationMs * 0.9) }
     }
@@ -112,7 +112,7 @@ fun MyProfileScreen(
                     }
                 },
                 actions = {
-                    // Sleek M3 Top Action Button: "Edit profile" (matching Nuvio photo 2)
+                    // Sleek M3 Top Action Button: "Edit profile"
                     Surface(
                         shape = RoundedCornerShape(14.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -155,7 +155,7 @@ fun MyProfileScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // ── Hero Profile Card (Matches Nuvio Photo 2 Hero Card + Background + Status) ──
+            // ── Hero Profile Card ──
             item(key = "my_profile_hero_card") {
                 MyProfileHeroCard(
                     userProfile = userProfile,
@@ -184,7 +184,7 @@ fun MyProfileScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    NuvioMetricCard(
+                    ProfileMetricCard(
                         title = "In progress",
                         value = inProgressCount.toString(),
                         subtitle = "Ready to resume",
@@ -193,7 +193,7 @@ fun MyProfileScreen(
                         modifier = Modifier.weight(1f),
                         onClick = onNavigateToHistory
                     )
-                    NuvioMetricCard(
+                    ProfileMetricCard(
                         title = "Completed",
                         value = completedCount.toString(),
                         subtitle = "Marked as watched",
@@ -210,7 +210,7 @@ fun MyProfileScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    NuvioMetricCard(
+                    ProfileMetricCard(
                         title = "Library",
                         value = libraryCount.toString(),
                         subtitle = "Saved titles",
@@ -219,7 +219,7 @@ fun MyProfileScreen(
                         modifier = Modifier.weight(1f),
                         onClick = onNavigateToMyList
                     )
-                    NuvioMetricCard(
+                    ProfileMetricCard(
                         title = "Tracked time",
                         value = totalWatchHours,
                         subtitle = "From playback progress",
@@ -235,7 +235,7 @@ fun MyProfileScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    NuvioMetricCard(
+                    ProfileMetricCard(
                         title = "This week",
                         value = thisWeekCount.toString(),
                         subtitle = "Recent activity",
@@ -244,7 +244,7 @@ fun MyProfileScreen(
                         modifier = Modifier.weight(1f),
                         onClick = onNavigateToHistory
                     )
-                    NuvioMetricCard(
+                    ProfileMetricCard(
                         title = "Streak",
                         value = "${streakDays}d",
                         subtitle = if (streakDays > 0) "Daily streak on fire!" else "Start watching today",
@@ -269,7 +269,7 @@ fun MyProfileScreen(
 
             // ── Taste DNA Card (Tri-Pillar: Movies, Anime, Web Series) ──
             item(key = "taste_dna_card") {
-                NuvioTasteDnaCard(
+                ProfileTasteDnaCard(
                     moviePercent = moviePercent,
                     animePercent = animePercent,
                     seriesPercent = seriesPercent,
@@ -435,10 +435,10 @@ private fun MyProfileHeroCard(
 }
 
 /**
- * 2-Column Overview Metric Card (Matches Nuvio Photo 2 Grid Items)
+ * 2-Column Overview Metric Card
  */
 @Composable
-private fun NuvioMetricCard(
+private fun ProfileMetricCard(
     title: String,
     value: String,
     subtitle: String,
@@ -511,10 +511,10 @@ private fun NuvioMetricCard(
 }
 
 /**
- * Nuvio-style Taste DNA Card with 3-Pillar Distribution: Movies, Anime & Web Series
+ * Taste DNA Card with 3-Pillar Distribution: Movies, Anime & Web Series
  */
 @Composable
-private fun NuvioTasteDnaCard(
+private fun ProfileTasteDnaCard(
     moviePercent: Int,
     animePercent: Int,
     seriesPercent: Int,

@@ -766,7 +766,7 @@ private val HudTextShadow = Shadow(
 )
 
 /**
- * Parental Guidance & Content Warning Overlay Banner (Exact Nuvio Signature Style)
+ * Parental Guidance & Content Warning Overlay Banner (Cinematic Signature Style)
  * Featuring a vertical 2.5dp cyan accent bar directly beside stacked category/severity rows.
  * Container-less and borderless, floating directly on top of the video in the top-left corner.
  */
@@ -827,7 +827,7 @@ fun ContentWarningBanner(
             modifier = Modifier.height(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Vertical Cyan Indicator Bar (Nuvio Signature)
+            // Vertical Cyan Indicator Bar (StreamHub Signature)
             Box(
                 modifier = Modifier
                     .width(2.5.dp)

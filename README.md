@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/WorkerOfArea51/StreamHub">
-    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=16&duration=3000&pause=1000&color=FF3366&center=true&vCenter=true&width=650&lines=Ultra-High-Performance+Android+Media+Streaming+Ecosystem;Pure+Direct+HTTP+Progressive+Streaming+%2B+ExoPlayer+Cache;AniList+GraphQL+%2B+TMDB+v3+Autofetch+Engine;Material+3+Expressive+UI+%2B+Nuvio-Grade+Theming" alt="Typing SVG" />
+    <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=16&duration=3000&pause=1000&color=FF3366&center=true&vCenter=true&width=650&lines=Ultra-High-Performance+Android+Media+Streaming+Ecosystem;Pure+Direct+HTTP+Progressive+Streaming+%2B+ExoPlayer+Cache;AniList+GraphQL+%2B+TMDB+v3+Autofetch+Engine;Material+3+Expressive+UI+%2B+Cinematic+Theming" alt="Typing SVG" />
   </a>
 </p>
 
@@ -39,8 +39,8 @@ Engineered from the ground up for low latency, zero-login instant playback, aggr
 | **🎬 Multi-Arc Story Hub** | Dedicated Arc-Level episode manager with automatic missing episode gap detection, 1-click batch importer, and snippet insertion. |
 | **🎧 Dual-Audio & Vocal Enhancement** | Embedded MKV multi-audio track switcher, hardware dialogue boost, night cinema mode, subtitle track selector with delay sync, and ASS/SSA styling. |
 | **📺 XPlayer-Grade Immersion HUD** | Pure containerless corner countdown time, horizontal battery gauge, and live system clock that auto-hides during active full-screen video. |
-| **⚠️ Nuvio-Grade Content Advisory** | Starts playback with signature vertical cyan indicator bar and stacked maturity category/severity rows. |
-| **🎨 Nuvio-Grade Theming & Display** | 7 Classic solid themes, 6 Enhanced dual-tonal gradients, AMOLED black switch, customizable catalog grid density, and poster aspect ratios. |
+| **⚠️ Cinematic Content Advisory** | Starts playback with signature vertical cyan indicator bar and stacked maturity category/severity rows. |
+| **🎨 Expressive Theming & Display** | 7 Classic solid themes, 6 Enhanced dual-tonal gradients, AMOLED black switch, customizable catalog grid density, and poster aspect ratios. |
 | **🔒 Air-Tight Security & Admin Studio** | Cryptographic SHA-256 password protection, hardware-bound 30-day VIP vouchers, and verified server-side write gating. |
 
 ---

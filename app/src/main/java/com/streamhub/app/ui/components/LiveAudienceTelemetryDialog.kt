@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -39,6 +40,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Movie
@@ -65,6 +67,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -95,9 +98,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import java.util.Locale
+import com.streamhub.app.data.UserProfileManager
 import com.streamhub.app.data.UserSessionInfo
 import com.streamhub.app.data.UserTelemetryManager
 import com.streamhub.app.ui.theme.AccentGold
@@ -127,6 +132,7 @@ fun LiveAudienceTelemetryDialog(
     var selectedDeviceClientId by remember { mutableStateOf<String?>(null) }
     var cachedSelectedSession by remember { mutableStateOf<UserSessionInfo?>(null) }
     var showGlobalBroadcastDialog by remember { mutableStateOf(false) }
+    var selectedFilterIndex by remember { mutableIntStateOf(0) }
 
     // Pulsing Live Indicator Animation
     val infiniteTransition = rememberInfiniteTransition(label = "pulse_telemetry")
@@ -163,7 +169,7 @@ fun LiveAudienceTelemetryDialog(
                         .fillMaxSize()
                         .padding(20.dp)
                 ) {
-                    // ── Header Bar with Close Button ──
+                    // ── Header Bar with Refresh & Close Buttons ──
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -189,15 +195,35 @@ fun LiveAudienceTelemetryDialog(
                             )
                         }
 
-                        IconButton(
-                            onClick = onDismiss,
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                .bouncyTouch()
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = TextPrimary, modifier = Modifier.size(18.dp))
+                            IconButton(
+                                onClick = {
+                                    UserTelemetryManager.stopObservingLiveMetrics(force = true)
+                                    UserTelemetryManager.startObservingLiveMetrics()
+                                    ToastManager.showToast("Telemetry synced live 🟢")
+                                },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                    .bouncyTouch()
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Color(0xFF00E676), modifier = Modifier.size(18.dp))
+                            }
+
+                            IconButton(
+                                onClick = onDismiss,
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                    .bouncyTouch()
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Close", tint = TextPrimary, modifier = Modifier.size(18.dp))
+                            }
                         }
                     }
 
@@ -248,6 +274,36 @@ fun LiveAudienceTelemetryDialog(
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.Black,
                                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = AccentOrange.copy(alpha = 0.15f)
+                                            ) {
+                                                Text(
+                                                    text = "▶ ${metrics.currentlyWatching} Streaming",
+                                                    color = AccentOrange,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                                )
+                                            }
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = Color(0xFF38BDF8).copy(alpha = 0.15f)
+                                            ) {
+                                                Text(
+                                                    text = "🧭 ${(metrics.totalOnline - metrics.currentlyWatching).coerceAtLeast(0)} Browsing",
+                                                    color = Color(0xFF38BDF8),
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                                                 )
                                             }
                                         }
@@ -446,29 +502,58 @@ fun LiveAudienceTelemetryDialog(
                         }
 
                         // ── Live Connected Devices Stream ──
+                        val displayedWatchers = when (selectedFilterIndex) {
+                            1 -> metrics.activeWatchers.filter { it.playerState == "PLAYING" || it.playerState == "BUFFERING" }
+                            2 -> metrics.activeWatchers.filter { it.tier == "VIP" || it.tier == "OWNER" }
+                            else -> metrics.activeWatchers
+                        }
+
                         item {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "LIVE ACTIVE DEVICES (${metrics.activeWatchers.size})",
-                                    color = TextSecondary,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp
-                                )
-                                Text(
-                                    text = "Tap device to inspect",
-                                    color = Color(0xFF38BDF8),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "LIVE ACTIVE DEVICES (${displayedWatchers.size})",
+                                        color = TextSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp
+                                    )
+                                    Text(
+                                        text = "Tap device to inspect",
+                                        color = Color(0xFF38BDF8),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    TelemetryFilterChip(
+                                        label = "All (${metrics.activeWatchers.size})",
+                                        isSelected = selectedFilterIndex == 0,
+                                        onClick = { selectedFilterIndex = 0 }
+                                    )
+                                    TelemetryFilterChip(
+                                        label = "Streaming (${metrics.currentlyWatching})",
+                                        isSelected = selectedFilterIndex == 1,
+                                        onClick = { selectedFilterIndex = 1 }
+                                    )
+                                    TelemetryFilterChip(
+                                        label = "VIPs (${metrics.vipUsers})",
+                                        isSelected = selectedFilterIndex == 2,
+                                        onClick = { selectedFilterIndex = 2 }
+                                    )
+                                }
                             }
                         }
 
-                        if (metrics.activeWatchers.isEmpty()) {
+                        if (displayedWatchers.isEmpty()) {
                             item {
                                 Surface(
                                     shape = RoundedCornerShape(20.dp),
@@ -481,12 +566,16 @@ fun LiveAudienceTelemetryDialog(
                                     ) {
                                         Icon(Icons.Default.Devices, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(32.dp))
                                         Spacer(modifier = Modifier.height(6.dp))
-                                        Text("Waiting for incoming user heartbeats...", color = TextSecondary, fontSize = 12.sp)
+                                        Text(
+                                            text = if (selectedFilterIndex > 0) "No devices match this filter" else "Waiting for incoming user heartbeats...",
+                                            color = TextSecondary,
+                                            fontSize = 12.sp
+                                        )
                                     }
                                 }
                             }
                         } else {
-                            items(metrics.activeWatchers, key = { it.clientId }) { session ->
+                            items(displayedWatchers, key = { it.clientId }) { session ->
                                 ActiveDeviceItem(
                                     session = session,
                                     onClick = {
@@ -609,12 +698,37 @@ fun TierMetricCard(
 }
 
 @Composable
+private fun TelemetryFilterChip(
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = if (isSelected) Color(0xFF00E676).copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceContainer,
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00E676)) else null,
+        modifier = Modifier
+            .bouncyTouch()
+            .clickable(onClick = onClick)
+    ) {
+        Text(
+            text = label,
+            color = if (isSelected) Color(0xFF00E676) else TextSecondary,
+            fontSize = 11.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+        )
+    }
+}
+
+@Composable
 fun ActiveDeviceItem(
     session: UserSessionInfo,
     onClick: () -> Unit
 ) {
     val now = System.currentTimeMillis()
     val secondsAgo = ((now - session.lastActiveTimestamp) / 1000).coerceAtLeast(0)
+    val isThisDevice = session.clientId == UserTelemetryManager.getClientId()
 
     val (badgeColor, badgeText) = when (session.tier) {
         "OWNER" -> Pair(Color(0xFFFF5252), "OWNER")
@@ -623,6 +737,8 @@ fun ActiveDeviceItem(
         "AD_PASS" -> Pair(Color(0xFF00E676), "AD PASS")
         else -> Pair(Color(0xFF38BDF8), "USER")
     }
+
+    val avatarRes = UserProfileManager.PRESET_AVATARS.getOrNull(session.userAvatarPreset)?.drawableResId
 
     Surface(
         shape = RoundedCornerShape(20.dp),
@@ -637,58 +753,143 @@ fun ActiveDeviceItem(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Avatar Thumbnail
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(text = session.flagEmoji, fontSize = 14.sp)
-                    Text(
-                        text = session.deviceModel.ifBlank { "Android Device" },
-                        color = TextPrimary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Surface(
-                        shape = CircleShape,
-                        color = badgeColor.copy(alpha = 0.15f)
-                    ) {
-                        Text(
-                            text = badgeText,
-                            color = badgeColor,
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Black,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    if (avatarRes != null) {
+                        Image(
+                            painter = painterResource(id = avatarRes),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = null,
+                            tint = TextSecondary,
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = session.currentActivity,
-                    color = if (session.currentActivity.startsWith("Watching")) AccentOrange else TextSecondary,
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(3.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+
+                Column(modifier = Modifier.weight(1f)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.ElectricBolt,
-                            contentDescription = null,
-                            tint = if (session.isCharging) Color(0xFF00E676) else TextSecondary,
-                            modifier = Modifier.size(11.dp)
+                        Text(text = session.flagEmoji, fontSize = 13.sp)
+                        Text(
+                            text = session.userName.ifBlank { "Dark Matter" },
+                            color = TextPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
                         )
-                        Text(text = "${session.batteryPercent}%", color = TextSecondary, fontSize = 10.sp)
+                        if (isThisDevice) {
+                            Surface(
+                                shape = CircleShape,
+                                color = AccentGold.copy(alpha = 0.2f)
+                            ) {
+                                Text(
+                                    text = "YOU",
+                                    color = AccentGold,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Black,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                                )
+                            }
+                        }
+                        Surface(
+                            shape = CircleShape,
+                            color = badgeColor.copy(alpha = 0.15f)
+                        ) {
+                            Text(
+                                text = badgeText,
+                                color = badgeColor,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Black,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                     }
-                    Text(text = "•", color = TextSecondary, fontSize = 10.sp)
-                    Text(text = session.networkType, color = TextSecondary, fontSize = 10.sp)
+
+                    Spacer(modifier = Modifier.height(2.dp))
+                    val memberIdShort = if (session.memberId.isNotBlank()) " • #${session.memberId.takeLast(4)}" else ""
+                    Text(
+                        text = "${session.deviceModel.ifBlank { "Android Device" }}$memberIdShort",
+                        color = TextSecondary,
+                        fontSize = 10.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    if (session.playerState == "PLAYING" || session.playerState == "BUFFERING") {
+                        val epText = if (session.episodeNumber > 0) "Ep ${session.episodeNumber}" else ""
+                        val resText = session.resolution.ifBlank { "1080p" }
+                        val codecText = session.videoCodec.ifBlank { "HEVC" }
+                        val speedText = session.streamingSpeed.ifBlank { "0 KB/s" }
+                        val bufferText = "${session.bufferHealthSec}s"
+
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = "Watching ${session.mediaTitle} $epText ▶️".trim(),
+                                color = AccentOrange,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "$resText • $codecText • 🟢 Buffer: $bufferText • ⚡ ${session.playbackSpeed}x • 📶 $speedText",
+                                color = Color(0xFF00E676),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = session.currentActivity,
+                            color = TextSecondary,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ElectricBolt,
+                                contentDescription = null,
+                                tint = if (session.isCharging) Color(0xFF00E676) else TextSecondary,
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Text(text = "${session.batteryPercent}%", color = TextSecondary, fontSize = 10.sp)
+                        }
+                        Text(text = "•", color = TextSecondary, fontSize = 10.sp)
+                        Text(text = session.networkType, color = TextSecondary, fontSize = 10.sp)
+                        if (session.carrierName.isNotBlank()) {
+                            Text(text = "•", color = TextSecondary, fontSize = 10.sp)
+                            Text(text = session.carrierName, color = TextSecondary, fontSize = 10.sp, maxLines = 1)
+                        }
+                    }
                 }
             }
 
@@ -776,11 +977,29 @@ fun DeviceTelemetryDetailDialog(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Text(text = session.flagEmoji, fontSize = 22.sp)
+                            val avatarRes = UserProfileManager.PRESET_AVATARS.getOrNull(session.userAvatarPreset)?.drawableResId
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (avatarRes != null) {
+                                    Image(
+                                        painter = painterResource(id = avatarRes),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(44.dp).clip(CircleShape)
+                                    )
+                                } else {
+                                    Text(text = session.flagEmoji, fontSize = 22.sp)
+                                }
+                            }
+
                             Column {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Text(
-                                        text = session.deviceModel.ifBlank { "Device Info" },
+                                        text = session.userName.ifBlank { session.deviceModel.ifBlank { "Dark Matter" } },
                                         color = Color.White,
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold
@@ -798,8 +1017,9 @@ fun DeviceTelemetryDetailDialog(
                                         )
                                     }
                                 }
+                                val memberIdText = if (session.memberId.isNotBlank()) " • #${session.memberId.takeLast(4)}" else ""
                                 Text(
-                                    text = "ID: ${session.clientId.take(8)}... • ${session.countryName}",
+                                    text = "${session.deviceModel}$memberIdText • ${session.countryName} ${session.flagEmoji}",
                                     color = TextSecondary,
                                     fontSize = 11.sp
                                 )
@@ -879,10 +1099,62 @@ fun DeviceTelemetryDetailDialog(
                                                 Text(text = formatDuration(session.durationMs), color = TextSecondary, fontSize = 10.sp)
                                             }
                                         }
+
+                                        // Deep Playback Specifications
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f), thickness = 0.5.dp)
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        InfoRow(label = "Resolution:", value = session.resolution.ifBlank { "1080p (FHD)" })
+                                        InfoRow(label = "Video Codec:", value = session.videoCodec.ifBlank { "HEVC / H.265" })
+                                        val runwayText = if (session.bufferHealthSec >= 60) {
+                                            "${session.bufferHealthSec / 60}m ${session.bufferHealthSec % 60}s forward"
+                                        } else {
+                                            "${session.bufferHealthSec}s forward"
+                                        }
+                                        InfoRow(label = "Buffer Runway:", value = runwayText)
+                                        InfoRow(label = "Playback Speed:", value = "${session.playbackSpeed}x")
+                                        InfoRow(label = "Streaming Speed:", value = session.streamingSpeed.ifBlank { "0 KB/s" })
                                     } else {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Icon(Icons.Default.Stop, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(16.dp))
                                             Text(text = "No active video stream currently playing", color = TextSecondary, fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── REAL-TIME USER ACTIVITY JOURNEY ──
+                        if (session.actionTrail.isNotEmpty()) {
+                            item {
+                                SectionHeader(title = "LIVE ACTIVITY JOURNEY", icon = Icons.Default.History)
+                                Surface(
+                                    shape = RoundedCornerShape(20.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainer,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        session.actionTrail.forEachIndexed { idx, actionText ->
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(6.dp)
+                                                        .clip(CircleShape)
+                                                        .background(if (idx == 0) Color(0xFF00E676) else TextSecondary.copy(alpha = 0.4f))
+                                                )
+                                                Text(
+                                                    text = actionText,
+                                                    color = if (idx == 0) TextPrimary else TextSecondary,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (idx == 0) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -919,6 +1191,9 @@ fun DeviceTelemetryDetailDialog(
                             ) {
                                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     InfoRow(label = "Network Type:", value = session.networkType)
+                                    if (session.carrierName.isNotBlank()) {
+                                        InfoRow(label = "Mobile Carrier:", value = session.carrierName)
+                                    }
                                     InfoRow(
                                         label = "Battery:",
                                         value = "${session.batteryPercent}% ${if (session.isCharging) "(Charging)" else ""}"

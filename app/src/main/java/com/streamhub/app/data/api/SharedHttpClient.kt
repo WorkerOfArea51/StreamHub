@@ -71,7 +71,7 @@ object SharedHttpClient {
         OkHttpClient.Builder()
             .socketFactory(HighThroughputSocketFactory())
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(0, TimeUnit.MILLISECONDS) // 0 = Infinite / No Timeout: Prevents socket suicide while playing from 5m forward buffer
+            .readTimeout(20, TimeUnit.SECONDS) // 20s read timeout: Detects dead/dropped proxy sockets during forward-buffer pauses, enabling silent 150ms HTTP Range healing via LoadErrorHandlingPolicy instead of hanging indefinitely at 0 KB/s
             .writeTimeout(30, TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
