@@ -552,10 +552,11 @@ class StreamPlayerViewModel : ViewModel() {
                 // - maxBufferMs = 1_200_000: 20-minute forward ceiling (full episode for anime, 20m runway for movies)
                 // - bufferForPlaybackMs = 250: Instant 250ms cold-start pad (optimized time to first frame)
                 // - bufferForPlaybackAfterRebufferMs = 600: Rapid 600ms safe buffer pad after seek or rebuffer
-                // - setPrioritizeTimeOverSizeThresholds(false): HARD LOCK: Size ceiling rules over time, strictly capping RAM at 320 MB!
+                // - setPrioritizeTimeOverSizeThresholds(false): Pure native hard lock: size ceiling rules over time,
+                //   strictly halting allocation once RAM reaches 320 MB without needing delegating wrapper classes.
                 // - targetBufferBytes = 320 MB: Hard allocation ceiling in DefaultAllocator, preventing heap runaway.
                 // - backBuffer = 15_000: Purges watched frames from RAM; disk cache handles persistence.
-                val baseLoadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
                         900_000,        // minBufferMs (15-minute continuous charging floor)
                         1_200_000,      // maxBufferMs (20-minute forward ceiling)
@@ -566,26 +567,6 @@ class StreamPlayerViewModel : ViewModel() {
                     .setPrioritizeTimeOverSizeThresholds(false)
                     .setTargetBufferBytes(320 * 1024 * 1024)
                     .build()
-
-                // Dual-Lock Hard-Cap LoadControl:
-                // 1. Enforces strict 320 MB buffer ceiling via prioritizeTimeOverSizeThresholds(false).
-                // 2. JVM Heap Circuit-Breaker: Checks runtime headroom; halts loading if free heap drops < 75 MB,
-                //    strictly protecting the 512 MB Android process heap from OutOfMemoryError crashes.
-                val loadControl = object : androidx.media3.exoplayer.LoadControl by baseLoadControl {
-                    override fun shouldContinueLoading(
-                        playbackPositionUs: Long,
-                        bufferedDurationUs: Long,
-                        playbackSpeed: Float
-                    ): Boolean {
-                        val runtime = Runtime.getRuntime()
-                        val usedHeap = runtime.totalMemory() - runtime.freeMemory()
-                        val maxHeap = runtime.maxMemory()
-                        if (maxHeap - usedHeap < 75 * 1024 * 1024L) {
-                            return false
-                        }
-                        return baseLoadControl.shouldContinueLoading(playbackPositionUs, bufferedDurationUs, playbackSpeed)
-                    }
-                }
 
                 // CRITICAL: DO NOT ADD FLAG_DISABLE_SEEK_FOR_CUES.
                 // Disabling seek for cues completely breaks seeking in MKV videos because Matroska video

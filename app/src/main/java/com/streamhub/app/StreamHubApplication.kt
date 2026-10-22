@@ -105,6 +105,7 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
                 // FIX: Only pause download progress polling, do NOT wipe media caches.
                 runCatching { DownloadManager.pauseProgressPolling() }
                 runCatching { com.streamhub.app.data.UserTelemetryManager.onAppBackgrounded() }
+                runCatching { com.streamhub.app.data.NotificationAlertManager.enqueueImmediateSync(this@StreamHubApplication) }
             }
         })
     }

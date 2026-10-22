@@ -11,7 +11,9 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.streamhub.app.MainActivity
@@ -101,18 +103,48 @@ object NotificationAlertManager {
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
 
-            val workRequest = PeriodicWorkRequestBuilder<CatalogSyncWorker>(4, TimeUnit.HOURS)
+            // Rapid 15-minute background polling (Android WorkManager minimum periodic interval)
+            val workRequest = PeriodicWorkRequestBuilder<CatalogSyncWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(constraints)
                 .build()
 
+            // Inviolable: Use UPDATE instead of KEEP so that active devices immediately adopt
+            // the new 15-minute background check policy rather than staying frozen on legacy 4h/8h schedules.
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 CatalogSyncWorker.WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
+                ExistingPeriodicWorkPolicy.UPDATE,
                 workRequest
             )
-            Log.d(TAG, "Scheduled periodic background catalog & update sync worker (every 4h)")
+            Log.d(TAG, "Scheduled periodic background catalog & update sync worker (every 15m)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to schedule periodic sync", e)
+        }
+    }
+
+    /**
+     * Enqueues an immediate, one-time background sync task.
+     * Useful when the app is initialized or moved to background so new releases on GitHub
+     * or catalog updates are detected promptly without waiting for the next 15-minute periodic tick.
+     */
+    fun enqueueImmediateSync(context: Context) {
+        if (!_alertsEnabled.value && !_updateAlertsEnabled.value) return
+        try {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
+            val oneTimeWork = OneTimeWorkRequestBuilder<CatalogSyncWorker>()
+                .setConstraints(constraints)
+                .build()
+
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                "${CatalogSyncWorker.WORK_NAME}_immediate",
+                ExistingWorkPolicy.REPLACE,
+                oneTimeWork
+            )
+            Log.d(TAG, "Enqueued immediate one-time background catalog & update sync")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to enqueue immediate sync", e)
         }
     }
 
@@ -559,7 +591,10 @@ object NotificationAlertManager {
                     NotificationCompat.BigTextStyle()
                         .bigText("🚀 StreamHub $versionName is ready!\n\n$cleanNotes\n\nTap to download and update now.")
                 )
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setDefaults(NotificationCompat.DEFAULT_ALL)
+                .setVibrate(longArrayOf(0, 300, 200, 300))
                 .setAutoCancel(true)
                 .setContentIntent(pendingIntent)
 

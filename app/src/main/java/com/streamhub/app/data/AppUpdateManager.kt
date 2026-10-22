@@ -303,7 +303,8 @@ object AppUpdateManager {
      * interfering with active foreground UI state.
      */
     suspend fun checkUpdateSuspending(
-        currentVersionName: String = com.streamhub.app.BuildConfig.VERSION_NAME,
+        currentVersionName: String = appContext?.let { runCatching { it.packageManager.getPackageInfo(it.packageName, 0).versionName }.getOrNull() }
+            ?: com.streamhub.app.BuildConfig.VERSION_NAME,
         repoOwner: String = "WorkerOfArea51",
         repoName: String = "StreamHub"
     ): UpdateInfo? = kotlinx.coroutines.withContext(Dispatchers.IO) {
