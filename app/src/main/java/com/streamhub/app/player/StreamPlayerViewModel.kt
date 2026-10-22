@@ -152,6 +152,14 @@ class StreamPlayerViewModel : ViewModel() {
     private var lastPauseTimestampMs: Long = 0L
     private var stallAccumulatorMs: Long = 0L
 
+    private data class TrackTarget(
+        val mediaTrackGroup: androidx.media3.common.TrackGroup,
+        val trackIndex: Int,
+        val format: androidx.media3.common.Format
+    )
+    private val subtitleTrackMap = mutableMapOf<String, TrackTarget>()
+    private val audioTrackMap = mutableMapOf<String, TrackTarget>()
+
     init {
         viewModelScope.launch {
             NetworkMonitor.lastReconnectedAt.collect { timestamp ->
@@ -839,6 +847,9 @@ class StreamPlayerViewModel : ViewModel() {
 
     @OptIn(UnstableApi::class)
     private fun getSubtitleTrackLabel(format: androidx.media3.common.Format, fallbackIndex: Int): String {
+        if (!format.label.isNullOrBlank() && format.label!!.startsWith("[Ext]")) {
+            return format.label!!
+        }
         val lang = cleanTrackName(format.label, format.language, isSubtitle = true)
         val isSdh = (format.label?.contains("sdh", ignoreCase = true) == true) ||
                     (format.roleFlags and androidx.media3.common.C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND != 0)
@@ -907,6 +918,8 @@ class StreamPlayerViewModel : ViewModel() {
     private fun updateAvailableTracks(tracks: androidx.media3.common.Tracks) {
         val audioTrackNames = mutableListOf<String>()
         val subtitleTrackNames = mutableListOf("Off")
+        audioTrackMap.clear()
+        subtitleTrackMap.clear()
 
         for (trackGroup in tracks.groups) {
             val trackType = trackGroup.type
@@ -922,6 +935,7 @@ class StreamPlayerViewModel : ViewModel() {
                         label = "$langPart $dupCount$restPart"
                     }
                     audioTrackNames.add(label)
+                    audioTrackMap[label] = TrackTarget(trackGroup.mediaTrackGroup, i, format)
                 }
             } else if (trackType == androidx.media3.common.C.TRACK_TYPE_TEXT) {
                 for (i in 0 until trackGroup.length) {
@@ -935,6 +949,7 @@ class StreamPlayerViewModel : ViewModel() {
                         label = "$langPart $dupCount$restPart"
                     }
                     subtitleTrackNames.add(label)
+                    subtitleTrackMap[label] = TrackTarget(trackGroup.mediaTrackGroup, i, format)
                 }
             }
         }
@@ -960,23 +975,16 @@ class StreamPlayerViewModel : ViewModel() {
             } else {
                 val targetLang = savedAudio?.languageCode?.lowercase(java.util.Locale.ROOT)
                 val targetClean = cleanTrackName(targetAudioLabel, targetLang, false).lowercase(java.util.Locale.ROOT)
-                var audioIdx = 0
-                audioLoop@ for (trackGroup in tracks.groups) {
-                    if (trackGroup.type != androidx.media3.common.C.TRACK_TYPE_AUDIO) continue
-                    for (i in 0 until trackGroup.length) {
-                        val format = trackGroup.getTrackFormat(i)
-                        val label = getAudioTrackLabel(format, audioIdx)
-                        val lang = format.language?.lowercase(java.util.Locale.ROOT)
-                        val clean = cleanTrackName(format.label, format.language, false).lowercase(java.util.Locale.ROOT)
-                        if (!targetLang.isNullOrBlank() && (lang == targetLang || lang?.startsWith(targetLang) == true)) {
-                            matchedAudioTrack = label
-                            break@audioLoop
-                        }
-                        if (targetClean.isNotBlank() && clean == targetClean) {
-                            matchedAudioTrack = label
-                            break@audioLoop
-                        }
-                        audioIdx++
+                for ((trackName, target) in audioTrackMap) {
+                    val lang = target.format.language?.lowercase(java.util.Locale.ROOT)
+                    val clean = cleanTrackName(target.format.label, target.format.language, false).lowercase(java.util.Locale.ROOT)
+                    if (!targetLang.isNullOrBlank() && (lang == targetLang || lang?.startsWith(targetLang) == true)) {
+                        matchedAudioTrack = trackName
+                        break
+                    }
+                    if (targetClean.isNotBlank() && clean == targetClean) {
+                        matchedAudioTrack = trackName
+                        break
                     }
                 }
             }
@@ -1002,23 +1010,16 @@ class StreamPlayerViewModel : ViewModel() {
             } else {
                 val targetLang = savedSub.languageCode?.lowercase(java.util.Locale.ROOT)
                 val targetClean = cleanTrackName(targetSubLabel, targetLang, true).lowercase(java.util.Locale.ROOT)
-                var subIdx = 0
-                subLoop@ for (trackGroup in tracks.groups) {
-                    if (trackGroup.type != androidx.media3.common.C.TRACK_TYPE_TEXT) continue
-                    for (i in 0 until trackGroup.length) {
-                        val format = trackGroup.getTrackFormat(i)
-                        val label = getSubtitleTrackLabel(format, subIdx + 1)
-                        val lang = format.language?.lowercase(java.util.Locale.ROOT)
-                        val clean = cleanTrackName(format.label, format.language, true).lowercase(java.util.Locale.ROOT)
-                        if (!targetLang.isNullOrBlank() && (lang == targetLang || lang?.startsWith(targetLang) == true)) {
-                            matchedSubTrack = label
-                            break@subLoop
-                        }
-                        if (targetClean.isNotBlank() && clean == targetClean) {
-                            matchedSubTrack = label
-                            break@subLoop
-                        }
-                        subIdx++
+                for ((trackName, target) in subtitleTrackMap) {
+                    val lang = target.format.language?.lowercase(java.util.Locale.ROOT)
+                    val clean = cleanTrackName(target.format.label, target.format.language, true).lowercase(java.util.Locale.ROOT)
+                    if (!targetLang.isNullOrBlank() && (lang == targetLang || lang?.startsWith(targetLang) == true)) {
+                        matchedSubTrack = trackName
+                        break
+                    }
+                    if (targetClean.isNotBlank() && clean == targetClean) {
+                        matchedSubTrack = trackName
+                        break
                     }
                 }
             }
@@ -1382,9 +1383,39 @@ class StreamPlayerViewModel : ViewModel() {
     fun selectAudioTrack(trackName: String) {
         val player = exoPlayer ?: return
         val selector = trackSelector ?: return
-        val tracks = player.currentTracks
 
-        var audioCount = 0
+        val cachedTarget = audioTrackMap[trackName]
+        if (cachedTarget != null) {
+            val override = androidx.media3.common.TrackSelectionOverride(
+                cachedTarget.mediaTrackGroup,
+                listOf(cachedTarget.trackIndex)
+            )
+            val newPlayerParams = player.trackSelectionParameters.buildUpon()
+                .setOverrideForType(override)
+                .build()
+            player.trackSelectionParameters = newPlayerParams
+            selector.parameters = selector.buildUponParameters()
+                .setOverrideForType(override)
+                .build()
+
+            _uiState.update {
+                it.copy(
+                    selectedAudioTrack = trackName,
+                    showAudioDialog = false
+                )
+            }
+
+            val mediaId = currentMediaItem?.id.orEmpty()
+            com.streamhub.app.data.TrackPreferenceManager.saveAudioPreference(
+                mediaId = mediaId,
+                trackLabel = trackName,
+                languageCode = cachedTarget.format.language
+            )
+            return
+        }
+
+        val tracks = player.currentTracks
+        val generatedAudioNames = mutableListOf<String>()
         var groupIndex = -1
         var trackIndex = -1
 
@@ -1392,14 +1423,21 @@ class StreamPlayerViewModel : ViewModel() {
             if (trackGroup.type != androidx.media3.common.C.TRACK_TYPE_AUDIO) continue
             for (ti in 0 until trackGroup.length) {
                 val format = trackGroup.getTrackFormat(ti)
-                val label = getAudioTrackLabel(format, audioCount)
+                var label = getAudioTrackLabel(format, generatedAudioNames.size)
+                if (generatedAudioNames.contains(label)) {
+                    val parts = label.split(" ")
+                    val langPart = parts.firstOrNull() ?: label
+                    val restPart = if (parts.size > 1) " " + parts.drop(1).joinToString(" ") else ""
+                    val dupCount = generatedAudioNames.count { it.startsWith(langPart) } + 1
+                    label = "$langPart $dupCount$restPart"
+                }
+                generatedAudioNames.add(label)
 
-                if (label == trackName || format.label == trackName || format.language == trackName || trackName == "Audio ${audioCount + 1}") {
+                if (label == trackName || format.label == trackName || format.language == trackName || trackName == "Audio ${generatedAudioNames.size}") {
                     groupIndex = gi
                     trackIndex = ti
                     break@outer
                 }
-                audioCount++
             }
         }
 
@@ -1449,6 +1487,10 @@ class StreamPlayerViewModel : ViewModel() {
                 .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true)
                 .clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_TEXT)
             selector.parameters = parameters.build()
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, true)
+                .clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_TEXT)
+                .build()
 
             _uiState.update {
                 it.copy(
@@ -1464,59 +1506,102 @@ class StreamPlayerViewModel : ViewModel() {
                 trackLabel = "Off",
                 languageCode = null
             )
-        } else {
-            val tracks = player.currentTracks
-            var subCount = 0
-            var groupIndex = -1
-            var trackIndex = -1
+            return
+        }
 
-            outer@ for ((gi, trackGroup) in tracks.groups.withIndex()) {
-                if (trackGroup.type != androidx.media3.common.C.TRACK_TYPE_TEXT) continue
-                for (ti in 0 until trackGroup.length) {
-                    val format = trackGroup.getTrackFormat(ti)
-                    val formatted = getSubtitleTrackLabel(format, subCount + 1)
+        val cachedTarget = subtitleTrackMap[trackName]
+        if (cachedTarget != null) {
+            val override = androidx.media3.common.TrackSelectionOverride(
+                cachedTarget.mediaTrackGroup,
+                listOf(cachedTarget.trackIndex)
+            )
+            val parameters = selector.buildUponParameters()
+                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false)
+                .setOverrideForType(override)
+            selector.parameters = parameters.build()
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false)
+                .setOverrideForType(override)
+                .build()
 
-                    if (formatted == trackName || format.label == trackName || format.language == trackName ||
-                        cleanTrackName(format.label, format.language, isSubtitle = true) == trackName) {
-                        groupIndex = gi
-                        trackIndex = ti
-                        break@outer
-                    }
-                    subCount++
-                }
+            _uiState.update {
+                it.copy(
+                    selectedSubtitleTrack = trackName,
+                    showSubtitleDialog = false
+                )
             }
 
-            if (groupIndex >= 0 && trackIndex >= 0) {
-                val format = tracks.groups[groupIndex].getTrackFormat(trackIndex)
-                val parameters = selector.buildUponParameters()
-                    .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false)
-                    .setOverrideForType(
-                        androidx.media3.common.TrackSelectionOverride(
-                            tracks.groups[groupIndex].mediaTrackGroup,
-                            listOf(trackIndex)
-                        )
-                    )
-                selector.parameters = parameters.build()
+            // Persist subtitle selection to disk
+            val mediaId = currentMediaItem?.id.orEmpty()
+            com.streamhub.app.data.TrackPreferenceManager.saveSubtitlePreference(
+                mediaId = mediaId,
+                trackLabel = trackName,
+                languageCode = cachedTarget.format.language
+            )
+            return
+        }
 
-                _uiState.update {
-                    it.copy(
-                        selectedSubtitleTrack = trackName,
-                        showSubtitleDialog = false
-                    )
+        val tracks = player.currentTracks
+        val generatedSubtitleNames = mutableListOf<String>()
+        var groupIndex = -1
+        var trackIndex = -1
+
+        outer@ for ((gi, trackGroup) in tracks.groups.withIndex()) {
+            if (trackGroup.type != androidx.media3.common.C.TRACK_TYPE_TEXT) continue
+            for (ti in 0 until trackGroup.length) {
+                val format = trackGroup.getTrackFormat(ti)
+                var label = getSubtitleTrackLabel(format, generatedSubtitleNames.size + 1)
+                if (generatedSubtitleNames.contains(label)) {
+                    val parts = label.split(" ")
+                    val langPart = parts.firstOrNull() ?: label
+                    val restPart = if (parts.size > 1) " " + parts.drop(1).joinToString(" ") else ""
+                    val dupCount = generatedSubtitleNames.count { it.startsWith(langPart) } + 1
+                    label = "$langPart $dupCount$restPart"
                 }
+                generatedSubtitleNames.add(label)
 
-                // Persist subtitle selection to disk
-                val mediaId = currentMediaItem?.id.orEmpty()
-                com.streamhub.app.data.TrackPreferenceManager.saveSubtitlePreference(
-                    mediaId = mediaId,
-                    trackLabel = trackName,
-                    languageCode = format.language
+                if (label == trackName || format.label == trackName || format.language == trackName ||
+                    cleanTrackName(format.label, format.language, isSubtitle = true) == trackName) {
+                    groupIndex = gi
+                    trackIndex = ti
+                    break@outer
+                }
+            }
+        }
+
+        if (groupIndex >= 0 && trackIndex >= 0) {
+            val format = tracks.groups[groupIndex].getTrackFormat(trackIndex)
+            val override = androidx.media3.common.TrackSelectionOverride(
+                tracks.groups[groupIndex].mediaTrackGroup,
+                listOf(trackIndex)
+            )
+            val parameters = selector.buildUponParameters()
+                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false)
+                .setOverrideForType(override)
+            selector.parameters = parameters.build()
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false)
+                .setOverrideForType(override)
+                .build()
+
+            _uiState.update {
+                it.copy(
+                    selectedSubtitleTrack = trackName,
+                    showSubtitleDialog = false
                 )
-            } else {
-                // Tracks not ready or match not found — dismiss dialog without desyncing UI state
-                _uiState.update {
-                    it.copy(showSubtitleDialog = false)
-                }
+            }
+
+            // Persist subtitle selection to disk
+            val mediaId = currentMediaItem?.id.orEmpty()
+            com.streamhub.app.data.TrackPreferenceManager.saveSubtitlePreference(
+                mediaId = mediaId,
+                trackLabel = trackName,
+                languageCode = format.language
+            )
+        } else {
+            // Tracks not ready or match not found — dismiss dialog without desyncing UI state
+            _uiState.update {
+                it.copy(showSubtitleDialog = false)
             }
         }
     }

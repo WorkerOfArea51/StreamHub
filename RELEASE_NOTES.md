@@ -1,5 +1,5 @@
-### What's New in StreamHub v4.8.421 🚀
+### What's New in StreamHub v4.8.422 🚀
 
-- ⚡ **Instant Event-Driven FCM Release Notifications**: Integrated Firebase Cloud Messaging (FCM). When a new version is published on GitHub Actions, an instant push notification is broadcasted directly to your device via Google Play Services within 1–2 seconds.
-- 🔋 **Zero Battery Drain & Polling Elimination**: Completely removed periodic 15-minute background polling, saving 100% of background CPU wakeups and radio activity while keeping release alerts immediate.
-- 🛡️ **Direct Native LoadControl & 320 MB Buffer Lock**: Pure native `DefaultLoadControl` architecture with hard 320 MB memory lock and rolling 15s frame purge, guaranteeing 0% OutOfMemory and 0% StackOverflow crashes on long videos.
+- 💬 **Multi-Track Subtitle Selection Fix**: Fixed an issue where duplicate-language subtitle tracks (e.g., `English 2`, `English 3`, `English 4`) were unselectable. Tapping any indexed subtitle track now instantly activates that specific stream in ExoPlayer and updates the selection indicator.
+- 🎵 **Multi-Track Audio Selection Support**: Applied direct track mapping to audio tracks, ensuring duplicate language audio tracks (e.g., secondary commentary or descriptive audio) can also be selected seamlessly.
+- ⚡ **Instant Event-Driven FCM Release Notifications**: Integrated Firebase Cloud Messaging (FCM) to deliver instant heads-up update notifications directly to your device the moment a new GitHub release is published.
