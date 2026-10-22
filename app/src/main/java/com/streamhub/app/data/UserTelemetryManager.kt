@@ -39,7 +39,7 @@ data class UserSessionInfo(
     val lastActiveTimestamp: Long = 0L,
     val sessionStartTimestamp: Long = 0L,
     // User Profile Identity
-    val userName: String = "Dark Matter",
+    val userName: String = "Guest",
     val userAvatarPreset: Int = 0,
     val userAvatarBase64: String = "",
     val memberId: String = "",
@@ -331,7 +331,13 @@ object UserTelemetryManager {
                 val (countryCode, countryName, flagEmoji) = getCountryInfo(ctx)
                 val (downloadCount, downloadText) = getActiveDownloadsInfo()
                 val profile = UserProfileManager.profileFlow.value
-                val profileName = profile.customName.ifBlank { "Dark Matter" }
+                val idShort = profile.memberId.removePrefix("SH-").takeLast(4).ifBlank { "0000" }
+                val isOwner = getCurrentTier() == "OWNER"
+                val profileName = when {
+                    profile.customName.isNotBlank() -> profile.customName
+                    isOwner -> "Dark Matter"
+                    else -> "Guest #$idShort"
+                }
                 val avatarPreset = profile.avatarPresetIndex
                 val avatarBase64 = if (profile.avatarUri.isNotBlank()) {
                     UserProfileManager.getAvatarThumbnailBase64(ctx)
@@ -460,10 +466,16 @@ object UserTelemetryManager {
                             countryCodeToEmoji(rawCode)
                         } else rawFlag
 
-                        val userName = doc.getString("userName") ?: "Dark Matter"
+                        val rawUserName = doc.getString("userName") ?: ""
+                        val memberId = doc.getString("memberId") ?: ""
+                        val idShort = memberId.removePrefix("SH-").takeLast(4).ifBlank { "0000" }
+                        val userName = when {
+                            rawUserName.isNotBlank() && (tier == "OWNER" || rawUserName != "Dark Matter") -> rawUserName
+                            tier == "OWNER" -> "Dark Matter"
+                            else -> "Guest #$idShort"
+                        }
                         val userAvatarPreset = doc.getLong("userAvatarPreset")?.toInt() ?: 0
                         val userAvatarBase64 = doc.getString("userAvatarBase64") ?: ""
-                        val memberId = doc.getString("memberId") ?: ""
                         val resolution = doc.getString("resolution") ?: ""
                         val videoCodec = doc.getString("videoCodec") ?: ""
                         val bufferHealthSec = doc.getLong("bufferHealthSec") ?: 0L
@@ -543,7 +555,11 @@ object UserTelemetryManager {
                             currentScreen = currentScreenName,
                             lastActiveTimestamp = System.currentTimeMillis(),
                             sessionStartTimestamp = sessionStartTimestamp,
-                            userName = profile.customName.ifBlank { "Dark Matter" },
+                            userName = when {
+                                profile.customName.isNotBlank() -> profile.customName
+                                getCurrentTier() == "OWNER" -> "Dark Matter"
+                                else -> "Guest #${profile.memberId.removePrefix("SH-").takeLast(4).ifBlank { "0000" }}"
+                            },
                             userAvatarPreset = profile.avatarPresetIndex,
                             userAvatarBase64 = avatarBase64,
                             memberId = profile.memberId,

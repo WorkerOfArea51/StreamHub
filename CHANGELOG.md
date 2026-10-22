@@ -4,32 +4,18 @@ All notable changes, architectural milestones, and performance optimizations for
 
 ---
 
-## 🌟 [v4.8.418] - 2026-10-22 (Background App Update Notifications & Direct Dialog Routing)
+## 🌟 [v4.8.419] - 2026-10-22 (320 MB Hard Buffer Lock & Dual-Shield JVM Heap Protection)
 
 ### 🚀 Major Upgrades & Performance Fixes
 
-- **🔔 Background App Update Notifications & Direct Dialog Routing (`AppUpdateManager.kt`, `NotificationAlertManager.kt`, `CatalogSyncWorker.kt`, `MainActivity.kt`, `HomeScreen.kt`, `NotificationPreferencesScreen.kt`)**:
-  - High-priority system notification channel (`streamhub_app_updates`) alerting users whenever a new StreamHub version is released on GitHub.
-  - Strict one-time delivery enforcement: Enforces single notification delivery per release version (`KEY_LAST_NOTIFIED_UPDATE_VERSION`), permanently suppressing duplicate alerts.
-  - Periodic background check integration: `CatalogSyncWorker` (running every 4 hours via Android WorkManager) performs lightweight release checks with 0 Firebase reads.
-  - Seamless 1-tap intent handling: Tapping the notification launches `MainActivity` with `open_update_dialog = true`, automatically presenting `UpdateBottomSheet` with changelog notes and direct in-app download & install actions.
-  - Granular user preference: Exposes "App Update Alerts" switch in `NotificationPreferencesScreen` under `ALERTS`, allowing users to independently toggle app update notifications on or off.
-- **⚡ Continuous 30m Stream Caching & Socket Cancellation Optimization (`StreamPlayerViewModel.kt`)**:
-  - Restored full 25m–30m continuous Akamai VOD forward buffering window for uninterrupted playback.
-- **📱 Custom Avatar Synchronization in Live Audience Telemetry (`UserTelemetryManager.kt`, `LiveAudienceTelemetryDialog.kt`)**:
-  - Synchronized custom profile avatar thumbnail with active device inspection card and Firestore heartbeats.
-
----
-
-## 🌟 [v4.8.417] - 2026-10-21 (High-Speed 2x Buffer Protection & Silent Socket Healing)
-
-### 🚀 Major Upgrades & Performance Fixes
-
-- **⚡ High-Speed 2x Playback Buffer Protection (`StreamPlayerViewModel.kt`, `DefaultLoadControl`)**:
-  - Adjusted `minBufferMs` to `150,000` (2.5m safe floor) while keeping `maxBufferMs = 360,000` (6m ceiling) and `targetBufferBytes = 288 MB`.
-  - When playing at up to 2.0x speed, `minBufferUs` scales smoothly to 5 minutes of media time without colliding with the 6-minute ceiling, permanently preventing start/stop loader throttling and buffer starvation.
-  - Retains strict 288 MB memory ceiling and 15s frame purging (`setBackBuffer(15_000, false)`), guaranteeing 0% OutOfMemory crashes across 1, 2, and 3-hour movies.
-- **🛡️ 20s Read Timeout & Pre-Emptive Silent Stream Healing (`SharedHttpClient.kt`, `StreamPlayerViewModel.kt`)**:
-  - Replaced infinite `readTimeout(0)` in `SharedHttpClient.streamingClient` with a 20-second timeout, allowing OkHttp to detect dropped or idle Cloudflare proxy sockets instead of hanging indefinitely at 0 KB/s in native read.
-  - Added Pre-Emptive Silent Socket Healing: When active playback buffer drains below 180s and incoming throughput has been completely dead (0 KB/s for >= 14s), StreamHub cancels the hung in-flight socket.
-  - Seamless 150ms HTTP Range reconnect fires in the background via `LoadErrorHandlingPolicy` while playback continues uninterrupted from forward buffer, preventing the buffer from ever starving to 0s.
+- **⚡ 320 MB Hard Memory Lock & 15m/20m Continuous Buffer (`StreamPlayerViewModel.kt`, `DefaultLoadControl`)**:
+  - Aligned continuous buffer charging window to a 15-minute floor (`minBufferMs = 900_000`) and 20-minute forward ceiling (`maxBufferMs = 1_200_000`).
+  - Switched to `setPrioritizeTimeOverSizeThresholds(false)`: Size now strictly rules over time, eliminating ExoPlayer's internal time override that allowed demuxed frames to breach `targetBufferBytes` and accumulate 430+ MB in `DefaultAllocator`.
+  - Guarantees complete 100% episode pre-caching for anime & TV episodes (~20–25 mins) while strictly halting buffering at 320 MB for 50m+ high-bitrate 1080p episodes and 3-hour movies.
+- **🛡️ Dual-Lock JVM Heap Circuit-Breaker (`StreamPlayerViewModel.kt`, `LoadControl`)**:
+  - Wrapped `DefaultLoadControl.shouldContinueLoading` with real-time runtime heap inspection.
+  - If available JVM heap drops below 75 MB (approaching Android's 512 MB `largeHeap` limit), the loader is immediately halted, permanently eliminating `OutOfMemoryError` crashes.
+- **👤 Dynamic Guest Identity Isolation (`UserTelemetryManager.kt`, `LiveAudienceTelemetryDialog.kt`)**:
+  - Replaced hardcoded default fallback with dynamic `Guest #${memberId.takeLast(4)}` for anonymous users.
+  - Sanitized incoming audience telemetry streams so non-admin viewers who have not set a custom profile name no longer inherit the owner's alias.
+  - Full respect for custom names: Any name set by a user in their local profile is immediately prioritized and broadcasted across telemetry.

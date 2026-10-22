@@ -812,8 +812,14 @@ fun ActiveDeviceItem(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Text(text = session.flagEmoji, fontSize = 13.sp)
+                        val idShort = session.memberId.removePrefix("SH-").takeLast(4).ifBlank { "0000" }
+                        val displayName = when {
+                            session.userName.isNotBlank() && (session.tier == "OWNER" || session.userName != "Dark Matter") -> session.userName
+                            session.tier == "OWNER" -> "Dark Matter"
+                            else -> "Guest #$idShort"
+                        }
                         Text(
-                            text = session.userName.ifBlank { "Dark Matter" },
+                            text = displayName,
                             color = TextPrimary,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
@@ -1035,8 +1041,14 @@ fun DeviceTelemetryDetailDialog(
 
                             Column {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    val idShort = session.memberId.removePrefix("SH-").takeLast(4).ifBlank { "0000" }
+                                    val displayName = when {
+                                        session.userName.isNotBlank() && (session.tier == "OWNER" || session.userName != "Dark Matter") -> session.userName
+                                        session.tier == "OWNER" -> "Dark Matter"
+                                        else -> "Guest #$idShort"
+                                    }
                                     Text(
-                                        text = session.userName.ifBlank { session.deviceModel.ifBlank { "Dark Matter" } },
+                                        text = displayName,
                                         color = Color.White,
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold
