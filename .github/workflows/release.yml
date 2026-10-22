@@ -226,6 +226,96 @@ jobs:
 
           echo "GitHub Release $TAG published successfully!"
 
+      - name: Broadcast Instant FCM Release Push Notification
+        if: success()
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          RELEASE_TAG: ${{ steps.release_meta.outputs.tag_name }}
+        run: |
+          if [ -z "$SERVICE_ACCOUNT_JSON" ]; then
+            echo "::warning::FIREBASE_SERVICE_ACCOUNT secret is missing; skipping instant FCM release push."
+            exit 0
+          fi
+
+          echo "Installing google-auth & requests for FCM broadcast..."
+          pip install --quiet google-auth requests
+
+          python3 - <<'EOF'
+          import os, json
+          from google.oauth2 import service_account
+          from google.auth.transport.requests import Request
+          import requests
+
+          sa_json = os.environ.get("SERVICE_ACCOUNT_JSON")
+          tag = os.environ.get("RELEASE_TAG", "")
+
+          if not sa_json:
+              print("FIREBASE_SERVICE_ACCOUNT is empty. Skipping FCM push.")
+              exit(0)
+
+          try:
+              info = json.loads(sa_json)
+          except Exception as e:
+              print(f"Failed to parse SERVICE_ACCOUNT_JSON: {e}")
+              exit(0)
+
+          credentials = service_account.Credentials.from_service_account_info(
+              info,
+              scopes=["https://www.googleapis.com/auth/firebase.messaging"]
+          )
+          credentials.refresh(Request())
+          token = credentials.token
+          project_id = info.get("project_id", "streamhub-7b6b6")
+
+          notes = "A brand new update with performance improvements & fixes is available."
+          if os.path.exists("RELEASE_NOTES.md"):
+              try:
+                  with open("RELEASE_NOTES.md", "r", encoding="utf-8") as f:
+                      lines = [l.strip() for l in f.readlines() if l.strip() and not l.strip().startswith("#")]
+                      if lines:
+                          notes = "\n".join(lines[:3])
+              except:
+                  pass
+
+          fcm_url = f"https://fcm.googleapis.com/v1/projects/{project_id}/messages:send"
+          payload = {
+              "message": {
+                  "topic": "app_updates",
+                  "data": {
+                      "type": "update",
+                      "versionName": tag,
+                      "releaseNotes": notes,
+                      "open_update_dialog": "true"
+                  },
+                  "notification": {
+                      "title": f"🚀 StreamHub {tag} is Available!",
+                      "body": "Tap to install the latest update now."
+                  },
+                  "android": {
+                      "priority": "HIGH",
+                      "notification": {
+                          "channel_id": "streamhub_app_updates",
+                          "default_sound": True,
+                          "default_vibrate_timings": True,
+                          "priority": "MAX"
+                      }
+                  }
+              }
+          }
+
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Content-Type": "application/json"
+          }
+
+          resp = requests.post(fcm_url, headers=headers, json=payload)
+          print(f"FCM response ({resp.status_code}): {resp.text}")
+          if resp.status_code == 200:
+              print(f"✅ Instant FCM release push broadcasted for {tag} successfully!")
+          else:
+              print(f"⚠️ FCM push returned non-200 code: {resp.status_code}")
+          EOF
+
       - name: Clean up temporary credentials
         if: always()
         run: |

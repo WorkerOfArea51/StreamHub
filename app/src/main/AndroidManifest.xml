@@ -49,6 +49,15 @@
             </intent-filter>
         </service>
 
+        <!-- Firebase Cloud Messaging service for instant zero-delay release notifications -->
+        <service
+            android:name=".data.notifications.StreamHubMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <!-- FileProvider for in-app APK installer (M3.5 in-app updater) -->
         <provider
             android:name="androidx.core.content.FileProvider"

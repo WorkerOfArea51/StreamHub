@@ -11,9 +11,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.streamhub.app.MainActivity
@@ -103,48 +101,21 @@ object NotificationAlertManager {
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
 
-            // Rapid 15-minute background polling (Android WorkManager minimum periodic interval)
-            val workRequest = PeriodicWorkRequestBuilder<CatalogSyncWorker>(15, TimeUnit.MINUTES)
+            // Ultra-battery-safe 12-hour background sync for catalog & library episodes.
+            // Releases on GitHub are pushed INSTANTLY via Firebase Cloud Messaging (FCM),
+            // completely eliminating battery-draining polling.
+            val workRequest = PeriodicWorkRequestBuilder<CatalogSyncWorker>(12, TimeUnit.HOURS)
                 .setConstraints(constraints)
                 .build()
 
-            // Inviolable: Use UPDATE instead of KEEP so that active devices immediately adopt
-            // the new 15-minute background check policy rather than staying frozen on legacy 4h/8h schedules.
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 CatalogSyncWorker.WORK_NAME,
                 ExistingPeriodicWorkPolicy.UPDATE,
                 workRequest
             )
-            Log.d(TAG, "Scheduled periodic background catalog & update sync worker (every 15m)")
+            Log.d(TAG, "Scheduled battery-safe periodic background catalog sync worker (every 12h)")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to schedule periodic sync", e)
-        }
-    }
-
-    /**
-     * Enqueues an immediate, one-time background sync task.
-     * Useful when the app is initialized or moved to background so new releases on GitHub
-     * or catalog updates are detected promptly without waiting for the next 15-minute periodic tick.
-     */
-    fun enqueueImmediateSync(context: Context) {
-        if (!_alertsEnabled.value && !_updateAlertsEnabled.value) return
-        try {
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
-
-            val oneTimeWork = OneTimeWorkRequestBuilder<CatalogSyncWorker>()
-                .setConstraints(constraints)
-                .build()
-
-            WorkManager.getInstance(context).enqueueUniqueWork(
-                "${CatalogSyncWorker.WORK_NAME}_immediate",
-                ExistingWorkPolicy.REPLACE,
-                oneTimeWork
-            )
-            Log.d(TAG, "Enqueued immediate one-time background catalog & update sync")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to enqueue immediate sync", e)
         }
     }
 

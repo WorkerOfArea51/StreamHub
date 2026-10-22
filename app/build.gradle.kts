@@ -45,8 +45,8 @@ android {
         minSdk = 24
         targetSdk = 35
         val envVersionName = System.getenv("VERSION_NAME")?.removePrefix("v")?.removePrefix("V")
-        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 420
-        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.420"
+        versionCode = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 421
+        versionName = if (!envVersionName.isNullOrBlank()) envVersionName else "4.8.421"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -197,6 +197,7 @@ dependencies {
     implementation(libs.okhttp.logging)
 
     implementation(libs.firebase.firestore.ktx)
+    implementation(libs.firebase.messaging.ktx)
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.datastore.preferences)

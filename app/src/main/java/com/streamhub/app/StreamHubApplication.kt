@@ -105,7 +105,6 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
                 // FIX: Only pause download progress polling, do NOT wipe media caches.
                 runCatching { DownloadManager.pauseProgressPolling() }
                 runCatching { com.streamhub.app.data.UserTelemetryManager.onAppBackgrounded() }
-                runCatching { com.streamhub.app.data.NotificationAlertManager.enqueueImmediateSync(this@StreamHubApplication) }
             }
         })
     }
@@ -174,6 +173,8 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
                 .onFailure { Log.e(TAG, "UserTelemetryManager.init failed", it) }
             runCatching { com.streamhub.app.data.UserProfileManager.init(applicationContext) }
                 .onFailure { Log.e(TAG, "UserProfileManager.init failed", it) }
+            runCatching { com.streamhub.app.data.notifications.StreamHubMessagingService.subscribeToUpdateTopic() }
+                .onFailure { Log.e(TAG, "StreamHubMessagingService.subscribeToUpdateTopic failed", it) }
         }
     }
 
