@@ -719,7 +719,7 @@ export default {
       JSON.stringify({
         status: "healthy",
         service: "StreamHub Edge Proxy & Catalog Server",
-        version: "4.8.423",
+        version: "4.8.424",
       }),
       {
         status: 200,

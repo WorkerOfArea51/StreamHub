@@ -11,4 +11,4 @@ UPSTREAM_HOST = "midnighthawk.serv00.net"
 # Then bind it under Worker Settings > Variables and KV > Bind as "CATALOG_KV"
 [[kv_namespaces]]
 binding = "CATALOG_KV"
-id = "YOUR_KV_NAMESPACE_ID"
+id = "632fe4c5e43a4aeb95ffeffbf9ab64d2"
