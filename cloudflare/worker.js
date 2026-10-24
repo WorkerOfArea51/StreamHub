@@ -553,6 +553,44 @@ export default {
       }
     }
 
+    // POST /api/vouchers/batch (Admin: Batch import vouchers with device bindings)
+    if (pathname === "/api/vouchers/batch" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const vouchers = Array.isArray(body) ? body : (body.vouchers || []);
+        let count = 0;
+        for (const v of vouchers) {
+          if (!v || !v.code) continue;
+          const code = v.code.trim().toUpperCase();
+          const cleanVoucher = {
+            code: code,
+            label: (v.label || "").trim(),
+            status: v.status || "AVAILABLE",
+            createdAt: Number(v.createdAt) || Date.now(),
+            activatedAt: Number(v.activatedAt) || 0,
+            expiresAt: Number(v.expiresAt) || 0,
+            durationDays: Number(v.durationDays) || 30,
+            boundDeviceId: (v.boundDeviceId || "").trim(),
+            deviceModel: (v.deviceModel || "").trim(),
+          };
+          await env.CATALOG_KV.put("voucher:code:" + code, JSON.stringify(cleanVoucher));
+          if (cleanVoucher.boundDeviceId) {
+            await env.CATALOG_KV.put("voucher:device:" + cleanVoucher.boundDeviceId, JSON.stringify(cleanVoucher));
+          }
+          count++;
+        }
+        return new Response(JSON.stringify({ ok: true, imported: count }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // POST /api/vouchers/redeem (Device: Redeem code)
     if (pathname === "/api/vouchers/redeem" && request.method === "POST") {
       try {
