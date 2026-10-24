@@ -35,7 +35,7 @@ import com.streamhub.app.data.StorageCacheManager
 import com.streamhub.app.data.UserProfile
 import com.streamhub.app.data.UserProfileManager
 import com.streamhub.app.data.WatchHistoryManager
-import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.ui.components.AdminEditorDialog
 import com.streamhub.app.ui.components.AdminPasswordDialog
 import com.streamhub.app.ui.components.LiveAudienceTelemetryDialog
@@ -57,7 +57,7 @@ fun ProfileScreen(
     onOpenAddContent: () -> Unit = {},
     onNavigateToAbout: () -> Unit = {},
     onNavigateToMyList: () -> Unit = {},
-    repository: FirebaseRepository = remember { FirebaseRepository.getInstance() },
+    repository: CatalogRepository = remember { CatalogRepository.getInstance() },
     modifier: Modifier = Modifier
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
@@ -78,12 +78,6 @@ fun ProfileScreen(
         StorageCacheManager.calculateStorageUsage()
     }
 
-    DisposableEffect(isAdminMode) {
-        if (isAdminMode) {
-            com.streamhub.app.data.UserTelemetryManager.startObservingLiveMetrics()
-        }
-        onDispose { }
-    }
 
     LazyColumn(
         modifier = modifier
@@ -348,6 +342,12 @@ fun ProfileScreen(
 
     // ── Floating Admin Dialogs ──
     if (showLiveTelemetryDialog) {
+        DisposableEffect(Unit) {
+            com.streamhub.app.data.UserTelemetryManager.startObservingLiveMetrics()
+            onDispose {
+                com.streamhub.app.data.UserTelemetryManager.stopObservingLiveMetrics(force = true)
+            }
+        }
         LiveAudienceTelemetryDialog(
             onDismiss = { showLiveTelemetryDialog = false }
         )

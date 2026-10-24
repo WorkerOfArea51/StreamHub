@@ -18,7 +18,7 @@ import com.google.gson.JsonParser
 import com.google.gson.annotations.SerializedName
 import com.streamhub.app.BuildConfig
 import com.streamhub.app.data.models.MediaItem
-import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.data.repository.CatalogRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -501,7 +501,7 @@ object CatalogBackupManager {
      */
     suspend fun restoreToFirestore(
         payload: CatalogBackupPayload,
-        repository: FirebaseRepository,
+        repository: CatalogRepository,
         onProgress: (current: Int, total: Int, currentTitle: String) -> Unit
     ): BackupRestoreResult = withContext(Dispatchers.IO) {
         try {
@@ -510,26 +510,14 @@ object CatalogBackupManager {
                 return@withContext BackupRestoreResult(false, 0, 0, "No media items found in backup")
             }
 
-            val db = repository.firestore
-            if (db == null) {
-                return@withContext BackupRestoreResult(false, 0, 0, "Firebase database not initialized")
-            }
-
             var totalEps = 0
             val batchSize = 50
             val chunks = items.chunked(batchSize)
 
             var processedCount = 0
             for (chunk in chunks) {
-                val batch = db.batch()
-                for (item in chunk) {
-                    val targetCollection = FirebaseRepository.getCollectionForCategory(item.category, item.type)
-                    val docMap = FirebaseRepository.mediaItemToMap(item)
-                    val docRef = db.collection(targetCollection).document(item.id)
-                    batch.set(docRef, docMap)
-                    totalEps += item.episodes.size
-                }
-                Tasks.await(batch.commit())
+                repository.saveMediaItemsBatchSuspending(chunk)
+                totalEps += chunk.sumOf { it.episodes.size }
                 processedCount += chunk.size
                 val lastItemTitle = chunk.lastOrNull()?.title ?: ""
                 onProgress(processedCount, items.size, lastItemTitle)

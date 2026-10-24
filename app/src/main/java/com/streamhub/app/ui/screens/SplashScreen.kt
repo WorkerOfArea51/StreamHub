@@ -29,7 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamhub.app.data.repository.CatalogState
-import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.PrimaryRed
@@ -46,7 +46,7 @@ private val ExpressiveScaleEasing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
 
 @Composable
 fun SplashScreen(
-    repository: FirebaseRepository,
+    repository: CatalogRepository,
     onSplashFinished: () -> Unit,
     modifier: Modifier = Modifier
 ) {

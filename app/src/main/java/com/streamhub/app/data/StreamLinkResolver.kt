@@ -15,15 +15,18 @@ import org.json.JSONObject
  * 3. Raw URL list sequential indexing (Ep 1..N).
  * 4. Batch sequential URL range generation.
  */
-object TelegramLinkResolver {
+object StreamLinkResolver {
 
-    private const val TAG = "TelegramLinkResolver"
+    private const val TAG = "StreamLinkResolver"
     private const val MAX_BATCH_SIZE = 500
+
+    @Deprecated("Renamed to StreamLinkResolver", ReplaceWith("StreamLinkResolver"))
+    val INSTANCE = this
 
     /**
      * Generates a list of batch links from start link to end link.
      */
-    fun generateBatchTelegramLinks(startUrl: String, endUrl: String): String {
+    fun generateBatchLinks(startUrl: String, endUrl: String): String {
         val regex = Regex("""(https?://.+?/)(\d+)""")
         val startMatch = regex.find(startUrl.trim())
         val endMatch = regex.find(endUrl.trim())
@@ -51,6 +54,9 @@ object TelegramLinkResolver {
         }
         return ""
     }
+
+    @Deprecated("Renamed to generateBatchLinks", ReplaceWith("generateBatchLinks(startUrl, endUrl)"))
+    fun generateBatchTelegramLinks(startUrl: String, endUrl: String): String = generateBatchLinks(startUrl, endUrl)
 
     /**
      * Smart Unified Parser for:
@@ -113,7 +119,7 @@ object TelegramLinkResolver {
                     mirrorStreamUrl = sanitizePlayableUrl(fallbackMirrorUrl),
                     fileSize = size,
                     fileName = if (fullRawTitle.isNotBlank()) "$fullRawTitle.mkv" else "Episode $epNum.mkv",
-                    telegramFileId = extractTelegramMessageOrFileId(directPlayUrl)
+                    telegramFileId = extractMessageOrFileId(directPlayUrl)
                 )
             }.sortedBy { it.episodeNumber }
         }
@@ -272,7 +278,7 @@ object TelegramLinkResolver {
                             fileSize = size,
                             fileName = fileName.ifBlank { "Episode $epNum.mkv" },
                             durationMs = durationMs,
-                            telegramFileId = code.ifBlank { extractTelegramMessageOrFileId(primaryPlayUrl) }
+                            telegramFileId = code.ifBlank { extractMessageOrFileId(primaryPlayUrl) }
                         )
                     )
                 }
@@ -314,7 +320,7 @@ object TelegramLinkResolver {
                         title = epTitle,
                         streamUrl = sanitizedUrl,
                         mirrorStreamUrl = sanitizedUrl,
-                        telegramFileId = extractTelegramMessageOrFileId(sanitizedUrl)
+                        telegramFileId = extractMessageOrFileId(sanitizedUrl)
                     )
                 )
             }
@@ -430,11 +436,14 @@ object TelegramLinkResolver {
         return match?.groupValues?.get(1)?.toIntOrNull()
     }
 
-    fun extractTelegramMessageOrFileId(url: String): String {
+    fun extractMessageOrFileId(url: String): String {
         val msgRegex = Regex("""(?:t\.me/(?:c/\d+|[^/]+)/|watch/|dl/|stream/)([\w-]+)""")
         val match = msgRegex.find(url)
         return match?.groupValues?.get(1) ?: url.hashCode().toString()
     }
+
+    @Deprecated("Renamed to extractMessageOrFileId", ReplaceWith("extractMessageOrFileId(url)"))
+    fun extractTelegramMessageOrFileId(url: String): String = extractMessageOrFileId(url)
 
     fun formatBytesToReadable(bytes: Long): String {
         if (bytes <= 0) return ""
@@ -446,3 +455,6 @@ object TelegramLinkResolver {
         }
     }
 }
+
+/** Backward compatibility alias for legacy imports during refactor */
+typealias TelegramLinkResolver = StreamLinkResolver

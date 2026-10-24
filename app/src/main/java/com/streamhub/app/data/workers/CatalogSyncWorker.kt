@@ -9,7 +9,7 @@ import com.google.firebase.firestore.Source
 import com.streamhub.app.data.MyListManager
 import com.streamhub.app.data.NotificationAlertManager
 import com.streamhub.app.data.models.MediaItem
-import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.data.repository.CatalogRepository
 import kotlinx.coroutines.tasks.await
 
 /**

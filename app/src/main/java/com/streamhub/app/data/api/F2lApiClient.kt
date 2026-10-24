@@ -53,7 +53,7 @@ object F2lApiClient {
             val bodyString = response.body?.string()
                 ?: throw IllegalStateException("Empty response body from F2L API")
 
-            val episodeList = com.streamhub.app.data.TelegramLinkResolver.parseSmartBotMessageOrLinks(
+            val episodeList = com.streamhub.app.data.StreamLinkResolver.parseSmartBotMessageOrLinks(
                 rawText = bodyString,
                 seasonNumber = seasonNumber,
                 arcName = arcName

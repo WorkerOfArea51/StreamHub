@@ -33,7 +33,7 @@ import coil.compose.AsyncImage
 import com.streamhub.app.data.api.MetadataFetchManager
 import com.streamhub.app.data.models.MediaInfo
 import com.streamhub.app.data.models.MediaItem
-import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.ui.components.ToastManager
 import com.streamhub.app.ui.theme.AccentGold
 import com.streamhub.app.ui.theme.BackgroundDark
@@ -301,7 +301,7 @@ object MediaSpecsNormalizer {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MetadataInspectorDialog(
-    repository: FirebaseRepository = FirebaseRepository.getInstance(),
+    repository: CatalogRepository = CatalogRepository.getInstance(),
     onDismiss: () -> Unit,
     onEditShow: ((MediaItem) -> Unit)? = null
 ) {

@@ -107,7 +107,7 @@ import com.streamhub.app.data.AdminManager
 import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.models.PlaybackProgress
-import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.data.models.matchesCategory
 import com.streamhub.app.data.models.isFullyCompleted
 import com.streamhub.app.data.models.isActivelyTrending
@@ -135,7 +135,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun HomeScreen(
-    repository: FirebaseRepository,
+    repository: CatalogRepository,
     onMediaClick: (MediaItem) -> Unit,
     onPlayEpisode: (MediaItem, Int) -> Unit,
     onNavigateToHistory: () -> Unit = {},

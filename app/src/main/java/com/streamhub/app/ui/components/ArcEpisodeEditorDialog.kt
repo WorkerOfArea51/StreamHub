@@ -70,7 +70,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.streamhub.app.data.EpisodeOrderingManager
 import com.streamhub.app.data.SeasonArcOption
-import com.streamhub.app.data.TelegramLinkResolver
+import com.streamhub.app.data.StreamLinkResolver
 import com.streamhub.app.data.api.F2lApiClient
 import com.streamhub.app.data.api.StreamHealthChecker
 import com.streamhub.app.data.api.StreamHealthReport
@@ -718,7 +718,7 @@ fun ArcEpisodeEditorDialog(
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "Paste single episode JSON object (e.g. EP 16), Telegram bot message, or links. It will be placed into the arc automatically.",
+                                    text = "Paste single episode JSON object (e.g. EP 16), batch message, or links. It will be placed into the arc automatically.",
                                     color = TextSecondary,
                                     fontSize = 10.sp
                                 )
@@ -772,7 +772,7 @@ fun ArcEpisodeEditorDialog(
 
                                             val resolvedArcName = currentArcName.trim().ifBlank { targetArcName }
                                             val parsed = BatchEpisodeParser.parseRawDump(jsonCandidate, targetSeasonNumber, resolvedArcName)
-                                                .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(jsonCandidate, targetSeasonNumber, resolvedArcName) }
+                                                .ifEmpty { StreamLinkResolver.parseSmartBotMessageOrLinks(jsonCandidate, targetSeasonNumber, resolvedArcName) }
 
                                             if (parsed.isNotEmpty()) {
                                                 val formattedEps = parsed.map { ep ->
@@ -1021,7 +1021,7 @@ fun ArcEpisodeEditorDialog(
                                 Spacer(modifier = Modifier.width(10.dp))
 
                                 Column(modifier = Modifier.weight(1f)) {
-                                    val cleanTitle = TelegramLinkResolver.cleanEpisodeTitle(ep.title, ep.episodeNumber)
+                                    val cleanTitle = StreamLinkResolver.cleanEpisodeTitle(ep.title, ep.episodeNumber)
                                     Text(
                                         text = cleanTitle.ifBlank { ep.fileName },
                                         color = TextPrimary,

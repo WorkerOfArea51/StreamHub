@@ -10,10 +10,9 @@ import android.os.BatteryManager
 import android.os.Build
 import android.telephony.TelephonyManager
 import android.util.Log
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ListenerRegistration
-import com.google.firebase.firestore.Query
 import com.streamhub.app.BuildConfig
+import com.streamhub.app.data.api.BroadcastPayload
+import com.streamhub.app.data.api.CatalogEdgeClient
 import com.streamhub.app.ui.components.ToastManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -98,21 +97,17 @@ data class LiveAudienceMetrics(
 object UserTelemetryManager {
 
     private const val TAG = "UserTelemetryManager"
-    private const val COLLECTION_SESSIONS = "live_sessions"
-    private const val COLLECTION_BROADCASTS = "global_broadcasts"
     private const val PREFS_NAME = "streamhub_telemetry_prefs"
     private const val KEY_CLIENT_ID = "telemetry_client_id"
     private const val KEY_LAST_BROADCAST_TS = "last_seen_broadcast_ts"
-    private const val HEARTBEAT_INTERVAL_MS = 15_000L // 15 seconds
-    private const val SESSION_TIMEOUT_MS = 60_000L    // 60 seconds inactivity timeout (resilient presence, eliminates flickering)
+    private const val HEARTBEAT_INTERVAL_MS = 60_000L // 60 seconds (prevents write fatigue)
+    private const val SESSION_TIMEOUT_MS = 180_000L   // 180 seconds presence window
 
     private var clientId: String = ""
     private var prefs: SharedPreferences? = null
     private var appContext: Context? = null
     private var heartbeatJob: Job? = null
-    private var telemetryListener: ListenerRegistration? = null
-    private var deviceCommandListener: ListenerRegistration? = null
-    private var broadcastListener: ListenerRegistration? = null
+    private var liveAudienceJob: Job? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val sessionStartTimestamp = System.currentTimeMillis()
@@ -171,14 +166,6 @@ object UserTelemetryManager {
         startListeningToRemoteCommands()
         startListeningToGlobalBroadcasts()
 
-        // Auto-attach live observer whenever Admin mode is active
-        scope.launch {
-            AdminManager.isAdminMode.collect { isAdmin ->
-                if (isAdmin) {
-                    startObservingLiveMetrics()
-                }
-            }
-        }
         recordAction("Launched StreamHub")
     }
 
@@ -276,16 +263,6 @@ object UserTelemetryManager {
     fun stopHeartbeat() {
         heartbeatJob?.cancel()
         heartbeatJob = null
-        scope.launch {
-            try {
-                if (clientId.isNotBlank()) {
-                    FirebaseFirestore.getInstance().collection(COLLECTION_SESSIONS).document(clientId).delete()
-                    Log.d(TAG, "Successfully purged live session on stop/exit: $clientId")
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to delete session on stop: ${e.message}")
-            }
-        }
     }
 
     fun onAppBackgrounded() {
@@ -322,7 +299,6 @@ object UserTelemetryManager {
         publishJob = scope.launch {
             lastPublishTimeMs = System.currentTimeMillis()
             try {
-                val db = FirebaseFirestore.getInstance()
                 val (batteryPct, isCharging) = getBatteryInfo(ctx)
                 val networkType = getNetworkType(ctx)
                 val isVpn = isVpnActive(ctx)
@@ -395,11 +371,18 @@ object UserTelemetryManager {
                     "actionTrail" to synchronized(actionTrail) { actionTrail.toList() }
                 )
 
-                db.collection(COLLECTION_SESSIONS).document(clientId)
-                    .set(session, com.google.firebase.firestore.SetOptions.merge())
-                    .addOnFailureListener { e ->
-                        Log.w(TAG, "Heartbeat failed: ${e.message}")
+                // 100% Free Cloudflare Edge Telemetry Dispatch
+                val res = CatalogEdgeClient.sendTelemetryHeartbeat(session)
+                res.onSuccess { response ->
+                    response.command?.let { cmd ->
+                        handleRemoteCommand(cmd.type, cmd.timestamp, cmd.title, cmd.message)
                     }
+                    response.broadcast?.let { bcast ->
+                        handleBroadcast(bcast)
+                    }
+                }.onFailure { e ->
+                    Log.w(TAG, "Cloudflare Edge heartbeat error: ${e.message}")
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "Heartbeat error: ${e.message}")
             }
@@ -411,207 +394,125 @@ object UserTelemetryManager {
     // ─────────────────────────────────────────────────────────────
 
     fun startObservingLiveMetrics() {
-        if (telemetryListener != null) return
-
-        try {
-            val db = FirebaseFirestore.getInstance()
-            telemetryListener = db.collection(COLLECTION_SESSIONS).addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.w(TAG, "Live telemetry listener error: ${error.message}")
-                    return@addSnapshotListener
-                }
-
-                if (snapshot == null) return@addSnapshotListener
-
-                val now = System.currentTimeMillis()
-                val activeThreshold = now - SESSION_TIMEOUT_MS
-                val ghostPurgeThreshold = now - (60 * 60 * 1000L) // 1 hour inactivity threshold
-
-                var standardUsersCount = 0
-                var vip = 0
-                var adPass = 0
-                var owner = 0
-                val activeList = mutableListOf<UserSessionInfo>()
-                val titleCountMap = mutableMapOf<String, Int>()
-
-                val isCurrentAdmin = AdminManager.isAdminMode.value
-
-                for (doc in snapshot.documents) {
-                    val lastActive = doc.getLong("lastActiveTimestamp") ?: 0L
-
-                    // Auto-purge abandoned ghost sessions (> 1h old) from Firestore when Admin is viewing
-                    if (isCurrentAdmin && (lastActive == 0L || lastActive < ghostPurgeThreshold)) {
-                        doc.reference.delete()
-                        continue
+        if (liveAudienceJob?.isActive == true) return
+        liveAudienceJob = scope.launch {
+            while (isActive) {
+                CatalogEdgeClient.fetchLiveAudience()
+                    .onSuccess { activeList ->
+                        updateAudienceMetrics(activeList)
                     }
-
-                    if (lastActive >= activeThreshold) {
-                        val tier = doc.getString("tier") ?: "USER"
-                        val model = doc.getString("deviceModel") ?: "Android Device"
-                        val version = doc.getString("appVersion") ?: "v4.8"
-                        val activity = doc.getString("currentActivity") ?: "Browsing"
-                        val screen = doc.getString("currentScreen") ?: "Home"
-                        val sessionStart = doc.getLong("sessionStartTimestamp") ?: lastActive
-
-                        when (tier) {
-                            "OWNER" -> owner++
-                            "VIP" -> vip++
-                            "AD_PASS" -> adPass++
-                            else -> standardUsersCount++
-                        }
-
-                        val rawCode = doc.getString("countryCode") ?: "US"
-                        val rawFlag = doc.getString("flagEmoji") ?: ""
-                        val cleanFlag = if (rawFlag.isBlank() || rawFlag.startsWith("{") || rawFlag.contains("http") || rawFlag.length > 4) {
-                            countryCodeToEmoji(rawCode)
-                        } else rawFlag
-
-                        val rawUserName = doc.getString("userName") ?: ""
-                        val memberId = doc.getString("memberId") ?: ""
-                        val idShort = memberId.removePrefix("SH-").takeLast(4).ifBlank { "0000" }
-                        val userName = when {
-                            rawUserName.isNotBlank() && (tier == "OWNER" || rawUserName != "Dark Matter") -> rawUserName
-                            tier == "OWNER" -> "Dark Matter"
-                            else -> "Guest #$idShort"
-                        }
-                        val userAvatarPreset = doc.getLong("userAvatarPreset")?.toInt() ?: 0
-                        val userAvatarBase64 = doc.getString("userAvatarBase64") ?: ""
-                        val resolution = doc.getString("resolution") ?: ""
-                        val videoCodec = doc.getString("videoCodec") ?: ""
-                        val bufferHealthSec = doc.getLong("bufferHealthSec") ?: 0L
-                        val playbackSpeed = doc.getDouble("playbackSpeed")?.toFloat() ?: 1.0f
-                        val carrierName = doc.getString("carrierName") ?: ""
-                        val rawTrail = (doc.get("actionTrail") as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
-
-                        val session = UserSessionInfo(
-                            clientId = doc.id,
-                            tier = tier,
-                            deviceModel = model,
-                            appVersion = version,
-                            currentActivity = activity,
-                            currentScreen = screen,
-                            lastActiveTimestamp = lastActive,
-                            sessionStartTimestamp = sessionStart,
-                            userName = userName,
-                            userAvatarPreset = userAvatarPreset,
-                            userAvatarBase64 = userAvatarBase64,
-                            memberId = memberId,
-                            mediaTitle = doc.getString("mediaTitle") ?: "",
-                            episodeTitle = doc.getString("episodeTitle") ?: "",
-                            seasonNumber = doc.getLong("seasonNumber")?.toInt() ?: 1,
-                            episodeNumber = doc.getLong("episodeNumber")?.toInt() ?: 0,
-                            positionMs = doc.getLong("positionMs") ?: 0L,
-                            durationMs = doc.getLong("durationMs") ?: 0L,
-                            playerState = doc.getString("playerState") ?: "IDLE",
-                            streamingSpeed = doc.getString("streamingSpeed") ?: "",
-                            resolution = resolution,
-                            videoCodec = videoCodec,
-                            bufferHealthSec = bufferHealthSec,
-                            playbackSpeed = playbackSpeed,
-                            networkType = doc.getString("networkType") ?: "Wi-Fi 🛜",
-                            carrierName = carrierName,
-                            osVersion = doc.getString("osVersion") ?: "Android",
-                            architecture = doc.getString("architecture") ?: "ARM64",
-                            batteryPercent = doc.getLong("batteryPercent")?.toInt() ?: 100,
-                            isCharging = doc.getBoolean("isCharging") ?: false,
-                            countryCode = rawCode,
-                            countryName = doc.getString("countryName") ?: "United States",
-                            flagEmoji = cleanFlag,
-                            isEmulator = doc.getBoolean("isEmulator") ?: false,
-                            isRooted = doc.getBoolean("isRooted") ?: false,
-                            isVpnActive = doc.getBoolean("isVpnActive") ?: false,
-                            isOfficialBuild = doc.getBoolean("isOfficialBuild") ?: true,
-                            activeDownloadsCount = doc.getLong("activeDownloadsCount")?.toInt() ?: 0,
-                            downloadStatusText = doc.getString("downloadStatusText") ?: "",
-                            actionTrail = rawTrail
-                        )
-                        activeList.add(session)
-
-                        val mediaTitle = session.mediaTitle.ifEmpty {
-                            if (activity.startsWith("Watching ", ignoreCase = true)) {
-                                activity.removePrefix("Watching ").removeSuffix("▶️").removeSuffix("⏸️").removeSuffix("⏳").trim()
-                            } else ""
-                        }
-                        if (mediaTitle.isNotBlank()) {
-                            titleCountMap[mediaTitle] = (titleCountMap[mediaTitle] ?: 0) + 1
-                        }
+                    .onFailure { e ->
+                        Log.w(TAG, "Live audience poll from Cloudflare Edge failed: ${e.message}")
                     }
-                }
-
-                // Self-Presence Guarantee: Ensure the current active Admin session is counted immediately on boot
-                if (isCurrentAdmin && clientId.isNotBlank() && activeList.none { it.clientId == clientId }) {
-                    val (batteryPct, isCharging) = getBatteryInfo(appContext ?: return@addSnapshotListener)
-                    val profile = UserProfileManager.profileFlow.value
-                    val avatarBase64 = if (profile.avatarUri.isNotBlank()) {
-                        UserProfileManager.getAvatarThumbnailBase64(appContext)
-                    } else ""
-                    activeList.add(
-                        UserSessionInfo(
-                            clientId = clientId,
-                            tier = "OWNER",
-                            deviceModel = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}",
-                            appVersion = BuildConfig.VERSION_NAME,
-                            currentActivity = currentStatusText,
-                            currentScreen = currentScreenName,
-                            lastActiveTimestamp = System.currentTimeMillis(),
-                            sessionStartTimestamp = sessionStartTimestamp,
-                            userName = when {
-                                profile.customName.isNotBlank() -> profile.customName
-                                getCurrentTier() == "OWNER" -> "Dark Matter"
-                                else -> "Guest #${profile.memberId.removePrefix("SH-").takeLast(4).ifBlank { "0000" }}"
-                            },
-                            userAvatarPreset = profile.avatarPresetIndex,
-                            userAvatarBase64 = avatarBase64,
-                            memberId = profile.memberId,
-                            mediaTitle = currentMediaTitle,
-                            episodeTitle = currentEpisodeTitle,
-                            seasonNumber = currentSeasonNumber,
-                            episodeNumber = currentEpisodeNumber,
-                            positionMs = currentPositionMs,
-                            durationMs = currentDurationMs,
-                            playerState = currentPlayerState,
-                            streamingSpeed = currentStreamingSpeed,
-                            resolution = currentResolution,
-                            videoCodec = currentVideoCodec,
-                            bufferHealthSec = currentBufferHealthSec,
-                            playbackSpeed = currentPlaybackSpeed,
-                            networkType = getNetworkType(appContext ?: return@addSnapshotListener),
-                            carrierName = getCarrierName(appContext ?: return@addSnapshotListener),
-                            batteryPercent = batteryPct,
-                            isCharging = isCharging,
-                            countryCode = cachedCountryCode.ifBlank { "US" },
-                            countryName = cachedCountryName.ifBlank { "United States" },
-                            flagEmoji = cachedCountryFlag.ifBlank { "🌐" },
-                            actionTrail = synchronized(actionTrail) { actionTrail.toList() }
-                        )
-                    )
-                    owner++
-                }
-
-                val watchingCount = activeList.count { it.playerState == "PLAYING" || it.playerState == "BUFFERING" }
-                val topTitles = titleCountMap.toList().sortedByDescending { it.second }
-
-                _liveMetrics.value = LiveAudienceMetrics(
-                    totalOnline = activeList.size,
-                    currentlyWatching = watchingCount,
-                    standardUsers = standardUsersCount,
-                    vipUsers = vip,
-                    adPassUsers = adPass,
-                    ownerUsers = owner,
-                    guestUsers = 0,
-                    activeWatchers = activeList.sortedByDescending { it.lastActiveTimestamp },
-                    topWatchingTitles = topTitles
-                )
+                delay(5_000L) // Poll every 5s while dialog is open
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start live telemetry observer", e)
         }
     }
 
+    private fun updateAudienceMetrics(rawList: List<UserSessionInfo>) {
+        val now = System.currentTimeMillis()
+        val activeThreshold = now - SESSION_TIMEOUT_MS
+
+        var standardUsersCount = 0
+        var vip = 0
+        var adPass = 0
+        var owner = 0
+        val activeList = mutableListOf<UserSessionInfo>()
+        val titleCountMap = mutableMapOf<String, Int>()
+        val isCurrentAdmin = AdminManager.isAdminMode.value
+
+        for (session in rawList) {
+            if (session.lastActiveTimestamp >= activeThreshold) {
+                when (session.tier) {
+                    "OWNER" -> owner++
+                    "VIP" -> vip++
+                    "AD_PASS" -> adPass++
+                    else -> standardUsersCount++
+                }
+                activeList.add(session)
+                val mediaTitle = session.mediaTitle.ifEmpty {
+                    if (session.currentActivity.startsWith("Watching ", ignoreCase = true)) {
+                        session.currentActivity.removePrefix("Watching ").removeSuffix("▶️").removeSuffix("⏸️").removeSuffix("⏳").trim()
+                    } else ""
+                }
+                if (mediaTitle.isNotBlank()) {
+                    titleCountMap[mediaTitle] = (titleCountMap[mediaTitle] ?: 0) + 1
+                }
+            }
+        }
+
+        // Self-Presence Guarantee: Ensure the current active Admin session is counted immediately
+        if (isCurrentAdmin && clientId.isNotBlank() && activeList.none { it.clientId == clientId }) {
+            val ctx = appContext
+            if (ctx != null) {
+                val (batteryPct, isCharging) = getBatteryInfo(ctx)
+                val profile = UserProfileManager.profileFlow.value
+                val avatarBase64 = if (profile.avatarUri.isNotBlank()) {
+                    UserProfileManager.getAvatarThumbnailBase64(ctx)
+                } else ""
+                activeList.add(
+                    UserSessionInfo(
+                        clientId = clientId,
+                        tier = "OWNER",
+                        deviceModel = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}",
+                        appVersion = BuildConfig.VERSION_NAME,
+                        currentActivity = currentStatusText,
+                        currentScreen = currentScreenName,
+                        lastActiveTimestamp = System.currentTimeMillis(),
+                        sessionStartTimestamp = sessionStartTimestamp,
+                        userName = when {
+                            profile.customName.isNotBlank() -> profile.customName
+                            getCurrentTier() == "OWNER" -> "Dark Matter"
+                            else -> "Guest #${profile.memberId.removePrefix("SH-").takeLast(4).ifBlank { "0000" }}"
+                        },
+                        userAvatarPreset = profile.avatarPresetIndex,
+                        userAvatarBase64 = avatarBase64,
+                        memberId = profile.memberId,
+                        mediaTitle = currentMediaTitle,
+                        episodeTitle = currentEpisodeTitle,
+                        seasonNumber = currentSeasonNumber,
+                        episodeNumber = currentEpisodeNumber,
+                        positionMs = currentPositionMs,
+                        durationMs = currentDurationMs,
+                        playerState = currentPlayerState,
+                        streamingSpeed = currentStreamingSpeed,
+                        resolution = currentResolution,
+                        videoCodec = currentVideoCodec,
+                        bufferHealthSec = currentBufferHealthSec,
+                        playbackSpeed = currentPlaybackSpeed,
+                        networkType = getNetworkType(ctx),
+                        carrierName = getCarrierName(ctx),
+                        batteryPercent = batteryPct,
+                        isCharging = isCharging,
+                        countryCode = cachedCountryCode.ifBlank { "US" },
+                        countryName = cachedCountryName.ifBlank { "United States" },
+                        flagEmoji = cachedCountryFlag.ifBlank { "🌐" },
+                        actionTrail = synchronized(actionTrail) { actionTrail.toList() }
+                    )
+                )
+                owner++
+            }
+        }
+
+        val watchingCount = activeList.count { it.playerState == "PLAYING" || it.playerState == "BUFFERING" }
+        val topTitles = titleCountMap.toList().sortedByDescending { it.second }
+
+        _liveMetrics.value = LiveAudienceMetrics(
+            totalOnline = activeList.size,
+            currentlyWatching = watchingCount,
+            standardUsers = standardUsersCount,
+            vipUsers = vip,
+            adPassUsers = adPass,
+            ownerUsers = owner,
+            guestUsers = 0,
+            activeWatchers = activeList.sortedByDescending { it.lastActiveTimestamp },
+            topWatchingTitles = topTitles
+        )
+    }
+
     fun stopObservingLiveMetrics(force: Boolean = false) {
-        if (!force && AdminManager.isAdminMode.value) return
-        telemetryListener?.remove()
-        telemetryListener = null
+        liveAudienceJob?.cancel()
+        liveAudienceJob = null
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -631,19 +532,7 @@ object UserTelemetryManager {
             }
         }
         scope.launch {
-            try {
-                FirebaseFirestore.getInstance().collection(COLLECTION_SESSIONS).document(targetClientId)
-                    .update(
-                        mapOf(
-                            "remoteCommand" to "NOTIFICATION",
-                            "commandTitle" to title,
-                            "commandMessage" to message,
-                            "commandTimestamp" to System.currentTimeMillis()
-                        )
-                    )
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to send direct notification to $targetClientId: ${e.message}")
-            }
+            CatalogEdgeClient.sendRemoteCommand(targetClientId, "NOTIFICATION", title, message)
         }
     }
 
@@ -654,7 +543,6 @@ object UserTelemetryManager {
         }
         if (title.isBlank() || message.isBlank()) return
         val now = System.currentTimeMillis()
-        val expiresAt = now + (expiryHours.coerceIn(1, 168) * 3600_000L)
         prefs?.edit()?.putLong(KEY_LAST_BROADCAST_TS, now)?.apply()
         // Show immediately on the sender's own device as well
         appContext?.let { ctx ->
@@ -662,31 +550,7 @@ object UserTelemetryManager {
             ToastManager.showToast("📢 $title: $message")
         }
         scope.launch {
-            try {
-                val db = FirebaseFirestore.getInstance()
-                val broadcast = mapOf(
-                    "id" to UUID.randomUUID().toString(),
-                    "title" to title,
-                    "message" to message,
-                    "timestamp" to now,
-                    "expiresAt" to expiresAt,
-                    "sender" to "Owner Admin"
-                )
-                // Single-document architecture: caps global_broadcasts at exactly 1 document (~200 bytes) forever
-                db.collection(COLLECTION_BROADCASTS).document("latest").set(broadcast)
-
-                // Auto-purge any legacy auto-generated documents (like SIEMWHlDt18FuuQUfRM2)
-                db.collection(COLLECTION_BROADCASTS).get().addOnSuccessListener { snapshot ->
-                    for (doc in snapshot.documents) {
-                        if (doc.id != "latest") {
-                            Log.i(TAG, "Purged legacy broadcast document: ${doc.id}")
-                            doc.reference.delete()
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to send global broadcast: ${e.message}")
-            }
+            CatalogEdgeClient.sendGlobalBroadcast(title, message, expiryHours)
         }
     }
 
@@ -697,21 +561,8 @@ object UserTelemetryManager {
             return
         }
         scope.launch {
-            try {
-                val db = FirebaseFirestore.getInstance()
-                db.collection(COLLECTION_BROADCASTS).document("latest").delete()
-                db.collection(COLLECTION_BROADCASTS).get().addOnSuccessListener { snapshot ->
-                    for (doc in snapshot.documents) {
-                        doc.reference.delete()
-                    }
-                    onComplete?.invoke(true)
-                }.addOnFailureListener {
-                    onComplete?.invoke(true)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to clear active broadcast: ${e.message}")
-                onComplete?.invoke(false)
-            }
+            val res = CatalogEdgeClient.clearActiveBroadcast()
+            onComplete?.invoke(res.isSuccess)
         }
     }
 
@@ -733,17 +584,7 @@ object UserTelemetryManager {
             triggerImmediateHeartbeat()
         }
         scope.launch {
-            try {
-                FirebaseFirestore.getInstance().collection(COLLECTION_SESSIONS).document(targetClientId)
-                    .update(
-                        mapOf(
-                            "remoteCommand" to "REFRESH",
-                            "commandTimestamp" to System.currentTimeMillis()
-                        )
-                    )
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to send refresh command to $targetClientId: ${e.message}")
-            }
+            CatalogEdgeClient.sendRemoteCommand(targetClientId, "REFRESH")
         }
     }
 
@@ -754,103 +595,79 @@ object UserTelemetryManager {
         }
         if (targetClientId.isBlank()) return
         scope.launch {
-            try {
-                FirebaseFirestore.getInstance().collection(COLLECTION_SESSIONS).document(targetClientId)
-                    .update(
-                        mapOf(
-                            "remoteCommand" to "KICK",
-                            "commandTimestamp" to System.currentTimeMillis()
-                        )
-                    )
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to send kick command to $targetClientId: ${e.message}")
-            }
+            CatalogEdgeClient.sendRemoteCommand(targetClientId, "KICK")
         }
     }
 
     // ─────────────────────────────────────────────────────────────
-    // 📲 REMOTE COMMANDS & NOTIFICATIONS LISTENER (ON CLIENT)
+    // 📲 REMOTE COMMANDS & NOTIFICATIONS HANDLING (ON CLIENT)
     // ─────────────────────────────────────────────────────────────
 
     private var lastProcessedCommandSignature: String? = null
 
-    private fun startListeningToRemoteCommands() {
-        if (clientId.isBlank() || deviceCommandListener != null) return
-        try {
-            val docRef = FirebaseFirestore.getInstance().collection(COLLECTION_SESSIONS).document(clientId)
-            deviceCommandListener = docRef.addSnapshotListener { snapshot, error ->
-                if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
-                val command = snapshot.getString("remoteCommand") ?: return@addSnapshotListener
-                val commandTs = snapshot.getLong("commandTimestamp") ?: 0L
-                val title = snapshot.getString("commandTitle") ?: "Message from Admin"
-                val message = snapshot.getString("commandMessage") ?: ""
-                val ctx = appContext ?: return@addSnapshotListener
+    private fun handleRemoteCommand(command: String, commandTs: Long, title: String, message: String) {
+        if (command.isBlank()) return
+        val ctx = appContext ?: return
 
-                // Deduplicate to prevent re-execution if clear update has latency or transient failure
-                val signature = "$command:$commandTs:$title:$message"
-                if (signature == lastProcessedCommandSignature) return@addSnapshotListener
-                lastProcessedCommandSignature = signature
+        // Deduplicate to prevent re-execution
+        val signature = "$command:$commandTs:$title:$message"
+        if (signature == lastProcessedCommandSignature) return
+        lastProcessedCommandSignature = signature
 
-                when (command) {
-                    "NOTIFICATION" -> {
-                        if (message.isNotBlank()) {
-                            NotificationAlertManager.sendAdminAlertNotification(ctx, title, message)
-                            ToastManager.showToast("$title: $message")
-                        }
-                    }
-                    "REFRESH" -> {
-                        ToastManager.showToast("Admin requested content refresh 🔄")
-                        publishHeartbeat()
-                    }
-                    "KICK" -> {
-                        // Protect Owner / Creator Studio devices from remote kick
-                        if (AdminManager.isAdminMode.value) {
-                            Log.w(TAG, "Ignoring KICK command on Owner device")
-                        } else {
-                            ToastManager.showToast("Session terminated by Admin 🚫")
-                            stopHeartbeat()
-                        }
-                    }
+        when (command) {
+            "NOTIFICATION" -> {
+                if (message.isNotBlank()) {
+                    NotificationAlertManager.sendAdminAlertNotification(ctx, title, message)
+                    ToastManager.showToast("$title: $message")
                 }
-
-                // Clear remote command after processing
-                docRef.update("remoteCommand", null, "commandTitle", null, "commandMessage", null)
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to start device command listener: ${e.message}")
+            "REFRESH" -> {
+                ToastManager.showToast("Admin requested content refresh 🔄")
+                publishHeartbeat()
+            }
+            "KICK" -> {
+                // Protect Owner / Creator Studio devices from remote kick
+                if (AdminManager.isAdminMode.value) {
+                    Log.w(TAG, "Ignoring KICK command on Owner device")
+                } else {
+                    ToastManager.showToast("Session terminated by Admin 🚫")
+                    stopHeartbeat()
+                }
+            }
         }
     }
 
+    private fun handleBroadcast(bcast: BroadcastPayload) {
+        val ts = bcast.timestamp
+        val expiresAt = if (bcast.expiresAt > 0L) bcast.expiresAt else (ts + 24 * 3600_000L)
+        val currentLastSeen = prefs?.getLong(KEY_LAST_BROADCAST_TS, 0L) ?: 0L
+        val now = System.currentTimeMillis()
+
+        if (ts > currentLastSeen && now < expiresAt) {
+            prefs?.edit()?.putLong(KEY_LAST_BROADCAST_TS, ts)?.apply()
+            val title = bcast.title.ifBlank { "StreamHub Announcement 📢" }
+            val msg = bcast.message
+            val ctx = appContext ?: return
+
+            if (msg.isNotBlank()) {
+                NotificationAlertManager.sendAdminAlertNotification(ctx, title, msg)
+                ToastManager.showToast("📢 $title: $msg")
+            }
+        }
+    }
+
+    private fun startListeningToRemoteCommands() {
+        // Commands are piggybacked on 60s heartbeats from Cloudflare Edge
+    }
+
     private fun startListeningToGlobalBroadcasts() {
-        if (broadcastListener != null) return
-        try {
-            val db = FirebaseFirestore.getInstance()
-            // 1. Listen strictly to the single "latest" document
-            broadcastListener = db.collection(COLLECTION_BROADCASTS).document("latest")
-                .addSnapshotListener { snapshot, error ->
-                    if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
-                    val ts = snapshot.getLong("timestamp") ?: 0L
-                    val expiresAt = snapshot.getLong("expiresAt") ?: (ts + 24 * 3600_000L)
-                    val currentLastSeen = prefs?.getLong(KEY_LAST_BROADCAST_TS, 0L) ?: 0L
-                    val now = System.currentTimeMillis()
-
-                    // Deliver ONLY IF:
-                    // 1. Sent strictly AFTER user's baseline lastSeen timestamp (rules out new downloads)
-                    // 2. The broadcast has NOT expired yet (now < expiresAt)
-                    if (ts > currentLastSeen && now < expiresAt) {
-                        prefs?.edit()?.putLong(KEY_LAST_BROADCAST_TS, ts)?.apply()
-                        val title = snapshot.getString("title") ?: "StreamHub Announcement 📢"
-                        val msg = snapshot.getString("message") ?: ""
-                        val ctx = appContext ?: return@addSnapshotListener
-
-                        if (msg.isNotBlank()) {
-                            NotificationAlertManager.sendAdminAlertNotification(ctx, title, msg)
-                            ToastManager.showToast("📢 $title: $msg")
-                        }
+        scope.launch {
+            CatalogEdgeClient.fetchActiveBroadcast()
+                .onSuccess { bcast ->
+                    if (bcast != null) {
+                        handleBroadcast(bcast)
                     }
                 }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to start global broadcast listener: ${e.message}")
         }
     }
 

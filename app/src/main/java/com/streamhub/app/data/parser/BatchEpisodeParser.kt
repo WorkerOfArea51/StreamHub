@@ -48,7 +48,7 @@ object BatchEpisodeParser {
         // 1. Check if rawText is valid JSON (Object or Array)
         if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
             // First try specialized Telegram/F2L bot JSON parser with full duration & size support
-            val fromResolver = com.streamhub.app.data.TelegramLinkResolver.parseSmartBotMessageOrLinks(trimmed, defaultSeason, defaultArc)
+            val fromResolver = com.streamhub.app.data.StreamLinkResolver.parseSmartBotMessageOrLinks(trimmed, defaultSeason, defaultArc)
             if (fromResolver.isNotEmpty()) return fromResolver
 
             val fromJson = parseJsonArray(trimmed, defaultSeason, defaultArc)
@@ -96,8 +96,8 @@ object BatchEpisodeParser {
                     seasonNumber = defaultSeason,
                     arcName = defaultArc,
                     title = epTitle,
-                    streamUrl = com.streamhub.app.data.TelegramLinkResolver.sanitizePlayableUrl(streamUrl),
-                    mirrorStreamUrl = com.streamhub.app.data.TelegramLinkResolver.sanitizePlayableUrl(mirrorUrl),
+                    streamUrl = com.streamhub.app.data.StreamLinkResolver.sanitizePlayableUrl(streamUrl),
+                    mirrorStreamUrl = com.streamhub.app.data.StreamLinkResolver.sanitizePlayableUrl(mirrorUrl),
                     fileName = fileName
                 )
             )
@@ -158,7 +158,7 @@ object BatchEpisodeParser {
                     seasonNumber = seasonNum,
                     arcName = arcName,
                     title = resolvedTitle,
-                    streamUrl = com.streamhub.app.data.TelegramLinkResolver.sanitizePlayableUrl(resolvedUrl),
+                    streamUrl = com.streamhub.app.data.StreamLinkResolver.sanitizePlayableUrl(resolvedUrl),
                     fileName = if (resolvedUrl.isNotBlank()) File(resolvedUrl).name else "Episode_$ep.mp4"
                 )
             )
@@ -185,8 +185,8 @@ object BatchEpisodeParser {
                 val explicitNum = extractEpisodeNumber(rawTitle) ?: extractEpisodeNumber(rawFileName)
                 val epNum = explicitNum ?: obj.optInt("episode_num", obj.optInt("episodeNumber", obj.optInt("episode", i + 1)))
                 val title = when {
-                    rawTitle.isNotBlank() -> com.streamhub.app.data.TelegramLinkResolver.cleanEpisodeTitle(rawTitle, epNum)
-                    rawFileName.isNotBlank() -> com.streamhub.app.data.TelegramLinkResolver.cleanEpisodeTitle(rawFileName, epNum)
+                    rawTitle.isNotBlank() -> com.streamhub.app.data.StreamLinkResolver.cleanEpisodeTitle(rawTitle, epNum)
+                    rawFileName.isNotBlank() -> com.streamhub.app.data.StreamLinkResolver.cleanEpisodeTitle(rawFileName, epNum)
                     else -> "Episode $epNum"
                 }
 
@@ -223,7 +223,7 @@ object BatchEpisodeParser {
                     obj.has("file_size") -> {
                         val rawSize = obj.optLong("file_size", -1L)
                         if (rawSize > 10000L) {
-                            com.streamhub.app.data.TelegramLinkResolver.formatBytesToReadable(rawSize)
+                            com.streamhub.app.data.StreamLinkResolver.formatBytesToReadable(rawSize)
                         } else {
                             obj.optString("file_size", "")
                         }
@@ -232,8 +232,8 @@ object BatchEpisodeParser {
                     else -> ""
                 }
 
-                val primaryUrl = com.streamhub.app.data.TelegramLinkResolver.sanitizePlayableUrl(streamUrl.ifBlank { mirrorUrl })
-                val secondaryUrl = com.streamhub.app.data.TelegramLinkResolver.sanitizePlayableUrl(mirrorUrl.ifBlank { streamUrl })
+                val primaryUrl = com.streamhub.app.data.StreamLinkResolver.sanitizePlayableUrl(streamUrl.ifBlank { mirrorUrl })
+                val secondaryUrl = com.streamhub.app.data.StreamLinkResolver.sanitizePlayableUrl(mirrorUrl.ifBlank { streamUrl })
 
                 if (primaryUrl.isNotBlank() || rawFileName.isNotBlank()) {
                     result.add(
@@ -247,7 +247,7 @@ object BatchEpisodeParser {
                             fileName = rawFileName.ifBlank { "Episode $epNum.mkv" },
                             fileSize = fileSize,
                             durationMs = durationMs,
-                            telegramFileId = code.ifBlank { com.streamhub.app.data.TelegramLinkResolver.extractTelegramMessageOrFileId(primaryUrl) }
+                            telegramFileId = code.ifBlank { com.streamhub.app.data.StreamLinkResolver.extractMessageOrFileId(primaryUrl) }
                         )
                     )
                 }
@@ -322,8 +322,8 @@ object BatchEpisodeParser {
                 ?: ""
             val rawTitle = Regex("\"title\"\\s*:\\s*\"([^\"]*)\"").find(content)?.groupValues?.get(1) ?: ""
             val title = when {
-                rawTitle.isNotBlank() -> com.streamhub.app.data.TelegramLinkResolver.cleanEpisodeTitle(rawTitle, epNum)
-                fileName.isNotBlank() -> com.streamhub.app.data.TelegramLinkResolver.cleanEpisodeTitle(fileName, epNum)
+                rawTitle.isNotBlank() -> com.streamhub.app.data.StreamLinkResolver.cleanEpisodeTitle(rawTitle, epNum)
+                fileName.isNotBlank() -> com.streamhub.app.data.StreamLinkResolver.cleanEpisodeTitle(fileName, epNum)
                 else -> "Episode $epNum"
             }
 
@@ -356,8 +356,8 @@ object BatchEpisodeParser {
                 }
                 ?: 0L
 
-            val primaryUrl = com.streamhub.app.data.TelegramLinkResolver.sanitizePlayableUrl(streamUrl.ifBlank { downloadUrl })
-            val secondaryUrl = com.streamhub.app.data.TelegramLinkResolver.sanitizePlayableUrl(downloadUrl.ifBlank { streamUrl })
+            val primaryUrl = com.streamhub.app.data.StreamLinkResolver.sanitizePlayableUrl(streamUrl.ifBlank { downloadUrl })
+            val secondaryUrl = com.streamhub.app.data.StreamLinkResolver.sanitizePlayableUrl(downloadUrl.ifBlank { streamUrl })
 
             episodes.add(
                 Episode(

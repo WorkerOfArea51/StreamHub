@@ -75,7 +75,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.repository.CatalogState
-import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.player.StreamPlayerViewModel
 import com.streamhub.app.ui.navigation.Screen
 import com.streamhub.app.ui.screens.DetailsScreen
@@ -467,7 +467,7 @@ fun StreamHubApp(
     windowSizeClass: WindowSizeClass
 ) {
     val navController = rememberNavController()
-    val repository = remember { FirebaseRepository.getInstance() }
+    val repository = remember { CatalogRepository.getInstance() }
 
     LaunchedEffect(Unit) {
         repository.connect()

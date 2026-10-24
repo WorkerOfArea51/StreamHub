@@ -481,14 +481,14 @@ object DownloadManager {
         val resolvedUrl = try {
             if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
                 if (rawUrl.contains("t.me/")) {
-                    TelegramLinkResolver.resolveAsync(rawUrl)
+                    StreamLinkResolver.resolveAsync(rawUrl)
                 } else {
                     // Downloads deliberately target the /dl/ (attachment) endpoint,
                     // while the PLAYER uses /stream/ (inline).
-                    TelegramLinkResolver.toDownloadUrl(rawUrl)
+                    StreamLinkResolver.toDownloadUrl(rawUrl)
                 }
             } else {
-                TelegramLinkResolver.resolveAsync(rawUrl)
+                StreamLinkResolver.resolveAsync(rawUrl)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to resolve download URL: $rawUrl", e)

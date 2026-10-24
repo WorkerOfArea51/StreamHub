@@ -38,7 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamhub.app.data.StreamBackendConfig
-import com.streamhub.app.data.TelegramLinkResolver
+import com.streamhub.app.data.StreamLinkResolver
 import com.streamhub.app.ui.theme.AccentGold
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.TextPrimary
@@ -63,7 +63,7 @@ fun AdminLinksTab(
         Text("2. Movie Direct Stream Link", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            "Paste the direct stream URL, Serv00 link, or Telegram F2L link for this movie.",
+            "Paste the direct stream URL, Serv00 link, or direct media link for this movie.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 11.sp,
             lineHeight = 15.sp
@@ -116,7 +116,7 @@ fun AdminLinksTab(
                         state.batchError = "Clipboard is empty"
                         return@Button
                     }
-                    val cleanLink = TelegramLinkResolver.sanitizePlayableUrl(clipText)
+                    val cleanLink = StreamLinkResolver.sanitizePlayableUrl(clipText)
                     state.startBatchLink = cleanLink
                     state.generatedEpisodesText = cleanLink
                     state.movieLinkProbeResult = null
@@ -164,7 +164,7 @@ fun AdminLinksTab(
         }
 
         // Movie Stream Ready Preview Card (Series-Parity)
-        val cleanActiveLink = TelegramLinkResolver.sanitizePlayableUrl(state.startBatchLink.ifBlank { state.generatedEpisodesText }.trim())
+        val cleanActiveLink = StreamLinkResolver.sanitizePlayableUrl(state.startBatchLink.ifBlank { state.generatedEpisodesText }.trim())
         if (cleanActiveLink.isNotBlank()) {
             Spacer(modifier = Modifier.height(10.dp))
             Surface(
@@ -327,7 +327,7 @@ fun AdminLinksTab(
         Text("2. Stream Links & Episodes Importer", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            "Paste raw links, Telegram posts, or 1-Click F2L Bot Batch ID to import episodes.",
+            "Paste raw links, batch messages, or 1-Click F2L Bot Batch ID to import episodes.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 11.sp,
             lineHeight = 15.sp
@@ -484,8 +484,8 @@ fun AdminLinksTab(
                     }
                 }
             },
-            label = { Text("Smart Raw Dump / Episode Links / Telegram Post *", color = TextSecondary) },
-            placeholder = { Text("Paste raw links, Telegram posts, or JSON here...\n> Ep 01: https://cdn.example.com/ep01.mp4\n> Ep 02: https://cdn.example.com/ep02.mp4", color = TextSecondary) },
+            label = { Text("Smart Raw Dump / Episode Links / Batch Text *", color = TextSecondary) },
+            placeholder = { Text("Paste raw links, batch messages, or JSON here...\n> Ep 01: https://cdn.example.com/ep01.mp4\n> Ep 02: https://cdn.example.com/ep02.mp4", color = TextSecondary) },
             minLines = 4,
             maxLines = 8,
             colors = OutlinedTextFieldDefaults.colors(
@@ -545,7 +545,7 @@ fun AdminLinksTab(
                     }
 
                     val parsed = com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(clipText, parsedSeasonNum, state.arcNameText)
-                        .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(clipText, parsedSeasonNum, state.arcNameText) }
+                        .ifEmpty { StreamLinkResolver.parseSmartBotMessageOrLinks(clipText, parsedSeasonNum, state.arcNameText) }
                     if (parsed.isNotEmpty()) {
                         val merged = com.streamhub.app.data.EpisodeOrderingManager.mergeAndDeduplicate(state.currentEpisodes.toList(), parsed)
                         state.currentEpisodes.clear()

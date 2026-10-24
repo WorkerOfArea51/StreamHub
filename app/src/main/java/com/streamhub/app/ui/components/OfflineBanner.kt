@@ -32,7 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamhub.app.data.DownloadManager
 import com.streamhub.app.data.NetworkMonitor
-import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.data.repository.CatalogRepository
 import kotlinx.coroutines.delay
 
 /**
@@ -74,7 +74,7 @@ fun OfflineBanner(
         if (lastReconnectedAt > 0L) {
             isManuallyDismissed = false
             showReconnectedPill = true
-            FirebaseRepository.getInstance().refreshCatalog()
+            CatalogRepository.getInstance().refreshCatalog()
             delay(2500L)
             showReconnectedPill = false
         }
@@ -169,7 +169,7 @@ fun OfflineBanner(
                                     if (!isOnline) {
                                         NetworkMonitor.forceRecheck()
                                     } else {
-                                        FirebaseRepository.getInstance().refreshCatalog()
+                                        CatalogRepository.getInstance().refreshCatalog()
                                     }
                                 },
                             contentAlignment = Alignment.Center

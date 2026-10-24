@@ -105,7 +105,7 @@ import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.models.PlaybackProgress
 import com.streamhub.app.data.models.isFullyCompleted
-import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.ui.components.FolderSelectionDialog
 import com.streamhub.app.ui.components.MediaCard
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -181,7 +181,7 @@ enum class MyListTypeFilter(val label: String) {
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun MyListScreen(
-    repository: FirebaseRepository,
+    repository: CatalogRepository,
     onMediaClick: (MediaItem) -> Unit,
     modifier: Modifier = Modifier
 ) {

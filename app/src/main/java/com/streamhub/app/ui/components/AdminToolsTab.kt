@@ -21,8 +21,10 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -32,7 +34,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,7 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamhub.app.data.models.MediaItem
-import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 import com.streamhub.app.ui.theme.bouncyTouch
@@ -54,6 +60,10 @@ import com.streamhub.app.ui.theme.bouncyTouch
 fun AdminToolsTab(
     state: AdminEditorState
 ) {
+    val scope = rememberCoroutineScope()
+    var isMigratingToCloudflare by remember { mutableStateOf(false) }
+    var migrationStatusText by remember { mutableStateOf<String?>(null) }
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -61,7 +71,7 @@ fun AdminToolsTab(
         Text("Tools & Catalog Management", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
 
         // 1. Metadata Health Inspector Hero Card
-        val catalog by FirebaseRepository.getInstance().mediaCatalog.collectAsState()
+        val catalog by CatalogRepository.getInstance().mediaCatalog.collectAsState()
         val itemsNeedingRepair = remember(catalog) { catalog.filter { getMediaItemIssues(it).isNotEmpty() } }
         val totalIssues = itemsNeedingRepair.size
         val healthScore = remember(catalog, totalIssues) {
@@ -269,7 +279,85 @@ fun AdminToolsTab(
             }
         }
 
-        // 4. Server Migrate Card
+        // 4. Cloudflare Edge KV Migration Card
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLowest,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFF97316).copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color(0xFFFB923C), modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("Cloudflare Edge KV Sync", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Migrate all ${catalog.size} shows to Cloudflare Edge ($0 cost)", color = TextSecondary, fontSize = 11.sp)
+                        }
+                    }
+                    Button(
+                        onClick = {
+                            if (!isMigratingToCloudflare) {
+                                isMigratingToCloudflare = true
+                                migrationStatusText = "Starting Cloudflare sync..."
+                                scope.launch {
+                                    val result = CatalogRepository.getInstance().migrateAllShowsToCloudflare { current, total ->
+                                        migrationStatusText = "Uploading $current / $total shows to Edge..."
+                                    }
+                                    result.onSuccess { count ->
+                                        migrationStatusText = "🎉 Successfully synced $count shows to Cloudflare KV!"
+                                        isMigratingToCloudflare = false
+                                    }.onFailure { err ->
+                                        migrationStatusText = "⚠️ Migration error: ${err.message}"
+                                        isMigratingToCloudflare = false
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !isMigratingToCloudflare,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF97316)),
+                        shape = CircleShape,
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                        modifier = Modifier
+                            .height(36.dp)
+                            .bouncyTouch()
+                    ) {
+                        if (isMigratingToCloudflare) {
+                            CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+                        } else {
+                            Text("Sync All", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                if (migrationStatusText != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = migrationStatusText ?: "",
+                        color = if (migrationStatusText?.startsWith("⚠️") == true) Color(0xFFFF5252) else Color(0xFF34D399),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+
+        // 5. Server URL Migration Card
         Surface(
             shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surfaceContainerLowest,
@@ -297,8 +385,8 @@ fun AdminToolsTab(
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
-                        Text("Server Migration", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Text("Migrate database between Firestore servers", color = TextSecondary, fontSize = 11.sp)
+                        Text("Stream URL Rewriter", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Batch rewrite media stream domains across catalog", color = TextSecondary, fontSize = 11.sp)
                     }
                 }
                 Button(
@@ -310,7 +398,7 @@ fun AdminToolsTab(
                         .height(36.dp)
                         .bouncyTouch()
                 ) {
-                    Text("Migrate", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("Rewrite", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

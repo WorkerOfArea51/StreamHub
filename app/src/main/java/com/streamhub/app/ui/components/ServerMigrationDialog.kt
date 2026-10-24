@@ -61,7 +61,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.streamhub.app.data.StreamBackendConfig
-import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
@@ -75,7 +75,7 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun ServerMigrationDialog(
-    repository: FirebaseRepository,
+    repository: CatalogRepository,
     onDismiss: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -603,7 +603,7 @@ fun ServerMigrationDialog(
  */
 @Composable
 fun Serv00MigrationDialog(
-    repository: FirebaseRepository,
+    repository: CatalogRepository,
     onDismiss: () -> Unit
 ) {
     ServerMigrationDialog(repository = repository, onDismiss = onDismiss)

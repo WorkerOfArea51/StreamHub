@@ -50,7 +50,7 @@ object StreamHealthChecker {
     }
 
     suspend fun probeUrl(url: String): EpisodeHealthResult {
-        val targetUrl = com.streamhub.app.data.TelegramLinkResolver.sanitizePlayableUrl(url.trim())
+        val targetUrl = com.streamhub.app.data.StreamLinkResolver.sanitizePlayableUrl(url.trim())
         if (targetUrl.isBlank()) {
             return EpisodeHealthResult(
                 episodeKey = "",

@@ -36,7 +36,7 @@ import okhttp3.Request
  *       [SyntheticTracksExtractorInput] directly between the EBML Info header and Cluster 0.
  *    c. Native [MatroskaExtractor] reads the stream linearly from byte 0, parses all tracks and codecs,
  *       builds the frame-accurate seek map, and immediately begins decoding Cluster 0 frames.
- * 4. Playback starts in < 250ms with ZERO reflection, ZERO socket resets, and ZERO Telegram bot worker floods!
+ * 4. Playback starts in < 250ms with ZERO reflection, ZERO socket resets, and ZERO edge proxy worker floods!
  */
 @OptIn(UnstableApi::class)
 class SmartMatroskaExtractor(
@@ -70,7 +70,7 @@ class SmartMatroskaExtractor(
 
         private const val PEEK_BUFFER_SIZE = 4096
         private const val PRIMARY_TAIL_SLICE_BYTES = 163840L // 160 KB: safely returned in single burst while capturing Cues up to 106+ KB before EOF
-        private const val FALLBACK_TAIL_SLICE_BYTES = 131072L // 128 KB: single Telegram MTProto chunk fallback (captures Cues at 70-73 KB)
+        private const val FALLBACK_TAIL_SLICE_BYTES = 131072L // 128 KB: single edge chunk fallback (captures Cues at 70-73 KB)
 
         /**
          * Parses an EBML Variable-Length Integer (vint).
@@ -396,7 +396,7 @@ class SmartMatroskaExtractor(
      * Fetches the tail metadata slice containing Tracks and Cues over HTTP Range or from local storage.
      * Uses a resilient two-tier strategy:
      * - Primary: 160 KB (safely captures Cues up to 106+ KB before EOF in < 0.4s)
-     * - Fallback: 128 KB (aligned with Telegram MTProto single-chunk RPC boundary)
+     * - Fallback: 128 KB (aligned with edge single-chunk RPC boundary)
      */
     private fun fetchTailSlice(splitInfo: SplitSeekHeadInfo): ByteArray? {
         val fileLength = splitInfo.fileLength

@@ -51,7 +51,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.streamhub.app.data.TelegramLinkResolver
+import com.streamhub.app.data.StreamLinkResolver
 import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.ui.screens.player.controls.formatMpvTime
@@ -268,7 +268,7 @@ fun MpvPlaylistSheet(
                         val isCurrent = index == currentIndex
                         val resolvedEpNumber = com.streamhub.app.data.EpisodeOrderingManager.resolveEffectiveEpisode(ep).episodeNumber
                         val rawTitle = ep.title.ifBlank { ep.fileName.ifBlank { "Episode $resolvedEpNumber" } }
-                        val displayTitle = TelegramLinkResolver.cleanEpisodeTitle(rawTitle, resolvedEpNumber).ifBlank { "Episode $resolvedEpNumber" }
+                        val displayTitle = StreamLinkResolver.cleanEpisodeTitle(rawTitle, resolvedEpNumber).ifBlank { "Episode $resolvedEpNumber" }
                         val effectiveThumbnail = ep.thumbnailUrl.ifBlank {
                             mediaItem?.bannerUrl?.ifBlank { mediaItem.posterUrl } ?: ""
                         }
@@ -452,7 +452,7 @@ fun MpvPlaylistSheet(
                         val isCurrent = index == currentIndex
                         val resolvedEpNumber = com.streamhub.app.data.EpisodeOrderingManager.resolveEffectiveEpisode(ep).episodeNumber
                         val rawTitle = ep.title.ifBlank { ep.fileName.ifBlank { "Episode $resolvedEpNumber" } }
-                        val displayTitle = TelegramLinkResolver.cleanEpisodeTitle(rawTitle, resolvedEpNumber).ifBlank { "Episode $resolvedEpNumber" }
+                        val displayTitle = StreamLinkResolver.cleanEpisodeTitle(rawTitle, resolvedEpNumber).ifBlank { "Episode $resolvedEpNumber" }
                         val effectiveThumbnail = ep.thumbnailUrl.ifBlank {
                             mediaItem?.bannerUrl?.ifBlank { mediaItem.posterUrl } ?: ""
                         }

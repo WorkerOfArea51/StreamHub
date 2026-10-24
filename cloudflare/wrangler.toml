@@ -1,0 +1,14 @@
+name = "stream-proxy"
+main = "worker.js"
+compatibility_date = "2024-10-01"
+
+# Environment variables
+[vars]
+UPSTREAM_HOST = "midnighthawk.serv00.net"
+
+# Cloudflare KV Binding for Free Tier Catalog & Live Telemetry Storage (1 GB Free)
+# In Cloudflare Dashboard: Workers & Pages > KV > Create Namespace "streamhub-catalog"
+# Then bind it under Worker Settings > Variables and KV > Bind as "CATALOG_KV"
+[[kv_namespaces]]
+binding = "CATALOG_KV"
+id = "YOUR_KV_NAMESPACE_ID"

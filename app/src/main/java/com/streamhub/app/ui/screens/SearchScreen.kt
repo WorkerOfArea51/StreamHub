@@ -77,7 +77,7 @@ import androidx.compose.ui.unit.sp
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.models.isActivelyTrending
 import com.streamhub.app.data.models.isFullyCompleted
-import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.ui.components.EmptyStateCard
 import com.streamhub.app.ui.components.MediaCard
 import com.streamhub.app.ui.components.MediaQuickActionsSheet
@@ -286,7 +286,7 @@ object SearchRelevanceEvaluator {
 
 @Composable
 fun SearchScreen(
-    repository: FirebaseRepository,
+    repository: CatalogRepository,
     onMediaClick: (MediaItem) -> Unit,
     onPlayEpisode: ((MediaItem, Int) -> Unit)? = null,
     modifier: Modifier = Modifier

@@ -6,8 +6,10 @@ import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
+import com.streamhub.app.BuildConfig
 import com.streamhub.app.data.EpisodeOrderingManager
 import com.streamhub.app.data.StreamBackendConfig
+import com.streamhub.app.data.UserSessionInfo
 import com.streamhub.app.data.models.MediaItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,29 +31,69 @@ sealed class EdgeServerStatus {
     data class Down(val statusCode: Int, val message: String) : EdgeServerStatus()
 }
 
+data class CatalogVersionInfo(
+    val version: String = "",
+    val count: Int = 0,
+    val updatedAt: Long = 0L
+)
+
+data class TelemetryCommand(
+    val type: String = "", // "NOTIFICATION", "REFRESH", "KICK"
+    val title: String = "",
+    val message: String = "",
+    val timestamp: Long = 0L
+)
+
+data class BroadcastPayload(
+    val id: String = "",
+    val title: String = "",
+    val message: String = "",
+    val timestamp: Long = 0L,
+    val expiresAt: Long = 0L,
+    val sender: String = "Owner Admin"
+)
+
+data class TelemetryHeartbeatResponse(
+    val ok: Boolean = true,
+    val command: TelemetryCommand? = null,
+    val broadcast: BroadcastPayload? = null
+)
+
+data class AudienceResponse(
+    val activeWatchers: List<UserSessionInfo> = emptyList()
+)
+
 /**
- * Cloudflare Edge Catalog Client.
+ * Cloudflare Edge Catalog & Telemetry Client.
  *
- * Fetches the pre-compiled, edge-cached catalog from:
- * GET https://stream-proxy.area-51-ancientworkers.workers.dev/api/catalog
- *
- * Invariants:
- * 1. Delivers all shows globally with ZERO Firebase reads.
- * 2. HighThroughputSocketFactory: 2 MB TCP window scaling saturates radio on Splash Screen.
- * 3. Single-Pass Streaming: Streams directly into Gson without allocating 5.2 MB strings in RAM.
- * 4. Resilient Edge Status: Distinguishes between slow connections and true server downtime (502/503).
+ * Provides a 100% Free Tier Cloudflare Edge backend replacement for Firebase Firestore:
+ * 1. Global catalog distribution via Cloudflare Worker KV / D1 with ETag and HTTP 304 caching.
+ * 2. Instant Creator Studio CRUD updates (PUT show, DELETE show, POST batch import).
+ * 3. Real-time viewer presence and telemetry via lightweight 60s heartbeats with command dispatch.
+ * 4. Zero Firebase reads and writes across standard user browsing and live streaming.
  */
 object CatalogEdgeClient {
 
     private const val TAG = "CatalogEdgeClient"
-    private val CATALOG_URL = "https://${StreamBackendConfig.DEFAULT_STREAMING_HOST}/api/catalog"
-    private val REFRESH_URL = "https://${StreamBackendConfig.DEFAULT_STREAMING_HOST}/api/catalog/refresh"
+    private val BASE_URL = "https://${StreamBackendConfig.DEFAULT_STREAMING_HOST}"
+    private val CATALOG_URL = "$BASE_URL/api/catalog"
+    private val REFRESH_URL = "$BASE_URL/api/catalog/refresh"
+    private val ITEM_URL = "$BASE_URL/api/catalog/item"
+    private val IMPORT_URL = "$BASE_URL/api/catalog/import"
+    private val VERSION_URL = "$BASE_URL/api/catalog/version"
+    private val TELEMETRY_URL = "$BASE_URL/api/telemetry/heartbeat"
+    private val AUDIENCE_URL = "$BASE_URL/api/telemetry/audience"
+    private val COMMAND_URL = "$BASE_URL/api/telemetry/command"
+    private val BROADCAST_URL = "$BASE_URL/api/broadcasts"
 
     private val gson: Gson by lazy { GsonBuilder().create() }
     private val mediaListType = object : TypeToken<List<MediaItem>>() {}.type
+    private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
     private val _edgeStatus = MutableStateFlow<EdgeServerStatus>(EdgeServerStatus.Healthy)
     val edgeStatus: StateFlow<EdgeServerStatus> = _edgeStatus.asStateFlow()
+
+    private fun userAgentHeader(): String = "StreamHub/${BuildConfig.VERSION_NAME} (Android; Mobile)"
 
     /**
      * Fetches the full media catalog from Cloudflare Edge Cache.
@@ -61,7 +103,7 @@ object CatalogEdgeClient {
         runCatching {
             val request = Request.Builder()
                 .url(CATALOG_URL)
-                .header("User-Agent", "StreamHub/4.8.416 (Android; Mobile)")
+                .header("User-Agent", userAgentHeader())
                 .get()
                 .build()
 
@@ -117,15 +159,245 @@ object CatalogEdgeClient {
     }
 
     /**
-     * Triggers a Cloudflare Edge Cache purge and immediate re-sync from Firestore.
-     * Called in the background after Creator Studio saves, edits, or deletes a show.
+     * Fetches current catalog version and show count from Cloudflare Edge.
+     */
+    suspend fun fetchCatalogVersion(): Result<CatalogVersionInfo> = withContext(Dispatchers.IO) {
+        runCatching {
+            val request = Request.Builder()
+                .url(VERSION_URL)
+                .header("User-Agent", userAgentHeader())
+                .get()
+                .build()
+
+            val response = SharedHttpClient.baseClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Version check failed HTTP ${response.code}")
+            }
+            val bodyStr = response.body?.string() ?: "{}"
+            gson.fromJson(bodyStr, CatalogVersionInfo::class.java)
+        }
+    }
+
+    /**
+     * Saves or updates a single media item in Cloudflare Worker KV storage.
+     */
+    suspend fun saveMediaItem(item: MediaItem): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val jsonPayload = gson.toJson(item)
+            val body = jsonPayload.toRequestBody(jsonMediaType)
+            val request = Request.Builder()
+                .url(ITEM_URL)
+                .header("User-Agent", userAgentHeader())
+                .put(body)
+                .build()
+
+            val response = SharedHttpClient.baseClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Cloudflare Edge save item returned HTTP ${response.code}: ${response.message}")
+            }
+            Log.d(TAG, "✅ Successfully saved show to Cloudflare Edge KV: ${item.id}")
+            Unit
+        }
+    }
+
+    /**
+     * Deletes a media item from Cloudflare Worker KV storage.
+     */
+    suspend fun deleteMediaItem(itemId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val request = Request.Builder()
+                .url("$ITEM_URL/$itemId")
+                .header("User-Agent", userAgentHeader())
+                .delete()
+                .build()
+
+            val response = SharedHttpClient.baseClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Cloudflare Edge delete item returned HTTP ${response.code}: ${response.message}")
+            }
+            Log.d(TAG, "🗑️ Successfully deleted show from Cloudflare Edge KV: $itemId")
+            Unit
+        }
+    }
+
+    /**
+     * High-speed atomic batch upload for catalog migration to Cloudflare KV.
+     */
+    suspend fun saveMediaItemsBatch(items: List<MediaItem>): Result<Int> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = mapOf("items" to items)
+            val jsonPayload = gson.toJson(payload)
+            val body = jsonPayload.toRequestBody(jsonMediaType)
+            val request = Request.Builder()
+                .url(IMPORT_URL)
+                .header("User-Agent", userAgentHeader())
+                .post(body)
+                .build()
+
+            val response = SharedHttpClient.baseClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Cloudflare Edge batch import returned HTTP ${response.code}: ${response.message}")
+            }
+            Log.d(TAG, "🚀 Successfully imported ${items.size} items to Cloudflare Edge KV!")
+            items.size
+        }
+    }
+
+    /**
+     * Sends user telemetry heartbeat to Cloudflare Worker.
+     * Receives any pending remote commands (e.g. NOTIFICATION, REFRESH, KICK) and active announcements.
+     */
+    suspend fun sendTelemetryHeartbeat(session: Map<String, Any?>): Result<TelemetryHeartbeatResponse> = withContext(Dispatchers.IO) {
+        runCatching {
+            val jsonPayload = gson.toJson(session)
+            val body = jsonPayload.toRequestBody(jsonMediaType)
+            val request = Request.Builder()
+                .url(TELEMETRY_URL)
+                .header("User-Agent", userAgentHeader())
+                .post(body)
+                .build()
+
+            val response = SharedHttpClient.baseClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Cloudflare telemetry heartbeat returned HTTP ${response.code}")
+            }
+            val bodyStr = response.body?.string() ?: "{}"
+            gson.fromJson(bodyStr, TelemetryHeartbeatResponse::class.java)
+        }
+    }
+
+    /**
+     * Fetches current active viewer sessions from Cloudflare Edge (for Admin Live Audience sheet).
+     */
+    suspend fun fetchLiveAudience(): Result<List<UserSessionInfo>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val request = Request.Builder()
+                .url(AUDIENCE_URL)
+                .header("User-Agent", userAgentHeader())
+                .get()
+                .build()
+
+            val response = SharedHttpClient.baseClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Cloudflare live audience returned HTTP ${response.code}")
+            }
+            val bodyStr = response.body?.string() ?: "{}"
+            val audience = gson.fromJson(bodyStr, AudienceResponse::class.java)
+            audience.activeWatchers
+        }
+    }
+
+    /**
+     * Dispatches an administrative command to a specific device client ID.
+     */
+    suspend fun sendRemoteCommand(
+        targetClientId: String,
+        command: String,
+        title: String = "",
+        message: String = ""
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = mapOf(
+                "targetClientId" to targetClientId,
+                "command" to command,
+                "title" to title,
+                "message" to message,
+                "timestamp" to System.currentTimeMillis()
+            )
+            val body = gson.toJson(payload).toRequestBody(jsonMediaType)
+            val request = Request.Builder()
+                .url(COMMAND_URL)
+                .header("User-Agent", userAgentHeader())
+                .post(body)
+                .build()
+
+            val response = SharedHttpClient.baseClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Command dispatch failed HTTP ${response.code}")
+            }
+            Unit
+        }
+    }
+
+    /**
+     * Publishes a global broadcast announcement via Cloudflare Edge.
+     */
+    suspend fun sendGlobalBroadcast(
+        title: String,
+        message: String,
+        expiryHours: Int = 24
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = mapOf(
+                "title" to title,
+                "message" to message,
+                "expiryHours" to expiryHours,
+                "timestamp" to System.currentTimeMillis()
+            )
+            val body = gson.toJson(payload).toRequestBody(jsonMediaType)
+            val request = Request.Builder()
+                .url(BROADCAST_URL)
+                .header("User-Agent", userAgentHeader())
+                .post(body)
+                .build()
+
+            val response = SharedHttpClient.baseClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Broadcast failed HTTP ${response.code}")
+            }
+            Unit
+        }
+    }
+
+    /**
+     * Clears any active global broadcast announcement from Cloudflare Edge.
+     */
+    suspend fun clearActiveBroadcast(): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val request = Request.Builder()
+                .url(BROADCAST_URL)
+                .header("User-Agent", userAgentHeader())
+                .delete()
+                .build()
+
+            val response = SharedHttpClient.baseClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Clear broadcast failed HTTP ${response.code}")
+            }
+            Unit
+        }
+    }
+
+    /**
+     * Fetches the latest global broadcast from Cloudflare Edge.
+     */
+    suspend fun fetchActiveBroadcast(): Result<BroadcastPayload?> = withContext(Dispatchers.IO) {
+        runCatching {
+            val request = Request.Builder()
+                .url("$BROADCAST_URL/latest")
+                .header("User-Agent", userAgentHeader())
+                .get()
+                .build()
+
+            val response = SharedHttpClient.baseClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                return@runCatching null
+            }
+            val bodyStr = response.body?.string() ?: ""
+            if (bodyStr.isBlank() || bodyStr == "{}") return@runCatching null
+            gson.fromJson(bodyStr, BroadcastPayload::class.java)
+        }
+    }
+
+    /**
+     * Triggers a Cloudflare Edge Cache purge and immediate re-sync.
      */
     suspend fun refreshEdgeCatalog(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val emptyBody = "".toRequestBody("application/json".toMediaType())
+            val emptyBody = "".toRequestBody(jsonMediaType)
             val request = Request.Builder()
                 .url(REFRESH_URL)
-                .header("User-Agent", "StreamHub/4.8.416 (Android; Mobile)")
+                .header("User-Agent", userAgentHeader())
                 .post(emptyBody)
                 .build()
 

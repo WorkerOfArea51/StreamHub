@@ -1,5 +1,7 @@
-### What's New in StreamHub v4.8.422 🚀
+### What's New in StreamHub v4.8.423 🚀
 
-- 💬 **Multi-Track Subtitle Selection Fix**: Fixed an issue where duplicate-language subtitle tracks (e.g., `English 2`, `English 3`, `English 4`) were unselectable. Tapping any indexed subtitle track now instantly activates that specific stream in ExoPlayer and updates the selection indicator.
-- 🎵 **Multi-Track Audio Selection Support**: Applied direct track mapping to audio tracks, ensuring duplicate language audio tracks (e.g., secondary commentary or descriptive audio) can also be selected seamlessly.
-- ⚡ **Instant Event-Driven FCM Release Notifications**: Integrated Firebase Cloud Messaging (FCM) to deliver instant heads-up update notifications directly to your device the moment a new GitHub release is published.
+- ☁️ **100% Free Cloudflare Edge Migration ($0/month)**: StreamHub now connects directly to Cloudflare Worker KV for lightning-fast 15ms global catalog loading, live viewer telemetry, and instant Creator Studio show saves with zero monthly database costs.
+- ⚡ **Zero-Firestore Reads & Writes Leak Elimination**: Completely replaced legacy Firestore `live_sessions` writes and snapshot listeners with Cloudflare Edge REST heartbeats (60s interval with 180s auto-expiry in KV) and on-demand audience polling.
+- 📲 **1-Tap Cloudflare Edge KV Migration**: Added a 1-tap "Cloudflare Edge KV Sync" tool in Creator Studio Tools (Tab 3) allowing instantaneous migration of your entire media catalog to Cloudflare Edge.
+- 🏛️ **Codebase Architecture Modernization**: Unified and renamed core data layers (`CatalogRepository` and `StreamLinkResolver`), aligning StreamHub with direct edge streaming proxy standards.
+- 🛠️ **Production Cloudflare Worker Suite**: Included the complete, production-ready Cloudflare Edge Worker script (`cloudflare/worker.js`) supporting video range streaming proxy, catalog KV storage, viewer telemetry, and global broadcasts.

@@ -14,7 +14,7 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.streamhub.app.data.WatchHistoryManager
-import com.streamhub.app.data.TelegramLinkResolver
+import com.streamhub.app.data.StreamLinkResolver
 import com.streamhub.app.data.NetworkMonitor
 import com.streamhub.app.data.StreamBackendConfig
 import com.streamhub.app.data.models.Episode
@@ -35,7 +35,7 @@ enum class AspectRatioMode {
 
 enum class PlayerErrorType {
     NETWORK,           // Connection timeout, DNS failure, socket reset
-    STREAM_RESOLVE,    // Telegram link couldn't be resolved
+    STREAM_RESOLVE,    // Stream link couldn't be resolved
     DECODER,           // Codec init failure, unsupported format
     SOURCE_NOT_FOUND,  // 404, file deleted, TDLib file gone
     UNKNOWN            // Fallback
@@ -1142,7 +1142,7 @@ class StreamPlayerViewModel : ViewModel() {
             StreamPreloadManager.cancelDetailsPrewarmAwait()
             StreamPreloadManager.cancelBingePrecacheAwait()
             // FIX: If rawUrl is already a local file path, bypass URL resolution entirely.
-            // This makes offline playback instant — no network calls, no TelegramLinkResolver.
+            // This makes offline playback instant — no network calls, no StreamLinkResolver.
             val isLocal = rawUrl.startsWith("/") || rawUrl.startsWith("file://")
             val resolvedUrl = if (isLocal) {
                 rawUrl.removePrefix("file://")
@@ -1228,7 +1228,7 @@ class StreamPlayerViewModel : ViewModel() {
 
     private suspend fun resolveStreamUrl(url: String): String {
         return try {
-            TelegramLinkResolver.resolveAsync(url)
+            StreamLinkResolver.resolveAsync(url)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -1274,7 +1274,7 @@ class StreamPlayerViewModel : ViewModel() {
 
         if (ep != null) {
             val currentUrl = snapshot.resolvedStreamUrl
-            val mirrorUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.mirrorStreamUrl)
+            val mirrorUrl = StreamLinkResolver.sanitizePlayableUrl(ep.mirrorStreamUrl)
             if (mirrorUrl.isNotBlank() && mirrorUrl.startsWith("http") && mirrorUrl != currentUrl) {
                 Log.i("StreamPlayerViewModel", "Retrying with failover mirror URL at ${retryPositionMs}ms: $mirrorUrl")
                 playEpisodeWithExplicitUrl(snapshot.currentEpisodeIndex, mirrorUrl, retryPositionMs)
@@ -1300,7 +1300,7 @@ class StreamPlayerViewModel : ViewModel() {
         val playUrl = if (rawUrl.startsWith("/") || rawUrl.startsWith("file://")) {
             rawUrl
         } else {
-            TelegramLinkResolver.sanitizePlayableUrl(rawUrl)
+            StreamLinkResolver.sanitizePlayableUrl(rawUrl)
         }
         val isPrecached = appContext?.let { ctx ->
             StreamPreloadManager.isStreamPrecached(ctx, playUrl)
@@ -1775,7 +1775,7 @@ class StreamPlayerViewModel : ViewModel() {
         // FIX: Safety timeout — if ExoPlayer doesn't fire onPositionDiscontinuity within 12s
         // (e.g. broken source, network stall), clear pendingSeekTargetMs so future seeks
         // compute from the actual player position instead of a stale target.
-        // 12s accommodates remote range queries over cellular/Telegram MTProto without premature snapping.
+        // 12s accommodates remote range queries over cellular/edge networks without premature snapping.
         pendingSeekTimeoutJob?.cancel()
         pendingSeekTimeoutJob = viewModelScope.launch {
             delay(12_000L)
@@ -2338,7 +2338,7 @@ class StreamPlayerViewModel : ViewModel() {
                         _uiState.update { it.copy(resolvedStreamUrl = serv00Url) }
                     }
                 } else {
-                    val mirrorUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.mirrorStreamUrl)
+                    val mirrorUrl = StreamLinkResolver.sanitizePlayableUrl(ep.mirrorStreamUrl)
                     if (mirrorUrl.isNotBlank() && mirrorUrl.startsWith("http") && mirrorUrl != currentUrl) {
                         Log.i("StreamPlayerViewModel", "Auto-reconnecting using failover mirror URL: $mirrorUrl")
                         targetUrl = mirrorUrl

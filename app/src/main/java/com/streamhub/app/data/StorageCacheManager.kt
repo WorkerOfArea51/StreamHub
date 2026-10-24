@@ -7,7 +7,7 @@ import android.os.StatFs
 import android.util.Log
 import android.net.Uri
 import coil.Coil
-import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.player.StreamCacheManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -403,18 +403,18 @@ object StorageCacheManager {
      * and Watch History to resolve real movie/series titles, episode names, and posters.
      */
     private fun resolveMediaInfoForCacheKey(cacheKey: String, sizeBytes: Long): CachedMediaMetadata {
-        val fileId = TelegramLinkResolver.extractTelegramMessageOrFileId(cacheKey)
+        val fileId = StreamLinkResolver.extractMessageOrFileId(cacheKey)
         val uri = try { Uri.parse(cacheKey) } catch (_: Exception) { null }
         val lastSegment = uri?.lastPathSegment ?: ""
 
-        // 1. Search Firebase Media Catalog
-        val catalog = FirebaseRepository.getInstance().mediaCatalog.value
+        // 1. Search Media Catalog
+        val catalog = CatalogRepository.getInstance().mediaCatalog.value
         for (media in catalog) {
             val isMovie = media.type.equals("MOVIE", ignoreCase = true) || media.category.equals("MOVIE", ignoreCase = true)
             // Check episodes (movies have a single episode or episode list)
             for (ep in media.episodes) {
-                val epFileId = ep.telegramFileId.ifBlank { TelegramLinkResolver.extractTelegramMessageOrFileId(ep.streamUrl) }
-                val epMirrorFileId = TelegramLinkResolver.extractTelegramMessageOrFileId(ep.mirrorStreamUrl)
+                val epFileId = ep.telegramFileId.ifBlank { StreamLinkResolver.extractMessageOrFileId(ep.streamUrl) }
+                val epMirrorFileId = StreamLinkResolver.extractMessageOrFileId(ep.mirrorStreamUrl)
                 val isEpMatch = (fileId.isNotBlank() && (epFileId.equals(fileId, ignoreCase = true) || epMirrorFileId.equals(fileId, ignoreCase = true))) ||
                     (ep.streamUrl.isNotBlank() && (cacheKey.contains(ep.streamUrl, ignoreCase = true) || ep.streamUrl.contains(cacheKey, ignoreCase = true))) ||
                     (lastSegment.isNotBlank() && (ep.streamUrl.contains(lastSegment, ignoreCase = true) || ep.mirrorStreamUrl.contains(lastSegment, ignoreCase = true))) ||

@@ -1,11 +1,11 @@
 package com.streamhub.app
 
-import com.streamhub.app.data.TelegramLinkResolver
+import com.streamhub.app.data.StreamLinkResolver
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class TelegramLinkResolverTest {
+class StreamLinkResolverTest {
 
     @Test
     fun parseSmartBotMessage_exactBotFormat_returnsSortedEpisodesWithTitlesAndSizes() {
@@ -34,7 +34,7 @@ class TelegramLinkResolverTest {
             https://streamhub69.alwaysdata.net/dl/cb72cb8cc3817357150c2519ddc68b59094c2474bc95ca42
         """.trimIndent()
 
-        val episodes = TelegramLinkResolver.parseSmartBotMessageOrLinks(botMessage, seasonNumber = 1)
+        val episodes = StreamLinkResolver.parseSmartBotMessageOrLinks(botMessage, seasonNumber = 1)
 
         assertEquals(3, episodes.size)
 
@@ -90,7 +90,7 @@ class TelegramLinkResolverTest {
             }
         """.trimIndent()
 
-        val episodes = TelegramLinkResolver.parseSmartBotMessageOrLinks(jsonPayload, seasonNumber = 1)
+        val episodes = StreamLinkResolver.parseSmartBotMessageOrLinks(jsonPayload, seasonNumber = 1)
 
         assertEquals(2, episodes.size)
         assertEquals(1, episodes[0].episodeNumber)
@@ -107,18 +107,18 @@ class TelegramLinkResolverTest {
         val serv00Dl = "https://midnighthawk.serv00.net/dl/abc123"
 
         // /stream/ web landing page must be sanitized to /dl/ direct media stream for ExoPlayer and migrated to Cloudflare
-        assertEquals(expectedDl, TelegramLinkResolver.sanitizePlayableUrl(stream))
-        assertEquals(expectedDl, TelegramLinkResolver.sanitizePlayableUrl(serv00Stream))
-        assertEquals(expectedDl, TelegramLinkResolver.sanitizePlayableUrl(serv00Dl))
+        assertEquals(expectedDl, StreamLinkResolver.sanitizePlayableUrl(stream))
+        assertEquals(expectedDl, StreamLinkResolver.sanitizePlayableUrl(serv00Stream))
+        assertEquals(expectedDl, StreamLinkResolver.sanitizePlayableUrl(serv00Dl))
 
         // Downloads also target the /dl/ twin
-        assertEquals(expectedDl, TelegramLinkResolver.toDownloadUrl(stream))
-        assertEquals(expectedDl, TelegramLinkResolver.toDownloadUrl(serv00Stream))
-        assertEquals(expectedDl, TelegramLinkResolver.toDownloadUrl(serv00Dl))
+        assertEquals(expectedDl, StreamLinkResolver.toDownloadUrl(stream))
+        assertEquals(expectedDl, StreamLinkResolver.toDownloadUrl(serv00Stream))
+        assertEquals(expectedDl, StreamLinkResolver.toDownloadUrl(serv00Dl))
 
         // Non-F2L URLs are never rewritten
         val foreign = "https://example.com/stream/video.mkv"
-        assertEquals(foreign, TelegramLinkResolver.toDownloadUrl(foreign))
+        assertEquals(foreign, StreamLinkResolver.toDownloadUrl(foreign))
     }
 
     @Test
@@ -128,7 +128,7 @@ class TelegramLinkResolverTest {
             https://streamhub69.alwaysdata.net/stream/link2
         """.trimIndent()
 
-        val episodes = TelegramLinkResolver.parseSmartBotMessageOrLinks(rawLinks, seasonNumber = 1)
+        val episodes = StreamLinkResolver.parseSmartBotMessageOrLinks(rawLinks, seasonNumber = 1)
 
         assertEquals(2, episodes.size)
         assertEquals(1, episodes[0].episodeNumber)
@@ -194,13 +194,13 @@ class TelegramLinkResolverTest {
         // Underscored filename with EP_03_ prefix
         assertEquals(
             "EP 03 The Circumstances of the Classic Lit Club's Scion",
-            TelegramLinkResolver.cleanEpisodeTitle("EP_03_The_Circumstances_of_the_Classic_Lit_Club's_Scion.mkv", 3)
+            StreamLinkResolver.cleanEpisodeTitle("EP_03_The_Circumstances_of_the_Classic_Lit_Club's_Scion.mkv", 3)
         )
 
         // Standard hyphenated format
         assertEquals(
             "EP - 01 - The Return of the Time-Honored Classic Lit Club",
-            TelegramLinkResolver.cleanEpisodeTitle("EP - 01 - The Return of the Time-Honored Classic Lit Club.mkv", 1)
+            StreamLinkResolver.cleanEpisodeTitle("EP - 01 - The Return of the Time-Honored Classic Lit Club.mkv", 1)
         )
     }
 
@@ -218,7 +218,7 @@ class TelegramLinkResolverTest {
             ]
         """.trimIndent()
 
-        val episodes = TelegramLinkResolver.parseSmartBotMessageOrLinks(jsonPayload, seasonNumber = 1)
+        val episodes = StreamLinkResolver.parseSmartBotMessageOrLinks(jsonPayload, seasonNumber = 1)
         assertEquals(1, episodes.size)
         assertEquals(3, episodes[0].episodeNumber)
         assertEquals("EP 03 The Circumstances of the Classic Lit Club's Scion", episodes[0].title)
@@ -239,7 +239,7 @@ class TelegramLinkResolverTest {
             ]
         """.trimIndent()
 
-        val episodes = TelegramLinkResolver.parseSmartBotMessageOrLinks(jsonPayload, seasonNumber = 1)
+        val episodes = StreamLinkResolver.parseSmartBotMessageOrLinks(jsonPayload, seasonNumber = 1)
         assertEquals(1, episodes.size)
         assertEquals(12, episodes[0].episodeNumber)
         assertEquals("EP - 11.5 - What Should Be Had (Special)", episodes[0].title)
@@ -271,7 +271,7 @@ class TelegramLinkResolverTest {
             ]
         """.trimIndent()
 
-        val episodes = TelegramLinkResolver.parseSmartBotMessageOrLinks(jsonPayload, seasonNumber = 1)
+        val episodes = StreamLinkResolver.parseSmartBotMessageOrLinks(jsonPayload, seasonNumber = 1)
         assertEquals(3, episodes.size)
         assertEquals("EP - 11.5 - What Should Be Had (Special)", episodes[0].title)
         assertEquals("EP - 12 - Those Things Piled Up Endlessly", episodes[1].title)
@@ -299,7 +299,7 @@ class TelegramLinkResolverTest {
             }
         """.trimIndent()
 
-        val episodes = TelegramLinkResolver.parseSmartBotMessageOrLinks(jsonPayload, seasonNumber = 1)
+        val episodes = StreamLinkResolver.parseSmartBotMessageOrLinks(jsonPayload, seasonNumber = 1)
         assertEquals(1, episodes.size)
         assertEquals("EP - 01 - Undertaker", episodes[0].title)
         assertEquals(1421000L, episodes[0].durationMs)
@@ -328,7 +328,7 @@ class TelegramLinkResolverTest {
             }
         """.trimIndent()
 
-        val episodes = TelegramLinkResolver.parseSmartBotMessageOrLinks(jsonPayload, seasonNumber = 1)
+        val episodes = StreamLinkResolver.parseSmartBotMessageOrLinks(jsonPayload, seasonNumber = 1)
         assertEquals(2, episodes.size)
         assertEquals(14, episodes[0].episodeNumber)
         assertEquals("EP - 14 - Dungeon", episodes[0].title)
@@ -355,7 +355,7 @@ class TelegramLinkResolverTest {
             ]
         """.trimIndent()
 
-        val episodes = TelegramLinkResolver.parseSmartBotMessageOrLinks(jsonPayload, seasonNumber = 1, arcName = "Fallback Arc")
+        val episodes = StreamLinkResolver.parseSmartBotMessageOrLinks(jsonPayload, seasonNumber = 1, arcName = "Fallback Arc")
         assertEquals(2, episodes.size)
         assertEquals("Magic Knights Entrance Arc", episodes[0].arcName)
         assertEquals("Dungeon Exploration Arc", episodes[1].arcName)

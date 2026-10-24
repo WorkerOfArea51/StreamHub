@@ -13,7 +13,7 @@ import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import com.streamhub.app.data.PlayerSettingsManager
-import com.streamhub.app.data.TelegramLinkResolver
+import com.streamhub.app.data.StreamLinkResolver
 import com.streamhub.app.data.api.SharedHttpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -101,7 +101,7 @@ object StreamPreloadManager {
         rawUrl: String,
         scope: CoroutineScope
     ): Job {
-        val sanitizedUrl = TelegramLinkResolver.sanitizePlayableUrl(rawUrl)
+        val sanitizedUrl = StreamLinkResolver.sanitizePlayableUrl(rawUrl)
         if (sanitizedUrl.isBlank()) return Job().apply { complete() }
 
         synchronized(this) {
@@ -123,7 +123,7 @@ object StreamPreloadManager {
                     return@launch
                 }
 
-                val sanitizedUrl = TelegramLinkResolver.sanitizePlayableUrl(rawUrl)
+                val sanitizedUrl = StreamLinkResolver.sanitizePlayableUrl(rawUrl)
                 if (sanitizedUrl.isBlank()) return@launch
 
                 if (!isNetworkConnected(context)) {
@@ -139,7 +139,7 @@ object StreamPreloadManager {
                 // 1. Probe total length to pre-cache the MKV Cues / seek index (tail) FIRST!
                 // For MKV streams, MatroskaExtractor requires the Cues index at EOF before presenting frames.
                 // Pre-caching the tail first guarantees that when the user taps Play, ExoPlayer reads the seek index
-                // directly from local disk in < 1ms, completely eliminating the 1.2-2.0s Telegram MTProto fetch delay!
+                // directly from local disk in < 1ms, completely eliminating the 1.2-2.0s remote edge fetch delay!
                 var metaLen = androidx.media3.datasource.cache.ContentMetadata.getContentLength(simpleCache.getContentMetadata(cacheKey))
                 if (metaLen <= 0L) {
                     metaLen = probeContentLength(sanitizedUrl)
@@ -238,7 +238,7 @@ object StreamPreloadManager {
                 for (rawUrl in rawUrls) {
                     if (!isActive) break
 
-                    val sanitizedUrl = TelegramLinkResolver.sanitizePlayableUrl(rawUrl)
+                    val sanitizedUrl = StreamLinkResolver.sanitizePlayableUrl(rawUrl)
                     if (sanitizedUrl.isBlank() || sanitizedUrl.startsWith("/")) continue
 
                     val parsedUri = Uri.parse(sanitizedUrl)
@@ -374,7 +374,7 @@ object StreamPreloadManager {
                     return@launch
                 }
 
-                val sanitizedUrl = TelegramLinkResolver.sanitizePlayableUrl(rawNextUrl)
+                val sanitizedUrl = StreamLinkResolver.sanitizePlayableUrl(rawNextUrl)
                 if (sanitizedUrl.isBlank()) return@launch
 
                 if (!isNetworkConnected(context)) {
@@ -595,7 +595,7 @@ object StreamPreloadManager {
      */
     fun isStreamPrecached(context: Context, rawUrl: String, minBytes: Long = 512 * 1024L): Boolean {
         if (rawUrl.isBlank()) return false
-        val sanitized = TelegramLinkResolver.sanitizePlayableUrl(rawUrl)
+        val sanitized = StreamLinkResolver.sanitizePlayableUrl(rawUrl)
         if (sanitized.isBlank()) return false
         val uri = Uri.parse(sanitized)
         val key = StreamDataSourceFactory.sanitizeCacheKey(uri)
@@ -609,7 +609,7 @@ object StreamPreloadManager {
 
     fun hasAnyCachedData(context: Context, rawUrl: String): Boolean {
         if (rawUrl.isBlank()) return false
-        val sanitized = TelegramLinkResolver.sanitizePlayableUrl(rawUrl)
+        val sanitized = StreamLinkResolver.sanitizePlayableUrl(rawUrl)
         if (sanitized.isBlank()) return false
         val uri = Uri.parse(sanitized)
         val key = StreamDataSourceFactory.sanitizeCacheKey(uri)
@@ -623,7 +623,7 @@ object StreamPreloadManager {
 
     /**
      * Atomically pre-caches the tail (~512KB) of the stream containing the MKV Cues (seek index).
-     * Guarantees 512KB chunk alignment for Telegram MTProto proxy compatibility.
+     * Guarantees 512KB chunk alignment for edge proxy compatibility.
      * Buffers into memory first before committing to disk, preventing any partial or corrupt cache spans.
      */
     private suspend fun precacheTailIndexAtomically(
@@ -634,7 +634,7 @@ object StreamPreloadManager {
         headBytes: Long
     ) {
         val tailBlockBytes = 2560L * 1024L // 2.5 MB covers Matroska Cues, SeekHead, Chapter points & ASS font attachments
-        val alignChunkSize = 512L * 1024L // 512 KB aligned to Telegram MTProto boundary
+        val alignChunkSize = 512L * 1024L // 512 KB aligned to edge proxy boundary
         if (totalLength <= headBytes + alignChunkSize) {
             return
         }

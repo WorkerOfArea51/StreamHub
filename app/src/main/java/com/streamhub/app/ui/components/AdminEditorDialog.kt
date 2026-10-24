@@ -54,11 +54,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.streamhub.app.data.TelegramLinkResolver
+import com.streamhub.app.data.StreamLinkResolver
 import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.models.MediaInfo
 import com.streamhub.app.data.models.MediaItem
-import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
@@ -112,7 +112,7 @@ fun AdminEditorDialog(
                             onDelete(itemForDeletion.id)
                         } else {
                             scope.launch {
-                                FirebaseRepository.getInstance().deleteMediaItem(itemForDeletion.id)
+                                CatalogRepository.getInstance().deleteMediaItem(itemForDeletion.id)
                             }
                         }
                         onDismiss()
@@ -138,14 +138,14 @@ fun AdminEditorDialog(
 
     if (state.showBackupDialog) {
         CatalogBackupDialog(
-            repository = FirebaseRepository.getInstance(),
+            repository = CatalogRepository.getInstance(),
             onDismiss = { state.showBackupDialog = false }
         )
     }
 
     if (state.showMigrationDialog) {
         ServerMigrationDialog(
-            repository = FirebaseRepository.getInstance(),
+            repository = CatalogRepository.getInstance(),
             onDismiss = { state.showMigrationDialog = false }
         )
     }
@@ -158,7 +158,7 @@ fun AdminEditorDialog(
 
     if (state.showMetadataInspector) {
         MetadataInspectorDialog(
-            repository = FirebaseRepository.getInstance(),
+            repository = CatalogRepository.getInstance(),
             onDismiss = { state.showMetadataInspector = false },
             onEditShow = { itemToEdit ->
                 state.showMetadataInspector = false
@@ -350,7 +350,7 @@ fun AdminEditorDialog(
                                         val parsedSeasonNum = state.seasonNumberText.trim().toIntOrNull() ?: if (isMovieItem) 0 else 1
                                         val episodes = when {
                                             state.isMovieFormat && state.currentEpisodes.size <= 1 && (state.startBatchLink.isNotBlank() || state.generatedEpisodesText.isNotBlank()) -> {
-                                                val link = TelegramLinkResolver.sanitizePlayableUrl(state.startBatchLink.ifBlank { state.generatedEpisodesText }.trim())
+                                                val link = StreamLinkResolver.sanitizePlayableUrl(state.startBatchLink.ifBlank { state.generatedEpisodesText }.trim())
                                                 val existingEp = initialItem?.episodes?.firstOrNull()
                                                 listOf(
                                                     Episode(
@@ -359,7 +359,7 @@ fun AdminEditorDialog(
                                                         title = state.title.ifBlank { "Movie Stream" },
                                                         streamUrl = link,
                                                         mirrorStreamUrl = link,
-                                                        telegramFileId = TelegramLinkResolver.extractTelegramMessageOrFileId(link),
+                                                        telegramFileId = StreamLinkResolver.extractMessageOrFileId(link),
                                                         fileSize = state.fileSize.ifBlank { existingEp?.fileSize ?: "" },
                                                         durationMs = if (state.fetchedDurationMs > 0) state.fetchedDurationMs else (existingEp?.durationMs ?: 0L),
                                                         fileName = state.fetchedFileName.ifBlank { existingEp?.fileName ?: "" }
@@ -370,7 +370,7 @@ fun AdminEditorDialog(
                                                 val pendingText = state.generatedEpisodesText.ifBlank { state.startBatchLink }.trim()
                                                 if (pendingText.isNotBlank()) {
                                                     val parsedPending = com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(pendingText, defaultSeason = parsedSeasonNum, defaultArc = state.arcNameText)
-                                                        .ifEmpty { TelegramLinkResolver.parseSmartBotMessageOrLinks(pendingText, seasonNumber = parsedSeasonNum, arcName = state.arcNameText) }
+                                                        .ifEmpty { StreamLinkResolver.parseSmartBotMessageOrLinks(pendingText, seasonNumber = parsedSeasonNum, arcName = state.arcNameText) }
                                                     if (parsedPending.isNotEmpty()) {
                                                         com.streamhub.app.data.EpisodeOrderingManager.mergeAndDeduplicate(state.currentEpisodes.toList(), parsedPending)
                                                     } else {

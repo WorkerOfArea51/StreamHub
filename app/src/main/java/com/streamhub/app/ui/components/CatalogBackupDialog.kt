@@ -40,7 +40,7 @@ import com.streamhub.app.data.importer.CatalogBackupManager
 import com.streamhub.app.data.importer.CatalogBackupPayload
 import com.streamhub.app.data.importer.LocalBackupInfo
 import com.streamhub.app.data.models.MediaItem
-import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.ui.theme.AccentGold
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.CardBorderDark
@@ -57,7 +57,7 @@ import java.util.Locale
 
 @Composable
 fun CatalogBackupDialog(
-    repository: FirebaseRepository = FirebaseRepository.getInstance(),
+    repository: CatalogRepository = CatalogRepository.getInstance(),
     onDismiss: () -> Unit,
     onCatalogRestored: () -> Unit = {}
 ) {

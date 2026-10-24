@@ -83,7 +83,7 @@ import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.models.PlaybackProgress
 import com.streamhub.app.data.models.isFullyCompleted
-import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.ui.theme.AccentOrange
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.CardBorderDark
@@ -97,7 +97,7 @@ import java.util.Locale
 
 @Composable
 fun HistoryScreen(
-    repository: FirebaseRepository,
+    repository: CatalogRepository,
     onBackClick: () -> Unit,
     onMediaClick: (MediaItem) -> Unit,
     onPlayEpisode: (MediaItem, Int) -> Unit

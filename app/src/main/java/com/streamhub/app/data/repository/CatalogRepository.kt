@@ -6,7 +6,7 @@ import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.google.android.gms.tasks.Tasks
 import com.streamhub.app.data.StreamBackendConfig
-import com.streamhub.app.data.TelegramLinkResolver
+import com.streamhub.app.data.StreamLinkResolver
 import com.streamhub.app.data.models.MediaItem
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CoroutineScope
@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -39,10 +40,10 @@ sealed class AdminOperationState {
     data class Error(val message: String) : AdminOperationState()
 }
 
-class FirebaseRepository private constructor() {
+class CatalogRepository private constructor() {
 
     companion object {
-        private const val TAG = "FirebaseRepository"
+        private const val TAG = "CatalogRepository"
         const val COLLECTION_MOVIES = "movies"
         const val COLLECTION_ANIMES = "animes"
         const val COLLECTION_SERIES = "web_series"
@@ -139,11 +140,11 @@ class FirebaseRepository private constructor() {
         }
 
         @Volatile
-        private var instance: FirebaseRepository? = null
+        private var instance: CatalogRepository? = null
 
-        fun getInstance(): FirebaseRepository {
+        fun getInstance(): CatalogRepository {
             return instance ?: synchronized(this) {
-                instance ?: FirebaseRepository().also { instance = it }
+                instance ?: CatalogRepository().also { instance = it }
             }
         }
     }
@@ -190,18 +191,18 @@ class FirebaseRepository private constructor() {
     init {
         loadInitialCatalog()
         attachFirestoreListener()
-        // Listen to Admin Mode changes: only attach raw collection listeners when Owner unlocks Creator Studio!
+        // Periodic Cloudflare Edge version check every 5 minutes
         scope.launch {
-            com.streamhub.app.data.AdminManager.isAdminMode.collect { isAdmin ->
-                if (isAdmin) {
-                    val db = firestore
-                    if (db != null) {
-                        Log.d(TAG, "👑 Creator Studio Admin Mode active: attaching real-time Firestore listeners")
-                        attachRawCollectionListeners(db)
+            while (isActive) {
+                kotlinx.coroutines.delay(300_000L) // 5 minutes
+                runCatching {
+                    com.streamhub.app.data.api.CatalogEdgeClient.fetchCatalogVersion().onSuccess { versionInfo ->
+                        val localCount = _mediaCatalog.value.size
+                        if (versionInfo.count > 0 && versionInfo.count != localCount) {
+                            Log.d(TAG, "Cloudflare Edge catalog version/count updated (${versionInfo.count} vs $localCount), refreshing...")
+                            attachFirestoreListener()
+                        }
                     }
-                } else {
-                    Log.d(TAG, "Standard user mode: detaching Firestore listeners (100% Cloudflare Edge)")
-                    removeRawCollectionListeners()
                 }
             }
         }
@@ -238,13 +239,6 @@ class FirebaseRepository private constructor() {
     }
 
     private fun attachFirestoreListener() {
-        val db = firestore
-        if (db == null) {
-            Log.e(TAG, "CRITICAL: Firestore instance is null — FirebaseApp may not be initialized")
-            _catalogState.value = CatalogState.Error("Firebase database not initialized")
-            return
-        }
-
         try {
             removeFirestoreListeners()
 
@@ -269,11 +263,6 @@ class FirebaseRepository private constructor() {
                                 val ctx = com.streamhub.app.StreamHubApplication.getInstance()
                                 com.streamhub.app.data.CatalogCacheManager.saveCatalogSnapshot(ctx, merged)
                             }.onFailure { Log.w(TAG, "Failed to persist catalog cache: ${it.message}") }
-
-                            // Attach live listeners ONLY if currently in Admin Mode!
-                            if (com.streamhub.app.data.AdminManager.isAdminMode.value) {
-                                attachRawCollectionListeners(db)
-                            }
                         }
                     }
                     .onFailure { err ->
@@ -577,15 +566,14 @@ class FirebaseRepository private constructor() {
     }
 
     /**
-     * Suspending version of saveMediaItem that suspends until the Firestore atomic batch write completes or fails.
-     * Returns Result.success(Unit) or Result.failure(Exception).
+     * Suspending version of saveMediaItem that saves directly to Cloudflare Edge KV as primary.
+     * Also dual-writes a background backup to Firestore if initialized.
      */
-    suspend fun saveMediaItemSuspending(item: MediaItem): Result<Unit> = suspendCancellableCoroutine { cont ->
+    suspend fun saveMediaItemSuspending(item: MediaItem): Result<Unit> = withContext(Dispatchers.IO) {
         if (!com.streamhub.app.data.AdminManager.isAdminMode.value) {
             Log.e(TAG, "SECURITY VIOLATION: Unauthorized attempt to save media item ${item.id} without Admin/Owner verification!")
             _adminOperationState.value = AdminOperationState.Error("Unauthorized: Admin access required")
-            if (cont.isActive) cont.resume(Result.failure(SecurityException("Unauthorized: Creator Studio Admin mode required")))
-            return@suspendCancellableCoroutine
+            return@withContext Result.failure(SecurityException("Unauthorized: Creator Studio Admin mode required"))
         }
         _adminOperationState.value = AdminOperationState.Loading
 
@@ -593,8 +581,8 @@ class FirebaseRepository private constructor() {
         val finalUpdatedAt = System.currentTimeMillis()
         val migratedEpisodes = item.episodes.map { ep ->
             ep.copy(
-                streamUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.streamUrl),
-                mirrorStreamUrl = TelegramLinkResolver.sanitizePlayableUrl(
+                streamUrl = StreamLinkResolver.sanitizePlayableUrl(ep.streamUrl),
+                mirrorStreamUrl = StreamLinkResolver.sanitizePlayableUrl(
                     if (ep.mirrorStreamUrl.isNotBlank()) ep.mirrorStreamUrl else ep.streamUrl
                 )
             )
@@ -620,50 +608,47 @@ class FirebaseRepository private constructor() {
         }
         _catalogState.value = CatalogState.Ready
 
-        val db = firestore
-        if (db == null) {
-            Log.e(TAG, "CRITICAL: Cannot save media item ${itemToSave.id} because Firestore instance is null!")
-            _adminOperationState.value = AdminOperationState.Error("Firebase database not initialized")
-            if (cont.isActive) cont.resume(Result.failure(IllegalStateException("Firebase database not initialized")))
-            return@suspendCancellableCoroutine
+        // 2. Persist local snapshot immediately
+        runCatching {
+            val ctx = com.streamhub.app.StreamHubApplication.getInstance()
+            com.streamhub.app.data.CatalogCacheManager.saveCatalogSnapshot(ctx, _mediaCatalog.value)
         }
 
-        val targetCollection = getCollectionForCategory(itemToSave.category, itemToSave.type)
-        val docMap = mediaItemToMap(itemToSave)
-        Log.d(TAG, "Writing media item ${itemToSave.id} to Firestore collection '$targetCollection'...")
+        // 3. Primary write: Cloudflare Edge KV
+        val edgeResult = com.streamhub.app.data.api.CatalogEdgeClient.saveMediaItem(itemToSave)
 
-        val batch = db.batch()
-        val targetRef = db.collection(targetCollection).document(itemToSave.id)
-        batch.set(targetRef, docMap)
-
-        // Clean up from other collections if category was moved/changed
-        for (col in ALL_COLLECTIONS) {
-            if (col != targetCollection) {
-                batch.delete(db.collection(col).document(itemToSave.id))
-            }
-        }
-
-        batch.commit()
-            .addOnSuccessListener {
-                Log.d(TAG, "Successfully synced media item to Firestore collection '$targetCollection': ${itemToSave.id}")
-                _adminOperationState.value = AdminOperationState.Success()
-                if (cont.isActive) cont.resume(Result.success(Unit))
-
-                // Background sync: trigger Cloudflare Edge Cache refresh so all users see the update
-                scope.launch(Dispatchers.IO) {
-                    com.streamhub.app.data.api.CatalogEdgeClient.refreshEdgeCatalog()
+        // 4. Dual-write backup to Firestore (non-blocking, best-effort)
+        firestore?.let { db ->
+            try {
+                val targetCollection = getCollectionForCategory(itemToSave.category, itemToSave.type)
+                val batch = db.batch()
+                batch.set(db.collection(targetCollection).document(itemToSave.id), mediaItemToMap(itemToSave))
+                for (col in ALL_COLLECTIONS) {
+                    if (col != targetCollection) {
+                        batch.delete(db.collection(col).document(itemToSave.id))
+                    }
                 }
+                batch.commit()
+            } catch (e: Exception) {
+                Log.w(TAG, "Non-fatal Firestore backup write error: ${e.message}")
             }
-            .addOnFailureListener { e ->
-                Log.w(TAG, "Batch write to '$targetCollection' failed: ${e.message}")
-                _adminOperationState.value = AdminOperationState.Error(e.message ?: "Write failed")
-                if (cont.isActive) cont.resume(Result.failure(e))
-            }
+        }
+
+        if (edgeResult.isSuccess) {
+            Log.d(TAG, "Successfully synced media item to Cloudflare Edge: ${itemToSave.id}")
+            _adminOperationState.value = AdminOperationState.Success()
+            Result.success(Unit)
+        } else {
+            val err = edgeResult.exceptionOrNull() ?: Exception("Cloudflare Edge write failed")
+            Log.w(TAG, "Cloudflare Edge write failed: ${err.message}")
+            _adminOperationState.value = AdminOperationState.Error(err.message ?: "Write failed")
+            Result.failure(err)
+        }
     }
 
     /**
      * High-speed atomic batch save for bulk migration / auto-repair operations.
-     * Writes items in Firestore chunks of 250, optimistically updates UI, and triggers a single bundle sync.
+     * Uploads items to Cloudflare Edge KV in chunks of 100 with optimistic local caching.
      */
     suspend fun saveMediaItemsBatchSuspending(items: List<MediaItem>): Result<Int> = withContext(Dispatchers.IO) {
         if (items.isEmpty()) return@withContext Result.success(0)
@@ -673,19 +658,14 @@ class FirebaseRepository private constructor() {
             return@withContext Result.failure(SecurityException("Unauthorized: Creator Studio Admin mode required"))
         }
         _adminOperationState.value = AdminOperationState.Loading
-        val db = firestore
-        if (db == null) {
-            _adminOperationState.value = AdminOperationState.Error("Firebase database not initialized")
-            return@withContext Result.failure(IllegalStateException("Firebase database not initialized"))
-        }
 
         val now = System.currentTimeMillis()
         val preparedItems = items.map { item ->
             val finalCreatedAt = if (item.createdAt > 0L) item.createdAt else now
             val migratedEpisodes = item.episodes.map { ep ->
                 ep.copy(
-                    streamUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.streamUrl),
-                    mirrorStreamUrl = TelegramLinkResolver.sanitizePlayableUrl(
+                    streamUrl = StreamLinkResolver.sanitizePlayableUrl(ep.streamUrl),
+                    mirrorStreamUrl = StreamLinkResolver.sanitizePlayableUrl(
                         if (ep.mirrorStreamUrl.isNotBlank()) ep.mirrorStreamUrl else ep.streamUrl
                     )
                 )
@@ -712,118 +692,89 @@ class FirebaseRepository private constructor() {
         }
         _catalogState.value = CatalogState.Ready
 
+        runCatching {
+            val ctx = com.streamhub.app.StreamHubApplication.getInstance()
+            com.streamhub.app.data.CatalogCacheManager.saveCatalogSnapshot(ctx, _mediaCatalog.value)
+        }
+
+        // Primary: Cloudflare Edge KV batch upload in chunks of 100
         var savedCount = 0
-        val chunks = preparedItems.chunked(250) // Firestore max 500 per batch
+        val chunks = preparedItems.chunked(100)
         for (chunk in chunks) {
-            val batch = db.batch()
-            for (item in chunk) {
-                val targetCol = getCollectionForCategory(item.category, item.type)
-                val targetRef = db.collection(targetCol).document(item.id)
-                batch.set(targetRef, mediaItemToMap(item))
+            val res = com.streamhub.app.data.api.CatalogEdgeClient.saveMediaItemsBatch(chunk)
+            if (res.isFailure) {
+                val err = res.exceptionOrNull() ?: Exception("Cloudflare Edge batch save failed")
+                _adminOperationState.value = AdminOperationState.Error(err.message ?: "Batch write failed")
+                return@withContext Result.failure(err)
             }
-            try {
-                Tasks.await(batch.commit())
-                savedCount += chunk.size
-            } catch (e: Exception) {
-                Log.e(TAG, "Batch write chunk failed", e)
-                _adminOperationState.value = AdminOperationState.Error(e.message ?: "Batch write failed")
-                return@withContext Result.failure(e)
+            savedCount += chunk.size
+        }
+
+        // Best-effort Firestore dual-write backup in background
+        firestore?.let { db ->
+            scope.launch(Dispatchers.IO) {
+                try {
+                    for (chunk in preparedItems.chunked(250)) {
+                        val batch = db.batch()
+                        for (item in chunk) {
+                            val targetCol = getCollectionForCategory(item.category, item.type)
+                            batch.set(db.collection(targetCol).document(item.id), mediaItemToMap(item))
+                        }
+                        Tasks.await(batch.commit())
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Non-fatal Firestore backup batch write error: ${e.message}")
+                }
             }
         }
 
         _adminOperationState.value = AdminOperationState.Success()
-
-        // Background sync: trigger Cloudflare Edge Cache refresh
-        scope.launch(Dispatchers.IO) {
-            com.streamhub.app.data.api.CatalogEdgeClient.refreshEdgeCatalog()
-        }
-
+        com.streamhub.app.data.api.CatalogEdgeClient.refreshEdgeCatalog()
         Result.success(savedCount)
     }
 
     /**
-     * Save or update a media item in its respective Firestore collection (movies, animes, web_series)
-     * and dual-write to legacy media_content for complete security rule & backward compatibility.
+     * 1-Tap Universal Cloudflare Edge KV Migration.
+     * Takes all shows in catalog and uploads them to Cloudflare Edge.
      */
-    fun saveMediaItem(item: MediaItem) {
+    suspend fun migrateAllShowsToCloudflare(
+        onProgress: (current: Int, total: Int) -> Unit
+    ): Result<Int> = withContext(Dispatchers.IO) {
         if (!com.streamhub.app.data.AdminManager.isAdminMode.value) {
-            Log.e(TAG, "SECURITY VIOLATION: Unauthorized attempt to save media item ${item.id} without Admin/Owner verification!")
-            _adminOperationState.value = AdminOperationState.Error("Unauthorized: Admin access required")
-            return
+            return@withContext Result.failure(SecurityException("Unauthorized: Creator Studio Admin mode required"))
         }
+        val items = _mediaCatalog.value
+        if (items.isEmpty()) return@withContext Result.success(0)
         _adminOperationState.value = AdminOperationState.Loading
-
-        val finalCreatedAt = if (item.createdAt > 0L) item.createdAt else System.currentTimeMillis()
-        val finalUpdatedAt = System.currentTimeMillis()
-        val migratedEpisodes = item.episodes.map { ep ->
-            ep.copy(
-                streamUrl = TelegramLinkResolver.sanitizePlayableUrl(ep.streamUrl),
-                mirrorStreamUrl = TelegramLinkResolver.sanitizePlayableUrl(
-                    if (ep.mirrorStreamUrl.isNotBlank()) ep.mirrorStreamUrl else ep.streamUrl
-                )
-            )
-        }
-        val normalizedEpisodes = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(migratedEpisodes)
-        val finalTrendingAt = if (item.isTrending) {
-            if (item.trendingAt > 0L) item.trendingAt else finalUpdatedAt
-        } else 0L
-        val itemToSave = item.copy(
-            createdAt = finalCreatedAt,
-            updatedAt = finalUpdatedAt,
-            trendingAt = finalTrendingAt,
-            episodes = normalizedEpisodes
-        )
-
-        tombstoneDeletedIds.remove(itemToSave.id)
-        // 1. Optimistic instant UI update
-        _mediaCatalog.update { current ->
-            val list = current.toMutableList()
-            val index = list.indexOfFirst { it.id == itemToSave.id }
-            if (index >= 0) list[index] = itemToSave else list.add(0, itemToSave)
-            list
-        }
-        _catalogState.value = CatalogState.Ready
-
-        val db = firestore
-        if (db == null) {
-            Log.e(TAG, "CRITICAL: Cannot save media item ${itemToSave.id} because Firestore instance is null!")
-            _adminOperationState.value = AdminOperationState.Error("Firebase database not initialized")
-            return
-        }
-
-        val targetCollection = getCollectionForCategory(itemToSave.category, itemToSave.type)
-        val docMap = mediaItemToMap(itemToSave)
-        Log.d(TAG, "Writing media item ${itemToSave.id} to Firestore collection '$targetCollection'...")
-
-        val batch = db.batch()
-        val targetRef = db.collection(targetCollection).document(itemToSave.id)
-        batch.set(targetRef, docMap)
-
-        // Clean up from other collections if category was moved/changed
-        for (col in ALL_COLLECTIONS) {
-            if (col != targetCollection) {
-                batch.delete(db.collection(col).document(itemToSave.id))
+        var saved = 0
+        val chunks = items.chunked(100)
+        for (chunk in chunks) {
+            val res = com.streamhub.app.data.api.CatalogEdgeClient.saveMediaItemsBatch(chunk)
+            if (res.isFailure) {
+                val err = res.exceptionOrNull() ?: Exception("Cloudflare Edge migration failed")
+                _adminOperationState.value = AdminOperationState.Error(err.message ?: "Migration failed")
+                return@withContext Result.failure(err)
             }
+            saved += chunk.size
+            onProgress(saved, items.size)
         }
-
-        batch.commit()
-            .addOnSuccessListener {
-                Log.d(TAG, "Successfully synced media item to Firestore collection '$targetCollection': ${itemToSave.id}")
-                _adminOperationState.value = AdminOperationState.Success()
-
-                // Background sync: trigger Cloudflare Edge Cache refresh
-                scope.launch(Dispatchers.IO) {
-                    com.streamhub.app.data.api.CatalogEdgeClient.refreshEdgeCatalog()
-                }
-            }
-            .addOnFailureListener { e ->
-                Log.w(TAG, "Batch write to '$targetCollection' failed: ${e.message}")
-                _adminOperationState.value = AdminOperationState.Error(e.message ?: "Write failed")
-            }
+        _adminOperationState.value = AdminOperationState.Success()
+        com.streamhub.app.data.api.CatalogEdgeClient.refreshEdgeCatalog()
+        Log.d(TAG, "🎉 Successfully migrated all $saved shows to Cloudflare Edge KV!")
+        Result.success(saved)
     }
 
     /**
-     * Delete a media item from all collections using an atomic batch.
+     * Save or update a media item in Cloudflare Edge KV (with Firestore dual-write backup).
+     */
+    fun saveMediaItem(item: MediaItem) {
+        scope.launch {
+            saveMediaItemSuspending(item)
+        }
+    }
+
+    /**
+     * Delete a media item from Cloudflare Edge KV (and Firestore backup).
      */
     fun deleteMediaItem(itemId: String) {
         if (!com.streamhub.app.data.AdminManager.isAdminMode.value) {
@@ -832,43 +783,45 @@ class FirebaseRepository private constructor() {
             return
         }
         _adminOperationState.value = AdminOperationState.Loading
-        val targetItem = _mediaCatalog.value.firstOrNull { it.id == itemId }
-        val category = targetItem?.category ?: ""
-        val type = targetItem?.type ?: ""
         tombstoneDeletedIds.add(itemId)
         _mediaCatalog.update { current -> current.filterNot { it.id == itemId } }
 
-        val db = firestore
-        if (db == null) {
-            _adminOperationState.value = AdminOperationState.Success()
-            return
-        }
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                val ctx = com.streamhub.app.StreamHubApplication.getInstance()
+                com.streamhub.app.data.CatalogCacheManager.saveCatalogSnapshot(ctx, _mediaCatalog.value)
+            }
 
-        val batch = db.batch()
-        for (col in ALL_COLLECTIONS) {
-            batch.delete(db.collection(col).document(itemId))
-        }
+            val edgeResult = com.streamhub.app.data.api.CatalogEdgeClient.deleteMediaItem(itemId)
 
-        batch.commit()
-            .addOnSuccessListener {
-                _mediaCatalog.update { current -> current.filterNot { it.id == itemId } }
-                _adminOperationState.value = AdminOperationState.Success()
-                Log.d(TAG, "Successfully deleted media item $itemId across all collections")
-
-                // Cascade cleanup: purge local bookmarks, watch progress, and downloaded files
-                scope.launch(Dispatchers.IO) {
-                    runCatching {
-                        com.streamhub.app.data.MyListManager.removeFromList(itemId)
-                        com.streamhub.app.data.WatchHistoryManager.removeMediaProgress(itemId)
-                        com.streamhub.app.data.DownloadManager.deleteDownloadsForMedia(itemId)
-                        com.streamhub.app.data.api.CatalogEdgeClient.refreshEdgeCatalog()
-                    }.onFailure { Log.w(TAG, "Non-fatal cascade cleanup error after delete: ${it.message}") }
+            // Dual-delete backup in Firestore (non-blocking)
+            firestore?.let { db ->
+                try {
+                    val batch = db.batch()
+                    for (col in ALL_COLLECTIONS) {
+                        batch.delete(db.collection(col).document(itemId))
+                    }
+                    batch.commit()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Non-fatal Firestore backup delete error: ${e.message}")
                 }
             }
-            .addOnFailureListener { e ->
-                Log.w(TAG, "Batch delete for $itemId failed: ${e.message}")
-                _adminOperationState.value = AdminOperationState.Error(e.message ?: "Delete failed")
+
+            if (edgeResult.isSuccess) {
+                _adminOperationState.value = AdminOperationState.Success()
+                Log.d(TAG, "Successfully deleted media item $itemId from Cloudflare Edge KV")
+            } else {
+                _adminOperationState.value = AdminOperationState.Error(edgeResult.exceptionOrNull()?.message ?: "Delete failed")
             }
+
+            // Cascade cleanup: purge local bookmarks, watch progress, and downloaded files
+            runCatching {
+                com.streamhub.app.data.MyListManager.removeFromList(itemId)
+                com.streamhub.app.data.WatchHistoryManager.removeMediaProgress(itemId)
+                com.streamhub.app.data.DownloadManager.deleteDownloadsForMedia(itemId)
+                com.streamhub.app.data.api.CatalogEdgeClient.refreshEdgeCatalog()
+            }.onFailure { Log.w(TAG, "Non-fatal cascade cleanup error after delete: ${it.message}") }
+        }
     }
 
     private fun loadInitialCatalog() {
@@ -1017,3 +970,6 @@ class FirebaseRepository private constructor() {
         onProgress = onProgress
     )
 }
+
+/** Backward compatibility alias for legacy imports during refactor */
+typealias FirebaseRepository = CatalogRepository

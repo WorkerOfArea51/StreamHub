@@ -138,7 +138,7 @@ import com.streamhub.app.data.DownloadManager
 import com.streamhub.app.data.api.MetadataFetchManager
 import com.streamhub.app.data.models.Episode
 import com.streamhub.app.data.models.MediaItem
-import com.streamhub.app.data.repository.FirebaseRepository
+import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.ui.components.AdminEditorDialog
 import com.streamhub.app.ui.components.MediaCard
 import com.streamhub.app.ui.components.MediaInfoBadges
@@ -162,7 +162,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 fun DetailsScreen(
     mediaId: String,
     initialEpisodeIndex: Int = -1,
-    repository: FirebaseRepository,
+    repository: CatalogRepository,
     onBackClick: () -> Unit,
     onPlayEpisode: (MediaItem, Int) -> Unit,
     onMediaClick: (MediaItem) -> Unit = {},
@@ -1532,7 +1532,7 @@ fun DetailsScreen(
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = if (isMovie) "Telegram stream links will appear here once attached via Creator Studio." else "Episodes will appear once indexed.",
+                                    text = if (isMovie) "Stream links will appear here once attached via Creator Studio." else "Episodes will appear once indexed.",
                                     color = TextSecondary,
                                     fontSize = 12.sp,
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -1878,7 +1878,7 @@ fun EpisodeRowItem(
     } else {
         episode.title.ifBlank { episode.fileName.ifBlank { "Episode ${index + 1}" } }
     }
-    val cleanedTitle = com.streamhub.app.data.TelegramLinkResolver.cleanEpisodeTitle(rawTitle, episode.episodeNumber)
+    val cleanedTitle = com.streamhub.app.data.StreamLinkResolver.cleanEpisodeTitle(rawTitle, episode.episodeNumber)
     val displayTitle = if (isMovie) {
         cleanedTitle.ifBlank { mediaItem.title }
     } else {

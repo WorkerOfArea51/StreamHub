@@ -106,7 +106,7 @@ fun SpeedTestPreferenceItem(currentAccent: AppThemeAccent) {
                 Text(
                     text = when (testState) {
                         is SpeedTestState.Idle -> "Benchmark ping & edge streaming throughput"
-                        is SpeedTestState.Testing -> "Benchmarking Cloudflare & Telegram edge..."
+                        is SpeedTestState.Testing -> "Benchmarking Cloudflare edge..."
                         is SpeedTestState.Completed -> {
                             val res = testState as SpeedTestState.Completed
                             "Ping: ${res.pingMs}ms • Speed: ${res.speedMbps} Mbps • ${res.qualityRating}"
@@ -589,7 +589,7 @@ fun AboutCard(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text("About StreamHub", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("Developer info, Telegram Bot & Tech Stack", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                        Text("Developer info, Community & Tech Stack", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
                     }
                 }
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Open", tint = MaterialTheme.colorScheme.onSurfaceVariant)
