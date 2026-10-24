@@ -247,7 +247,7 @@ object BatchEpisodeParser {
                             fileName = rawFileName.ifBlank { "Episode $epNum.mkv" },
                             fileSize = fileSize,
                             durationMs = durationMs,
-                            telegramFileId = code.ifBlank { com.streamhub.app.data.StreamLinkResolver.extractMessageOrFileId(primaryUrl) }
+                            fileId = code.ifBlank { com.streamhub.app.data.StreamLinkResolver.extractMessageOrFileId(primaryUrl) }
                         )
                     )
                 }

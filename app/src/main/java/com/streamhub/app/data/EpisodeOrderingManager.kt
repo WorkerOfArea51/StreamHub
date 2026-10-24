@@ -169,13 +169,13 @@ object EpisodeOrderingManager {
 
         incoming.forEach { newEp ->
             val cleanNewStream = StreamLinkResolver.sanitizePlayableUrl(newEp.streamUrl)
-            val newFileId = newEp.telegramFileId.trim()
+            val newFileId = newEp.fileId.trim()
 
-            // 1. Try matching by identical stream URL or Telegram file ID (highest confidence identity)
+            // 1. Try matching by identical stream URL or file ID (highest confidence identity)
             val indexByUrl = if (cleanNewStream.isNotBlank() || newFileId.isNotBlank()) {
                 result.indexOfFirst { ex ->
                     val cleanExStream = StreamLinkResolver.sanitizePlayableUrl(ex.streamUrl)
-                    val exFileId = ex.telegramFileId.trim()
+                    val exFileId = ex.fileId.trim()
                     (cleanNewStream.isNotBlank() && cleanExStream.isNotBlank() && cleanNewStream == cleanExStream) ||
                     (newFileId.isNotBlank() && exFileId.isNotBlank() && newFileId == exFileId)
                 }

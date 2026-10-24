@@ -22,9 +22,7 @@
         <domain includeSubdomains="true">t.me</domain>
         <domain includeSubdomains="true">api.myanimelist.net</domain>
         <domain includeSubdomains="true">cdn.myanimelist.net</domain>
-        <domain includeSubdomains="true">firestore.googleapis.com</domain>
-        <domain includeSubdomains="true">firebase.googleapis.com</domain>
-        <domain includeSubdomains="true">firebasestorage.googleapis.com</domain>
+        <domain includeSubdomains="true">workers.dev</domain>
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>

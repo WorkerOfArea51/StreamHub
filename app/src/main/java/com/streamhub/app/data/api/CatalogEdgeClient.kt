@@ -3,6 +3,8 @@ package com.streamhub.app.data.api
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonArray
+import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
@@ -11,6 +13,9 @@ import com.streamhub.app.data.EpisodeOrderingManager
 import com.streamhub.app.data.StreamBackendConfig
 import com.streamhub.app.data.UserSessionInfo
 import com.streamhub.app.data.models.MediaItem
+import com.streamhub.app.data.models.VipVoucher
+import com.streamhub.app.data.models.VoucherStatusCheck
+import com.streamhub.app.data.models.VoucherVerificationResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,6 +24,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.IOException
 import java.io.InputStreamReader
 import java.net.SocketTimeoutException
 
@@ -85,6 +91,7 @@ object CatalogEdgeClient {
     private val AUDIENCE_URL = "$BASE_URL/api/telemetry/audience"
     private val COMMAND_URL = "$BASE_URL/api/telemetry/command"
     private val BROADCAST_URL = "$BASE_URL/api/broadcasts"
+    private val VOUCHERS_URL = "$BASE_URL/api/vouchers"
 
     private val gson: Gson by lazy { GsonBuilder().create() }
     private val mediaListType = object : TypeToken<List<MediaItem>>() {}.type
@@ -445,6 +452,154 @@ object CatalogEdgeClient {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse Cloudflare catalog JSON stream", e)
             emptyList()
+        }
+    }
+
+    // ==========================================
+    // VIP Voucher Operations (Cloudflare Edge KV)
+    // ==========================================
+
+    /**
+     * Lists all vouchers from Cloudflare Edge KV (Admin).
+     */
+    suspend fun fetchVouchers(): Result<List<VipVoucher>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val request = Request.Builder()
+                .url(VOUCHERS_URL)
+                .header("User-Agent", userAgentHeader())
+                .get()
+                .build()
+
+            val response = SharedHttpClient.baseClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                throw IOException("Fetch vouchers failed: HTTP ${response.code}")
+            }
+            val body = response.body?.string() ?: ""
+            val json = JsonParser.parseString(body).asJsonObject
+            val array = json.getAsJsonArray("vouchers") ?: JsonArray()
+            val type = object : TypeToken<List<VipVoucher>>() {}.type
+            gson.fromJson<List<VipVoucher>>(array, type) ?: emptyList()
+        }
+    }
+
+    /**
+     * Creates a voucher in Cloudflare Edge KV (Admin).
+     */
+    suspend fun createVoucher(code: String, label: String, durationDays: Int): Result<VipVoucher> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = mapOf(
+                "code" to code,
+                "label" to label,
+                "durationDays" to durationDays
+            )
+            val body = gson.toJson(payload).toRequestBody(jsonMediaType)
+            val request = Request.Builder()
+                .url(VOUCHERS_URL)
+                .header("User-Agent", userAgentHeader())
+                .post(body)
+                .build()
+
+            val response = SharedHttpClient.baseClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                throw IOException("Create voucher failed: HTTP ${response.code}")
+            }
+            val bodyStr = response.body?.string() ?: ""
+            val json = JsonParser.parseString(bodyStr).asJsonObject
+            val voucherObj = json.getAsJsonObject("voucher")
+            gson.fromJson(voucherObj, VipVoucher::class.java)
+        }
+    }
+
+    /**
+     * Redeems a voucher code on a device via Cloudflare Edge KV.
+     */
+    suspend fun redeemVoucher(code: String, deviceId: String, deviceModel: String): VoucherVerificationResult = withContext(Dispatchers.IO) {
+        try {
+            val payload = mapOf(
+                "code" to code,
+                "deviceId" to deviceId,
+                "deviceModel" to deviceModel
+            )
+            val body = gson.toJson(payload).toRequestBody(jsonMediaType)
+            val request = Request.Builder()
+                .url("$VOUCHERS_URL/redeem")
+                .header("User-Agent", userAgentHeader())
+                .post(body)
+                .build()
+
+            val response = SharedHttpClient.baseClient.newCall(request).execute()
+            val bodyStr = response.body?.string() ?: ""
+            val json = JsonParser.parseString(bodyStr).asJsonObject
+            val result = json.get("result")?.asString ?: "ERROR"
+
+            when (result) {
+                "SUCCESS" -> {
+                    val daysRemaining = json.get("daysRemaining")?.asInt ?: 30
+                    val isReactivation = json.get("isReactivation")?.asBoolean ?: false
+                    VoucherVerificationResult.Success(daysRemaining, isReactivation)
+                }
+                "INVALID_CODE" -> VoucherVerificationResult.InvalidCode
+                "EXPIRED" -> VoucherVerificationResult.Expired
+                "BOUND_TO_ANOTHER_DEVICE" -> VoucherVerificationResult.BoundToAnotherDevice
+                else -> {
+                    val msg = json.get("error")?.asString ?: "Verification failed"
+                    VoucherVerificationResult.Error(msg)
+                }
+            }
+        } catch (e: Exception) {
+            VoucherVerificationResult.Error(e.localizedMessage ?: "Failed to verify access code")
+        }
+    }
+
+    /**
+     * Checks if this hardware device has an active voucher pass on Cloudflare Edge KV.
+     */
+    suspend fun checkDeviceVoucher(deviceId: String): VoucherStatusCheck = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url("$VOUCHERS_URL/check/$deviceId")
+                .header("User-Agent", userAgentHeader())
+                .get()
+                .build()
+
+            val response = SharedHttpClient.baseClient.newCall(request).execute()
+            val bodyStr = response.body?.string() ?: ""
+            val json = JsonParser.parseString(bodyStr).asJsonObject
+            val status = json.get("status")?.asString ?: "REVOKED"
+
+            when (status) {
+                "ACTIVE" -> {
+                    val voucherObj = json.getAsJsonObject("voucher")
+                    val voucher = gson.fromJson(voucherObj, VipVoucher::class.java)
+                    VoucherStatusCheck.Active(voucher)
+                }
+                "REVOKED" -> VoucherStatusCheck.Revoked
+                else -> {
+                    val reason = json.get("reason")?.asString ?: "Unknown status"
+                    VoucherStatusCheck.VerificationFailed(reason)
+                }
+            }
+        } catch (e: Exception) {
+            VoucherStatusCheck.VerificationFailed(e.localizedMessage ?: e.javaClass.simpleName)
+        }
+    }
+
+    /**
+     * Deletes a voucher permanently from Cloudflare Edge KV (Admin).
+     */
+    suspend fun deleteVoucher(code: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val request = Request.Builder()
+                .url("$VOUCHERS_URL/$code")
+                .header("User-Agent", userAgentHeader())
+                .delete()
+                .build()
+
+            val response = SharedHttpClient.baseClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                throw IOException("Delete voucher failed: HTTP ${response.code}")
+            }
+            Unit
         }
     }
 }

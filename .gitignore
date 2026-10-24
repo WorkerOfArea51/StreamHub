@@ -41,10 +41,7 @@ keystore.properties
 *.keystore
 *.jks
 
-# Firebase config — contains project-specific API key
-# Copy app/google-services.json.example to app/google-services.json
-# and fill in real values from Firebase Console.
-app/google-services.json
+
 
 # OS / Editor
 .DS_Store

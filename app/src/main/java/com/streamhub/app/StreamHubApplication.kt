@@ -63,10 +63,7 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        runCatching {
-            com.google.firebase.FirebaseApp.initializeApp(this)
-            Log.d(TAG, "FirebaseApp successfully initialized")
-        }.onFailure { Log.e(TAG, "FirebaseApp.initializeApp failed", it) }
+
 
         if (BuildConfig.DEBUG) {
             android.os.StrictMode.setThreadPolicy(
@@ -173,8 +170,7 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
                 .onFailure { Log.e(TAG, "UserTelemetryManager.init failed", it) }
             runCatching { com.streamhub.app.data.UserProfileManager.init(applicationContext) }
                 .onFailure { Log.e(TAG, "UserProfileManager.init failed", it) }
-            runCatching { com.streamhub.app.data.notifications.StreamHubMessagingService.subscribeToUpdateTopic() }
-                .onFailure { Log.e(TAG, "StreamHubMessagingService.subscribeToUpdateTopic failed", it) }
+
         }
     }
 

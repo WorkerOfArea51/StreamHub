@@ -1,20 +1,15 @@
 package com.streamhub.app.data.models
 
-import com.google.firebase.firestore.IgnoreExtraProperties
-import com.google.firebase.firestore.PropertyName
-
 /**
  * Domain model representing a single media entry (movie, anime, or web series).
  *
  * All defaults are EMPTY — never fabricated data. If a field is missing from
- * the Firestore document, the UI should display empty (or hide the row), not
- * invent data. This prevents the "every show looks like Solo Leveling" bug
- * that the previous defaults caused.
+ * the document, the UI should display empty (or hide the row), not
+ * invent data.
  *
  * Required fields (no sensible empty default): id, title, type, category.
  * All other fields are optional and may be empty.
  */
-@IgnoreExtraProperties
 data class MediaItem(
     val id: String = "",
     val title: String = "",
@@ -40,9 +35,7 @@ data class MediaItem(
     val posterUrl: String = "",
     val bannerUrl: String = "",
     val description: String = "",
-    @get:PropertyName("isFeatured")
     val isFeatured: Boolean = false,
-    @get:PropertyName("isTrending")
     val isTrending: Boolean = false,
     val trendingAt: Long = 0L,           // Epoch millis when marked trending (for 7-day decay window)
     val franchiseId: String = "",        // e.g. "solo-leveling", "naruto" — for universe grouping
@@ -66,7 +59,6 @@ data class MediaItem(
 /**
  * Cast member representation with actor name, character name, and profile headshot.
  */
-@IgnoreExtraProperties
 data class CastMember(
     val name: String = "",
     val character: String = "",
@@ -76,7 +68,6 @@ data class CastMember(
 /**
  * Trailer/clip representation with YouTube video ID, display title, and category type.
  */
-@IgnoreExtraProperties
 data class MediaTrailer(
     val id: String = "",
     val title: String = "",
@@ -114,11 +105,14 @@ data class Episode(
     val thumbnailUrl: String = "",
     val streamUrl: String = "",
     val mirrorStreamUrl: String = "",
-    val telegramFileId: String = "",
+    val fileId: String = "",
     val durationMs: Long = 0L,
     val fileName: String = "",           // e.g. "Minions & Monsters 2026.mkv"
     val fileSize: String = ""            // e.g. "1005.8 MB"
-)
+) {
+    /** Backward compatibility accessor for legacy callers */
+    val telegramFileId: String get() = fileId
+}
 
 /**
  * Persisted playback position for resume-watching.

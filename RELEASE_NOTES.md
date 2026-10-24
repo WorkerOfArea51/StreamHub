@@ -1,7 +1,6 @@
-### What's New in StreamHub v4.8.423 🚀
+### What's New in StreamHub v4.8.424 🚀
 
-- ☁️ **100% Free Cloudflare Edge Migration ($0/month)**: StreamHub now connects directly to Cloudflare Worker KV for lightning-fast 15ms global catalog loading, live viewer telemetry, and instant Creator Studio show saves with zero monthly database costs.
-- ⚡ **Zero-Firestore Reads & Writes Leak Elimination**: Completely replaced legacy Firestore `live_sessions` writes and snapshot listeners with Cloudflare Edge REST heartbeats (60s interval with 180s auto-expiry in KV) and on-demand audience polling.
-- 📲 **1-Tap Cloudflare Edge KV Migration**: Added a 1-tap "Cloudflare Edge KV Sync" tool in Creator Studio Tools (Tab 3) allowing instantaneous migration of your entire media catalog to Cloudflare Edge.
-- 🏛️ **Codebase Architecture Modernization**: Unified and renamed core data layers (`CatalogRepository` and `StreamLinkResolver`), aligning StreamHub with direct edge streaming proxy standards.
-- 🛠️ **Production Cloudflare Worker Suite**: Included the complete, production-ready Cloudflare Edge Worker script (`cloudflare/worker.js`) supporting video range streaming proxy, catalog KV storage, viewer telemetry, and global broadcasts.
+- 🔥 **100% Zero-Firebase Architecture ($0/month Free Tier)**: StreamHub is now completely free of Google Services and Firebase. All application capabilities—Video Streaming Proxy, Catalog KV Storage, Live Viewer Telemetry, and Single-Device VIP Vouchers—run 100% on Cloudflare's global edge network at zero cost.
+- 🎟️ **Cloudflare Edge VIP Voucher Engine**: Fully migrated VIP Voucher creation, redemption, hardware-hash device binding, and real-time validity checks from Firestore to Cloudflare Worker KV (`VoucherManager.kt`, `CatalogEdgeClient.kt`).
+- 📁 **Data Model Modernization (`fileId`)**: Renamed `telegramFileId` to clean `fileId` across the `Episode` data model, storage cache indexer, batch parsers, and deduplication managers while retaining 100% backward compatibility for all existing shows.
+- 🚀 **Streamlined Zero-Dependency Release Pipeline**: Purged legacy FCM background services and `google-services.json` requirements. Update detection runs seamlessly and battery-efficiently through native GitHub releases via `AppUpdateManager` and `CatalogSyncWorker`.

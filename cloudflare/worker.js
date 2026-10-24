@@ -488,6 +488,232 @@ export default {
       });
     }
 
+    // ==========================================
+    // 6. VIP Voucher API (/api/vouchers)
+    // ==========================================
+
+    // GET /api/vouchers (Admin: List all vouchers)
+    if (pathname === "/api/vouchers" && request.method === "GET") {
+      try {
+        const list = await env.CATALOG_KV.list({ prefix: "voucher:code:" });
+        const vouchers = [];
+        for (const key of list.keys) {
+          const raw = await env.CATALOG_KV.get(key.name);
+          if (raw) {
+            try {
+              vouchers.push(JSON.parse(raw));
+            } catch (_) {}
+          }
+        }
+        vouchers.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        return new Response(JSON.stringify({ ok: true, vouchers }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // POST /api/vouchers (Admin: Create voucher)
+    if (pathname === "/api/vouchers" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const code = (body.code || "").trim().toUpperCase();
+        if (!code) {
+          return new Response(JSON.stringify({ error: "Missing voucher code" }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const voucher = {
+          code: code,
+          label: (body.label || "").trim(),
+          status: "AVAILABLE",
+          createdAt: Date.now(),
+          activatedAt: 0,
+          expiresAt: 0,
+          durationDays: body.durationDays || 30,
+          boundDeviceId: "",
+          deviceModel: ""
+        };
+        await env.CATALOG_KV.put("voucher:code:" + code, JSON.stringify(voucher));
+        return new Response(JSON.stringify({ ok: true, voucher }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // POST /api/vouchers/redeem (Device: Redeem code)
+    if (pathname === "/api/vouchers/redeem" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const code = (body.code || "").trim().toUpperCase();
+        const deviceId = (body.deviceId || "").trim();
+        const deviceModel = (body.deviceModel || "").trim();
+
+        if (!code || !deviceId) {
+          return new Response(JSON.stringify({ result: "INVALID_CODE" }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        const raw = await env.CATALOG_KV.get("voucher:code:" + code);
+        if (!raw) {
+          return new Response(JSON.stringify({ result: "INVALID_CODE" }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        const voucher = JSON.parse(raw);
+        const now = Date.now();
+
+        if (voucher.status === "AVAILABLE") {
+          const durationMs = (voucher.durationDays || 30) * 24 * 60 * 60 * 1000;
+          const updated = {
+            ...voucher,
+            status: "ACTIVE",
+            activatedAt: now,
+            expiresAt: now + durationMs,
+            boundDeviceId: deviceId,
+            deviceModel: deviceModel
+          };
+          await env.CATALOG_KV.put("voucher:code:" + code, JSON.stringify(updated));
+          await env.CATALOG_KV.put("voucher:device:" + deviceId, JSON.stringify(updated));
+          return new Response(
+            JSON.stringify({
+              result: "SUCCESS",
+              daysRemaining: voucher.durationDays || 30,
+              isReactivation: false
+            }),
+            {
+              status: 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        } else if (voucher.status === "ACTIVE") {
+          if (now >= voucher.expiresAt) {
+            await env.CATALOG_KV.delete("voucher:code:" + code);
+            await env.CATALOG_KV.delete("voucher:device:" + deviceId);
+            return new Response(JSON.stringify({ result: "EXPIRED" }), {
+              status: 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          if (voucher.boundDeviceId === deviceId) {
+            const daysRemaining = Math.max(
+              1,
+              Math.ceil((voucher.expiresAt - now) / (24 * 60 * 60 * 1000))
+            );
+            await env.CATALOG_KV.put("voucher:device:" + deviceId, JSON.stringify(voucher));
+            return new Response(
+              JSON.stringify({
+                result: "SUCCESS",
+                daysRemaining: daysRemaining,
+                isReactivation: true
+              }),
+              {
+                status: 200,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              }
+            );
+          } else {
+            return new Response(JSON.stringify({ result: "BOUND_TO_ANOTHER_DEVICE" }), {
+              status: 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+        } else {
+          await env.CATALOG_KV.delete("voucher:code:" + code);
+          return new Response(JSON.stringify({ result: "EXPIRED" }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      } catch (err) {
+        return new Response(JSON.stringify({ result: "ERROR", error: err.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // GET /api/vouchers/check/:deviceId (Device: Check active voucher status on startup)
+    if (pathname.startsWith("/api/vouchers/check/") && request.method === "GET") {
+      try {
+        const deviceId = pathname.substring("/api/vouchers/check/".length);
+        if (!deviceId) {
+          return new Response(JSON.stringify({ status: "REVOKED" }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const raw = await env.CATALOG_KV.get("voucher:device:" + deviceId);
+        if (!raw) {
+          return new Response(JSON.stringify({ status: "REVOKED" }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        const voucher = JSON.parse(raw);
+        const now = Date.now();
+        if (now >= voucher.expiresAt) {
+          await env.CATALOG_KV.delete("voucher:device:" + deviceId);
+          await env.CATALOG_KV.delete("voucher:code:" + voucher.code);
+          return new Response(JSON.stringify({ status: "REVOKED" }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify({ status: "ACTIVE", voucher }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ status: "VERIFICATION_FAILED", reason: err.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // DELETE /api/vouchers/:code (Admin: Delete voucher)
+    if (pathname.startsWith("/api/vouchers/") && request.method === "DELETE") {
+      try {
+        const code = pathname.substring("/api/vouchers/".length).trim().toUpperCase();
+        const raw = await env.CATALOG_KV.get("voucher:code:" + code);
+        if (raw) {
+          try {
+            const voucher = JSON.parse(raw);
+            if (voucher.boundDeviceId) {
+              await env.CATALOG_KV.delete("voucher:device:" + voucher.boundDeviceId);
+            }
+          } catch (_) {}
+        }
+        await env.CATALOG_KV.delete("voucher:code:" + code);
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // Default route: Health check
     return new Response(
       JSON.stringify({

@@ -359,7 +359,7 @@ fun AdminEditorDialog(
                                                         title = state.title.ifBlank { "Movie Stream" },
                                                         streamUrl = link,
                                                         mirrorStreamUrl = link,
-                                                        telegramFileId = StreamLinkResolver.extractMessageOrFileId(link),
+                                                        fileId = StreamLinkResolver.extractMessageOrFileId(link),
                                                         fileSize = state.fileSize.ifBlank { existingEp?.fileSize ?: "" },
                                                         durationMs = if (state.fetchedDurationMs > 0) state.fetchedDurationMs else (existingEp?.durationMs ?: 0L),
                                                         fileName = state.fetchedFileName.ifBlank { existingEp?.fileName ?: "" }

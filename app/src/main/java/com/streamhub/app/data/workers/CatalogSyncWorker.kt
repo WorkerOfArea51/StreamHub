@@ -4,13 +4,10 @@ import android.content.Context
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Source
 import com.streamhub.app.data.MyListManager
 import com.streamhub.app.data.NotificationAlertManager
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.repository.CatalogRepository
-import kotlinx.coroutines.tasks.await
 
 /**
  * Lightweight periodic background worker:

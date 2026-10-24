@@ -51,3 +51,13 @@ sealed class VoucherVerificationResult {
     object BoundToAnotherDevice : VoucherVerificationResult()
     data class Error(val message: String) : VoucherVerificationResult()
 }
+
+/**
+ * Outcome of a startup voucher revalidation — distinguishes revocation from inconclusive checks.
+ */
+sealed class VoucherStatusCheck {
+    data class Active(val voucher: VipVoucher) : VoucherStatusCheck()
+    object Revoked : VoucherStatusCheck()
+    data class VerificationFailed(val reason: String) : VoucherStatusCheck()
+}
+

@@ -472,7 +472,7 @@ object DownloadManager {
 
     private suspend fun startDownloadInternal(context: Context, mediaItem: MediaItem, episodeIndex: Int) {
         val episode = mediaItem.episodes.getOrNull(episodeIndex) ?: return
-        val rawUrl = episode.streamUrl.ifEmpty { episode.mirrorStreamUrl.ifEmpty { episode.telegramFileId } }
+        val rawUrl = episode.streamUrl.ifEmpty { episode.mirrorStreamUrl.ifEmpty { episode.fileId } }
         if (rawUrl.isBlank()) {
             Log.w(TAG, "Cannot download: streamUrl is blank")
             return

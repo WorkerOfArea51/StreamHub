@@ -119,7 +119,7 @@ object StreamLinkResolver {
                     mirrorStreamUrl = sanitizePlayableUrl(fallbackMirrorUrl),
                     fileSize = size,
                     fileName = if (fullRawTitle.isNotBlank()) "$fullRawTitle.mkv" else "Episode $epNum.mkv",
-                    telegramFileId = extractMessageOrFileId(directPlayUrl)
+                    fileId = extractMessageOrFileId(directPlayUrl)
                 )
             }.sortedBy { it.episodeNumber }
         }
@@ -278,7 +278,7 @@ object StreamLinkResolver {
                             fileSize = size,
                             fileName = fileName.ifBlank { "Episode $epNum.mkv" },
                             durationMs = durationMs,
-                            telegramFileId = code.ifBlank { extractMessageOrFileId(primaryPlayUrl) }
+                            fileId = code.ifBlank { extractMessageOrFileId(primaryPlayUrl) }
                         )
                     )
                 }
@@ -320,7 +320,7 @@ object StreamLinkResolver {
                         title = epTitle,
                         streamUrl = sanitizedUrl,
                         mirrorStreamUrl = sanitizedUrl,
-                        telegramFileId = extractMessageOrFileId(sanitizedUrl)
+                        fileId = extractMessageOrFileId(sanitizedUrl)
                     )
                 )
             }

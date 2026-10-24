@@ -1,10 +1,6 @@
 package com.streamhub.app.data.repository
 
 import android.util.Log
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ListenerRegistration
-import com.google.firebase.firestore.Query
-import com.google.android.gms.tasks.Tasks
 import com.streamhub.app.data.StreamBackendConfig
 import com.streamhub.app.data.StreamLinkResolver
 import com.streamhub.app.data.models.MediaItem
@@ -130,7 +126,8 @@ class CatalogRepository private constructor() {
                         "thumbnailUrl" to ep.thumbnailUrl,
                         "streamUrl" to ep.streamUrl,
                         "mirrorStreamUrl" to ep.mirrorStreamUrl,
-                        "telegramFileId" to ep.telegramFileId,
+                        "fileId" to ep.fileId,
+                        "telegramFileId" to ep.fileId,
                         "durationMs" to ep.durationMs,
                         "fileName" to ep.fileName,
                         "fileSize" to ep.fileSize
@@ -149,31 +146,7 @@ class CatalogRepository private constructor() {
         }
     }
 
-    @Volatile
-    private var firestoreCache: FirebaseFirestore? = null
-    @Volatile
-    private var firestoreResolved = false
-
-    val firestore: FirebaseFirestore?
-        get() {
-            if (firestoreResolved) return firestoreCache
-            firestoreCache = runCatching {
-                val app = com.google.firebase.FirebaseApp.getInstance()
-                FirebaseFirestore.getInstance(app)
-            }.recoverCatching {
-                FirebaseFirestore.getInstance()
-            }.onFailure { e ->
-                Log.e(TAG, "Failed to get FirebaseFirestore instance", e)
-            }.getOrNull()
-            firestoreResolved = true
-            return firestoreCache
-        }
-
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    private val activeListeners = mutableListOf<ListenerRegistration>()
-    private val rawCollectionListeners = mutableListOf<ListenerRegistration>()
-    private val collectionMap = java.util.concurrent.ConcurrentHashMap<String, List<MediaItem>>()
     private val tombstoneDeletedIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     private val _isUsingBundles = MutableStateFlow(false)
@@ -190,7 +163,7 @@ class CatalogRepository private constructor() {
 
     init {
         loadInitialCatalog()
-        attachFirestoreListener()
+        loadEdgeCatalog()
         // Periodic Cloudflare Edge version check every 5 minutes
         scope.launch {
             while (isActive) {
@@ -200,7 +173,7 @@ class CatalogRepository private constructor() {
                         val localCount = _mediaCatalog.value.size
                         if (versionInfo.count > 0 && versionInfo.count != localCount) {
                             Log.d(TAG, "Cloudflare Edge catalog version/count updated (${versionInfo.count} vs $localCount), refreshing...")
-                            attachFirestoreListener()
+                            loadEdgeCatalog()
                         }
                     }
                 }
@@ -216,7 +189,7 @@ class CatalogRepository private constructor() {
 
     suspend fun connect() {
         kotlinx.coroutines.withContext(Dispatchers.IO) {
-            attachFirestoreListener()
+            loadEdgeCatalog()
         }
     }
 
@@ -225,7 +198,7 @@ class CatalogRepository private constructor() {
         if (_mediaCatalog.value.isEmpty()) {
             _catalogState.value = CatalogState.Loading
         }
-        attachFirestoreListener()
+        loadEdgeCatalog()
     }
 
     fun refreshCatalog() = retry()
@@ -235,14 +208,12 @@ class CatalogRepository private constructor() {
     }
 
     fun cleanup() {
-        removeFirestoreListeners()
+        // No-op
     }
 
-    private fun attachFirestoreListener() {
+    private fun loadEdgeCatalog() {
         try {
-            removeFirestoreListeners()
-
-            // 1. Ultra-fast Cloudflare Edge boot: 15ms response with ZERO Firebase reads
+            // Ultra-fast Cloudflare Edge boot: 15ms response with ZERO Firebase reads
             scope.launch {
                 com.streamhub.app.data.api.CatalogEdgeClient.fetchCatalog()
                     .onSuccess { edgeItems ->
@@ -266,9 +237,7 @@ class CatalogRepository private constructor() {
                         }
                     }
                     .onFailure { err ->
-                        Log.w(TAG, "Cloudflare Edge catalog fetch failed: ${err.message}. Maintaining cached catalog (0 Firebase reads).")
-                        // STRICT ZERO-FIREBASE-FALLBACK FOR REGULAR USERS!
-                        // If we already have items in memory/disk, keep UI active in Ready state!
+                        Log.w(TAG, "Cloudflare Edge catalog fetch failed: ${err.message}. Maintaining cached catalog.")
                         if (_mediaCatalog.value.isNotEmpty()) {
                             _catalogState.value = CatalogState.Ready
                         } else {
@@ -277,136 +246,13 @@ class CatalogRepository private constructor() {
                     }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to attach Cloudflare listener", e)
+            Log.e(TAG, "Failed to load Cloudflare catalog", e)
             if (_mediaCatalog.value.isNotEmpty()) {
                 _catalogState.value = CatalogState.Ready
             } else {
                 _catalogState.value = CatalogState.Error("Connection error: ${e.message}")
             }
         }
-    }
-
-    private fun attachRawCollectionListeners(db: FirebaseFirestore) {
-        if (rawCollectionListeners.isNotEmpty()) return
-        Log.d(TAG, "Attaching raw collection listeners for ${ALL_COLLECTIONS.joinToString()}")
-        try {
-            for (col in ALL_COLLECTIONS) {
-                val reg = db.collection(col).addSnapshotListener { snapshot, error ->
-                    if (error != null) {
-                        Log.w(TAG, "Firestore listener error on collection $col: ${error.message}")
-                        return@addSnapshotListener
-                    }
-
-                    val items = snapshot?.documents?.mapNotNull { doc ->
-                        try {
-                            doc.toObject(MediaItem::class.java)?.let { item ->
-                                val finalCategory = if (item.category.isNotBlank()) item.category else when (col) {
-                                    COLLECTION_ANIMES -> "Anime"
-                                    COLLECTION_SERIES -> "Series"
-                                    else -> "Movies"
-                                }
-                                val finalType = if (item.type.isNotBlank()) item.type else when (col) {
-                                    COLLECTION_ANIMES -> "Anime"
-                                    COLLECTION_SERIES -> "Series"
-                                    else -> "Movie"
-                                }
-                                val createdAt = if (item.createdAt > 0L) {
-                                    item.createdAt
-                                } else {
-                                    doc.getLong("createdAt")
-                                        ?: doc.getTimestamp("createdAt")?.toDate()?.time
-                                        ?: doc.getLong("timestamp")
-                                        ?: doc.getTimestamp("timestamp")?.toDate()?.time
-                                        ?: 0L
-                                }
-                                val updatedAt = if (item.updatedAt > 0L) {
-                                    item.updatedAt
-                                } else {
-                                    doc.getLong("updatedAt")
-                                        ?: doc.getTimestamp("updatedAt")?.toDate()?.time
-                                        ?: createdAt
-                                }
-                                val franchiseOrder = if (item.franchiseOrder > 0.0) {
-                                    item.franchiseOrder
-                                } else {
-                                    doc.getDouble("franchiseOrder")
-                                        ?: doc.getLong("franchiseOrder")?.toDouble()
-                                        ?: 0.0
-                                }
-                                val isFeatured = doc.getBoolean("isFeatured")
-                                    ?: doc.getBoolean("featured")
-                                    ?: item.isFeatured
-                                val isTrending = doc.getBoolean("isTrending")
-                                    ?: doc.getBoolean("trending")
-                                    ?: item.isTrending
-                                val trendingAt = doc.getLong("trendingAt")
-                                    ?: doc.getTimestamp("trendingAt")?.toDate()?.time
-                                    ?: item.trendingAt
-                                val migratedEpisodes = item.episodes.map { ep ->
-                                    ep.copy(
-                                        streamUrl = StreamBackendConfig.migrateUrl(ep.streamUrl),
-                                        mirrorStreamUrl = StreamBackendConfig.migrateUrl(ep.mirrorStreamUrl)
-                                    )
-                                }
-                                (if (item.id.isBlank()) item.copy(id = doc.id) else item).copy(
-                                    category = finalCategory,
-                                    type = finalType,
-                                    isFeatured = isFeatured,
-                                    isTrending = isTrending,
-                                    trendingAt = trendingAt,
-                                    franchiseOrder = franchiseOrder,
-                                    createdAt = createdAt,
-                                    updatedAt = updatedAt,
-                                    episodes = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(migratedEpisodes)
-                                )
-                            }
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Failed to parse document ${doc.id} from $col", e)
-                            null
-                        }
-                    } ?: emptyList()
-
-                    collectionMap[col] = items
-
-                    // Merge all collections together, deduplicating by ID with timestamp protection
-                    val currentCatalog = _mediaCatalog.value
-                    val currentById = currentCatalog.associateBy { it.id }
-                    val allRaw = collectionMap.values.flatten().distinctBy { it.id }
-                    val merged = allRaw.map { incomingItem ->
-                        val localItem = currentById[incomingItem.id]
-                        if (localItem != null && localItem.updatedAt > incomingItem.updatedAt) {
-                            localItem
-                        } else {
-                            incomingItem
-                        }
-                    }
-                    val incomingIds = allRaw.map { it.id }.toSet()
-                    val pendingLocal = currentCatalog.filter { it.id !in incomingIds && it.updatedAt > 0L }
-                    val finalCatalog = (merged + pendingLocal).distinctBy { it.id }
-
-                    _mediaCatalog.value = finalCatalog
-                    _catalogState.value = CatalogState.Ready
-                    Log.d(TAG, "Firestore synced raw collection '$col' (${items.size} items), total merged = ${finalCatalog.size}")
-
-                    triggerNotificationAlerts(finalCatalog)
-                }
-                rawCollectionListeners.add(reg)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to attach raw collection listeners", e)
-        }
-    }
-
-    private fun removeRawCollectionListeners() {
-        rawCollectionListeners.forEach { it.remove() }
-        rawCollectionListeners.clear()
-        collectionMap.clear()
-    }
-
-    private fun removeFirestoreListeners() {
-        removeRawCollectionListeners()
-        activeListeners.forEach { it.remove() }
-        activeListeners.clear()
     }
 
     private fun triggerNotificationAlerts(items: List<MediaItem>) {
@@ -487,7 +333,7 @@ class CatalogRepository private constructor() {
                     thumbnailUrl = epMap["thumbnailUrl"] as? String ?: "",
                     streamUrl = epMap["streamUrl"] as? String ?: "",
                     mirrorStreamUrl = epMap["mirrorStreamUrl"] as? String ?: "",
-                    telegramFileId = epMap["telegramFileId"] as? String ?: "",
+                    fileId = epMap["fileId"] as? String ?: epMap["streamFileId"] as? String ?: epMap["telegramFileId"] as? String ?: "",
                     durationMs = (epMap["durationMs"] as? Number)?.toLong() ?: 0L,
                     fileName = epMap["fileName"] as? String ?: "",
                     fileSize = epMap["fileSize"] as? String ?: ""
@@ -617,22 +463,6 @@ class CatalogRepository private constructor() {
         // 3. Primary write: Cloudflare Edge KV
         val edgeResult = com.streamhub.app.data.api.CatalogEdgeClient.saveMediaItem(itemToSave)
 
-        // 4. Dual-write backup to Firestore (non-blocking, best-effort)
-        firestore?.let { db ->
-            try {
-                val targetCollection = getCollectionForCategory(itemToSave.category, itemToSave.type)
-                val batch = db.batch()
-                batch.set(db.collection(targetCollection).document(itemToSave.id), mediaItemToMap(itemToSave))
-                for (col in ALL_COLLECTIONS) {
-                    if (col != targetCollection) {
-                        batch.delete(db.collection(col).document(itemToSave.id))
-                    }
-                }
-                batch.commit()
-            } catch (e: Exception) {
-                Log.w(TAG, "Non-fatal Firestore backup write error: ${e.message}")
-            }
-        }
 
         if (edgeResult.isSuccess) {
             Log.d(TAG, "Successfully synced media item to Cloudflare Edge: ${itemToSave.id}")
@@ -710,23 +540,6 @@ class CatalogRepository private constructor() {
             savedCount += chunk.size
         }
 
-        // Best-effort Firestore dual-write backup in background
-        firestore?.let { db ->
-            scope.launch(Dispatchers.IO) {
-                try {
-                    for (chunk in preparedItems.chunked(250)) {
-                        val batch = db.batch()
-                        for (item in chunk) {
-                            val targetCol = getCollectionForCategory(item.category, item.type)
-                            batch.set(db.collection(targetCol).document(item.id), mediaItemToMap(item))
-                        }
-                        Tasks.await(batch.commit())
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Non-fatal Firestore backup batch write error: ${e.message}")
-                }
-            }
-        }
 
         _adminOperationState.value = AdminOperationState.Success()
         com.streamhub.app.data.api.CatalogEdgeClient.refreshEdgeCatalog()
@@ -794,18 +607,6 @@ class CatalogRepository private constructor() {
 
             val edgeResult = com.streamhub.app.data.api.CatalogEdgeClient.deleteMediaItem(itemId)
 
-            // Dual-delete backup in Firestore (non-blocking)
-            firestore?.let { db ->
-                try {
-                    val batch = db.batch()
-                    for (col in ALL_COLLECTIONS) {
-                        batch.delete(db.collection(col).document(itemId))
-                    }
-                    batch.commit()
-                } catch (e: Exception) {
-                    Log.w(TAG, "Non-fatal Firestore backup delete error: ${e.message}")
-                }
-            }
 
             if (edgeResult.isSuccess) {
                 _adminOperationState.value = AdminOperationState.Success()
@@ -867,8 +668,6 @@ class CatalogRepository private constructor() {
         includeAlwaysdata: Boolean = true,
         onProgress: (current: Int, total: Int, updated: Int) -> Unit = { _, _, _ -> }
     ): Result<Int> = withContext(Dispatchers.IO) {
-        val db = firestore ?: return@withContext Result.failure(IllegalStateException("Firestore not initialized"))
-
         val cleanSource = sourceHost.trim().removePrefix("http://").removePrefix("https://").trimEnd('/')
         val cleanTarget = targetHost.trim().removePrefix("http://").removePrefix("https://").trimEnd('/')
 
@@ -877,18 +676,11 @@ class CatalogRepository private constructor() {
         }
 
         try {
-            val collections = listOf(COLLECTION_ANIMES, COLLECTION_MOVIES, COLLECTION_SERIES)
-            val docsToProcess = mutableListOf<Pair<String, com.google.firebase.firestore.DocumentSnapshot>>()
-
-            for (col in collections) {
-                val snapshot = Tasks.await(db.collection(col).get())
-                for (doc in snapshot.documents) {
-                    docsToProcess.add(col to doc)
-                }
-            }
-            val totalDocs = docsToProcess.size
+            val items = _mediaCatalog.value
+            val totalDocs = items.size
             var processed = 0
             var updated = 0
+            val itemsToSave = mutableListOf<MediaItem>()
 
             fun needsMigration(url: String): Boolean {
                 if (url.isBlank()) return false
@@ -908,49 +700,38 @@ class CatalogRepository private constructor() {
                 )
             }
 
-            for ((col, doc) in docsToProcess) {
+            for (item in items) {
                 processed++
-                val item = doc.toObject(MediaItem::class.java)
-                if (item != null) {
-                    val rawDocStream = doc.getString("streamUrl").orEmpty()
-                    val rawDocMirror = doc.getString("mirrorStreamUrl").orEmpty()
+                val hasLegacyInEpisodes = item.episodes.any { ep ->
+                    needsMigration(ep.streamUrl) || needsMigration(ep.mirrorStreamUrl)
+                }
 
-                    val hasLegacyInRoot = needsMigration(rawDocStream) || needsMigration(rawDocMirror)
-                    val hasLegacyInEpisodes = item.episodes.any { ep ->
-                        needsMigration(ep.streamUrl) || needsMigration(ep.mirrorStreamUrl)
-                    }
-
-                    if (hasLegacyInRoot || hasLegacyInEpisodes) {
-                        val migratedEpisodes = item.episodes.map { ep ->
-                            ep.copy(
-                                streamUrl = rewrite(ep.streamUrl),
-                                mirrorStreamUrl = rewrite(if (ep.mirrorStreamUrl.isNotBlank()) ep.mirrorStreamUrl else ep.streamUrl)
-                            )
-                        }
-
-                        val updatedItem = item.copy(
-                            id = doc.id,
-                            episodes = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(migratedEpisodes),
-                            updatedAt = System.currentTimeMillis()
+                if (hasLegacyInEpisodes) {
+                    val migratedEpisodes = item.episodes.map { ep ->
+                        ep.copy(
+                            streamUrl = rewrite(ep.streamUrl),
+                            mirrorStreamUrl = rewrite(if (ep.mirrorStreamUrl.isNotBlank()) ep.mirrorStreamUrl else ep.streamUrl)
                         )
-
-                        val docMap = mediaItemToMap(updatedItem).toMutableMap()
-                        if (rawDocStream.isNotBlank()) {
-                            docMap["streamUrl"] = rewrite(rawDocStream)
-                        }
-                        if (rawDocMirror.isNotBlank()) {
-                            docMap["mirrorStreamUrl"] = rewrite(rawDocMirror)
-                        }
-
-                        Tasks.await(db.collection(col).document(doc.id).set(docMap))
-                        updated++
-                        Log.d(TAG, "Migrated document ${doc.id} in collection '$col' to $cleanTarget")
                     }
+
+                    val updatedItem = item.copy(
+                        episodes = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(migratedEpisodes),
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    itemsToSave.add(updatedItem)
+                    updated++
                 }
                 onProgress(processed, totalDocs, updated)
             }
 
-            Log.i(TAG, "Completed catalog migration to $cleanTarget: $updated of $totalDocs documents updated.")
+            if (itemsToSave.isNotEmpty()) {
+                val saveResult = saveMediaItemsBatchSuspending(itemsToSave)
+                if (saveResult.isFailure) {
+                    return@withContext Result.failure(saveResult.exceptionOrNull() ?: Exception("Failed to save migrated items"))
+                }
+            }
+
+            Log.i(TAG, "Completed catalog migration to $cleanTarget: $updated of $totalDocs items updated.")
             Result.success(updated)
         } catch (e: Exception) {
             Log.e(TAG, "Catalog migration failed", e)

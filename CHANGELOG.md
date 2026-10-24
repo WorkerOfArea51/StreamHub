@@ -2,6 +2,23 @@
 
 All notable changes, architectural milestones, and performance optimizations for the **StreamHub** Android ecosystem are documented in this file.
 
+## 🌟 [v4.8.424] - 2026-10-25 (100% Zero-Firebase Architecture, Cloudflare VIP Voucher KV, & Clean FileId Data Model)
+
+### 🚀 100% Zero-Firebase Architecture ($0/Month Free Tier)
+
+- **🔥 Complete Firebase & Google Services Eradication**:
+  - Completely purged `google-services` Gradle plugin, `firebase-firestore-ktx`, `firebase-messaging-ktx`, and `app/google-services.json`.
+  - All ecosystem features—Video Streaming Proxy, Media Catalog KV, Viewer Telemetry, and Single-Device VIP Vouchers—run 100% on Cloudflare's Free Tier with zero database costs.
+  - Eliminated legacy FCM push service (`StreamHubMessagingService.kt`), relying on native GitHub releases via `AppUpdateManager` and `CatalogSyncWorker` for battery-efficient update notifications.
+- **🎟️ Cloudflare Worker VIP Voucher KV Engine (`VoucherManager.kt`, `CatalogEdgeClient.kt`, `cloudflare/worker.js`)**:
+  - Implemented full REST endpoints on Cloudflare Edge: `GET /api/vouchers`, `POST /api/vouchers`, `POST /api/vouchers/redeem`, `GET /api/vouchers/check/:deviceId`, and `DELETE /api/vouchers/:code`.
+  - Migrated `VoucherManager` to 100% Cloudflare KV with zero Firebase imports, preserving hardware-hash binding, anti-sharing guards, and 30-day expirations.
+- **📁 Data Model Modernization & Backward Compatibility (`MediaModel.kt`, `CatalogRepository.kt`)**:
+  - Renamed `telegramFileId` to clean `fileId` across the `Episode` data model, storage cache indexer, batch parsers, and deduplication managers.
+  - Maintained complete backward compatibility via getter `telegramFileId` and dual-key JSON serialization/deserialization for all existing catalog items.
+- **🛠️ Clean CI/CD Release Pipeline (`.github/workflows/release.yml`)**:
+  - Removed `Restore google-services.json` and external FCM push steps from the GitHub Actions release workflow.
+
 ## 🌟 [v4.8.423] - 2026-10-24 (100% Free Cloudflare Edge Migration & Zero-Firestore Leak Fix)
 
 ### 🚀 Cloudflare Edge Database Migration ($0/Month Free Tier)

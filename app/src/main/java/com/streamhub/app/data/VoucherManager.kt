@@ -4,39 +4,32 @@ import android.content.Context
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
-import com.google.android.gms.tasks.Tasks
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ListenerRegistration
+import com.streamhub.app.data.api.CatalogEdgeClient
 import com.streamhub.app.data.models.VipVoucher
+import com.streamhub.app.data.models.VoucherStatusCheck
 import com.streamhub.app.data.models.VoucherVerificationResult
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 import java.security.SecureRandom
 
-/** Outcome of a startup voucher revalidation — distinguishes revocation from inconclusive checks. */
-sealed class VoucherStatusCheck {
-    data class Active(val voucher: VipVoucher) : VoucherStatusCheck()
-    object Revoked : VoucherStatusCheck()
-    data class VerificationFailed(val reason: String) : VoucherStatusCheck()
-}
-
 /**
  * High-Security 1-Device 30-Day VIP Voucher Engine for StreamHub.
+ * Powered 100% by Cloudflare Edge KV (Zero-Firebase).
  *
  * Enforces hardware device binding via hashed Android ID (persisting across uninstalls
  * and cache wipes on the same device) while permanently blocking cross-device sharing.
  *
  * Starts a strict 30-day countdown upon first activation, and purges expired credentials
- * from Firestore permanently to prevent unauthorized reuse and protect server bandwidth.
+ * from Cloudflare KV permanently to prevent unauthorized reuse and protect server bandwidth.
  */
 object VoucherManager {
 
     private const val TAG = "VoucherManager"
-    private const val COLLECTION_VOUCHERS = "vip_vouchers"
     private const val DEVICE_SALT = "StreamHub_Hardware_Salt_2026_Secure"
 
     private fun maskCode(code: String): String {
@@ -46,10 +39,7 @@ object VoucherManager {
     // Base32 Crockford-style alphabet excluding easily confused glyphs (0, O, 1, I)
     private val CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ".toCharArray()
 
-    private val firestore: FirebaseFirestore?
-        get() = runCatching { FirebaseFirestore.getInstance() }
-            .onFailure { Log.e(TAG, "Failed to get Firestore instance", it) }
-            .getOrNull()
+    private val _vouchersFlow = MutableStateFlow<List<VipVoucher>>(emptyList())
 
     /**
      * Generates a cryptographically unguessable voucher code in the format:
@@ -88,7 +78,7 @@ object VoucherManager {
     }
 
     /**
-     * Creates a new available voucher in Firestore (called from Creator Studio).
+     * Creates a new available voucher in Cloudflare Edge KV (called from Creator Studio).
      */
     suspend fun createVoucher(
         label: String = "",
@@ -98,36 +88,17 @@ object VoucherManager {
             Log.e(TAG, "SECURITY VIOLATION: Unauthorized attempt to create VIP voucher without Admin verification!")
             return@withContext Result.failure(SecurityException("Unauthorized: Creator Studio Admin mode required"))
         }
-        val db = firestore ?: return@withContext Result.failure(IllegalStateException("Firestore is not available"))
-        try {
-            val code = generateSecureCode()
-            val voucher = VipVoucher(
-                code = code,
-                label = label.trim(),
-                status = VipVoucher.STATUS_AVAILABLE,
-                createdAt = System.currentTimeMillis(),
-                durationDays = durationDays,
-                boundDeviceId = "",
-                deviceModel = ""
-            )
-
-            val docMap = voucherToMap(voucher)
-            Tasks.await(db.collection(COLLECTION_VOUCHERS).document(code).set(docMap))
-            Log.i(TAG, "Created new VIP voucher: ${maskCode(code)} (label='$label')")
-            Result.success(voucher)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to create voucher", e)
-            Result.failure(e)
+        val code = generateSecureCode()
+        val result = CatalogEdgeClient.createVoucher(code, label.trim(), durationDays)
+        result.onSuccess { voucher ->
+            Log.i(TAG, "Created new VIP voucher: ${maskCode(code)} (label='$label') via Cloudflare KV")
+            _vouchersFlow.value = listOf(voucher) + _vouchersFlow.value
         }
+        result
     }
 
     /**
      * Verifies and redeems a voucher code on the user's physical device.
-     *
-     * - If AVAILABLE: Binds to this device's hardware ID and starts the 30-day countdown.
-     * - If ACTIVE & same device: Restores access with remaining days (survives reinstall/clear data).
-     * - If ACTIVE & different device: Blocks redemption (anti-leak protection).
-     * - If EXPIRED: Deletes the document from Firestore and rejects.
      */
     suspend fun verifyAndRedeemVoucher(
         inputCode: String,
@@ -136,79 +107,15 @@ object VoucherManager {
         val cleanCode = inputCode.trim().uppercase()
         if (cleanCode.isBlank()) return@withContext VoucherVerificationResult.InvalidCode
 
-        val db = firestore ?: return@withContext VoucherVerificationResult.Error("Database connection unavailable. Please check your internet connection.")
         val deviceId = getHashedDeviceId(context)
-        val now = System.currentTimeMillis()
-
-        runCatching {
-            val docRef = db.collection(COLLECTION_VOUCHERS).document(cleanCode)
-            Tasks.await(db.runTransaction { transaction ->
-                val snapshot = transaction.get(docRef)
-                if (!snapshot.exists()) {
-                    Log.w(TAG, "Voucher ${maskCode(cleanCode)} does not exist")
-                    return@runTransaction VoucherVerificationResult.InvalidCode
-                }
-
-                val voucher = mapToVoucher(snapshot.data ?: emptyMap(), cleanCode)
-
-                when (voucher.status) {
-                    VipVoucher.STATUS_AVAILABLE -> {
-                        // First-time activation: bind to this phone and start 30-day clock
-                        val expiresAt = now + (voucher.durationDays.toLong() * 24 * 60 * 60 * 1000L)
-                        val updatedVoucher = voucher.copy(
-                            status = VipVoucher.STATUS_ACTIVE,
-                            activatedAt = now,
-                            expiresAt = expiresAt,
-                            boundDeviceId = deviceId,
-                            deviceModel = getDeviceModel()
-                        )
-
-                        transaction.set(docRef, voucherToMap(updatedVoucher))
-                        Log.i(TAG, "Voucher ${maskCode(cleanCode)} successfully activated and bound to device $deviceId")
-                        VoucherVerificationResult.Success(
-                            daysRemaining = voucher.durationDays,
-                            isReactivation = false
-                        )
-                    }
-
-                    VipVoucher.STATUS_ACTIVE -> {
-                        // Check if 30 days have elapsed
-                        if (now >= voucher.expiresAt) {
-                            Log.i(TAG, "Voucher ${maskCode(cleanCode)} has expired. Purging from Firestore.")
-                            transaction.delete(docRef)
-                            VoucherVerificationResult.Expired
-                        } else if (voucher.boundDeviceId == deviceId) {
-                            // Same physical device returning after clear data or reinstall
-                            val daysRemaining = (((voucher.expiresAt - now) / (1000L * 60 * 60 * 24L)).toInt()).coerceAtLeast(1)
-                            Log.i(TAG, "Voucher ${maskCode(cleanCode)} reactivated on same device. Days remaining: $daysRemaining")
-                            VoucherVerificationResult.Success(
-                                daysRemaining = daysRemaining,
-                                isReactivation = true
-                            )
-                        } else {
-                            // Different device attempting to redeem — anti-sharing block!
-                            Log.w(TAG, "Voucher $cleanCode sharing blocked! Bound to ${voucher.boundDeviceId}, attempted by $deviceId")
-                            VoucherVerificationResult.BoundToAnotherDevice
-                        }
-                    }
-
-                    else -> {
-                        // Expired or invalid status — purge and reject
-                        transaction.delete(docRef)
-                        VoucherVerificationResult.Expired
-                    }
-                }
-            })
-        }.getOrElse { e ->
-            Log.e(TAG, "Error redeeming voucher $cleanCode", e)
-            VoucherVerificationResult.Error(e.localizedMessage ?: "Failed to verify access code")
-        }
+        val deviceModel = getDeviceModel()
+        val result = CatalogEdgeClient.redeemVoucher(cleanCode, deviceId, deviceModel)
+        Log.i(TAG, "Redeem result for ${maskCode(cleanCode)} on device $deviceId: $result")
+        result
     }
 
     /**
-     * Checks if this device currently has an active valid voucher on Firestore.
-     * Backward-compatible wrapper: null means "no active voucher OR inconclusive" —
-     * callers that need the distinction must use [checkDeviceActiveVoucherStatus].
+     * Checks if this device currently has an active valid voucher on Cloudflare Edge KV.
      */
     suspend fun checkDeviceActiveVoucher(context: Context): VipVoucher? =
         when (val check = checkDeviceActiveVoucherStatus(context)) {
@@ -218,65 +125,29 @@ object VoucherManager {
         }
 
     /**
-     * CRITICAL FIX (offline lockout): sealed outcome so the caller can lock the app ONLY
-     * on an affirmative server verdict. Offline / timeout / Firestore failure returns
-     * VerificationFailed and must never wipe the local unlock state.
-     *
-     * Schema: collection "vip_vouchers", document ID = voucher code,
-     * device binding in field "boundDeviceId", status in "status".
+     * Bounded check for active device voucher pass on startup.
      */
     suspend fun checkDeviceActiveVoucherStatus(context: Context): VoucherStatusCheck =
         withContext(Dispatchers.IO) {
-            val db = firestore
-                ?: return@withContext VoucherStatusCheck.VerificationFailed("Firestore unavailable")
             val deviceId = getHashedDeviceId(context)
-            val now = System.currentTimeMillis()
-
-            try {
-                val query = db.collection(COLLECTION_VOUCHERS)
-                    .whereEqualTo("boundDeviceId", deviceId)
-                    .whereEqualTo("status", VipVoucher.STATUS_ACTIVE)
-                    .get()
-
-                // Bounded wait: without a timeout, an offline device hangs this check
-                // indefinitely (Firestore retries transparently under the hood).
-                val snapshot = Tasks.await(query, 10, java.util.concurrent.TimeUnit.SECONDS)
-
-                for (doc in snapshot.documents) {
-                    val voucher = mapToVoucher(doc.data ?: emptyMap(), doc.id)
-                    if (now >= voucher.expiresAt) {
-                        // Purge expired voucher
-                        doc.reference.delete()
-                    } else {
-                        return@withContext VoucherStatusCheck.Active(voucher)
-                    }
-                }
-                VoucherStatusCheck.Revoked
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                VoucherStatusCheck.VerificationFailed(e.localizedMessage ?: e.javaClass.simpleName)
-            }
+            CatalogEdgeClient.checkDeviceVoucher(deviceId)
         }
 
     /**
-     * Deletes a voucher permanently from Firestore (called from Creator Studio).
+     * Deletes a voucher permanently from Cloudflare Edge KV (called from Creator Studio).
      */
     suspend fun deleteVoucher(code: String): Result<Unit> = withContext(Dispatchers.IO) {
         if (!AdminManager.isAdminMode.value) {
             Log.e(TAG, "SECURITY VIOLATION: Unauthorized attempt to delete VIP voucher without Admin verification!")
             return@withContext Result.failure(SecurityException("Unauthorized: Creator Studio Admin mode required"))
         }
-        val db = firestore ?: return@withContext Result.failure(IllegalStateException("Firestore is not available"))
-        try {
-            val cleanCode = code.trim().uppercase()
-            Tasks.await(db.collection(COLLECTION_VOUCHERS).document(cleanCode).delete())
-            Log.i(TAG, "Voucher ${maskCode(cleanCode)} permanently deleted")
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete voucher", e)
-            Result.failure(e)
+        val cleanCode = code.trim().uppercase()
+        val result = CatalogEdgeClient.deleteVoucher(cleanCode)
+        result.onSuccess {
+            Log.i(TAG, "Voucher ${maskCode(cleanCode)} permanently deleted from Cloudflare KV")
+            _vouchersFlow.value = _vouchersFlow.value.filterNot { it.code.equals(cleanCode, ignoreCase = true) }
         }
+        result
     }
 
     /**
@@ -284,84 +155,34 @@ object VoucherManager {
      */
     suspend fun purgeExpiredVouchers(): Result<Int> = withContext(Dispatchers.IO) {
         if (!AdminManager.isAdminMode.value) {
-            Log.e(TAG, "SECURITY VIOLATION: Unauthorized attempt to purge VIP vouchers without Admin verification!")
             return@withContext Result.failure(SecurityException("Unauthorized: Creator Studio Admin mode required"))
         }
-        val db = firestore ?: return@withContext Result.failure(IllegalStateException("Firestore is not available"))
+        refreshVouchers()
         val now = System.currentTimeMillis()
-
-        try {
-            val snapshot = Tasks.await(db.collection(COLLECTION_VOUCHERS).get())
-            var purged = 0
-            for (doc in snapshot.documents) {
-                val expiresAt = doc.getLong("expiresAt") ?: 0L
-                val status = doc.getString("status") ?: ""
-                if ((expiresAt in 1..now) || status == VipVoucher.STATUS_EXPIRED) {
-                    Tasks.await(doc.reference.delete())
-                    purged++
-                }
+        var purged = 0
+        for (v in _vouchersFlow.value) {
+            if (v.isExpired || (v.expiresAt in 1..now)) {
+                deleteVoucher(v.code)
+                purged++
             }
-            Log.i(TAG, "Purged $purged expired vouchers from Firestore")
-            Result.success(purged)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to purge expired vouchers", e)
-            Result.failure(e)
         }
+        Result.success(purged)
+    }
+
+    /**
+     * Refreshes the local list of vouchers from Cloudflare Edge KV.
+     */
+    suspend fun refreshVouchers() = withContext(Dispatchers.IO) {
+        CatalogEdgeClient.fetchVouchers()
+            .onSuccess { _vouchersFlow.value = it }
+            .onFailure { Log.e(TAG, "Failed to refresh vouchers from Cloudflare KV", it) }
     }
 
     /**
      * Real-time stream of all vouchers for the Creator Studio dashboard.
      */
-    fun getVouchersFlow(): Flow<List<VipVoucher>> = callbackFlow {
-        val db = firestore
-        if (db == null) {
-            trySend(emptyList())
-            close()
-            return@callbackFlow
-        }
-
-        val registration: ListenerRegistration = db.collection(COLLECTION_VOUCHERS)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    Log.e(TAG, "Vouchers flow error", error)
-                    return@addSnapshotListener
-                }
-                if (snapshot != null) {
-                    val list = snapshot.documents.mapNotNull { doc ->
-                        mapToVoucher(doc.data ?: emptyMap(), doc.id)
-                    }.sortedByDescending { it.createdAt }
-                    trySend(list)
-                }
-            }
-
-        awaitClose { registration.remove() }
-    }
-
-    private fun voucherToMap(voucher: VipVoucher): Map<String, Any> {
-        return mapOf(
-            "code" to voucher.code,
-            "label" to voucher.label,
-            "status" to voucher.status,
-            "createdAt" to voucher.createdAt,
-            "activatedAt" to voucher.activatedAt,
-            "expiresAt" to voucher.expiresAt,
-            "durationDays" to voucher.durationDays,
-            "boundDeviceId" to voucher.boundDeviceId,
-            "deviceModel" to voucher.deviceModel
-        )
-    }
-
-    private fun mapToVoucher(map: Map<String, Any>, docId: String): VipVoucher {
-        return VipVoucher(
-            code = (map["code"] as? String)?.ifBlank { docId } ?: docId,
-            label = map["label"] as? String ?: "",
-            status = map["status"] as? String ?: VipVoucher.STATUS_AVAILABLE,
-            createdAt = (map["createdAt"] as? Number)?.toLong() ?: 0L,
-            activatedAt = (map["activatedAt"] as? Number)?.toLong() ?: 0L,
-            expiresAt = (map["expiresAt"] as? Number)?.toLong() ?: 0L,
-            durationDays = (map["durationDays"] as? Number)?.toInt() ?: 30,
-            boundDeviceId = map["boundDeviceId"] as? String ?: "",
-            deviceModel = map["deviceModel"] as? String ?: ""
-        )
+    fun getVouchersFlow(): Flow<List<VipVoucher>> = flow {
+        refreshVouchers()
+        emitAll(_vouchersFlow)
     }
 }

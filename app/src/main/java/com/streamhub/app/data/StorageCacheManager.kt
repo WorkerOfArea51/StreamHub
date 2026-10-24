@@ -413,7 +413,7 @@ object StorageCacheManager {
             val isMovie = media.type.equals("MOVIE", ignoreCase = true) || media.category.equals("MOVIE", ignoreCase = true)
             // Check episodes (movies have a single episode or episode list)
             for (ep in media.episodes) {
-                val epFileId = ep.telegramFileId.ifBlank { StreamLinkResolver.extractMessageOrFileId(ep.streamUrl) }
+                val epFileId = ep.fileId.ifBlank { StreamLinkResolver.extractMessageOrFileId(ep.streamUrl) }
                 val epMirrorFileId = StreamLinkResolver.extractMessageOrFileId(ep.mirrorStreamUrl)
                 val isEpMatch = (fileId.isNotBlank() && (epFileId.equals(fileId, ignoreCase = true) || epMirrorFileId.equals(fileId, ignoreCase = true))) ||
                     (ep.streamUrl.isNotBlank() && (cacheKey.contains(ep.streamUrl, ignoreCase = true) || ep.streamUrl.contains(cacheKey, ignoreCase = true))) ||

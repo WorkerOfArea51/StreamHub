@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import com.streamhub.app.data.api.Secrets
 import com.streamhub.app.data.models.VoucherVerificationResult
+import com.streamhub.app.data.models.VoucherStatusCheck
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -79,14 +80,14 @@ object AccessGateManager {
                     managerScope.launch {
                         when (val status = VoucherManager.checkDeviceActiveVoucherStatus(appContext)) {
                             VoucherStatusCheck.Revoked -> {
-                                Log.w(TAG, "Voucher revoked on Firestore. Relocking.")
+                                Log.w(TAG, "Voucher revoked on Cloudflare Edge KV. Relocking.")
                                 lockApp()
                             }
                             is VoucherStatusCheck.VerificationFailed -> {
                                 Log.w(TAG, "Voucher verification inconclusive (${status.reason}) — keeping local unlock.")
                             }
                             is VoucherStatusCheck.Active -> {
-                                Log.i(TAG, "Voucher confirmed active on Firestore.")
+                                Log.i(TAG, "Voucher confirmed active on Cloudflare Edge KV.")
                             }
                         }
                     }
