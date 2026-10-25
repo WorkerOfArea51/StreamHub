@@ -47,6 +47,7 @@ object YoutubeStreamExtractor {
      *  3. Progressive MP4 Stream (Combined video + audio)
      *  4. Video-only stream (ExoPlayer playback)
      */
+    @Suppress("DEPRECATION")
     suspend fun extractStreamUrl(videoId: String): String? = withContext(Dispatchers.IO) {
         if (!isInitialized) {
             init()

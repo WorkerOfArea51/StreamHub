@@ -770,7 +770,7 @@ fun SurpriseMeDialog(
                                             modifier = Modifier.size(15.dp)
                                         )
                                         Text(
-                                            text = if (isBookmarked) "In My List" else "Save to List",
+                                            text = if (isBookmarked) "In Favorites" else "Save to Favorites",
                                             color = if (isBookmarked) AccentGold else TextSecondary,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Medium

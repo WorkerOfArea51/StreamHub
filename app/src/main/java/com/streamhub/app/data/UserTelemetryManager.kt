@@ -689,6 +689,7 @@ object UserTelemetryManager {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun getNetworkType(context: Context): String {
         return try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
@@ -723,7 +724,6 @@ object UserTelemetryManager {
             }
 
             // 3. Fallback: Legacy NetworkInfo (extremely reliable across all Android/MIUI versions)
-            @Suppress("DEPRECATION")
             val activeInfo = cm.activeNetworkInfo
             if (activeInfo != null && activeInfo.isConnectedOrConnecting) {
                 return when (activeInfo.type) {
@@ -758,6 +758,7 @@ object UserTelemetryManager {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun isVpnActive(context: Context): Boolean {
         return try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false

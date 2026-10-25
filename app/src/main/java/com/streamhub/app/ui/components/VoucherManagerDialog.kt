@@ -28,8 +28,10 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -73,6 +75,7 @@ fun VoucherManagerDialog(
 
     var labelInput by remember { mutableStateOf("") }
     var isGenerating by remember { mutableStateOf(false) }
+    var voucherToDelete by remember { mutableStateOf<VipVoucher?>(null) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -230,16 +233,52 @@ fun VoucherManagerDialog(
                                     ToastManager.showToast("Copied ${voucher.code} to clipboard! 📋")
                                 },
                                 onDelete = {
-                                    scope.launch {
-                                        VoucherManager.deleteVoucher(voucher.code)
-                                        ToastManager.showToast("Deleted code ${voucher.code}")
-                                    }
+                                    voucherToDelete = voucher
                                 }
                             )
                         }
                     }
                 }
             }
+        }
+
+        // Destructive Deletion Confirmation Dialog
+        if (voucherToDelete != null) {
+            val target = voucherToDelete!!
+            AlertDialog(
+                onDismissRequest = { voucherToDelete = null },
+                title = { Text("Delete Access Pass?", color = Color.White, fontWeight = FontWeight.Bold) },
+                text = {
+                    Text(
+                        "Are you sure you want to permanently delete pass '${target.code}'" +
+                            (if (target.label.isNotBlank()) " (${target.label})" else "") +
+                            "? Any device currently using this voucher will be locked.",
+                        color = TextSecondary,
+                        fontSize = 13.sp
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val code = target.code
+                            voucherToDelete = null
+                            scope.launch {
+                                VoucherManager.deleteVoucher(code)
+                                ToastManager.showToast("Deleted pass $code 🗑️")
+                            }
+                        }
+                    ) {
+                        Text("Delete", color = PrimaryRed, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { voucherToDelete = null }) {
+                        Text("Cancel", color = TextSecondary)
+                    }
+                },
+                containerColor = Color(0xFF1E1E30),
+                shape = RoundedCornerShape(16.dp)
+            )
         }
     }
 }

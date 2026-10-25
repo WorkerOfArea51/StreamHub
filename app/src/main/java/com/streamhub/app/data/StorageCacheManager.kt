@@ -399,7 +399,7 @@ object StorageCacheManager {
     }
 
     /**
-     * Smart reverse lookup: matches raw stream URLs/hashes against Firebase media catalog
+     * Smart reverse lookup: matches raw stream URLs/hashes against media catalog
      * and Watch History to resolve real movie/series titles, episode names, and posters.
      */
     private fun resolveMediaInfoForCacheKey(cacheKey: String, sizeBytes: Long): CachedMediaMetadata {

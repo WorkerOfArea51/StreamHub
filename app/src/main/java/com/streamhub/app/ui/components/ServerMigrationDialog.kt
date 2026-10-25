@@ -70,7 +70,7 @@ import kotlinx.coroutines.launch
 /**
  * 1-Tap Universal VPS / Server Domain Migration Dialog.
  *
- * Allows migrating media stream URLs in Firestore across animes, movies, and web_series
+ * Allows migrating media stream URLs in Cloudflare Edge KV across animes, movies, and web_series
  * whenever switching VPS servers, updating domains, or normalizing /stream/ to /dl/.
  */
 @Composable
@@ -150,7 +150,7 @@ fun ServerMigrationDialog(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "1-Tap Firestore Catalog Domain Rewriter",
+                                text = "1-Tap Cloud Catalog Domain Rewriter",
                                 color = Color(0xFF38BDF8),
                                 fontSize = 11.sp
                             )
@@ -509,7 +509,7 @@ fun ServerMigrationDialog(
                     }
                 } else {
                     Text(
-                        text = "ℹ️ Running this migration permanently updates your Firestore documents across all shows so playback and downloads connect to your new VPS domain immediately.",
+                        text = "ℹ️ Running this migration permanently updates your cloud documents across all shows so playback and downloads connect to your new VPS domain immediately.",
                         color = TextSecondary,
                         fontSize = 11.sp,
                         lineHeight = 15.sp

@@ -2,6 +2,35 @@
 
 All notable changes, architectural milestones, and performance optimizations for the **StreamHub** Android ecosystem are documented in this file.
 
+## 🌟 [v4.8.428] - 2026-10-25 (Project-Wide Audit, 0-Warning Cleanliness, Lifecycle Hardening & Cloudflare Modernization)
+
+### 🧹 Build Cleanliness & Compiler Polish
+
+- **Manifest Merger Cleanliness (`AndroidManifest.xml`)**:
+  - Completely purged obsolete `tools:replace="android:allowBackup"` attribute, eliminating build-time manifest merger warnings.
+- **0-Warning Compilation**:
+  - Suppressed deprecated network connectivity queries in `UserTelemetryManager.kt` while preserving Xiaomi/HyperOS dual-SIM connectivity fallback detection.
+  - Added targeted `@Suppress("DEPRECATION")` and `@Suppress("UNCHECKED_CAST")` across `StreamHubApplication.kt`, `CatalogRepository.kt`, and `YoutubeStreamExtractor.kt`.
+  - Cleaned unneeded imports across data and UI layers.
+
+### 🛡️ Full-Lifecycle Hardening & Destructive Action Safety
+
+- **Orphan Item Cascade Migration (`MyListManager.kt`)**:
+  - Deleting a custom collection/folder now cascades orphaned shows directly into **Favorites** (`isFavorite = true, collection = "Favorites"`), preventing orphaned ghost records and keeping user titles accessible.
+  - Unified quick-add feedback toasts and sheets to consistently state `"Added to Favorites"`.
+- **Destructive Action Confirmation Dialogs**:
+  - Added protective Material 3 `AlertDialog` popups before deleting single episodes in Creator Studio (`AdminLinksTab.kt`), Arc Episode Editor (`ArcEpisodeEditorDialog.kt`), and VIP Passes in Voucher Manager (`VoucherManagerDialog.kt`), preventing accidental 1-tap data loss.
+
+### ☁️ Cloudflare Edge KV Modernization & Markdown Sync
+
+- **README Modernization (`README.md`)**:
+  - Replaced legacy Firebase badges, architecture diagrams, tech stacks, and database guides with native Cloudflare Edge KV ($0/month Free Tier) documentation.
+  - Replaced personal Telegram username links with the official community bot (`https://t.me/Fil3Stor3_bot`).
+- **Catalog Dialog & Manager Terminology**:
+  - Renamed `CatalogBackupManager.restoreToFirestore` to `restoreToCatalog` and modernized dialog titles and feedback cards.
+- **Sprint History Archival (`GEMINI.md`, `.agents/SPRINT_HISTORY.md`)**:
+  - Safely archived builds v4.8.412–v4.8.420 into `.agents/SPRINT_HISTORY.md`, slimming `GEMINI.md` to guarantee zero agent context truncation.
+
 ## 🌟 [v4.8.427] - 2026-10-25 (Favorites Default on Quick Add & Home-Parity My List Catalog Redesign)
 
 ### ❤️ My List & Watchlist Ecosystem Enhancements

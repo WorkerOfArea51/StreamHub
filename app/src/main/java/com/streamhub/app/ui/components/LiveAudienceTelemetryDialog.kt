@@ -1464,7 +1464,7 @@ fun GlobalBroadcastDialog(onDismiss: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "Broadcasts a live heads-up notification to active users. Stored as a single self-expiring document in Firestore.",
+                    text = "Broadcasts a live heads-up notification to active users. Stored as a self-expiring broadcast key in Cloudflare Edge KV.",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )

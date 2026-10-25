@@ -106,6 +106,7 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
         })
     }
 
+    @Suppress("DEPRECATION")
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         if (level >= TRIM_MEMORY_RUNNING_LOW) {

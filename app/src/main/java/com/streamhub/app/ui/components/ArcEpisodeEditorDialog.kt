@@ -124,6 +124,7 @@ fun ArcEpisodeEditorDialog(
 
     // Clear Arc Confirmation Dialog
     var showClearArcDialog by remember { mutableStateOf(false) }
+    var episodeToDeleteIndex by remember { mutableStateOf<Int?>(null) }
 
     // Live Feedback Banners
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -1058,7 +1059,7 @@ fun ArcEpisodeEditorDialog(
                                 }
 
                                 IconButton(
-                                    onClick = { arcEpisodes.removeAt(index) },
+                                    onClick = { episodeToDeleteIndex = index },
                                     modifier = Modifier
                                         .size(30.dp)
                                         .bouncyTouch()
@@ -1130,6 +1131,46 @@ fun ArcEpisodeEditorDialog(
                         )
                     }
                 }
+            }
+        }
+
+        // Single Episode Deletion Confirmation Dialog
+        if (episodeToDeleteIndex != null) {
+            val targetIdx = episodeToDeleteIndex!!
+            val ep = arcEpisodes.getOrNull(targetIdx)
+            if (ep != null) {
+                AlertDialog(
+                    onDismissRequest = { episodeToDeleteIndex = null },
+                    title = { Text("Delete Episode ${ep.episodeNumber}?", color = Color.White, fontWeight = FontWeight.Bold) },
+                    text = {
+                        Text(
+                            "Are you sure you want to remove '${ep.title}' from this arc?",
+                            color = Color(0xFFB0BEC5),
+                            fontSize = 13.sp
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                if (targetIdx in arcEpisodes.indices) {
+                                    arcEpisodes.removeAt(targetIdx)
+                                }
+                                episodeToDeleteIndex = null
+                            }
+                        ) {
+                            Text("Delete", color = PrimaryRed, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { episodeToDeleteIndex = null }) {
+                            Text("Cancel", color = Color(0xFFB0BEC5))
+                        }
+                    },
+                    containerColor = Color(0xFF1E1E30),
+                    shape = RoundedCornerShape(16.dp)
+                )
+            } else {
+                episodeToDeleteIndex = null
             }
         }
     }

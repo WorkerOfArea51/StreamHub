@@ -104,13 +104,13 @@ jobs:
             TAG="${{ github.ref_name }}"
           else
             GRADLE_VER=$(grep -E 'versionName = ' app/build.gradle.kts | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
-            TAG="v${GRADLE_VER:-4.8.337}"
+            TAG="v${GRADLE_VER:-4.8.428}"
           fi
           BUILD=$(grep -E 'versionCode = ' app/build.gradle.kts | head -n1 | sed -E 's/.*?:[[:space:]]*([0-9]+).*/\1/')
           echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version_name=${TAG#v}" >> "$GITHUB_OUTPUT"
-          echo "build_number=${BUILD:-337}" >> "$GITHUB_OUTPUT"
-          echo "Target Release Tag: ${TAG} (Version: ${TAG#v}, Build: ${BUILD:-337})"
+          echo "build_number=${BUILD:-428}" >> "$GITHUB_OUTPUT"
+          echo "Target Release Tag: ${TAG} (Version: ${TAG#v}, Build: ${BUILD:-428})"
 
       - name: Build signed release APK
         env:

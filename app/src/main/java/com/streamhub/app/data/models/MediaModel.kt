@@ -45,7 +45,7 @@ data class MediaItem(
     val franchiseOrder: Double = 0.0,    // explicit chronological master order across franchise (e.g. 1.0, 2.0, 3.0 or 1.5)
     val seasonTitle: String = "",        // e.g. "Season 2: Arise from the Shadow", "Land of Waves Arc"
     val relationType: String = "",       // e.g. "Main Story", "Sequel", "Prequel", "Movie", "Side Story", "Spin-Off"
-    val relatedMediaIds: List<String> = emptyList(), // linked document IDs in Firestore
+    val relatedMediaIds: List<String> = emptyList(), // linked document IDs in cloud catalog
     val createdAt: Long = 0L,            // Epoch millis when uploaded/created for accurate chronologic sorting
     val updatedAt: Long = 0L,            // Epoch millis when last modified/updated
     val director: String = "",

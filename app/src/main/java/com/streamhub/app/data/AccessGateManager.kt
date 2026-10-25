@@ -76,7 +76,7 @@ object AccessGateManager {
                     Log.i(TAG, "AccessGate: Voucher active. Days remaining: $daysLeft")
 
                     // CRITICAL FIX: only an affirmative Revoked verdict may relock the app.
-                    // Offline / timeout / Firestore errors keep the local unlock intact.
+                    // Offline / timeout / Cloudflare KV errors keep the local unlock intact.
                     managerScope.launch {
                         when (val status = VoucherManager.checkDeviceActiveVoucherStatus(appContext)) {
                             VoucherStatusCheck.Revoked -> {
@@ -137,7 +137,7 @@ object AccessGateManager {
     }
 
     /**
-     * Comprehensive verification checking Lifetime codes first, then Firestore vouchers.
+     * Comprehensive verification checking Lifetime codes first, then Cloudflare Edge KV vouchers.
      */
     suspend fun verifyAndUnlockAsync(inputCode: String, context: Context): VoucherVerificationResult {
         val clean = inputCode.trim()
@@ -166,7 +166,7 @@ object AccessGateManager {
             )
         }
 
-        // 2. Check 30-Day Single-Device Voucher in Firestore
+        // 2. Check 30-Day Single-Device Voucher in Cloudflare Edge KV
         val result = VoucherManager.verifyAndRedeemVoucher(clean, context)
         if (result is VoucherVerificationResult.Success) {
             val expiresAt = System.currentTimeMillis() + (result.daysRemaining.toLong() * 24 * 60 * 60 * 1000L)

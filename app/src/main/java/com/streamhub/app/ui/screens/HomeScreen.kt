@@ -686,7 +686,7 @@ fun HomeScreen(
                 ) {
 
 
-            // Empty state — catalog is empty and Firestore has responded
+            // Empty state — catalog is empty and Cloudflare Edge has responded
             if (catalog.isEmpty() && catalogState is com.streamhub.app.data.repository.CatalogState.Ready) {
                 item {
                     EmptyStateCard(

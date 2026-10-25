@@ -268,7 +268,7 @@ fun HeroCarousel(
                                     onClick = {
                                         lastInteractionTime = System.currentTimeMillis()
                                         val added = MyListManager.toggleBookmark(media.id)
-                                        val msg = if (added) "Added to My List • Hold to choose folder" else "Removed from My List"
+                                        val msg = if (added) "Added to Favorites • Hold to choose folder" else "Removed from My List"
                                         ToastManager.showToast(msg)
                                     },
                                     onLongClick = {

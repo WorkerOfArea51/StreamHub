@@ -274,12 +274,12 @@ object MyListManager {
         val prefs = getPrefs().edit()
         prefs.putStringSet(KEY_COLLECTIONS, customOnly)
 
-        // Safe migration: reassign items from deleted collection back to default "Watchlist"
+        // Safe migration: reassign items from deleted collection back to default "Favorites"
         val currentMap = _itemsFlow.value.toMutableMap()
         var hasChanges = false
         currentMap.forEach { (id, item) ->
             if (item.collection.equals(trimmed, ignoreCase = true)) {
-                val updated = item.copy(collection = "Watchlist")
+                val updated = item.copy(collection = "Favorites", isFavorite = true)
                 currentMap[id] = updated
                 saveItemToPrefs(prefs, updated)
                 hasChanges = true

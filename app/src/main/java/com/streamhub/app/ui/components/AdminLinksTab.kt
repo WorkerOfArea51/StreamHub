@@ -68,6 +68,8 @@ fun AdminLinksTab(
     state: AdminEditorState,
     scope: CoroutineScope
 ) {
+    var episodeToDeleteIndex by remember { mutableStateOf<Int?>(null) }
+
     if (state.isMovieFormat) {
         // --- MOVIE FORMAT: SMART STREAM LINK & READY PREVIEW (SERIES-PARITY) ---
         val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
@@ -948,10 +950,7 @@ fun AdminLinksTab(
                                     // Delete Button
                                     IconButton(
                                         onClick = {
-                                            state.currentEpisodes.removeAt(idx)
-                                            val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(state.currentEpisodes)
-                                            state.startBatchLink = jsonDump
-                                            state.generatedEpisodesText = jsonDump
+                                            episodeToDeleteIndex = idx
                                         },
                                         modifier = Modifier.size(28.dp)
                                     ) {
@@ -1211,5 +1210,48 @@ fun AdminLinksTab(
                 }
             }
         )
+    }
+
+    // Episode Deletion Confirmation Dialog
+    if (episodeToDeleteIndex != null) {
+        val targetIdx = episodeToDeleteIndex!!
+        val ep = state.currentEpisodes.getOrNull(targetIdx)
+        if (ep != null) {
+            AlertDialog(
+                onDismissRequest = { episodeToDeleteIndex = null },
+                title = { Text("Delete Episode ${ep.episodeNumber}?", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold) },
+                text = {
+                    Text(
+                        "Are you sure you want to remove '${ep.title}' from this season's episode list?",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (targetIdx in state.currentEpisodes.indices) {
+                                state.currentEpisodes.removeAt(targetIdx)
+                                val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(state.currentEpisodes)
+                                state.startBatchLink = jsonDump
+                                state.generatedEpisodesText = jsonDump
+                            }
+                            episodeToDeleteIndex = null
+                        }
+                    ) {
+                        Text("Delete", color = PrimaryRed, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { episodeToDeleteIndex = null }) {
+                        Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                },
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = RoundedCornerShape(16.dp)
+            )
+        } else {
+            episodeToDeleteIndex = null
+        }
     }
 }

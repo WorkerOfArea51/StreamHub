@@ -1,11 +1,16 @@
-### What's New in StreamHub v4.8.427 🚀
+### What's New in StreamHub v4.8.428 🚀
 
-- ❤️ **Default to Favorites on Quick Add (`MyListManager.kt`)**: Tapping `+ My List` (or selecting "Add to My List" in quick actions) now saves directly into **Favorites** (`isFavorite = true`, `collection = "Favorites"`), instead of generic Watchlist / Watch Later. The heart icon on the card glows vibrant red upon saving.
-- 🎨 **My List Catalog Redesign (`MyListScreen.kt`)**: Redesigned `MyListGridCard` to achieve 1:1 visual parity with the Home screen catalogs:
-  - **Sleek Borderless Poster Architecture**: Removed the clunky outer grey card frame, using `12.dp` rounded corners, `SurfaceDark` background, and subtle dark border.
-  - **Clean Overlays**: Rating badge (`★ 9.1`) bottom-left, season/OVA badge top-left, and tactile glassmorphic Favorite Heart button top-right with tactile haptic feedback.
-  - **Full Marquee Titles**: Replaced static truncated text with smooth marquee auto-scroll, preventing titles from being cut off.
-  - **Clean Metadata Subtitle**: Replaced the squished `ANI...` and 3-dots collision with clean metadata (`Anime • 2023`, `Ep 1 • 12m left`, or `📁 Folder • 2023`). Long-pressing any card with haptic feedback opens the full quick actions sheet.
-- 📑 **Streamlined Status Tabs & Filter Rows (`MyListScreen.kt`)**: Reordered status tabs so **Favorites ❤️** is placed prominently in 2nd place right next to **All Saved**. Guarded dynamic genre tags so they only display when having a sizable library ($\ge 5$ items), preventing small libraries from being overwhelmed by 3 stacked rows of pills.
-- 🤖 **Access Gate Official Bot Binding (`AccessGateOverlay.kt`)**: Replaced personal Telegram DM link with official bot URL (`https://t.me/Fil3Stor3_bot`) and simplified button label to clean `"Get Code on Telegram"`.
-- 🔗 **Creator Studio Single-Season Full Episode CRUD & Sequential Auto-Indexing (`BatchEpisodeParser.kt`, `StreamLinkResolver.kt`, `AdminLinksTab.kt`, `EpisodeOrderingManager.kt`)**: Added expandable episode drawer, click-to-edit row with stream URL replacement, manual episode add, per-episode deletion, sequential auto-indexing, and rich metadata preservation.
+- 🧹 **0-Warning Clean Compilation & Manifest Cleanliness**:
+  - Purged obsolete `tools:replace="android:allowBackup"` in `AndroidManifest.xml`, eliminating manifest merger build warnings.
+  - Suppressed deprecated legacy network queries in `UserTelemetryManager.kt` while preserving Xiaomi/HyperOS dual-SIM connectivity fallback detection.
+  - Cleaned all compiler deprecations and unchecked casts across application and repository classes.
+- 🛡️ **Full 4-Pillar Lifecycle Hardening & Orphan Migration (`MyListManager.kt`)**:
+  - When deleting a custom collection/folder in My List, orphaned shows are now safely cascaded to **Favorites** (`isFavorite = true, collection = "Favorites"`), preventing orphaned ghost records and keeping user titles accessible.
+  - Synchronized quick-add notifications and dialogs across `DetailsScreen`, `HeroCarousel`, `MediaQuickActionsSheet`, and `SurpriseMeDialog` to consistently reference Favorites.
+- 🛡️ **Destructive Action Confirmation Dialogs**:
+  - Added protective M3 `AlertDialog` popups before deleting single episodes in Creator Studio (`AdminLinksTab.kt`), Arc Episode Editor (`ArcEpisodeEditorDialog.kt`), and VIP Passes in Voucher Manager (`VoucherManagerDialog.kt`), preventing accidental 1-tap data loss.
+- ☁️ **Cloudflare Edge KV Terminology & Documentation Modernization**:
+  - Updated `README.md` with official Cloudflare Edge KV badges, serverless architecture diagram, official `@Fil3Stor3_bot` support links, and zero-Firebase setup guide.
+  - Modernized `CatalogBackupManager` (`restoreToCatalog`) and dialog strings across `CatalogBackupDialog`, `LiveAudienceTelemetryDialog`, and `ServerMigrationDialog`.
+- ❤️ **Default to Favorites on Quick Add (`MyListManager.kt`)**: Tapping `+ My List` (or selecting "Add to My List" in quick actions) saves directly into **Favorites** with a glowing red heart.
+- 🎨 **Cinema-Grade My List Catalog Redesign (`MyListScreen.kt`)**: 1:1 visual parity with Home screen catalogs (borderless cinema posters, rating badge bottom-left, season/OVA badge top-left, tactile glassmorphic Favorite Heart button top-right, and smooth marquee titles).

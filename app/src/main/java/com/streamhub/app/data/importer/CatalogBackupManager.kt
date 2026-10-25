@@ -494,11 +494,10 @@ object CatalogBackupManager {
     }
 
     /**
-     * Efficiently restores the backup payload into Firestore.
-     * 1. Writes all shows to their individual collections as standalone documents using atomic batches (50 items/batch).
-     * 2. After all items are committed, packages and uploads the 970 KB bundles to `catalog_bundles` ONCE.
+     * Efficiently restores the backup payload into the Cloud Catalog (Cloudflare Edge KV).
+     * Writes all shows as standalone documents using atomic chunks.
      */
-    suspend fun restoreToFirestore(
+    suspend fun restoreToCatalog(
         payload: CatalogBackupPayload,
         repository: CatalogRepository,
         onProgress: (current: Int, total: Int, currentTitle: String) -> Unit
@@ -531,8 +530,15 @@ object CatalogBackupManager {
                 restoredEpisodesCount = totalEps
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Error restoring backup to Firestore", e)
+            Log.e(TAG, "Error restoring backup to Cloud Catalog", e)
             BackupRestoreResult(false, 0, 0, e.message ?: "Unknown error restoring catalog")
         }
     }
+
+    @Deprecated("Renamed to restoreToCatalog", ReplaceWith("restoreToCatalog(payload, repository, onProgress)"))
+    suspend fun restoreToFirestore(
+        payload: CatalogBackupPayload,
+        repository: CatalogRepository,
+        onProgress: (current: Int, total: Int, currentTitle: String) -> Unit
+    ): BackupRestoreResult = restoreToCatalog(payload, repository, onProgress)
 }

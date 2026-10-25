@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.dp
  *   - Loading -> AppLoadingState (or SkeletonCardRow for layout-shaped skeletons)
  *   - Error   -> AppErrorState (message + Retry, never a silent blank)
  *   - Empty   -> AppEmptyState (icon + title + optional CTA)
- * Eliminates blank screens on network / Firestore failures app-wide.
+ * Eliminates blank screens on network / Cloudflare Edge failures app-wide.
  */
 
 @Composable

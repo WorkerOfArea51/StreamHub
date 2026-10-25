@@ -930,7 +930,7 @@ fun CatalogBackupDialog(
                                             restoreSuccessMessage = null
                                             restoreErrorMessage = null
                                             scope.launch {
-                                                val res = CatalogBackupManager.restoreToFirestore(
+                                                val res = CatalogBackupManager.restoreToCatalog(
                                                     payload = payload,
                                                     repository = repository,
                                                     onProgress = { current, total, title ->
@@ -941,7 +941,7 @@ fun CatalogBackupDialog(
                                                 )
                                                 isRestoring = false
                                                 if (res.isSuccess) {
-                                                    restoreSuccessMessage = "🎉 Successfully restored ${res.restoredShowsCount} shows (${res.restoredEpisodesCount} episodes) into Firestore!"
+                                                    restoreSuccessMessage = "🎉 Successfully restored ${res.restoredShowsCount} shows (${res.restoredEpisodesCount} episodes) into Cloud Catalog!"
                                                 } else {
                                                     restoreErrorMessage = res.errorMessage
                                                 }
@@ -965,7 +965,7 @@ fun CatalogBackupDialog(
                                             Icon(Icons.Default.Sync, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Text(
-                                                "Restore All ${payload.mediaCatalog.size} Titles to Firestore",
+                                                "Restore All ${payload.mediaCatalog.size} Titles to Cloud Catalog",
                                                 color = Color.White,
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold

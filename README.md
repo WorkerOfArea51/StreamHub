@@ -13,7 +13,7 @@
   <a href="https://kotlinlang.org"><img src="https://img.shields.io/badge/Kotlin-2.0+-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin" /></a>
   <a href="https://developer.android.com/jetpack/compose"><img src="https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white" alt="Jetpack Compose" /></a>
   <a href="https://developer.android.com/media/media3"><img src="https://img.shields.io/badge/Engine-Media3%20ExoPlayer-00C853?style=for-the-badge&logo=googleplay&logoColor=white" alt="Media3 ExoPlayer" /></a>
-  <a href="https://firebase.google.com"><img src="https://img.shields.io/badge/Backend-Cloud%20Firestore-FFCA28?style=for-the-badge&logo=firebase&logoColor=black" alt="Firebase" /></a>
+  <a href="https://developers.cloudflare.com/workers/runtime-apis/kv/"><img src="https://img.shields.io/badge/Backend-Cloudflare%20Edge%20KV-F38020?style=for-the-badge&logo=cloudflare&logoColor=white" alt="Cloudflare Edge KV" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-38BDF8?style=for-the-badge&logo=open-source-initiative&logoColor=white" alt="MIT License" /></a>
 </p>
 
@@ -51,15 +51,15 @@ Engineered from the ground up for low latency, zero-login instant playback, aggr
 graph TD
     A[UI Presentation Layer: Jetpack Compose] --> B[ViewModel State Flows]
     B --> C[Player Engine: Media3 ExoPlayer + StreamCacheManager]
-    B --> D[Data Layer: FirebaseRepository & Managers]
-    D --> E[Cloud Firestore & TMDB v3 / AniList GraphQL APIs]
+    B --> D[Data Layer: CatalogRepository & Managers]
+    D --> E[Cloudflare Edge KV & TMDB v3 / AniList GraphQL APIs]
     C --> F[Direct HTTP Byte-Range Caching Engine]
 ```
 
 - **Language**: Kotlin 2.0+ (Coroutine-first, Dispatchers.IO isolation)
 - **UI Framework**: Pure Jetpack Compose with Material 3 Design Tokens
 - **Video Engine**: AndroidX Media3 ExoPlayer (`media3-exoplayer`, `media3-ui`, `media3-datasource`)
-- **Metadata Database**: Firebase Cloud Firestore (`firebase-firestore-ktx`)
+- **Metadata Database**: Cloudflare Edge Workers + Workers KV REST API (100% Free Tier, Zero-Firebase)
 - **Networking**: Retrofit 2 + OkHttp3 + Gson + AniList GraphQL
 - **Metadata Resolvers**: TMDB API v3 (Movies/Series) + Official AniList GraphQL API (Anime)
 - **Image Pipeline**: Coil Compose with disk and memory cache
@@ -82,8 +82,8 @@ StreamHub includes a built-in **Creator Studio** for catalog owners:
 StreamHub includes a private community access gate on first launch. If you need an access invite or want to connect with the maintainer:
 
 <p align="left">
-  <a href="https://t.me/Londe_Lapate">
-    <img src="https://img.shields.io/badge/Telegram-@Londe_Lapate-0088CC?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram Support" />
+  <a href="https://t.me/Fil3Stor3_bot">
+    <img src="https://img.shields.io/badge/Telegram-@Fil3Stor3__bot-0088CC?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram Bot" />
   </a>
 </p>
 
@@ -95,7 +95,7 @@ If you enjoy StreamHub and want to support high-speed streaming nodes, server ho
 
 ### 💰 Crypto Donations & Sponsorship:
 If you would like to contribute or sponsor high-speed streaming nodes and server hosting costs:
-- Reach out directly on Telegram: [@Londe_Lapate](https://t.me/Londe_Lapate) for donation wallet addresses (USDT/USDC - BEP20, TRC20) or alternative contribution methods.
+- Reach out directly on Telegram: [@Fil3Stor3_bot](https://t.me/Fil3Stor3_bot) for donation wallet addresses (USDT/USDC - BEP20, TRC20) or alternative contribution methods.
 
 ---
 
@@ -103,14 +103,11 @@ If you would like to contribute or sponsor high-speed streaming nodes and server
 
 StreamHub is designed so anyone can fork the repository and launch their own customized media streaming app. Follow these steps to configure your fork:
 
-### 1. Database Setup (Firebase Cloud Firestore)
-1. Create a free project on the [Firebase Console](https://console.firebase.google.com/).
-2. Add an Android app with your package name (e.g. `com.streamhub.app`).
-3. Enable **Cloud Firestore** in test or production mode.
-4. Download `google-services.json` and place it inside the `app/` folder:
-   ```text
-   StreamHub/app/google-services.json
-   ```
+### 1. Database Setup (Cloudflare Edge Worker & KV)
+StreamHub runs on a 100% free serverless backend using Cloudflare Workers and Workers KV storage (zero Firebase dependencies):
+1. Create a free account on [Cloudflare](https://dash.cloudflare.com/).
+2. Deploy the Worker script provided in `cloudflare/worker.js` with KV namespace bindings `CATALOG_KV`, `VIP_VOUCHERS_KV`, `TELEMETRY_KV`, and `BROADCAST_KV` (see [cloudflare/README.md](cloudflare/README.md) for step-by-step deploy instructions).
+3. Set your Cloudflare Worker URL in `app/src/main/java/com/streamhub/app/data/edge/CatalogEdgeClient.kt` or configure your custom domain.
 
 ### 2. Configure API Keys (`local.properties`)
 Create or edit `local.properties` in the root directory:
@@ -158,7 +155,6 @@ StreamHub uses cryptographic one-way **SHA-256 hashing** in code so that plainte
 If you want your fork to automatically build signed release APKs on push:
 1. In your fork, navigate to **Settings > Secrets and variables > Actions**.
 2. Add the following repository secrets:
-   - `FIREBASE_GOOGLE_SERVICES_JSON`: Base64 encoded string or raw content of `google-services.json`
    - `RELEASE_KEYSTORE_BASE64`: Base64 encoded `.jks` or `.keystore` file
    - `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`: Keystore signing credentials
    - `STREAMHUB_TMDB_API_KEY`: Your TMDB API key

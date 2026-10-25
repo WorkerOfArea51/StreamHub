@@ -975,7 +975,7 @@ fun DetailsScreen(
                                 .combinedClickable(
                                     onClick = {
                                         val added = MyListManager.toggleBookmark(mediaItem.id)
-                                        val msg = if (added) "Added to My List • Hold to choose folder" else "Removed from My List"
+                                        val msg = if (added) "Added to Favorites • Hold to choose folder" else "Removed from My List"
                                         ToastManager.showToast(msg)
                                     },
                                     onLongClick = {

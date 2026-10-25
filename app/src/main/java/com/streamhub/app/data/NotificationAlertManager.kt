@@ -102,8 +102,7 @@ object NotificationAlertManager {
                 .build()
 
             // Ultra-battery-safe 12-hour background sync for catalog & library episodes.
-            // Releases on GitHub are pushed INSTANTLY via Firebase Cloud Messaging (FCM),
-            // completely eliminating battery-draining polling.
+            // App updates on GitHub are checked via lightweight AppUpdateManager with zero battery drain.
             val workRequest = PeriodicWorkRequestBuilder<CatalogSyncWorker>(12, TimeUnit.HOURS)
                 .setConstraints(constraints)
                 .build()

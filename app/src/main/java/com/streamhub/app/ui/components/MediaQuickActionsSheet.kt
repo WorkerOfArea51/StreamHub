@@ -303,12 +303,12 @@ fun MediaQuickActionsSheet(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            // ── My List Toggle ──
+            // ── Favorites / My List Toggle ──
             QuickActionRowItem(
                 icon = if (isInMyList) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
                 iconTint = if (isInMyList) AccentGold else Color(0xFFB0BEC5),
-                title = if (isInMyList) "Remove from My List" else "Add to My List",
-                subtitle = if (isInMyList) "Saved in your personal watchlist" else "Save to your personal watchlist for later",
+                title = if (isInMyList) "Remove from Favorites" else "Add to Favorites",
+                subtitle = if (isInMyList) "Saved in your favorites library" else "Save to your favorites for instant access",
                 onClick = {
                     MyListManager.toggleBookmark(media.id)
                 }

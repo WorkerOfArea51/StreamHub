@@ -3,7 +3,7 @@ package com.streamhub.app.data.models
 /**
  * Domain model representing a single-device, time-limited VIP voucher pass.
  *
- * Persisted in Firestore collection 'vip_vouchers'.
+ * Persisted in Cloudflare Edge KV namespace 'streamhub-catalog' with prefix 'voucher:'.
  * Binds cryptographically to a unique hardware identifier (hashed ANDROID_ID)
  * on first activation, preventing multi-device leakage while preserving access
  * across app uninstalls and data wipes on the same device.

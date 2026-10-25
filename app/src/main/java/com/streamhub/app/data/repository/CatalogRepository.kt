@@ -268,6 +268,7 @@ class CatalogRepository private constructor() {
         }
     }
 
+    @Suppress("UNCHECKED_CAST")
     private fun parseMediaItemMap(map: Map<String, Any?>, fallbackId: String): MediaItem? {
         return try {
             val id = (map["id"] as? String)?.takeIf { it.isNotBlank() } ?: fallbackId
@@ -413,7 +414,6 @@ class CatalogRepository private constructor() {
 
     /**
      * Suspending version of saveMediaItem that saves directly to Cloudflare Edge KV as primary.
-     * Also dual-writes a background backup to Firestore if initialized.
      */
     suspend fun saveMediaItemSuspending(item: MediaItem): Result<Unit> = withContext(Dispatchers.IO) {
         if (!com.streamhub.app.data.AdminManager.isAdminMode.value) {
@@ -578,7 +578,7 @@ class CatalogRepository private constructor() {
     }
 
     /**
-     * Save or update a media item in Cloudflare Edge KV (with Firestore dual-write backup).
+     * Save or update a media item in Cloudflare Edge KV.
      */
     fun saveMediaItem(item: MediaItem) {
         scope.launch {
@@ -587,7 +587,7 @@ class CatalogRepository private constructor() {
     }
 
     /**
-     * Delete a media item from Cloudflare Edge KV (and Firestore backup).
+     * Delete a media item from Cloudflare Edge KV.
      */
     fun deleteMediaItem(itemId: String) {
         if (!com.streamhub.app.data.AdminManager.isAdminMode.value) {
@@ -644,15 +644,7 @@ class CatalogRepository private constructor() {
     }
 
     /**
-     * Scans all Firestore collections (movies, animes, web_series) and updates any document
-     * whose streamUrl, mirrorStreamUrl, or episode URLs contain legacy Alwaysdata hosts.
-     * Rewrites them to midnighthawk.serv00.net and normalizes /stream/ to /dl/.
-     *
-     * @param onProgress Callback receiving (currentProcessed, totalDocuments, updatedCount)
-     * @return Result with total number of documents successfully updated.
-     */
-    /**
-     * Scans all Firestore documents across animes, movies, and web_series.
+     * Scans all Cloudflare Edge KV documents across animes, movies, and web_series.
      * Rewrites URLs matching sourceHost (and optionally legacy Alwaysdata) to targetHost,
      * and normalizes /stream/ to /dl/.
      *

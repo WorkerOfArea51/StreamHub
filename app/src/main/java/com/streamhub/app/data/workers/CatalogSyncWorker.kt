@@ -11,10 +11,10 @@ import com.streamhub.app.data.repository.CatalogRepository
 
 /**
  * Lightweight periodic background worker:
- * - Wakes up periodically (every 8 hours) with CONNECTED network constraint.
- * - Checks Firestore catalog for new episodes or franchise installments belonging to user's My List.
+ * - Wakes up periodically (every 12 hours) with CONNECTED network constraint.
+ * - Checks Cloudflare Edge KV catalog for new episodes or franchise installments belonging to user's My List.
  * - Posts high-priority Android notifications if new content is detected.
- * - 0 bytes written to Firebase, 100% read-only, shuts down in < 2 seconds.
+ * - 100% read-only via Cloudflare Edge KV, shuts down in < 2 seconds.
  */
 class CatalogSyncWorker(
     appContext: Context,
