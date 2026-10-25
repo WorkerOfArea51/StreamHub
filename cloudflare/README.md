@@ -60,12 +60,10 @@ npx wrangler deploy
 
 ---
 
-## 📲 Migrating Your Entire Catalog (1-Tap from the App)
+## 📲 Catalog Management & Native Cloudflare KV Operation
 
-Once your Worker is deployed with the `CATALOG_KV` binding:
-1. Open StreamHub on your device.
-2. Enter **Creator Studio** (Owner PIN).
-3. Navigate to Tab 3: **Tools**.
-4. Tap the **Sync All** button on the **Cloudflare Edge KV Sync** card.
-5. Watch the progress bar upload all your shows to Cloudflare KV.
-6. Once finished, all devices globally will load your catalog in **15ms with 0 Firebase reads**!
+The StreamHub catalog is **100% native on Cloudflare Edge KV**:
+- **Zero Firebase Dependency**: Reads, writes, updates, and batch imports route directly through the Edge Worker endpoints (`/api/catalog`, `/api/catalog/item`, `/api/catalog/import`).
+- **Creator Studio Integration**: Adding or editing shows from Creator Studio updates Cloudflare KV in real-time, automatically updating ETags and cache hashes.
+- **Backup & Restore**: Use **Catalog Backup & Restore** in Creator Studio (Tab 3: Tools) to export full JSON snapshots or restore previous catalog backups directly to Cloudflare Edge KV.
+
