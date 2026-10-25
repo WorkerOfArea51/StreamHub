@@ -100,6 +100,7 @@ object UserTelemetryManager {
     private const val PREFS_NAME = "streamhub_telemetry_prefs"
     private const val KEY_CLIENT_ID = "telemetry_client_id"
     private const val KEY_LAST_BROADCAST_TS = "last_seen_broadcast_ts"
+    private const val KEY_LAST_BROADCAST_SIGNATURE = "last_seen_broadcast_signature"
     private const val HEARTBEAT_INTERVAL_MS = 60_000L // 60 seconds (prevents write fatigue)
     private const val SESSION_TIMEOUT_MS = 180_000L   // 180 seconds presence window
 
@@ -108,6 +109,7 @@ object UserTelemetryManager {
     private var appContext: Context? = null
     private var heartbeatJob: Job? = null
     private var liveAudienceJob: Job? = null
+    private var lastProcessedBroadcastSignature: String? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val sessionStartTimestamp = System.currentTimeMillis()
@@ -155,6 +157,8 @@ object UserTelemetryManager {
         cachedCountryFlag = if (savedFlag.isBlank() || savedFlag.startsWith("{") || savedFlag.contains("http") || savedFlag.length > 4) {
             if (cachedCountryCode.isNotBlank()) countryCodeToEmoji(cachedCountryCode) else ""
         } else savedFlag
+
+        lastProcessedBroadcastSignature = prefs?.getString(KEY_LAST_BROADCAST_SIGNATURE, null)
 
         // Guard against new downloads: baseline to current timestamp so past broadcasts are never spammed to fresh installs
         if (prefs?.contains(KEY_LAST_BROADCAST_TS) != true) {
@@ -541,16 +545,30 @@ object UserTelemetryManager {
             Log.e(TAG, "SECURITY VIOLATION: Unauthorized attempt to send global broadcast without Admin verification!")
             return
         }
-        if (title.isBlank() || message.isBlank()) return
+        val cleanTitle = title.trim()
+        val cleanMsg = message.trim()
+        if (cleanTitle.isBlank() || cleanMsg.isBlank()) return
+
+        val signature = "$cleanTitle::$cleanMsg"
+        lastProcessedBroadcastSignature = signature
         val now = System.currentTimeMillis()
-        prefs?.edit()?.putLong(KEY_LAST_BROADCAST_TS, now)?.apply()
-        // Show immediately on the sender's own device as well
+        prefs?.edit()
+            ?.putLong(KEY_LAST_BROADCAST_TS, now)
+            ?.putString(KEY_LAST_BROADCAST_SIGNATURE, signature)
+            ?.apply()
+
+        // Show immediately on the sender's own device as well with fixed announcement ID
         appContext?.let { ctx ->
-            NotificationAlertManager.sendAdminAlertNotification(ctx, title, message)
-            ToastManager.showToast("📢 $title: $message")
+            NotificationAlertManager.sendAdminAlertNotification(
+                context = ctx,
+                title = cleanTitle,
+                message = cleanMsg,
+                notificationId = NotificationAlertManager.NOTIFICATION_ID_ADMIN_ANNOUNCEMENT
+            )
+            ToastManager.showToast("📢 $cleanTitle: $cleanMsg")
         }
         scope.launch {
-            CatalogEdgeClient.sendGlobalBroadcast(title, message, expiryHours)
+            CatalogEdgeClient.sendGlobalBroadcast(cleanTitle, cleanMsg, expiryHours)
         }
     }
 
@@ -560,6 +578,15 @@ object UserTelemetryManager {
             onComplete?.invoke(false)
             return
         }
+        lastProcessedBroadcastSignature = null
+        prefs?.edit()?.remove(KEY_LAST_BROADCAST_SIGNATURE)?.apply()
+
+        // Cancel active announcement notification from status bar
+        appContext?.let { ctx ->
+            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+            nm?.cancel(NotificationAlertManager.NOTIFICATION_ID_ADMIN_ANNOUNCEMENT)
+        }
+
         scope.launch {
             val res = CatalogEdgeClient.clearActiveBroadcast()
             onComplete?.invoke(res.isSuccess)
@@ -638,21 +665,37 @@ object UserTelemetryManager {
     }
 
     private fun handleBroadcast(bcast: BroadcastPayload) {
+        val title = bcast.title.ifBlank { "StreamHub Announcement" }.trim()
+        val msg = bcast.message.trim()
+        if (msg.isBlank()) return
+
+        val signature = "$title::$msg"
+        val currentSignature = prefs?.getString(KEY_LAST_BROADCAST_SIGNATURE, "") ?: ""
+        if (signature == currentSignature || signature == lastProcessedBroadcastSignature) {
+            Log.d(TAG, "Broadcast already processed: $signature — suppressing duplicate")
+            return
+        }
+
         val ts = bcast.timestamp
         val expiresAt = if (bcast.expiresAt > 0L) bcast.expiresAt else (ts + 24 * 3600_000L)
         val currentLastSeen = prefs?.getLong(KEY_LAST_BROADCAST_TS, 0L) ?: 0L
         val now = System.currentTimeMillis()
 
         if (ts > currentLastSeen && now < expiresAt) {
-            prefs?.edit()?.putLong(KEY_LAST_BROADCAST_TS, ts)?.apply()
-            val title = bcast.title.ifBlank { "StreamHub Announcement 📢" }
-            val msg = bcast.message
-            val ctx = appContext ?: return
+            lastProcessedBroadcastSignature = signature
+            prefs?.edit()
+                ?.putLong(KEY_LAST_BROADCAST_TS, ts)
+                ?.putString(KEY_LAST_BROADCAST_SIGNATURE, signature)
+                ?.apply()
 
-            if (msg.isNotBlank()) {
-                NotificationAlertManager.sendAdminAlertNotification(ctx, title, msg)
-                ToastManager.showToast("📢 $title: $msg")
-            }
+            val ctx = appContext ?: return
+            NotificationAlertManager.sendAdminAlertNotification(
+                context = ctx,
+                title = title,
+                message = msg,
+                notificationId = NotificationAlertManager.NOTIFICATION_ID_ADMIN_ANNOUNCEMENT
+            )
+            ToastManager.showToast("📢 $title: $msg")
         }
     }
 

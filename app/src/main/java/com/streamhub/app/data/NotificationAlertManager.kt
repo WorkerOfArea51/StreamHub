@@ -45,6 +45,8 @@ object NotificationAlertManager {
     const val CHANNEL_ADMIN_ID = "streamhub_admin_announcements"
     const val CHANNEL_ADMIN_NAME = "Admin & Community Announcements"
 
+    const val NOTIFICATION_ID_ADMIN_ANNOUNCEMENT = 999002
+
     private var prefs: SharedPreferences? = null
 
     private val _alertsEnabled = MutableStateFlow(true)
@@ -355,7 +357,7 @@ object NotificationAlertManager {
         context: Context,
         title: String,
         message: String,
-        notificationId: Int = (System.currentTimeMillis() % 100000).toInt()
+        notificationId: Int = NOTIFICATION_ID_ADMIN_ANNOUNCEMENT
     ) {
         createNotificationChannels(context)
 
