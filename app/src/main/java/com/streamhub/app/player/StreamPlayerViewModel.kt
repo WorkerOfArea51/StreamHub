@@ -267,10 +267,12 @@ class StreamPlayerViewModel : ViewModel() {
             }
 
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-                _uiState.update { it.copy(isPlaying = playWhenReady) }
-                if (!playWhenReady) {
+                val isEnded = exoPlayer?.playbackState == Player.STATE_ENDED
+                val isPlayingNow = playWhenReady && !isEnded
+                _uiState.update { it.copy(isPlaying = isPlayingNow) }
+                if (!playWhenReady || isEnded) {
                     lastPauseTimestampMs = System.currentTimeMillis()
-                    syncTelemetry("PAUSED")
+                    syncTelemetry(if (isEnded) "IDLE" else "PAUSED")
                 } else {
                     lastPauseTimestampMs = 0L
                     val isBuffering = exoPlayer?.playbackState == Player.STATE_BUFFERING
@@ -279,13 +281,14 @@ class StreamPlayerViewModel : ViewModel() {
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                val pwr = exoPlayer?.playWhenReady ?: isPlaying
+                val isEnded = exoPlayer?.playbackState == Player.STATE_ENDED
+                val pwr = (exoPlayer?.playWhenReady ?: isPlaying) && !isEnded
                 _uiState.update { it.copy(isPlaying = pwr) }
                 if (pwr) {
                     val isBuffering = exoPlayer?.playbackState == Player.STATE_BUFFERING
                     syncTelemetry(if (isBuffering) "BUFFERING" else "PLAYING")
                 } else {
-                    syncTelemetry("PAUSED")
+                    syncTelemetry(if (isEnded) "IDLE" else "PAUSED")
                 }
             }
 
@@ -325,50 +328,7 @@ class StreamPlayerViewModel : ViewModel() {
                 syncTelemetry(state)
 
                 if (playbackState == Player.STATE_ENDED) {
-                    // FIX: Clear stale pending seek target before next episode starts.
-                    pendingSeekTargetMs = null
-                    val currentPos = exoPlayer?.currentPosition ?: _playbackProgress.value.currentPositionMs
-                    val totalDuration = exoPlayer?.duration?.takeIf { it > 0L } ?: _playbackProgress.value.durationMs
-                    val isFirstFrameDone = _uiState.value.isFirstFrameRendered
-
-                    // Only allow auto-play next episode if there was genuine playback completion:
-                    // (at least 85% watched, or within 20s of the end, or >30s watched for unset duration).
-                    // If video failed at 0s or closed early, NEVER auto-skip to the next episode!
-                    val hasGenuinePlayback = when {
-                        !isFirstFrameDone -> false
-                        totalDuration > 0L -> {
-                            val remainingMs = totalDuration - currentPos
-                            remainingMs <= 20_000L || (currentPos.toFloat() / totalDuration.toFloat()) >= 0.85f
-                        }
-                        else -> currentPos >= 30_000L
-                    }
-
-                    if (hasGenuinePlayback) {
-                        val currentState = _uiState.value
-                        currentMediaItem?.let { media ->
-                            viewModelScope.launch(Dispatchers.IO) {
-                                WatchHistoryManager.markEpisodeWatched(
-                                    mediaId = media.id,
-                                    episodeIndex = currentState.currentEpisodeIndex,
-                                    isWatched = true,
-                                    mediaItem = media
-                                )
-                            }
-                        }
-                        val nextIndex = currentState.currentEpisodeIndex + 1
-                        val hasNextEpisode = nextIndex in episodesList.indices
-                        val autoPlayNext = com.streamhub.app.data.PlayerSettingsManager.settingsFlow.value.autoPlayNextEpisode
-
-                        if (hasNextEpisode && autoPlayNext) {
-                            Log.i("StreamPlayerViewModel", "STATE_ENDED reached with genuine playback ($currentPos ms / $totalDuration ms). Auto-playing next episode.")
-                            playNextEpisode()
-                        } else {
-                            Log.i("StreamPlayerViewModel", "STATE_ENDED reached at end of playlist (hasNext=$hasNextEpisode, autoPlay=$autoPlayNext). Triggering auto-finish.")
-                            _uiState.update { it.copy(shouldAutoExit = true) }
-                        }
-                    } else {
-                        Log.w("StreamPlayerViewModel", "STATE_ENDED reached without genuine playback completion (pos=$currentPos ms, dur=$totalDuration ms, firstFrame=$isFirstFrameDone). Suppressing autoPlayNextEpisode to prevent runaway skip cascade.")
-                    }
+                    handlePlaybackEnded()
                 }
             }
 
@@ -462,6 +422,7 @@ class StreamPlayerViewModel : ViewModel() {
     }
 
     fun initializePlayer(context: Context, mediaItem: MediaItem, initialEpisodeIndex: Int = 0) {
+        resetAutoExit()
         StreamPreloadManager.cancelDetailsPrewarm()
         val safeContext = context.applicationContext
         appContext = safeContext
@@ -1100,7 +1061,8 @@ class StreamPlayerViewModel : ViewModel() {
                 isResumedPlayback = isResumed,
                 isSeeking = false,
                 resolvedStreamUrl = rawUrl,
-                durationMs = if (fallbackDurationMs > 0) fallbackDurationMs else it.durationMs
+                durationMs = if (fallbackDurationMs > 0) fallbackDurationMs else it.durationMs,
+                shouldAutoExit = false
             )
         }
         _playbackProgress.update {
@@ -1248,6 +1210,57 @@ class StreamPlayerViewModel : ViewModel() {
     fun resetAutoExit() {
         if (_uiState.value.shouldAutoExit) {
             _uiState.update { it.copy(shouldAutoExit = false) }
+        }
+    }
+
+    private fun handlePlaybackEnded() {
+        if (_uiState.value.shouldAutoExit) return
+        pendingSeekTargetMs = null
+        val player = exoPlayer
+        val currentPos = player?.currentPosition ?: _playbackProgress.value.currentPositionMs
+        val totalDuration = player?.duration?.takeIf { it > 0L }
+            ?: _playbackProgress.value.durationMs.takeIf { it > 0L }
+            ?: _uiState.value.durationMs
+        val isFirstFrameDone = _uiState.value.isFirstFrameRendered
+
+        val hasGenuinePlayback = when {
+            totalDuration > 0L -> {
+                val remainingMs = totalDuration - currentPos
+                (remainingMs <= 20_000L || (currentPos.toFloat() / totalDuration.toFloat()) >= 0.85f) &&
+                    (isFirstFrameDone || currentPos >= 1_000L)
+            }
+            isFirstFrameDone -> currentPos >= 30_000L
+            else -> false
+        }
+
+        if (hasGenuinePlayback) {
+            val currentState = _uiState.value
+            currentMediaItem?.let { media ->
+                viewModelScope.launch(Dispatchers.IO) {
+                    WatchHistoryManager.markEpisodeWatched(
+                        mediaId = media.id,
+                        episodeIndex = currentState.currentEpisodeIndex,
+                        isWatched = true,
+                        mediaItem = media
+                    )
+                }
+            }
+            val nextIndex = currentState.currentEpisodeIndex + 1
+            val hasNextEpisode = nextIndex in episodesList.indices
+            val autoPlayNext = com.streamhub.app.data.PlayerSettingsManager.settingsFlow.value.autoPlayNextEpisode
+
+            if (hasNextEpisode && autoPlayNext) {
+                Log.i("StreamPlayerViewModel", "STATE_ENDED reached with genuine playback ($currentPos ms / $totalDuration ms). Auto-playing next episode.")
+                playNextEpisode()
+            } else {
+                Log.i("StreamPlayerViewModel", "STATE_ENDED reached at end of playlist (hasNext=$hasNextEpisode, autoPlay=$autoPlayNext). Triggering auto-finish.")
+                player?.pause()
+                _uiState.update { it.copy(isPlaying = false, shouldAutoExit = true) }
+            }
+        } else {
+            Log.w("StreamPlayerViewModel", "STATE_ENDED reached without genuine playback completion (pos=$currentPos ms, dur=$totalDuration ms, firstFrame=$isFirstFrameDone). Suppressing autoPlayNextEpisode.")
+            player?.pause()
+            _uiState.update { it.copy(isPlaying = false) }
         }
     }
 
@@ -2014,8 +2027,9 @@ class StreamPlayerViewModel : ViewModel() {
                         // Only healthy incoming throughput (>= 250 KB/s with recent packets < 2.5s) counts as active recovery.
                         val isActivelyTransferring = (speedKbps >= 250L && timeSinceLastByteMs < 2_500L) ||
                             (speedKbps > 20L && timeSinceLastByteMs < 2_000L && bufferHealthSec > 0L)
+                        val isNearEnd = totalDuration > 10_000L && currentPos >= totalDuration - 2_000L
                         val isStalledAtZeroBuffer = isBuffering && bufferHealthSec == 0L && player.playWhenReady &&
-                            !isActivelyTransferring &&
+                            !isActivelyTransferring && !isNearEnd &&
                             pendingSeekTargetMs == null && !_uiState.value.isReconnecting && isPastStartupGrace
 
                         if (isStalledAtZeroBuffer) {
@@ -2029,6 +2043,18 @@ class StreamPlayerViewModel : ViewModel() {
                         } else if (!isBuffering || bufferHealthSec > 0L || isActivelyTransferring) {
                             stallAccumulatorMs = 0L
                         }
+                    }
+
+                    // Natural playback completion backup: if position reaches or exceeds duration,
+                    // or within 1.5s of EOF and playback stopped/buffering, trigger end of playback.
+                    val isNearEof = totalDuration > 10_000L && (
+                        playerPos >= (totalDuration - 400L) ||
+                        (playerPos >= (totalDuration - 1500L) && (!player.isPlaying || isBuffering))
+                    )
+                    if (isNearEof && pendingSeekTargetMs == null && !_uiState.value.isSeeking &&
+                        !_uiState.value.shouldAutoExit && player.playbackState != Player.STATE_ENDED) {
+                        Log.i("StreamPlayerViewModel", "Position tracker reached EOF ($playerPos ms / $totalDuration ms, state=${player.playbackState}). Triggering completion.")
+                        handlePlaybackEnded()
                     }
 
                     // Keep bufferSec for bandwidth protection below, but do not constrain video track sizes

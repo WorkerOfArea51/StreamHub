@@ -293,8 +293,7 @@ fun PlayerScreen(
     // Auto-return to Details/previous screen when playback completes at the end of playlist/movie
     LaunchedEffect(uiState.shouldAutoExit) {
         if (uiState.shouldAutoExit) {
-            viewModel.resetAutoExit()
-            delay(800L)
+            delay(500L)
             onBackClick()
         }
     }
@@ -354,6 +353,7 @@ fun PlayerScreen(
                 val insetsController = WindowCompat.getInsetsController(win, win.decorView)
                 insetsController.show(WindowInsetsCompat.Type.systemBars())
             }
+            viewModel.resetAutoExit()
         }
     }
 

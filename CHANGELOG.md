@@ -16,6 +16,10 @@ All notable changes, architectural milestones, and performance optimizations for
 - **📁 Data Model Modernization & Backward Compatibility (`MediaModel.kt`, `CatalogRepository.kt`)**:
   - Renamed `telegramFileId` to clean `fileId` across the `Episode` data model, storage cache indexer, batch parsers, and deduplication managers.
   - Maintained complete backward compatibility via getter `telegramFileId` and dual-key JSON serialization/deserialization for all existing catalog items.
+- **🎬 Video Completion & Auto-Exit Engine Overhaul (`PlayerScreen.kt`, `StreamPlayerViewModel.kt`)**:
+  - **Resolved Premature Coroutine Cancellation**: Fixed a defect in `PlayerScreen.kt` where `LaunchedEffect(uiState.shouldAutoExit)` invoked `resetAutoExit()` before `delay(500L)`, canceling the exit coroutine. Moved `resetAutoExit()` safely to `DisposableEffect.onDispose`.
+  - **Eliminated False Center Pause (⏸) Icon**: Excluded `Player.STATE_ENDED` from `isPlaying` and explicitly paused player on completion, preventing false Pause button display over ended video frames.
+  - **EOF Socket Freeze & Truncated Container Defense**: Added a fallback in `startPositionTracker` triggering `handlePlaybackEnded()` when playback reaches within 400ms of duration or within 1.5s while stalled/buffering, guaranteeing clean auto-exit on progressive HTTP streams.
 - **🛠️ Clean CI/CD Release Pipeline (`.github/workflows/release.yml`)**:
   - Removed `Restore google-services.json` and external FCM push steps from the GitHub Actions release workflow.
 
