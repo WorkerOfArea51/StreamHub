@@ -202,7 +202,26 @@ object EpisodeOrderingManager {
                 if (indexByKey >= 0) {
                     val ex = result[indexByKey]
                     val resolvedArc = newEp.arcName.ifBlank { ex.arcName }
-                    result[indexByKey] = newEp.copy(arcName = resolvedArc)
+                    val isGenericNewTitle = newEp.title.isBlank() ||
+                        newEp.title.matches(Regex("""(?i)^Episode\s*0*${newEp.episodeNumber}$"""))
+                    val resolvedTitle = if (isGenericNewTitle && ex.title.isNotBlank()) ex.title else newEp.title.ifBlank { ex.title }
+                    val resolvedDuration = if (newEp.durationMs > 0) newEp.durationMs else ex.durationMs
+                    val resolvedSize = newEp.fileSize.ifBlank { ex.fileSize }
+                    val resolvedFileName = if (newEp.fileName.isNotBlank() && !newEp.fileName.startsWith("Episode")) newEp.fileName else ex.fileName.ifBlank { newEp.fileName }
+                    val resolvedThumb = newEp.thumbnailUrl.ifBlank { ex.thumbnailUrl }
+
+                    result[indexByKey] = ex.copy(
+                        arcName = resolvedArc,
+                        title = resolvedTitle,
+                        seasonNumber = if (newEp.seasonNumber > 0) newEp.seasonNumber else ex.seasonNumber,
+                        streamUrl = newEp.streamUrl.ifBlank { ex.streamUrl },
+                        mirrorStreamUrl = newEp.mirrorStreamUrl.ifBlank { ex.mirrorStreamUrl },
+                        fileSize = resolvedSize,
+                        durationMs = resolvedDuration,
+                        fileName = resolvedFileName,
+                        thumbnailUrl = resolvedThumb,
+                        fileId = newEp.fileId.ifBlank { ex.fileId }
+                    )
                 } else {
                     // 3. Truly new episode (e.g. Arc 2 added to Arc 1)
                     result.add(newEp)

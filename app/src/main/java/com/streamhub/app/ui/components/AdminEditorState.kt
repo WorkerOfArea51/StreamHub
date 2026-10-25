@@ -128,6 +128,18 @@ class AdminEditorState(
     var showVoucherDialog by mutableStateOf(false)
     var showMetadataInspector by mutableStateOf(false)
 
+    // Single Episode Management (Edit & Add)
+    var editingEpisodeIndex by mutableStateOf<Int?>(null)
+    var editEpNumber by mutableStateOf("")
+    var editEpTitle by mutableStateOf("")
+    var editEpStreamUrl by mutableStateOf("")
+    var editEpMirrorUrl by mutableStateOf("")
+    var showAddEpisodeDialog by mutableStateOf(false)
+    var newEpNumber by mutableStateOf("")
+    var newEpTitle by mutableStateOf("")
+    var newEpStreamUrl by mutableStateOf("")
+    var newEpMirrorUrl by mutableStateOf("")
+
     fun loadItem(itemToEdit: MediaItem) {
         activeEditItem = itemToEdit
         title = itemToEdit.title

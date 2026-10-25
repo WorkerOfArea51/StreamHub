@@ -34,12 +34,13 @@ object BatchEpisodeParser {
     private val RESOLUTION_REGEX = Regex("(?i)(4k|2160p|1080p|720p|480p|360p|fhd|hd)")
 
     /**
-     * Parses arbitrary raw text (Telegram posts, plain link lists, markdown, JSON payloads, etc.)
+     * Parses arbitrary raw text (stream links, batch text, markdown, JSON payloads, etc.)
      */
     fun parseRawDump(
         rawText: String,
         defaultSeason: Int = 1,
-        defaultArc: String = ""
+        defaultArc: String = "",
+        startEpisodeIndex: Int = 1
     ): List<Episode> {
         if (rawText.isBlank()) return emptyList()
 
@@ -47,8 +48,8 @@ object BatchEpisodeParser {
 
         // 1. Check if rawText is valid JSON (Object or Array)
         if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-            // First try specialized Telegram/F2L bot JSON parser with full duration & size support
-            val fromResolver = com.streamhub.app.data.StreamLinkResolver.parseSmartBotMessageOrLinks(trimmed, defaultSeason, defaultArc)
+            // First try specialized bot/JSON parser with full duration & size support
+            val fromResolver = com.streamhub.app.data.StreamLinkResolver.parseSmartBotMessageOrLinks(trimmed, defaultSeason, defaultArc, startEpisodeIndex)
             if (fromResolver.isNotEmpty()) return fromResolver
 
             val fromJson = parseJsonArray(trimmed, defaultSeason, defaultArc)
@@ -58,7 +59,7 @@ object BatchEpisodeParser {
         // 2. Line-by-line or Token-based extraction
         val lines = rawText.lines().map { it.trim() }.filter { it.isNotBlank() }
         val episodes = mutableListOf<Episode>()
-        var autoIndex = 1
+        var autoIndex = startEpisodeIndex.coerceAtLeast(1)
 
         for (line in lines) {
             val urls = URL_REGEX.findAll(line).map { it.value }.toList()

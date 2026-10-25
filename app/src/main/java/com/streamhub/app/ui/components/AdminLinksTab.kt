@@ -13,28 +13,40 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamhub.app.data.StreamBackendConfig
@@ -507,20 +519,24 @@ fun AdminLinksTab(
                     state.batchError = null
                     state.batchSuccess = null
                     val clipText = clipboardManager.getText()?.text?.trim()
-                    if (clipText.isNullOrBlank()) {
-                        state.batchError = "Clipboard is empty"
+                    val textToParse = clipText.takeIf { !it.isNullOrBlank() }
+                        ?: state.generatedEpisodesText.trim().takeIf { it.isNotBlank() }
+                        ?: state.startBatchLink.trim()
+
+                    if (textToParse.isBlank()) {
+                        state.batchError = "Clipboard and input are empty"
                         return@Button
                     }
 
-                    val isBatchUrlOrId = clipText.contains("/batch/", ignoreCase = true) ||
-                                         clipText.contains("api/batch", ignoreCase = true) ||
-                                         (clipText.length in 32..64 && clipText.matches(Regex("^[a-fA-F0-9]+$")))
+                    val isBatchUrlOrId = textToParse.contains("/batch/", ignoreCase = true) ||
+                                         textToParse.contains("api/batch", ignoreCase = true) ||
+                                         (textToParse.length in 32..64 && textToParse.matches(Regex("^[a-fA-F0-9]+$")))
 
                     if (isBatchUrlOrId) {
-                        state.f2lBatchInput = clipText
+                        state.f2lBatchInput = textToParse
                         state.isFetchingF2l = true
                         scope.launch {
-                            val res = com.streamhub.app.data.api.F2lApiClient.fetchBatch(clipText, parsedSeasonNum, state.arcNameText)
+                            val res = com.streamhub.app.data.api.F2lApiClient.fetchBatch(textToParse, parsedSeasonNum, state.arcNameText)
                             res.fold(
                                 onSuccess = { eps ->
                                     if (eps.isNotEmpty()) {
@@ -544,17 +560,31 @@ fun AdminLinksTab(
                         return@Button
                     }
 
-                    val parsed = com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(clipText, parsedSeasonNum, state.arcNameText)
-                        .ifEmpty { StreamLinkResolver.parseSmartBotMessageOrLinks(clipText, parsedSeasonNum, state.arcNameText) }
+                    val nextEpIndex = (state.currentEpisodes.maxOfOrNull { it.episodeNumber } ?: 0) + 1
+                    val parsed = com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(
+                        textToParse,
+                        parsedSeasonNum,
+                        state.arcNameText,
+                        startEpisodeIndex = nextEpIndex
+                    ).ifEmpty {
+                        StreamLinkResolver.parseSmartBotMessageOrLinks(
+                            textToParse,
+                            parsedSeasonNum,
+                            state.arcNameText,
+                            startEpisodeIndex = nextEpIndex
+                        )
+                    }
+
                     if (parsed.isNotEmpty()) {
                         val merged = com.streamhub.app.data.EpisodeOrderingManager.mergeAndDeduplicate(state.currentEpisodes.toList(), parsed)
                         state.currentEpisodes.clear()
                         state.currentEpisodes.addAll(merged)
-                        state.startBatchLink = clipText
-                        state.generatedEpisodesText = clipText
-                        state.batchSuccess = "Parsed & Loaded ${parsed.size} episodes! Check JSON below."
+                        val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(state.currentEpisodes)
+                        state.startBatchLink = jsonDump
+                        state.generatedEpisodesText = jsonDump
+                        state.batchSuccess = "Parsed & Loaded ${parsed.size} episode(s)! Total: ${state.currentEpisodes.size}."
                     } else {
-                        state.batchError = "Could not parse episodes from clipboard text."
+                        state.batchError = "Could not parse episodes from text."
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
@@ -609,6 +639,7 @@ fun AdminLinksTab(
             val validation = remember(state.currentEpisodes.size) {
                 com.streamhub.app.data.parser.BatchEpisodeParser.validateEpisodes(state.currentEpisodes)
             }
+            var showAllEpisodes by remember { mutableStateOf(false) }
 
             Spacer(modifier = Modifier.height(10.dp))
             Surface(
@@ -645,6 +676,36 @@ fun AdminLinksTab(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            // Add Single Episode Action
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFF10B981).copy(alpha = 0.2f),
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        val nextEp = (state.currentEpisodes.maxOfOrNull { it.episodeNumber } ?: 0) + 1
+                                        state.newEpNumber = nextEp.toString()
+                                        state.newEpTitle = "Episode $nextEp"
+                                        state.newEpStreamUrl = ""
+                                        state.newEpMirrorUrl = ""
+                                        state.showAddEpisodeDialog = true
+                                    }
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = "Add Episode", tint = Color(0xFF10B981), modifier = Modifier.size(12.dp))
+                                    Text(
+                                        "Add",
+                                        color = Color(0xFF10B981),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
                             // Health Check Action
                             Surface(
                                 shape = CircleShape,
@@ -710,6 +771,9 @@ fun AdminLinksTab(
                                         }
                                         state.currentEpisodes.clear()
                                         state.currentEpisodes.addAll(renumbered)
+                                        val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(state.currentEpisodes)
+                                        state.startBatchLink = jsonDump
+                                        state.generatedEpisodesText = jsonDump
                                     }
                             ) {
                                 Row(
@@ -757,92 +821,395 @@ fun AdminLinksTab(
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))
+                    val displayedEpisodes = if (showAllEpisodes) state.currentEpisodes else state.currentEpisodes.take(8)
+
                     Column(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        state.currentEpisodes.take(5).forEachIndexed { idx, ep ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                    modifier = Modifier.padding(end = 6.dp)
-                                ) {
-                                    Text(
-                                        text = "E${ep.episodeNumber.toString().padStart(2, '0')}",
-                                        color = AccentGold,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                                Text(
-                                    text = ep.title.removePrefix("Ep ${ep.episodeNumber}: ").ifBlank { ep.fileName },
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    fontSize = 11.sp,
-                                    maxLines = 1,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                val durationText = if (ep.durationMs > 0) {
-                                    val totalSec = (ep.durationMs / 1000).toInt()
-                                    val h = totalSec / 3600
-                                    val m = (totalSec % 3600) / 60
-                                    val s = totalSec % 60
-                                    if (h > 0) {
-                                        String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, s)
-                                    } else {
-                                        String.format(java.util.Locale.US, "%02d:%02d", m, s)
+                        displayedEpisodes.forEachIndexed { idx, ep ->
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        state.editingEpisodeIndex = idx
+                                        state.editEpNumber = ep.episodeNumber.toString()
+                                        state.editEpTitle = ep.title
+                                        state.editEpStreamUrl = ep.streamUrl
+                                        state.editEpMirrorUrl = ep.mirrorStreamUrl
                                     }
-                                } else ""
-                                val metaChips = listOfNotNull(
-                                    durationText.takeIf { it.isNotBlank() },
-                                    ep.fileSize.takeIf { it.isNotBlank() }
-                                ).joinToString(" • ")
-
-                                if (metaChips.isNotBlank()) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = metaChips,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-
-                                val key = "${ep.seasonNumber}_${ep.arcName}_${ep.episodeNumber}"
-                                val epHealth = state.healthReport?.results?.get(key)
-                                if (epHealth != null) {
-                                    Spacer(modifier = Modifier.width(6.dp))
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                ) {
                                     Surface(
                                         shape = CircleShape,
-                                        color = if (epHealth.isAlive) Color(0xFF10B981).copy(alpha = 0.15f) else PrimaryRed.copy(alpha = 0.15f)
+                                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        modifier = Modifier.padding(end = 6.dp)
                                     ) {
                                         Text(
-                                            text = if (epHealth.isAlive) "${epHealth.httpCode} (${epHealth.latencyMs}ms)" else (epHealth.errorMessage ?: "HTTP ${epHealth.httpCode}"),
-                                            color = if (epHealth.isAlive) Color(0xFF10B981) else PrimaryRed,
+                                            text = "E${ep.episodeNumber.toString().padStart(2, '0')}",
+                                            color = AccentGold,
                                             fontSize = 9.sp,
                                             fontWeight = FontWeight.Bold,
                                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                         )
                                     }
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = ep.title.removePrefix("Ep ${ep.episodeNumber}: ").ifBlank { ep.fileName },
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        if (ep.streamUrl.isNotBlank()) {
+                                            Text(
+                                                text = ep.streamUrl,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                                fontSize = 9.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    val durationText = if (ep.durationMs > 0) {
+                                        val totalSec = (ep.durationMs / 1000).toInt()
+                                        val h = totalSec / 3600
+                                        val m = (totalSec % 3600) / 60
+                                        val s = totalSec % 60
+                                        if (h > 0) {
+                                            String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, s)
+                                        } else {
+                                            String.format(java.util.Locale.US, "%02d:%02d", m, s)
+                                        }
+                                    } else ""
+                                    val metaChips = listOfNotNull(
+                                        durationText.takeIf { it.isNotBlank() },
+                                        ep.fileSize.takeIf { it.isNotBlank() }
+                                    ).joinToString(" • ")
+
+                                    if (metaChips.isNotBlank()) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = metaChips,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+
+                                    val key = "${ep.seasonNumber}_${ep.arcName}_${ep.episodeNumber}"
+                                    val epHealth = state.healthReport?.results?.get(key)
+                                    if (epHealth != null) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (epHealth.isAlive) Color(0xFF10B981).copy(alpha = 0.15f) else PrimaryRed.copy(alpha = 0.15f)
+                                        ) {
+                                            Text(
+                                                text = if (epHealth.isAlive) "${epHealth.httpCode} (${epHealth.latencyMs}ms)" else (epHealth.errorMessage ?: "HTTP ${epHealth.httpCode}"),
+                                                color = if (epHealth.isAlive) Color(0xFF10B981) else PrimaryRed,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+
+                                    // Edit Button
+                                    IconButton(
+                                        onClick = {
+                                            state.editingEpisodeIndex = idx
+                                            state.editEpNumber = ep.episodeNumber.toString()
+                                            state.editEpTitle = ep.title
+                                            state.editEpStreamUrl = ep.streamUrl
+                                            state.editEpMirrorUrl = ep.mirrorStreamUrl
+                                        },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Edit,
+                                            contentDescription = "Edit Episode",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+
+                                    // Delete Button
+                                    IconButton(
+                                        onClick = {
+                                            state.currentEpisodes.removeAt(idx)
+                                            val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(state.currentEpisodes)
+                                            state.startBatchLink = jsonDump
+                                            state.generatedEpisodesText = jsonDump
+                                        },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = "Delete Episode",
+                                            tint = PrimaryRed.copy(alpha = 0.8f),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
-                        if (state.currentEpisodes.size > 5) {
-                            Text(
-                                text = "+ ${state.currentEpisodes.size - 5} more episodes",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.padding(start = 4.dp, top = 2.dp)
-                            )
+
+                        // Expand / Collapse Toggle if > 8 episodes
+                        if (state.currentEpisodes.size > 8) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                modifier = Modifier
+                                    .align(Alignment.CenterHorizontally)
+                                    .padding(top = 4.dp)
+                                    .clip(CircleShape)
+                                    .clickable { showAllEpisodes = !showAllEpisodes }
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (showAllEpisodes) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = if (showAllEpisodes) "Collapse (Show 8)" else "Show All (${state.currentEpisodes.size}) Episodes",
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    // --- DIALOG: EDIT SINGLE EPISODE ---
+    if (state.editingEpisodeIndex != null) {
+        val targetIdx = state.editingEpisodeIndex!!
+        val ep = state.currentEpisodes.getOrNull(targetIdx)
+        if (ep != null) {
+            val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+            AlertDialog(
+                onDismissRequest = { state.editingEpisodeIndex = null },
+                title = {
+                    Text(
+                        text = "Edit Episode ${ep.episodeNumber}",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = state.editEpNumber,
+                            onValueChange = { state.editEpNumber = it },
+                            label = { Text("Episode #", fontSize = 11.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = state.editEpTitle,
+                            onValueChange = { state.editEpTitle = it },
+                            label = { Text("Episode Title", fontSize = 11.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = state.editEpStreamUrl,
+                            onValueChange = { state.editEpStreamUrl = it },
+                            label = { Text("Stream URL / Direct Link *", fontSize = 11.sp) },
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = {
+                                        val clip = clipboardManager.getText()?.text?.trim()
+                                        if (!clip.isNullOrBlank()) {
+                                            state.editEpStreamUrl = StreamLinkResolver.sanitizePlayableUrl(clip)
+                                        }
+                                    },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(Icons.Default.ContentPaste, contentDescription = "Paste", tint = AccentGold, modifier = Modifier.size(16.dp))
+                                }
+                            },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = state.editEpMirrorUrl,
+                            onValueChange = { state.editEpMirrorUrl = it },
+                            label = { Text("Mirror / Download URL (Optional)", fontSize = 11.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val parsedNum = state.editEpNumber.toIntOrNull() ?: ep.episodeNumber
+                            val cleanStream = StreamLinkResolver.sanitizePlayableUrl(state.editEpStreamUrl)
+                            val cleanMirror = StreamLinkResolver.sanitizePlayableUrl(state.editEpMirrorUrl)
+                            val fileName = if (cleanStream.isNotBlank()) {
+                                cleanStream.substringBefore("?").substringBefore("#").substringAfterLast("/")
+                            } else {
+                                ep.fileName.ifBlank { "Episode $parsedNum.mkv" }
+                            }
+                            val updated = ep.copy(
+                                episodeNumber = parsedNum,
+                                title = state.editEpTitle.ifBlank { "Episode $parsedNum" },
+                                streamUrl = cleanStream,
+                                mirrorStreamUrl = cleanMirror,
+                                fileName = fileName,
+                                fileId = if (cleanStream.isNotBlank()) StreamLinkResolver.extractMessageOrFileId(cleanStream) else ep.fileId
+                            )
+                            state.currentEpisodes[targetIdx] = updated
+                            val sorted = com.streamhub.app.data.EpisodeOrderingManager.normalizeAndSort(state.currentEpisodes)
+                            state.currentEpisodes.clear()
+                            state.currentEpisodes.addAll(sorted)
+                            val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(state.currentEpisodes)
+                            state.startBatchLink = jsonDump
+                            state.generatedEpisodesText = jsonDump
+                            state.editingEpisodeIndex = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                    ) {
+                        Text("Save Changes", color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { state.editingEpisodeIndex = null }) {
+                        Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            )
+        }
+    }
+
+    // --- DIALOG: ADD NEW SINGLE EPISODE ---
+    if (state.showAddEpisodeDialog) {
+        val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+        AlertDialog(
+            onDismissRequest = { state.showAddEpisodeDialog = false },
+            title = {
+                Text(
+                    text = "Add New Episode",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = state.newEpNumber,
+                        onValueChange = { state.newEpNumber = it },
+                        label = { Text("Episode #", fontSize = 11.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = state.newEpTitle,
+                        onValueChange = { state.newEpTitle = it },
+                        label = { Text("Episode Title", fontSize = 11.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = state.newEpStreamUrl,
+                        onValueChange = { state.newEpStreamUrl = it },
+                        label = { Text("Stream URL / Direct Link *", fontSize = 11.sp) },
+                        trailingIcon = {
+                            IconButton(
+                                onClick = {
+                                    val clip = clipboardManager.getText()?.text?.trim()
+                                    if (!clip.isNullOrBlank()) {
+                                        state.newEpStreamUrl = StreamLinkResolver.sanitizePlayableUrl(clip)
+                                    }
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(Icons.Default.ContentPaste, contentDescription = "Paste", tint = AccentGold, modifier = Modifier.size(16.dp))
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = state.newEpMirrorUrl,
+                        onValueChange = { state.newEpMirrorUrl = it },
+                        label = { Text("Mirror / Download URL (Optional)", fontSize = 11.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val parsedSeasonNum = state.seasonNumberText.toIntOrNull() ?: 1
+                        val parsedNum = state.newEpNumber.toIntOrNull() ?: ((state.currentEpisodes.maxOfOrNull { it.episodeNumber } ?: 0) + 1)
+                        val cleanStream = StreamLinkResolver.sanitizePlayableUrl(state.newEpStreamUrl)
+                        val cleanMirror = StreamLinkResolver.sanitizePlayableUrl(state.newEpMirrorUrl)
+                        val fileName = if (cleanStream.isNotBlank()) {
+                            cleanStream.substringBefore("?").substringBefore("#").substringAfterLast("/")
+                        } else {
+                            "Episode $parsedNum.mkv"
+                        }
+                        val newEp = com.streamhub.app.data.models.Episode(
+                            episodeNumber = parsedNum,
+                            seasonNumber = parsedSeasonNum,
+                            arcName = state.arcNameText,
+                            title = state.newEpTitle.ifBlank { "Episode $parsedNum" },
+                            streamUrl = cleanStream,
+                            mirrorStreamUrl = cleanMirror,
+                            fileName = fileName.ifBlank { "Episode $parsedNum.mkv" },
+                            fileId = StreamLinkResolver.extractMessageOrFileId(cleanStream)
+                        )
+                        val merged = com.streamhub.app.data.EpisodeOrderingManager.mergeAndDeduplicate(state.currentEpisodes.toList(), listOf(newEp))
+                        state.currentEpisodes.clear()
+                        state.currentEpisodes.addAll(merged)
+                        val jsonDump = com.streamhub.app.data.parser.BatchEpisodeParser.toJsonString(state.currentEpisodes)
+                        state.startBatchLink = jsonDump
+                        state.generatedEpisodesText = jsonDump
+                        state.showAddEpisodeDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                ) {
+                    Text("Add Episode", color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { state.showAddEpisodeDialog = false }) {
+                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        )
     }
 }

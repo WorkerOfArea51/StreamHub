@@ -771,8 +771,9 @@ fun ArcEpisodeEditorDialog(
                                             }
 
                                             val resolvedArcName = currentArcName.trim().ifBlank { targetArcName }
-                                            val parsed = BatchEpisodeParser.parseRawDump(jsonCandidate, targetSeasonNumber, resolvedArcName)
-                                                .ifEmpty { StreamLinkResolver.parseSmartBotMessageOrLinks(jsonCandidate, targetSeasonNumber, resolvedArcName) }
+                                            val nextArcEpIndex = (arcEpisodes.maxOfOrNull { it.episodeNumber } ?: 0) + 1
+                                            val parsed = BatchEpisodeParser.parseRawDump(jsonCandidate, targetSeasonNumber, resolvedArcName, startEpisodeIndex = nextArcEpIndex)
+                                                .ifEmpty { StreamLinkResolver.parseSmartBotMessageOrLinks(jsonCandidate, targetSeasonNumber, resolvedArcName, startEpisodeIndex = nextArcEpIndex) }
 
                                             if (parsed.isNotEmpty()) {
                                                 val formattedEps = parsed.map { ep ->

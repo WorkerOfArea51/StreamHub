@@ -80,4 +80,80 @@ class EpisodeOrderingManagerTest {
         val expectedArcs = listOf("Arc 1", "Arc 1", "Arc 1", "Arc 2", "Arc 2", "Arc 2")
         assertEquals(expectedArcs, sorted.map { it.arcName })
     }
+
+    @Test
+    fun parseRawDump_withStartEpisodeIndex_assignsConsecutiveIndices() {
+        val rawLink = "https://t.me/dump1211/542"
+        val parsed = com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(
+            rawText = rawLink,
+            startEpisodeIndex = 14
+        )
+        assertEquals(1, parsed.size)
+        assertEquals(14, parsed[0].episodeNumber)
+        assertEquals("https://t.me/dump1211/542", parsed[0].streamUrl)
+    }
+
+    @Test
+    fun mergeAndDeduplicate_appendsNewEpisodeWithoutOverwritingEpisode1() {
+        val existing = (1..13).map {
+            Episode(
+                episodeNumber = it,
+                seasonNumber = 1,
+                title = "EP - $it - Title $it",
+                streamUrl = "https://cdn.example.com/ep$it.mp4",
+                durationMs = 1433000L,
+                fileSize = "350 MB"
+            )
+        }
+
+        val incoming = com.streamhub.app.data.parser.BatchEpisodeParser.parseRawDump(
+            rawText = "https://t.me/dump1211/542",
+            startEpisodeIndex = 14
+        )
+
+        val merged = EpisodeOrderingManager.mergeAndDeduplicate(existing, incoming)
+        assertEquals(14, merged.size)
+        assertEquals(1, merged[0].episodeNumber)
+        assertEquals("EP - 1 - Title 1", merged[0].title)
+        assertEquals("https://cdn.example.com/ep1.mp4", merged[0].streamUrl)
+        assertEquals(1433000L, merged[0].durationMs)
+        assertEquals("350 MB", merged[0].fileSize)
+
+        assertEquals(14, merged[13].episodeNumber)
+        assertEquals("https://t.me/dump1211/542", merged[13].streamUrl)
+    }
+
+    @Test
+    fun mergeAndDeduplicate_preservesExistingRichMetadata_whenUpdatedWithGenericTitle() {
+        val existing = listOf(
+            Episode(
+                episodeNumber = 1,
+                seasonNumber = 1,
+                title = "The Magic That Started Everything",
+                streamUrl = "https://cdn.example.com/old_ep1.mp4",
+                durationMs = 1433000L,
+                fileSize = "343.54 MB",
+                fileName = "EP01_Master.mkv"
+            )
+        )
+
+        // Incoming has updated URL but generic title and no duration/size
+        val incoming = listOf(
+            Episode(
+                episodeNumber = 1,
+                seasonNumber = 1,
+                title = "Episode 1",
+                streamUrl = "https://cdn.example.com/new_ep1.mp4"
+            )
+        )
+
+        val merged = EpisodeOrderingManager.mergeAndDeduplicate(existing, incoming)
+        assertEquals(1, merged.size)
+        val ep = merged[0]
+        assertEquals("https://cdn.example.com/new_ep1.mp4", ep.streamUrl)
+        assertEquals("The Magic That Started Everything", ep.title)
+        assertEquals(1433000L, ep.durationMs)
+        assertEquals("343.54 MB", ep.fileSize)
+        assertEquals("EP01_Master.mkv", ep.fileName)
+    }
 }

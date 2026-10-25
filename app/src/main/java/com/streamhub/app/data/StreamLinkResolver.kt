@@ -67,7 +67,8 @@ object StreamLinkResolver {
     fun parseSmartBotMessageOrLinks(
         rawText: String,
         seasonNumber: Int = 1,
-        arcName: String = ""
+        arcName: String = "",
+        startEpisodeIndex: Int = 1
     ): List<Episode> {
         val trimmed = rawText.trim()
         if (trimmed.isBlank()) return emptyList()
@@ -125,7 +126,7 @@ object StreamLinkResolver {
         }
 
         // 3. Fallback: Parse Line by Line
-        return parseAndGroupTelegramLinks(trimmed, seasonNumber, arcName)
+        return parseAndGroupTelegramLinks(trimmed, seasonNumber, arcName, startEpisodeIndex)
     }
 
     /**
@@ -297,7 +298,8 @@ object StreamLinkResolver {
     fun parseAndGroupTelegramLinks(
         rawText: String,
         seasonNumber: Int = 1,
-        arcName: String = ""
+        arcName: String = "",
+        startEpisodeIndex: Int = 1
     ): List<Episode> {
         val lines = rawText.lines().map { it.trim() }.filter { it.isNotEmpty() }
         val episodes = mutableListOf<Episode>()
@@ -308,7 +310,7 @@ object StreamLinkResolver {
                 if (line.contains("/api/batch", ignoreCase = true) || line.contains("/batch/", ignoreCase = true)) {
                     return@forEachIndexed
                 }
-                val epNum = extractEpisodeNumber(line) ?: (index + 1)
+                val epNum = extractEpisodeNumber(line) ?: (startEpisodeIndex + index)
                 val epTitle = "Episode $epNum"
                 val sanitizedUrl = sanitizePlayableUrl(line)
 

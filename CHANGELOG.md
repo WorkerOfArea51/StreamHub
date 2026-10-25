@@ -2,6 +2,23 @@
 
 All notable changes, architectural milestones, and performance optimizations for the **StreamHub** Android ecosystem are documented in this file.
 
+## 🌟 [v4.8.425] - 2026-10-25 (Smart Sequential Episode Auto-Indexing, Creator Studio Episode Manager, & Rich Metadata Preservation)
+
+### 🚀 Creator Studio & Episode Parser Enhancements
+
+- **🔗 Smart Episode Link Parser & Sequential Auto-Indexing (`BatchEpisodeParser.kt`, `StreamLinkResolver.kt`, `AdminLinksTab.kt`)**:
+  - Resolved link parsing defect where pasting unnumbered stream links (e.g. `https://t.me/dump1211/542`) defaulted to Episode 1, accidentally overwriting existing Episode 1.
+  - Introduced `startEpisodeIndex: Int` across `parseRawDump`, `parseSmartBotMessageOrLinks`, and `parseAndGroupTelegramLinks`. Automatically initializes sequential indexing from `(currentEpisodes.maxOf { episodeNumber } ?: 0) + 1` (e.g. appending as Episode 14 when 13 episodes exist).
+  - Modernized labels and placeholders in Creator Studio and Arc Editor: purged obsolete "Telegram post" text and updated to `"Smart Raw Dump / Episode Links / JSON *"`.
+- **✏️ Single-Season Episode Management in Creator Studio (`AdminLinksTab.kt`, `AdminEditorState.kt`)**:
+  - **Click-to-Edit Episode Dialog**: Clicking any episode in the list opens an interactive dialog allowing creators to update episode number, title, and replace stream URLs or mirror links with 1-tap clipboard paste.
+  - **Per-Episode Deletion (`🗑`)**: Added a direct delete button to every episode row, immediately removing the episode and syncing the JSON dump.
+  - **Interactive `+ Add Episode` Dialog**: Added an action button to manually add single episodes with title and stream link.
+  - **Expandable Full Episode Display**: Expanded episode view beyond 5 with an expandable toggle button to inspect and edit all episodes in a season.
+- **🛡️ Rich Metadata Preservation Invariant (`EpisodeOrderingManager.kt`)**:
+  - Hardened `mergeAndDeduplicate` so that incoming episodes with generic fallback titles (`"Episode X"`) never wipe out existing rich episode titles, durations, or file sizes.
+  - Preserved `ex.durationMs`, `ex.fileSize`, `ex.fileName`, and `ex.thumbnailUrl` across all composite key updates.
+
 ## 🌟 [v4.8.424] - 2026-10-25 (100% Zero-Firebase Architecture, Cloudflare VIP Voucher KV, & Clean FileId Data Model)
 
 ### 🚀 100% Zero-Firebase Architecture ($0/Month Free Tier)
