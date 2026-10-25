@@ -47,6 +47,10 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.ui.zIndex
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -463,8 +467,19 @@ fun HistoryScreen(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 16.dp)
-        )
+                .navigationBarsPadding()
+                .padding(bottom = 88.dp, start = 16.dp, end = 16.dp)
+                .zIndex(100f)
+        ) { snackbarData ->
+            Snackbar(
+                snackbarData = snackbarData,
+                modifier = Modifier.border(1.dp, CardBorderDark, RoundedCornerShape(16.dp)),
+                containerColor = Color(0xF41E1E2E),
+                contentColor = Color.White,
+                actionColor = MaterialTheme.colorScheme.primary,
+                shape = RoundedCornerShape(16.dp)
+            )
+        }
     }
 
     // Clear All Confirmation Dialog

@@ -21,6 +21,14 @@ All notable changes, architectural milestones, and performance optimizations for
 - **Destructive Action Confirmation Dialogs**:
   - Added protective Material 3 `AlertDialog` popups before deleting single episodes in Creator Studio (`AdminLinksTab.kt`), Arc Episode Editor (`ArcEpisodeEditorDialog.kt`), and VIP Passes in Voucher Manager (`VoucherManagerDialog.kt`), preventing accidental 1-tap data loss.
 
+### 🎨 UI & Layout Polish
+
+- **Elevated Snackbar Placement & Cinema Frosted Styling (`HomeScreen.kt`, `SearchScreen.kt`, `HistoryScreen.kt`)**:
+  - Elevated `SnackbarHost` with `navigationBarsPadding().padding(bottom = 88.dp)` and `zIndex(100f)`, completely preventing the floating bottom navigation dock from obscuring "Marked as completed", "Removed completed mark", and "Undo" actions.
+  - Styled with frosted AMOLED dark background (`#F41E1E2E`), crisp white text, and subtle 1dp card borders.
+- **Creator Studio Tools Tab Simplification (`AdminToolsTab.kt`)**:
+  - Purged the obsolete 1-time "Cloudflare Edge KV Sync" migration card from the Tools tab now that the catalog is 100% native on Cloudflare Edge KV.
+
 ### ☁️ Cloudflare Edge KV Modernization & Markdown Sync
 
 - **README Modernization (`README.md`)**:
