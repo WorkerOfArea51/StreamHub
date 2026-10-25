@@ -11,8 +11,8 @@ import org.json.JSONObject
 data class MyListItem(
     val mediaId: String,
     val addedAt: Long = System.currentTimeMillis(),
-    val isFavorite: Boolean = false,
-    val collection: String = "Watchlist"
+    val isFavorite: Boolean = true,
+    val collection: String = "Favorites"
 )
 
 /**
@@ -69,8 +69,8 @@ object MyListManager {
                     map[id] = MyListItem(
                         mediaId = id,
                         addedAt = json.optLong("addedAt", System.currentTimeMillis()),
-                        isFavorite = json.optBoolean("isFavorite", false),
-                        collection = json.optString("collection", "Watchlist")
+                        isFavorite = json.optBoolean("isFavorite", true),
+                        collection = json.optString("collection", "Favorites")
                     )
                 } catch (e: Exception) {
                     map[id] = MyListItem(mediaId = id)
@@ -104,7 +104,12 @@ object MyListManager {
             prefs.remove(KEY_ITEM_PREFIX + mediaId)
             isAdded = false
         } else {
-            val item = MyListItem(mediaId = mediaId, addedAt = System.currentTimeMillis())
+            val item = MyListItem(
+                mediaId = mediaId,
+                addedAt = System.currentTimeMillis(),
+                isFavorite = true,
+                collection = "Favorites"
+            )
             currentMap[mediaId] = item
             saveItemToPrefs(prefs, item)
             isAdded = true
@@ -123,9 +128,17 @@ object MyListManager {
     fun toggleFavorite(mediaId: String): Boolean {
         if (!::appContext.isInitialized) return false
         val currentMap = _itemsFlow.value.toMutableMap()
-        val existing = currentMap[mediaId] ?: MyListItem(mediaId = mediaId, addedAt = System.currentTimeMillis())
+        val existing = currentMap[mediaId] ?: MyListItem(
+            mediaId = mediaId,
+            addedAt = System.currentTimeMillis(),
+            isFavorite = false,
+            collection = "Favorites"
+        )
         val newFav = !existing.isFavorite
-        val updated = existing.copy(isFavorite = newFav)
+        val updated = existing.copy(
+            isFavorite = newFav,
+            collection = if (newFav && (existing.collection.equals("Watchlist", ignoreCase = true) || existing.collection.equals("Watch Later", ignoreCase = true))) "Favorites" else existing.collection
+        )
         currentMap[mediaId] = updated
 
         val prefs = getPrefs().edit()
@@ -149,8 +162,16 @@ object MyListManager {
     fun setCollection(mediaId: String, collectionName: String) {
         if (!::appContext.isInitialized) return
         val currentMap = _itemsFlow.value.toMutableMap()
-        val existing = currentMap[mediaId] ?: MyListItem(mediaId = mediaId, addedAt = System.currentTimeMillis())
-        val updated = existing.copy(collection = collectionName)
+        val existing = currentMap[mediaId] ?: MyListItem(
+            mediaId = mediaId,
+            addedAt = System.currentTimeMillis(),
+            isFavorite = collectionName.equals("Favorites", ignoreCase = true),
+            collection = collectionName
+        )
+        val updated = existing.copy(
+            collection = collectionName,
+            isFavorite = if (collectionName.equals("Favorites", ignoreCase = true)) true else existing.isFavorite
+        )
         currentMap[mediaId] = updated
 
         val prefs = getPrefs().edit()
@@ -178,7 +199,7 @@ object MyListManager {
     }
 
     fun getItemCollection(mediaId: String): String {
-        return _itemsFlow.value[mediaId]?.collection ?: "Watchlist"
+        return _itemsFlow.value[mediaId]?.collection ?: "Favorites"
     }
 
     fun getItemsInCollectionCount(collectionName: String): Int {

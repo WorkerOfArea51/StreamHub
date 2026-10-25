@@ -112,14 +112,25 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import com.streamhub.app.data.repository.CatalogState
 import com.streamhub.app.ui.components.AppErrorState
 import com.streamhub.app.ui.theme.AccentGold
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import com.streamhub.app.ui.theme.bouncyCombinedClickable
+import com.streamhub.app.ui.theme.bouncyClickable
+import com.streamhub.app.ui.theme.CardBorderDark
+import com.streamhub.app.ui.theme.SurfaceDark
+import com.streamhub.app.ui.theme.TextPrimary
+import com.streamhub.app.ui.theme.TextSecondary
+import com.streamhub.app.ui.theme.PrimaryRed
+import com.streamhub.app.data.FranchiseManager
 
 enum class MyListStatusCategory(val label: String, val icon: ImageVector) {
     ALL("All Saved", Icons.Default.Bookmark),
+    FAVORITES("Favorites", Icons.Default.Favorite),
     IN_PROGRESS("In Progress", Icons.Default.PlayCircleOutline),
     WATCH_LATER("Watch Later", Icons.Default.HourglassEmpty),
-    FAVORITES("Favorites", Icons.Default.Favorite),
     COMPLETED("Completed", Icons.Default.CheckCircle),
-    COLLECTIONS("Collections", Icons.Default.Folder)
+    COLLECTIONS("Folders", Icons.Default.Folder)
 }
 
 enum class MyListSortOption(val label: String, val shortLabel: String) {
@@ -243,10 +254,13 @@ fun MyListScreen(
         }
     }
 
-    val watchLaterMedia = remember(allSavedMedia, historyMap) {
+    val watchLaterMedia = remember(allSavedMedia, historyMap, myItemsMap) {
         allSavedMedia.filter { item ->
             val progress = historyMap[item.id]
-            progress == null || progress.positionMs <= 5000L
+            val col = myItemsMap[item.id]?.collection ?: "Favorites"
+            val isFav = myItemsMap[item.id]?.isFavorite == true
+            (col.equals("Watchlist", ignoreCase = true) || col.equals("Watch Later", ignoreCase = true) || (!isFav && (progress == null || progress.positionMs <= 5000L))) &&
+            (progress == null || progress.positionMs <= 5000L)
         }
     }
 
@@ -707,7 +721,7 @@ fun MyListScreen(
         }
 
         // ── Dynamic Genre Filter Row ──
-        if (availableGenres.size > 2) {
+        if (availableGenres.size > 2 && allSavedMedia.size >= 5) {
             Spacer(modifier = Modifier.height(8.dp))
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1153,183 +1167,219 @@ fun MyListGridCard(
     val cardAspectRatio = if (isLandscape) 1.777f else 0.7f
     val imageModel = if (isLandscape && item.bannerUrl.isNotBlank()) item.bannerUrl else item.posterUrl
 
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+    val isMovie = item.category.equals("Movie", ignoreCase = true) ||
+                  item.category.equals("Movies", ignoreCase = true) ||
+                  item.type.equals("Movie", ignoreCase = true) ||
+                  item.relationType.contains("Movie", ignoreCase = true)
+
+    val effectiveSeason = FranchiseManager.getEffectiveSeasonNumber(item)
+    val effectivePart = FranchiseManager.getEffectivePartNumber(item)
+    val movieSeq = if (isMovie) (effectivePart?.takeIf { it > 1 }) else null
+    val seasonBadgeText = if (effectivePart != null && effectivePart > 0) "S$effectiveSeason P$effectivePart" else "S$effectiveSeason"
+
+    val isCompleted = progress?.isFullyCompleted(item.episodes.size) == true
+    val isWatchingInProgress = progress != null && progress.positionMs > 5000L && progress.durationMs > 0L && !isCompleted
+    val progressFraction = if (isWatchingInProgress) {
+        (progress!!.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0.04f, 1f)
+    } else 0f
+
+    val haptic = LocalHapticFeedback.current
+
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onOptionsClick
+            .bouncyCombinedClickable(
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onOptionsClick()
+                },
+                onClick = onClick
             )
     ) {
-        Column {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(cardAspectRatio)
+                .clip(RoundedCornerShape(12.dp))
+                .background(SurfaceDark)
+                .border(1.dp, CardBorderDark, RoundedCornerShape(12.dp))
+        ) {
+            AsyncImage(
+                model = imageModel,
+                contentDescription = item.title,
+                contentScale = ContentScale.Crop,
+                placeholder = androidx.compose.ui.graphics.painter.ColorPainter(Color(0xFF2A2A2A)),
+                error = androidx.compose.ui.graphics.painter.ColorPainter(Color(0xFF2A2A2A)),
+                fallback = androidx.compose.ui.graphics.painter.ColorPainter(Color(0xFF2A2A2A)),
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Gradient Overlay
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(cardAspectRatio)
-            ) {
-                AsyncImage(
-                    model = imageModel,
-                    contentDescription = item.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color(0x990A0A0F), Color(0xEE0A0A0F))
+                        )
+                    )
+            )
 
-                // Gradient Overlay
+            // Season / Relation / Movie Sequence Badge Top Left
+            val topLeftBadge = when {
+                !isMovie && (effectiveSeason > 1 || (effectivePart != null && effectivePart > 0)) -> Pair(seasonBadgeText, Color(0xCC7C4DFF))
+                isMovie && movieSeq != null && movieSeq > 1 -> Pair("M$movieSeq", Color(0xCCFF5722))
+                item.relationType.contains("OVA", ignoreCase = true) -> Pair("OVA", Color(0xCCF59E0B))
+                item.relationType.contains("Special", ignoreCase = true) -> Pair("SPECIAL", Color(0xCCF59E0B))
+                item.relationType.contains("Side Story", ignoreCase = true) -> Pair("SIDE", Color(0xCC0284C7))
+                else -> null
+            }
+
+            if (topLeftBadge != null) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Transparent, Color(0xCC0A0A12)),
-                                startY = 100f
-                            )
-                        )
-                )
-
-                // Top Header Overlay: Rating on Left, ONLY Favorite Heart Button on Right (Zero Overlap!)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top
-                ) {
-                    // Rating Badge (Top Left)
-                    if (item.rating.isNotBlank()) {
-                        Surface(
-                            shape = CircleShape,
-                            color = Color(0xCC000000)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(2.dp)
-                            ) {
-                                Icon(Icons.Default.Star, contentDescription = null, tint = AccentGold, modifier = Modifier.size(10.dp))
-                                Text(text = item.rating, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    } else {
-                        Spacer(modifier = Modifier.width(1.dp))
-                    }
-
-                    // Tactile Glassmorphic Favorite Heart Button (Top Right)
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xCC0A0A12))
-                            .clickable(onClick = onToggleFavorite),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = "Favorite",
-                            tint = if (isFavorite) Color(0xFFFF5252) else Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-
-                // In-Progress Bar Overlay (Bottom)
-                if (progress != null && progress.durationMs > 0L) {
-                    val progressRatio = (progress.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0f, 1f)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(3.dp)
-                            .align(Alignment.BottomCenter)
-                            .background(Color(0x44FFFFFF))
-                    ) {
-                        if (progressRatio > 0f) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .fillMaxWidth(progressRatio.coerceIn(0.04f, 1f))
-                                    .clip(RoundedCornerShape(topEnd = 2.dp, bottomEnd = 2.dp))
-                                    .background(MaterialTheme.colorScheme.primary)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Title & Info
-            Column(modifier = Modifier.padding(8.dp)) {
-                Text(
-                    text = item.title,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(3.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(topLeftBadge.second)
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
                 ) {
                     Text(
-                        text = if (item.type.equals("MOVIE", ignoreCase = true)) "Movie • ${item.releaseYear}" else "${item.category} • ${item.releaseYear}",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 10.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
+                        text = topLeftBadge.first,
+                        color = Color.White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black
                     )
-
-                    Spacer(modifier = Modifier.width(4.dp))
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        // Clickable Folder Chip
-                        Surface(
-                            shape = CircleShape,
-                            color = Color(0x1F38BDF8),
-                            modifier = Modifier.clickable { onManageCollection() }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(2.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Folder,
-                                    contentDescription = null,
-                                    tint = Color(0xFF38BDF8),
-                                    modifier = Modifier.size(9.dp)
-                                )
-                                Text(
-                                    text = collectionName,
-                                    color = Color(0xFF38BDF8),
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-
-                        // More Options Trigger
-                        Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = "More Options",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier
-                                .size(16.dp)
-                                .clip(CircleShape)
-                                .clickable { onOptionsClick() }
-                        )
-                    }
                 }
             }
+
+            // Tactile Glassmorphic Favorite Heart Button (Top Right)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xCC0A0A12))
+                    .bouncyClickable(onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onToggleFavorite()
+                    }),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = "Favorite",
+                    tint = if (isFavorite) Color(0xFFFF5252) else Color.White,
+                    modifier = Modifier.size(15.dp)
+                )
+            }
+
+            // Rating Bottom Left
+            if (item.rating.isNotBlank()) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Star,
+                        contentDescription = "Rating",
+                        tint = AccentGold,
+                        modifier = Modifier.size(11.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = item.rating,
+                        color = TextPrimary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // Netflix-Style Resume Progress Bar or Completed Indicator along bottom edge
+            if (isWatchingInProgress) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(3.5.dp)
+                        .background(Color(0x99000000))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(progressFraction)
+                            .background(PrimaryRed)
+                    )
+                }
+            } else if (isCompleted) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .background(Color(0xFF4CAF50))
+                )
+            }
         }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Title with smooth basicMarquee
+        Text(
+            text = item.title,
+            color = TextPrimary,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .fillMaxWidth()
+                .basicMarquee(
+                    iterations = Int.MAX_VALUE,
+                    initialDelayMillis = 1000,
+                    repeatDelayMillis = 2500,
+                    velocity = 30.dp
+                )
+        )
+
+        Spacer(modifier = Modifier.height(2.dp))
+
+        // Clean Subtitle
+        val metaSubtitle = when {
+            isWatchingInProgress -> {
+                val p = progress!!
+                val remainingMs = (p.durationMs - p.positionMs).coerceAtLeast(0L)
+                val remainingMin = (remainingMs / 60000).toInt()
+                val remainingText = if (remainingMin > 0) "${remainingMin}m left" else "<1m left"
+                if (!isMovie) {
+                    val epNum = if (item.episodes.isNotEmpty()) {
+                        item.episodes.getOrNull(progress.episodeNumber)?.episodeNumber ?: (progress.episodeNumber + 1)
+                    } else (progress.episodeNumber + 1)
+                    "Ep $epNum • $remainingText"
+                } else {
+                    remainingText
+                }
+            }
+            !collectionName.equals("Favorites", ignoreCase = true) && !collectionName.equals("Watchlist", ignoreCase = true) -> {
+                "📁 $collectionName • ${item.releaseYear}"
+            }
+            else -> {
+                val typeLabel = if (isMovie) "Movie" else (item.category.ifBlank { "Series" })
+                "$typeLabel • ${item.releaseYear}"
+            }
+        }
+
+        Text(
+            text = metaSubtitle,
+            color = TextSecondary,
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

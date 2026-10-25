@@ -2,6 +2,23 @@
 
 All notable changes, architectural milestones, and performance optimizations for the **StreamHub** Android ecosystem are documented in this file.
 
+## 🌟 [v4.8.427] - 2026-10-25 (Favorites Default on Quick Add & Home-Parity My List Catalog Redesign)
+
+### ❤️ My List & Watchlist Ecosystem Enhancements
+
+- **❤️ Default to Favorites on Quick Add (`MyListManager.kt`)**:
+  - Tapping `+ My List` (on Home hero / Details screen) or selecting "Add to My List" from the long-press quick actions sheet now saves items directly into the **Favorites** collection with `isFavorite = true` (previously defaulted to Watchlist / Watch Later).
+  - Newly added items immediately show the glowing red heart icon (`❤️`) and populate directly inside the Favorites collection.
+- **🎨 Cinema-Grade My List Catalog Redesign (`MyListScreen.kt`)**:
+  - Redesigned `MyListGridCard` to achieve 1:1 visual parity with the Home screen `MediaCard` architecture:
+    - **Borderless Cinema Poster**: Extirpated the bulky outer grey card wrapper, adopting borderless posters with `12.dp` rounded corners, `SurfaceDark`, and `CardBorderDark`.
+    - **Overlays**: Clean rating badge (`★ 9.1`) bottom-left, season/OVA badge top-left, and tactile glassmorphic Favorite Heart button top-right with tactile haptic feedback.
+    - **Smooth Marquee Titles**: Replaced static truncated text (`Frieren: Beyond Jo...`) with smooth `basicMarquee` auto-scrolling titles.
+    - **Clean Subtitles**: Replaced squished `ANI...` text and 3-dots icon collision with clean metadata (`Anime • 2023`, `Ep 1 • 12m left`, or `📁 Folder • 2023`). Long-pressing any card with haptic feedback opens the full quick actions sheet.
+- **📑 Streamlined Status Tabs & Filter Rows (`MyListScreen.kt`)**:
+  - Reordered core status tabs so **Favorites ❤️** is placed prominently in 2nd place right next to **All Saved**: `[All Saved] [Favorites ❤️] [In Progress] [Watch Later] [Completed] [Folders]`.
+  - Guarded dynamic genre tags so they only display when having a sizable library ($\ge 5$ items), preventing small libraries from being overwhelmed by 3 stacked rows of pills.
+
 ## 🌟 [v4.8.426] - 2026-10-25 (Access Gate Official Telegram Bot Binding)
 
 ### 🤖 Community Access Gate Enhancements

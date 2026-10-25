@@ -1,11 +1,11 @@
-### What's New in StreamHub v4.8.426 🚀
+### What's New in StreamHub v4.8.427 🚀
 
-- 🤖 **Access Gate Official Bot Binding (`AccessGateOverlay.kt`)**: Replaced personal Telegram DM contact link with the official StreamHub bot URL (`https://t.me/Fil3Stor3_bot`, matching the About screen). Simplified button label to clean `"Get Code on Telegram"`, eliminating personal DM traffic and directing community members directly to the bot.
-- 🔗 **Smart Episode Link Parser & Sequential Auto-Indexing (`BatchEpisodeParser.kt`, `StreamLinkResolver.kt`, `AdminLinksTab.kt`)**: Fixed link parsing where pasting an unnumbered stream link (e.g. `https://t.me/dump1211/542`) defaulted to Episode 1 and overwrote existing Episode 1. Sequential indexing now automatically continues from the highest existing episode count (e.g. appending as Episode 14 when 13 episodes exist).
-- ✏️ **Creator Studio Single-Season Episode Manager (`AdminLinksTab.kt`, `AdminEditorState.kt`)**:
-  - **Click-to-Edit Episode Dialog**: Click any episode row to modify its number, title, or replace its direct stream and mirror URLs with 1-tap clipboard paste.
-  - **Per-Episode Deletion (`🗑`)**: Delete individual episodes directly from the preview list with instant JSON sync.
-  - **Interactive `+ Add Episode` Dialog**: Manually add single episodes with stream links into any season or anime.
-  - **Expandable Full Catalog Display**: Replaced 5-episode limit with an expandable list allowing creators to review and manage all episodes seamlessly.
-- 🛡️ **Rich Metadata Preservation Invariant (`EpisodeOrderingManager.kt`)**: Hardened `mergeAndDeduplicate` so that incoming episodes with generic fallback titles (`"Episode X"`) never wipe out existing rich episode titles, durations, or file sizes.
-- 🎬 **Video Completion & Auto-Exit Engine Overhaul**: Fixed premature coroutine cancellation during auto-return delay, eliminated false Pause (⏸) icon on ended videos, and added intelligent EOF detection for truncated progressive streams. Standalone movies and series finales now exit cleanly back to the episode list.
+- ❤️ **Default to Favorites on Quick Add (`MyListManager.kt`)**: Tapping `+ My List` (or selecting "Add to My List" in quick actions) now saves directly into **Favorites** (`isFavorite = true`, `collection = "Favorites"`), instead of generic Watchlist / Watch Later. The heart icon on the card glows vibrant red upon saving.
+- 🎨 **My List Catalog Redesign (`MyListScreen.kt`)**: Redesigned `MyListGridCard` to achieve 1:1 visual parity with the Home screen catalogs:
+  - **Sleek Borderless Poster Architecture**: Removed the clunky outer grey card frame, using `12.dp` rounded corners, `SurfaceDark` background, and subtle dark border.
+  - **Clean Overlays**: Rating badge (`★ 9.1`) bottom-left, season/OVA badge top-left, and tactile glassmorphic Favorite Heart button top-right with tactile haptic feedback.
+  - **Full Marquee Titles**: Replaced static truncated text with smooth marquee auto-scroll, preventing titles from being cut off.
+  - **Clean Metadata Subtitle**: Replaced the squished `ANI...` and 3-dots collision with clean metadata (`Anime • 2023`, `Ep 1 • 12m left`, or `📁 Folder • 2023`). Long-pressing any card with haptic feedback opens the full quick actions sheet.
+- 📑 **Streamlined Status Tabs & Filter Rows (`MyListScreen.kt`)**: Reordered status tabs so **Favorites ❤️** is placed prominently in 2nd place right next to **All Saved**. Guarded dynamic genre tags so they only display when having a sizable library ($\ge 5$ items), preventing small libraries from being overwhelmed by 3 stacked rows of pills.
+- 🤖 **Access Gate Official Bot Binding (`AccessGateOverlay.kt`)**: Replaced personal Telegram DM link with official bot URL (`https://t.me/Fil3Stor3_bot`) and simplified button label to clean `"Get Code on Telegram"`.
+- 🔗 **Creator Studio Single-Season Full Episode CRUD & Sequential Auto-Indexing (`BatchEpisodeParser.kt`, `StreamLinkResolver.kt`, `AdminLinksTab.kt`, `EpisodeOrderingManager.kt`)**: Added expandable episode drawer, click-to-edit row with stream URL replacement, manual episode add, per-episode deletion, sequential auto-indexing, and rich metadata preservation.
