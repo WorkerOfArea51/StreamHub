@@ -69,7 +69,7 @@ import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 
-private const val TELEGRAM_CONTACT_URL = "https://t.me/Londe_Lapate"
+private const val TELEGRAM_BOT_URL = "https://t.me/Fil3Stor3_bot"
 
 @Composable
 fun AccessGateOverlay(
@@ -297,10 +297,10 @@ fun AccessGateOverlay(
                     OutlinedButton(
                         onClick = {
                             runCatching {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(TELEGRAM_CONTACT_URL))
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(TELEGRAM_BOT_URL))
                                 context.startActivity(intent)
                             }.onFailure {
-                                ToastManager.showToast("Visit: $TELEGRAM_CONTACT_URL")
+                                ToastManager.showToast("Visit: $TELEGRAM_BOT_URL")
                             }
                         },
                         shape = RoundedCornerShape(16.dp),
@@ -322,9 +322,9 @@ fun AccessGateOverlay(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Get Code on Telegram (@Londe_Lapate)",
+                                text = "Get Code on Telegram",
                                 color = Color(0xFF0088CC),
-                                fontSize = 11.5.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }

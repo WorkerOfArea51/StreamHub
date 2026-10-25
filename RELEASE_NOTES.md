@@ -1,6 +1,7 @@
-### What's New in StreamHub v4.8.425 🚀
+### What's New in StreamHub v4.8.426 🚀
 
-- 🔗 **Smart Episode Link Parser & Sequential Auto-Indexing (`BatchEpisodeParser.kt`, `StreamLinkResolver.kt`, `AdminLinksTab.kt`)**: Fixed link parsing where pasting an unnumbered stream link (e.g. `https://t.me/dump1211/542`) defaulted to Episode 1 and overwritten existing Episode 1. Sequential indexing now automatically continues from the highest existing episode count (e.g. appending as Episode 14 when 13 episodes exist). Modernized all labels and placeholders, removing outdated "Telegram post" text.
+- 🤖 **Access Gate Official Bot Binding (`AccessGateOverlay.kt`)**: Replaced personal Telegram DM contact link with the official StreamHub bot URL (`https://t.me/Fil3Stor3_bot`, matching the About screen). Simplified button label to clean `"Get Code on Telegram"`, eliminating personal DM traffic and directing community members directly to the bot.
+- 🔗 **Smart Episode Link Parser & Sequential Auto-Indexing (`BatchEpisodeParser.kt`, `StreamLinkResolver.kt`, `AdminLinksTab.kt`)**: Fixed link parsing where pasting an unnumbered stream link (e.g. `https://t.me/dump1211/542`) defaulted to Episode 1 and overwrote existing Episode 1. Sequential indexing now automatically continues from the highest existing episode count (e.g. appending as Episode 14 when 13 episodes exist).
 - ✏️ **Creator Studio Single-Season Episode Manager (`AdminLinksTab.kt`, `AdminEditorState.kt`)**:
   - **Click-to-Edit Episode Dialog**: Click any episode row to modify its number, title, or replace its direct stream and mirror URLs with 1-tap clipboard paste.
   - **Per-Episode Deletion (`🗑`)**: Delete individual episodes directly from the preview list with instant JSON sync.

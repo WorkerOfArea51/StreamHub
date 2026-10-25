@@ -2,6 +2,14 @@
 
 All notable changes, architectural milestones, and performance optimizations for the **StreamHub** Android ecosystem are documented in this file.
 
+## 🌟 [v4.8.426] - 2026-10-25 (Access Gate Official Telegram Bot Binding)
+
+### 🤖 Community Access Gate Enhancements
+
+- **Access Gate Official Bot Binding (`AccessGateOverlay.kt`)**:
+  - Replaced personal Telegram DM contact link (`https://t.me/Londe_Lapate`) with the official StreamHub bot URL (`https://t.me/Fil3Stor3_bot`, matching About screen).
+  - Simplified button label to clean `"Get Code on Telegram"`, removing personal username display and routing community members directly to the bot.
+
 ## 🌟 [v4.8.425] - 2026-10-25 (Smart Sequential Episode Auto-Indexing, Creator Studio Episode Manager, & Rich Metadata Preservation)
 
 ### 🚀 Creator Studio & Episode Parser Enhancements
