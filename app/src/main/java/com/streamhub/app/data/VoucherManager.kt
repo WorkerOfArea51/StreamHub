@@ -11,8 +11,8 @@ import com.streamhub.app.data.models.VoucherVerificationResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -39,7 +39,10 @@ object VoucherManager {
     // Base32 Crockford-style alphabet excluding easily confused glyphs (0, O, 1, I)
     private val CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ".toCharArray()
 
+    // RAM-Only Reactive State (0 Bytes Disk Storage)
     private val _vouchersFlow = MutableStateFlow<List<VipVoucher>>(emptyList())
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     /**
      * Generates a cryptographically unguessable voucher code in the format:
@@ -79,6 +82,7 @@ object VoucherManager {
 
     /**
      * Creates a new available voucher in Cloudflare Edge KV (called from Creator Studio).
+     * Uses optimistic RAM insertion for 0ms instant display without using phone storage.
      */
     suspend fun createVoucher(
         label: String = "",
@@ -89,10 +93,25 @@ object VoucherManager {
             return@withContext Result.failure(SecurityException("Unauthorized: Creator Studio Admin mode required"))
         }
         val code = generateSecureCode()
-        val result = CatalogEdgeClient.createVoucher(code, label.trim(), durationDays)
-        result.onSuccess { voucher ->
+        val cleanLabel = label.trim()
+        val optimisticVoucher = VipVoucher(
+            code = code,
+            label = cleanLabel,
+            status = VipVoucher.STATUS_AVAILABLE,
+            createdAt = System.currentTimeMillis(),
+            durationDays = durationDays
+        )
+
+        // Optimistic RAM insertion (instant 0ms UI update, 0 disk bytes)
+        _vouchersFlow.value = listOf(optimisticVoucher) + _vouchersFlow.value.filterNot { it.code == code }
+
+        val result = CatalogEdgeClient.createVoucher(code, cleanLabel, durationDays)
+        result.onSuccess { serverVoucher ->
             Log.i(TAG, "Created new VIP voucher: ${maskCode(code)} (label='$label') via Cloudflare KV")
-            _vouchersFlow.value = listOf(voucher) + _vouchersFlow.value
+            _vouchersFlow.value = _vouchersFlow.value.map { if (it.code == code) serverVoucher else it }
+        }.onFailure { err ->
+            Log.e(TAG, "Failed to create voucher on Cloudflare KV, rolling back optimistic entry", err)
+            _vouchersFlow.value = _vouchersFlow.value.filterNot { it.code == code }
         }
         result
     }
@@ -135,6 +154,7 @@ object VoucherManager {
 
     /**
      * Deletes a voucher permanently from Cloudflare Edge KV (called from Creator Studio).
+     * Uses optimistic RAM removal for 0ms instant UI responsiveness.
      */
     suspend fun deleteVoucher(code: String): Result<Unit> = withContext(Dispatchers.IO) {
         if (!AdminManager.isAdminMode.value) {
@@ -142,10 +162,16 @@ object VoucherManager {
             return@withContext Result.failure(SecurityException("Unauthorized: Creator Studio Admin mode required"))
         }
         val cleanCode = code.trim().uppercase()
+        val previous = _vouchersFlow.value
+        // Optimistic RAM removal (instant 0ms feedback)
+        _vouchersFlow.value = previous.filterNot { it.code.equals(cleanCode, ignoreCase = true) }
+
         val result = CatalogEdgeClient.deleteVoucher(cleanCode)
         result.onSuccess {
             Log.i(TAG, "Voucher ${maskCode(cleanCode)} permanently deleted from Cloudflare KV")
-            _vouchersFlow.value = _vouchersFlow.value.filterNot { it.code.equals(cleanCode, ignoreCase = true) }
+        }.onFailure { err ->
+            Log.e(TAG, "Failed to delete voucher from Cloudflare KV, rolling back", err)
+            _vouchersFlow.value = previous
         }
         result
     }
@@ -173,16 +199,19 @@ object VoucherManager {
      * Refreshes the local list of vouchers from Cloudflare Edge KV.
      */
     suspend fun refreshVouchers() = withContext(Dispatchers.IO) {
-        CatalogEdgeClient.fetchVouchers()
-            .onSuccess { _vouchersFlow.value = it }
-            .onFailure { Log.e(TAG, "Failed to refresh vouchers from Cloudflare KV", it) }
+        _isLoading.value = true
+        try {
+            CatalogEdgeClient.fetchVouchers()
+                .onSuccess { _vouchersFlow.value = it }
+                .onFailure { Log.e(TAG, "Failed to refresh vouchers from Cloudflare KV", it) }
+        } finally {
+            _isLoading.value = false
+        }
     }
 
     /**
      * Real-time stream of all vouchers for the Creator Studio dashboard.
+     * Emits instantly from RAM without blocking network stalls.
      */
-    fun getVouchersFlow(): Flow<List<VipVoucher>> = flow {
-        refreshVouchers()
-        emitAll(_vouchersFlow)
-    }
+    fun getVouchersFlow(): Flow<List<VipVoucher>> = _vouchersFlow.asStateFlow()
 }

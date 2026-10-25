@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -42,6 +43,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -72,6 +74,11 @@ fun VoucherManagerDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val vouchers by VoucherManager.getVouchersFlow().collectAsState(initial = emptyList())
+    val isLoading by VoucherManager.isLoading.collectAsState()
+
+    LaunchedEffect(Unit) {
+        VoucherManager.refreshVouchers()
+    }
 
     var labelInput by remember { mutableStateOf("") }
     var isGenerating by remember { mutableStateOf(false) }
@@ -134,8 +141,24 @@ fun VoucherManagerDialog(
                         }
                     }
 
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { scope.launch { VoucherManager.refreshVouchers() } },
+                            enabled = !isLoading
+                        ) {
+                            if (isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    color = Color(0xFFFBBF24),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(Icons.Default.Refresh, contentDescription = "Refresh Codes", tint = TextSecondary)
+                            }
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = TextSecondary)
+                        }
                     }
                 }
 
@@ -203,7 +226,30 @@ fun VoucherManagerDialog(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Voucher List
-                if (vouchers.isEmpty()) {
+                if (isLoading && vouchers.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(32.dp),
+                                color = Color(0xFFF59E0B),
+                                strokeWidth = 3.dp
+                            )
+                            Text(
+                                text = "Loading user access codes...",
+                                color = TextSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                } else if (vouchers.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()

@@ -492,20 +492,33 @@ export default {
     // 6. VIP Voucher API (/api/vouchers)
     // ==========================================
 
-    // GET /api/vouchers (Admin: List all vouchers)
+    // Helper: fetch or build the consolidated cloud voucher index in parallel
+    async function getOrBuildVouchersIndex(catalogEnv) {
+      const cached = await catalogEnv.CATALOG_KV.get("vouchers:all");
+      if (cached) {
+        try {
+          return JSON.parse(cached);
+        } catch (_) {}
+      }
+      const list = await catalogEnv.CATALOG_KV.list({ prefix: "voucher:code:" });
+      const rawList = await Promise.all(list.keys.map(k => catalogEnv.CATALOG_KV.get(k.name)));
+      const vouchers = [];
+      for (const raw of rawList) {
+        if (raw) {
+          try {
+            vouchers.push(JSON.parse(raw));
+          } catch (_) {}
+        }
+      }
+      vouchers.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      await catalogEnv.CATALOG_KV.put("vouchers:all", JSON.stringify(vouchers));
+      return vouchers;
+    }
+
+    // GET /api/vouchers (Admin: List all vouchers with 10ms single-read index)
     if (pathname === "/api/vouchers" && request.method === "GET") {
       try {
-        const list = await env.CATALOG_KV.list({ prefix: "voucher:code:" });
-        const vouchers = [];
-        for (const key of list.keys) {
-          const raw = await env.CATALOG_KV.get(key.name);
-          if (raw) {
-            try {
-              vouchers.push(JSON.parse(raw));
-            } catch (_) {}
-          }
-        }
-        vouchers.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        const vouchers = await getOrBuildVouchersIndex(env);
         return new Response(JSON.stringify({ ok: true, vouchers }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -541,6 +554,14 @@ export default {
           deviceModel: ""
         };
         await env.CATALOG_KV.put("voucher:code:" + code, JSON.stringify(voucher));
+
+        // Maintain consolidated cloud index
+        try {
+          const currentList = await getOrBuildVouchersIndex(env);
+          const updatedList = [voucher, ...currentList.filter(v => v.code !== code)];
+          await env.CATALOG_KV.put("vouchers:all", JSON.stringify(updatedList));
+        } catch (_) {}
+
         return new Response(JSON.stringify({ ok: true, voucher }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -579,6 +600,14 @@ export default {
           }
           count++;
         }
+        try {
+          const list = await env.CATALOG_KV.list({ prefix: "voucher:code:" });
+          const rawList = await Promise.all(list.keys.map(k => env.CATALOG_KV.get(k.name)));
+          const allVouchers = rawList.map(r => { try { return JSON.parse(r); } catch (_) { return null; } }).filter(Boolean);
+          allVouchers.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          await env.CATALOG_KV.put("vouchers:all", JSON.stringify(allVouchers));
+        } catch (_) {}
+
         return new Response(JSON.stringify({ ok: true, imported: count }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -629,6 +658,11 @@ export default {
           };
           await env.CATALOG_KV.put("voucher:code:" + code, JSON.stringify(updated));
           await env.CATALOG_KV.put("voucher:device:" + deviceId, JSON.stringify(updated));
+          try {
+            const currentList = await getOrBuildVouchersIndex(env);
+            const updatedList = currentList.map(v => v.code === code ? updated : v);
+            await env.CATALOG_KV.put("vouchers:all", JSON.stringify(updatedList));
+          } catch (_) {}
           return new Response(
             JSON.stringify({
               result: "SUCCESS",
@@ -644,6 +678,11 @@ export default {
           if (now >= voucher.expiresAt) {
             await env.CATALOG_KV.delete("voucher:code:" + code);
             await env.CATALOG_KV.delete("voucher:device:" + deviceId);
+            try {
+              const currentList = await getOrBuildVouchersIndex(env);
+              const updatedList = currentList.filter(v => v.code !== code);
+              await env.CATALOG_KV.put("vouchers:all", JSON.stringify(updatedList));
+            } catch (_) {}
             return new Response(JSON.stringify({ result: "EXPIRED" }), {
               status: 200,
               headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -674,6 +713,11 @@ export default {
           }
         } else {
           await env.CATALOG_KV.delete("voucher:code:" + code);
+          try {
+            const currentList = await getOrBuildVouchersIndex(env);
+            const updatedList = currentList.filter(v => v.code !== code);
+            await env.CATALOG_KV.put("vouchers:all", JSON.stringify(updatedList));
+          } catch (_) {}
           return new Response(JSON.stringify({ result: "EXPIRED" }), {
             status: 200,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -740,6 +784,11 @@ export default {
           } catch (_) {}
         }
         await env.CATALOG_KV.delete("voucher:code:" + code);
+        try {
+          const currentList = await getOrBuildVouchersIndex(env);
+          const updatedList = currentList.filter(v => v.code !== code);
+          await env.CATALOG_KV.put("vouchers:all", JSON.stringify(updatedList));
+        } catch (_) {}
         return new Response(JSON.stringify({ ok: true }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
