@@ -47,7 +47,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationManagerCompat
@@ -81,7 +80,6 @@ fun NotificationPreferencesScreen(
     val currentAccent by ThemeManager.currentAccent.collectAsState()
     val isAmoled by ThemeManager.isAmoledBlack.collectAsState()
     val alertsEnabled by NotificationAlertManager.alertsEnabled.collectAsState()
-    val updateAlertsEnabled by NotificationAlertManager.updateAlertsEnabled.collectAsState()
 
     var isSystemNotificationEnabled by remember {
         mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled())
@@ -159,16 +157,6 @@ fun NotificationPreferencesScreen(
                         checked = alertsEnabled,
                         onCheckedChange = { NotificationAlertManager.setAlertsEnabled(context, it) },
                         icon = Icons.Outlined.NotificationsActive,
-                        iconTint = currentAccent.color,
-                        accentColor = currentAccent.color
-                    )
-                    PreferenceDivider()
-                    PreferenceSwitchItem(
-                        title = "App Update Alerts",
-                        subtitle = "Receive a system notification when a new version of StreamHub is released.",
-                        checked = updateAlertsEnabled,
-                        onCheckedChange = { NotificationAlertManager.setUpdateAlertsEnabled(context, it) },
-                        icon = Icons.Default.SystemUpdate,
                         iconTint = currentAccent.color,
                         accentColor = currentAccent.color
                     )

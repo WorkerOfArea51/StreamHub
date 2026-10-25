@@ -279,15 +279,6 @@ object AppUpdateManager {
                 currentUpdateInfo = info
                 _updateState.value = UpdateState.UpdateAvailable(info)
 
-                // Dispatch one-time Android system notification to status bar
-                appContext?.let { ctx ->
-                    NotificationAlertManager.sendAppUpdateNotification(
-                        context = ctx,
-                        versionName = info.versionName,
-                        releaseNotes = info.releaseNotes
-                    )
-                }
-
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -431,21 +422,6 @@ object AppUpdateManager {
             Log.e(TAG, "checkUpdateSuspending failed: ${e.message}", e)
             null
         }
-    }
-
-    /**
-     * Checks for updates in the background and dispatches a one-time system notification
-     * if a newer version is available. Safe to invoke from periodic background workers.
-     */
-    suspend fun checkAndNotifyIfUpdateAvailable(context: Context): Boolean {
-        init(context)
-        val info = checkUpdateSuspending() ?: return false
-        _updateState.value = UpdateState.UpdateAvailable(info)
-        return NotificationAlertManager.sendAppUpdateNotification(
-            context = context,
-            versionName = info.versionName,
-            releaseNotes = info.releaseNotes
-        )
     }
 
     /**

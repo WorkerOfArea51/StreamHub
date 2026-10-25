@@ -36,8 +36,6 @@ object NotificationAlertManager {
     private const val TAG = "NotificationAlertManager"
     private const val PREFS_NAME = "streamhub_notification_prefs"
     private const val KEY_ALERTS_ENABLED = "alerts_enabled"
-    private const val KEY_UPDATE_ALERTS_ENABLED = "update_alerts_enabled"
-    private const val KEY_LAST_NOTIFIED_UPDATE_VERSION = "last_notified_update_version"
     private const val KEY_SEEN_EPISODE_COUNTS = "seen_episode_counts_"
     private const val KEY_SEEN_FRANCHISE_MEDIA_IDS = "seen_franchise_media_ids_"
 
@@ -47,29 +45,20 @@ object NotificationAlertManager {
     const val CHANNEL_ADMIN_ID = "streamhub_admin_announcements"
     const val CHANNEL_ADMIN_NAME = "Admin & Community Announcements"
 
-    const val CHANNEL_UPDATE_ID = "streamhub_app_updates"
-    const val CHANNEL_UPDATE_NAME = "App Updates"
-
-    const val NOTIFICATION_ID_APP_UPDATE = 999001
-
     private var prefs: SharedPreferences? = null
 
     private val _alertsEnabled = MutableStateFlow(true)
     val alertsEnabled: StateFlow<Boolean> = _alertsEnabled.asStateFlow()
-
-    private val _updateAlertsEnabled = MutableStateFlow(true)
-    val updateAlertsEnabled: StateFlow<Boolean> = _updateAlertsEnabled.asStateFlow()
 
     fun init(context: Context) {
         if (prefs != null) return
         val appContext = context.applicationContext
         prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         _alertsEnabled.value = prefs?.getBoolean(KEY_ALERTS_ENABLED, true) ?: true
-        _updateAlertsEnabled.value = prefs?.getBoolean(KEY_UPDATE_ALERTS_ENABLED, true) ?: true
 
         createNotificationChannels(appContext)
 
-        if (_alertsEnabled.value || _updateAlertsEnabled.value) {
+        if (_alertsEnabled.value) {
             schedulePeriodicSync(appContext)
         }
     }
@@ -77,17 +66,7 @@ object NotificationAlertManager {
     fun setAlertsEnabled(context: Context, enabled: Boolean) {
         _alertsEnabled.value = enabled
         prefs?.edit()?.putBoolean(KEY_ALERTS_ENABLED, enabled)?.apply()
-        if (enabled || _updateAlertsEnabled.value) {
-            schedulePeriodicSync(context)
-        } else {
-            cancelPeriodicSync(context)
-        }
-    }
-
-    fun setUpdateAlertsEnabled(context: Context, enabled: Boolean) {
-        _updateAlertsEnabled.value = enabled
-        prefs?.edit()?.putBoolean(KEY_UPDATE_ALERTS_ENABLED, enabled)?.apply()
-        if (enabled || _alertsEnabled.value) {
+        if (enabled) {
             schedulePeriodicSync(context)
         } else {
             cancelPeriodicSync(context)
@@ -95,7 +74,7 @@ object NotificationAlertManager {
     }
 
     fun schedulePeriodicSync(context: Context) {
-        if (!_alertsEnabled.value && !_updateAlertsEnabled.value) return
+        if (!_alertsEnabled.value) return
         try {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -154,19 +133,6 @@ object NotificationAlertManager {
                 setShowBadge(true)
             }
             nm.createNotificationChannel(adminChannel)
-
-            // 3. App Updates Channel (High Priority Heads-up for New Releases)
-            val updateChannel = NotificationChannel(
-                CHANNEL_UPDATE_ID,
-                CHANNEL_UPDATE_NAME,
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Notifications when a new version of StreamHub is released with new features and fixes"
-                enableVibration(true)
-                enableLights(true)
-                setShowBadge(true)
-            }
-            nm.createNotificationChannel(updateChannel)
         }
     }
 
@@ -488,96 +454,6 @@ object NotificationAlertManager {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to send test notification: ${e.message}", e)
             return false
-        }
-    }
-
-    /**
-     * Dispatches a high-priority system notification when a new version of StreamHub is released.
-     * Enforces strict one-time delivery per version: once the user is notified of version X,
-     * they will never receive another notification for version X.
-     */
-    fun sendAppUpdateNotification(
-        context: Context,
-        versionName: String,
-        releaseNotes: String = "",
-        force: Boolean = false
-    ): Boolean {
-        if (!_updateAlertsEnabled.value && !force) {
-            Log.d(TAG, "App update notifications are disabled in user settings. Skipping.")
-            return false
-        }
-
-        createNotificationChannels(context)
-
-        val p = prefs ?: context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val lastNotified = p.getString(KEY_LAST_NOTIFIED_UPDATE_VERSION, "")
-        if (!force && lastNotified.equals(versionName.trim(), ignoreCase = true)) {
-            Log.d(TAG, "User already received one-time update notification for $versionName — skipping duplicate.")
-            return false
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val permissionStatus = context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
-            if (permissionStatus != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                Log.w(TAG, "POST_NOTIFICATIONS permission not granted — skipping update notification")
-                return false
-            }
-        }
-
-        return try {
-            val intent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra("open_update_dialog", true)
-                putExtra("update_version", versionName)
-            }
-
-            val pendingIntent = PendingIntent.getActivity(
-                context,
-                NOTIFICATION_ID_APP_UPDATE,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-            val appIcon = NotificationIconHelper.getAppIconBitmap(context)
-            val cleanNotes = if (releaseNotes.isNotBlank()) {
-                releaseNotes.lines()
-                    .map { it.trim() }
-                    .filter { it.isNotBlank() && !it.startsWith("#") }
-                    .take(3)
-                    .joinToString("\n")
-            } else {
-                "A brand new update with performance improvements & fixes is available."
-            }
-
-            val builder = NotificationCompat.Builder(context, CHANNEL_UPDATE_ID)
-                .setSmallIcon(R.drawable.ic_notification)
-                .setColor(0xFFE50914.toInt())
-                .apply {
-                    if (appIcon != null) setLargeIcon(appIcon)
-                }
-                .setContentTitle("🚀 StreamHub $versionName is Available!")
-                .setContentText("A new update is ready. Tap to download and install.")
-                .setStyle(
-                    NotificationCompat.BigTextStyle()
-                        .bigText("🚀 StreamHub $versionName is ready!\n\n$cleanNotes\n\nTap to download and update now.")
-                )
-                .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setDefaults(NotificationCompat.DEFAULT_ALL)
-                .setVibrate(longArrayOf(0, 300, 200, 300))
-                .setAutoCancel(true)
-                .setContentIntent(pendingIntent)
-
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            notificationManager?.notify(NOTIFICATION_ID_APP_UPDATE, builder.build())
-
-            // Record this version locally so it only notifies once per release
-            p.edit().putString(KEY_LAST_NOTIFIED_UPDATE_VERSION, versionName.trim()).apply()
-            Log.i(TAG, "Successfully dispatched one-time app update notification for $versionName")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to send app update notification: ${e.message}", e)
-            false
         }
     }
 }
