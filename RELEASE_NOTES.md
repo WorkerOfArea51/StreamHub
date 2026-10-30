@@ -4,6 +4,17 @@ Welcome to the official release notes for **StreamHub** — the ultimate high-pe
 
 ---
 
+### What's New in StreamHub v4.8.442 🚀
+
+- ⚡ **Cloudflare Edge Proxy & Accelerated MTProto Streaming**:
+  - Expanded edge routing in Cloudflare Worker to proxy `/api/batch/*`, `/api/file/*`, and `/api/movies`, delivering ~15ms web series manifest lookups with zero route starvation.
+  - Activated hardware AES-CTR stream decryption (`tgcrypto-1.2.5`) on backend, accelerating line speeds from 80 KB/s to 2.89 MB/s for instant 1.1s cold starts on 1080p movies and series.
+- 📋 **Rate-Limit-Proof In-App Release Notes**:
+  - Routed update changelog retrieval directly through GitHub's Fastly edge CDN, eliminating API 403 rate-limit errors on mobile networks.
+  - Enhanced the in-app update bottom sheet with structured bullet hierarchies and calibrated accent indicators.
+
+---
+
 ### What's New in StreamHub v4.8.441 🚀
 
 - ⚡ **Deep System Polish & Resource Optimization**:

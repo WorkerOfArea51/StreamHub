@@ -33,9 +33,15 @@ export default {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // 1. VIDEO STREAMING PROXY (/dl/* or /stream/*)
+    // 1. VIDEO STREAMING & F2L API PROXY (/dl/*, /stream/*, /api/batch/*, /api/file/*, /api/movies)
     // ─────────────────────────────────────────────────────────────
-    if (pathname.startsWith("/dl/") || pathname.startsWith("/stream/")) {
+    if (
+      pathname.startsWith("/dl/") ||
+      pathname.startsWith("/stream/") ||
+      pathname.startsWith("/api/batch/") ||
+      pathname.startsWith("/api/file/") ||
+      pathname.startsWith("/api/movies")
+    ) {
       const upstreamUrl = new URL(request.url);
       upstreamUrl.host = env.UPSTREAM_HOST || UPSTREAM_STREAMING_HOST;
       upstreamUrl.protocol = "https:";

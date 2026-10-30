@@ -225,7 +225,6 @@ object AppUpdateManager {
 
                 // Newer version found! Prepare UpdateInfo
                 var downloadUrl = ""
-                var releaseNotes = "StreamHub $tag is available with performance improvements and bug fixes."
                 var apkSizeBytes = 0L
                 var isPreRelease = false
 
@@ -253,7 +252,6 @@ object AppUpdateManager {
                 }
 
                 if (apiJson != null) {
-                    releaseNotes = apiJson!!.optString("body", releaseNotes)
                     isPreRelease = apiJson!!.optBoolean("prerelease", false)
                     val assets = apiJson!!.optJSONArray("assets")
                     if (assets != null) {
@@ -266,6 +264,9 @@ object AppUpdateManager {
                 if (downloadUrl.isBlank()) {
                     downloadUrl = "https://github.com/$repoOwner/$repoName/releases/download/$tag/StreamHub-arm64-release.apk"
                 }
+
+                // Rate-limit-proof release notes resolution: CDN raw.githubusercontent.com -> API body -> fallback
+                val releaseNotes = fetchReleaseNotesForTag(repoOwner, repoName, tag, apiJson?.optString("body"))
 
                 val info = UpdateInfo(
                     versionName = tag,
@@ -369,7 +370,6 @@ object AppUpdateManager {
             }
 
             var downloadUrl = ""
-            var releaseNotes = "StreamHub $tag is available with performance improvements and bug fixes."
             var apkSizeBytes = 0L
             var isPreRelease = false
 
@@ -394,8 +394,6 @@ object AppUpdateManager {
             }
 
             apiJson?.let { json ->
-                val bodyText = json.optString("body", "").trim()
-                if (bodyText.isNotBlank()) releaseNotes = bodyText
                 isPreRelease = json.optBoolean("prerelease", false)
                 val assets = json.optJSONArray("assets")
                 if (assets != null && assets.length() > 0) {
@@ -407,6 +405,9 @@ object AppUpdateManager {
             if (downloadUrl.isBlank()) {
                 downloadUrl = "https://github.com/$repoOwner/$repoName/releases/download/$tag/StreamHub-arm64-release.apk"
             }
+
+            // Rate-limit-proof release notes resolution: CDN raw.githubusercontent.com -> API body -> fallback
+            val releaseNotes = fetchReleaseNotesForTag(repoOwner, repoName, tag, apiJson?.optString("body"))
 
             val info = UpdateInfo(
                 versionName = tag,
@@ -422,6 +423,69 @@ object AppUpdateManager {
             Log.e(TAG, "checkUpdateSuspending failed: ${e.message}", e)
             null
         }
+    }
+
+    /**
+     * Resolves rich release notes for the target version tag.
+     * Strategy 1: Fetch raw RELEASE_NOTES.md from GitHub raw CDN (zero rate limits, fast edge cache).
+     * Strategy 2: If raw markdown fetch fails or doesn't have the tag, extract from GitHub API release body if available.
+     * Strategy 3: Fallback to clean default text.
+     */
+    fun fetchReleaseNotesForTag(
+        repoOwner: String,
+        repoName: String,
+        tag: String,
+        apiBody: String? = null
+    ): String {
+        // Strategy 1: raw.githubusercontent.com (100% rate-limit proof, Fastly edge CDN)
+        try {
+            val rawUrl = "https://raw.githubusercontent.com/$repoOwner/$repoName/main/RELEASE_NOTES.md"
+            val req = Request.Builder()
+                .url(rawUrl)
+                .header("User-Agent", "StreamHub-App")
+                .build()
+            httpClient.newCall(req).execute().use { response ->
+                if (response.isSuccessful) {
+                    val fullNotes = response.body?.string()
+                    if (!fullNotes.isNullOrBlank()) {
+                        val extracted = extractVersionReleaseNotes(fullNotes, tag)
+                        if (!extracted.isNullOrBlank()) {
+                            Log.i(TAG, "Successfully extracted release notes for $tag from raw CDN (${extracted.length} chars)")
+                            return extracted
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to fetch raw RELEASE_NOTES.md from CDN: ${e.message}")
+        }
+
+        // Strategy 2: Extract from GitHub API release body if present
+        if (!apiBody.isNullOrBlank()) {
+            val extracted = extractVersionReleaseNotes(apiBody, tag)
+            if (!extracted.isNullOrBlank()) {
+                Log.i(TAG, "Successfully extracted release notes for $tag from GitHub API body (${extracted.length} chars)")
+                return extracted
+            }
+            return apiBody.trim()
+        }
+
+        // Strategy 3: Clean fallback
+        return "StreamHub $tag is available with performance improvements and bug fixes."
+    }
+
+    /**
+     * Extracts version-specific changelog section matching ### What's New in StreamHub v<version>.
+     */
+    fun extractVersionReleaseNotes(fullMarkdown: String, tag: String): String? {
+        if (fullMarkdown.isBlank()) return null
+        val cleanTag = tag.trim().removePrefix("v").removePrefix("V")
+        val pattern = Regex("""(?i)###\s+What'?s\s+New\s+in\s+StreamHub\s+v?${Regex.escape(cleanTag)}[^\r\n]*""")
+        val match = pattern.find(fullMarkdown) ?: return null
+        val remaining = fullMarkdown.substring(match.range.last + 1)
+        val boundary = Regex("""(?m)^(?:\s*---|\s*###)""").find(remaining)
+        val endIdx = boundary?.range?.first ?: remaining.length
+        return remaining.substring(0, endIdx).trim().ifBlank { null }
     }
 
     /**

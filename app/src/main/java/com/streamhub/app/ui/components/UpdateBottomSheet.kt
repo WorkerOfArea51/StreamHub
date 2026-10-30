@@ -250,20 +250,22 @@ fun UpdateBottomSheet(
                             )
                         } else {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = if (item.isSubBullet) 14.dp else 0.dp),
                                 verticalAlignment = Alignment.Top
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .padding(top = 6.dp, end = 8.dp)
-                                        .size(6.dp)
+                                        .padding(top = if (item.isSubBullet) 7.dp else 6.dp, end = 8.dp)
+                                        .size(if (item.isSubBullet) 4.5.dp else 6.dp)
                                         .clip(CircleShape)
-                                        .background(primaryColor)
+                                        .background(if (item.isSubBullet) primaryColor.copy(alpha = 0.65f) else primaryColor)
                                 )
                                 Text(
                                     text = item.text,
-                                    fontSize = 12.5.sp,
-                                    lineHeight = 17.sp,
+                                    fontSize = if (item.isSubBullet) 12.sp else 12.5.sp,
+                                    lineHeight = if (item.isSubBullet) 16.sp else 17.sp,
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -440,40 +442,55 @@ fun UpdateBottomSheet(
  */
 data class ChangelogEntry(
     val isHeader: Boolean,
-    val text: AnnotatedString
+    val text: AnnotatedString,
+    val isSubBullet: Boolean = false
 )
 
 /**
  * Parses Markdown release notes into structured, styled changelog entries.
  * - Strips redundant headers (e.g. "### What's New in StreamHub...").
  * - Parses bold tags (`**keyword**`) into high-contrast bold text.
- * - Formats bullet items cleanly without raw Markdown dashes or asterisks.
+ * - Formats bullet items and nested sub-bullets cleanly with hierarchy.
  */
 private fun parseChangelog(rawText: String): List<ChangelogEntry> {
     if (rawText.isBlank()) return emptyList()
 
-    val lines = rawText.lines().map { it.trim() }.filter { it.isNotBlank() }
+    val rawLines = rawText.lines()
     val result = mutableListOf<ChangelogEntry>()
 
-    for (line in lines) {
-        // Skip root release notes title if redundant
-        if (line.startsWith("#") && line.contains("What's New", ignoreCase = true) && line.contains("StreamHub", ignoreCase = true)) {
+    for (rawLine in rawLines) {
+        val trimmed = rawLine.trim()
+        if (trimmed.isBlank()) continue
+
+        // Skip markdown thematic break rules (---, ***, ___)
+        if (trimmed == "---" || trimmed == "***" || trimmed == "___") {
             continue
         }
 
-        if (line.startsWith("#")) {
-            val headerText = line.trimStart('#', ' ').trim()
+        // Skip root release notes title or version headers if redundant
+        if (trimmed.startsWith("#") && (
+            trimmed.contains("What's New", ignoreCase = true) ||
+            trimmed.contains("Release Notes", ignoreCase = true) ||
+            trimmed.contains("StreamHub", ignoreCase = true)
+        )) {
+            continue
+        }
+
+        if (trimmed.startsWith("#")) {
+            val headerText = trimmed.trimStart('#', ' ').trim()
             result.add(
                 ChangelogEntry(
                     isHeader = true,
-                    text = AnnotatedString(headerText)
+                    text = AnnotatedString(headerText),
+                    isSubBullet = false
                 )
             )
         } else {
-            val cleanLine = if (line.startsWith("- ") || line.startsWith("* ")) {
-                line.substring(2).trim()
+            val isSubBullet = rawLine.startsWith("  ") || rawLine.startsWith("\t") || rawLine.startsWith("    ")
+            val cleanLine = if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+                trimmed.substring(2).trim()
             } else {
-                line
+                trimmed
             }
 
             val annotated = buildAnnotatedString {
@@ -484,7 +501,7 @@ private fun parseChangelog(rawText: String): List<ChangelogEntry> {
                             append(parts[i])
                         }
                     } else { // Outside bold tags
-                        withStyle(SpanStyle(fontWeight = FontWeight.Normal, color = Color(0xFFB4B2C8))) {
+                        withStyle(SpanStyle(fontWeight = FontWeight.Normal, color = if (isSubBullet) Color(0xFF9E9CAE) else Color(0xFFC5C3D6))) {
                             append(parts[i])
                         }
                     }
@@ -494,7 +511,8 @@ private fun parseChangelog(rawText: String): List<ChangelogEntry> {
             result.add(
                 ChangelogEntry(
                     isHeader = false,
-                    text = annotated
+                    text = annotated,
+                    isSubBullet = isSubBullet
                 )
             )
         }
