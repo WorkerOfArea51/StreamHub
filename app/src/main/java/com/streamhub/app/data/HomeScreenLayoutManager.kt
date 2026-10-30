@@ -76,6 +76,48 @@ enum class PosterLayout(val displayName: String) {
     LANDSCAPE("Landscape")
 }
 
+enum class FluidViscosity(
+    val displayName: String,
+    val description: String,
+    val emoji: String,
+    val leadStiffness: Float,
+    val tailStiffness: Float,
+    val dampingRatio: Float
+) {
+    WATER_FLOW(
+        displayName = "Water Flow",
+        description = "High stretch, elastic droplet snap",
+        emoji = "💧",
+        leadStiffness = 450f,
+        tailStiffness = 260f,
+        dampingRatio = 0.68f
+    ),
+    HONEY_VISCOUS(
+        displayName = "Honey / Viscous",
+        description = "Heavy fluid drag, smooth glide",
+        emoji = "🍯",
+        leadStiffness = 320f,
+        tailStiffness = 180f,
+        dampingRatio = 0.74f
+    ),
+    SNAPPY_M3E(
+        displayName = "Snappy M3E",
+        description = "Crisp M3 Expressive response",
+        emoji = "⚡",
+        leadStiffness = 650f,
+        tailStiffness = 500f,
+        dampingRatio = 0.76f
+    );
+
+    companion object {
+        fun fromName(name: String?): FluidViscosity = when (name?.uppercase()?.trim()) {
+            "HONEY_VISCOUS" -> HONEY_VISCOUS
+            "SNAPPY_M3E" -> SNAPPY_M3E
+            else -> WATER_FLOW
+        }
+    }
+}
+
 data class HomeLayoutConfig(
     val showHeroCarousel: Boolean = true,
     val showContinueWatching: Boolean = true,
@@ -91,7 +133,8 @@ data class HomeLayoutConfig(
     val catalogGridColumns: Int = 3,
     val posterSize: PosterSize = PosterSize.REGULAR,
     val posterLayout: PosterLayout = PosterLayout.PORTRAIT,
-    val homeShelfRows: Int = 1
+    val homeShelfRows: Int = 1,
+    val fluidViscosity: FluidViscosity = FluidViscosity.WATER_FLOW
 )
 
 /**
@@ -118,6 +161,7 @@ object HomeScreenLayoutManager {
     private const val KEY_POSTER_SIZE = "poster_size"
     private const val KEY_POSTER_LAYOUT = "poster_layout"
     private const val KEY_HOME_SHELF_ROWS = "home_shelf_rows"
+    private const val KEY_FLUID_VISCOSITY = "fluid_viscosity"
 
     private var prefs: SharedPreferences? = null
 
@@ -161,7 +205,8 @@ object HomeScreenLayoutManager {
                     "LANDSCAPE" -> PosterLayout.LANDSCAPE
                     else -> PosterLayout.PORTRAIT
                 },
-                homeShelfRows = p.getInt(KEY_HOME_SHELF_ROWS, 1).coerceIn(1, 2)
+                homeShelfRows = p.getInt(KEY_HOME_SHELF_ROWS, 1).coerceIn(1, 2),
+                fluidViscosity = FluidViscosity.fromName(p.getString(KEY_FLUID_VISCOSITY, "WATER_FLOW"))
             )
             _selectedCategoryFilter.value = p.getString(KEY_SELECTED_CATEGORY, "ALL") ?: "ALL"
         } catch (e: Exception) {
@@ -195,6 +240,7 @@ object HomeScreenLayoutManager {
             putString(KEY_POSTER_SIZE, newConfig.posterSize.name)
             putString(KEY_POSTER_LAYOUT, newConfig.posterLayout.name)
             putInt(KEY_HOME_SHELF_ROWS, newConfig.homeShelfRows)
+            putString(KEY_FLUID_VISCOSITY, newConfig.fluidViscosity.name)
             apply()
         }
     }
@@ -219,4 +265,5 @@ object HomeScreenLayoutManager {
     fun updatePosterSize(size: PosterSize) = updateConfig(_layoutConfig.value.copy(posterSize = size))
     fun updatePosterLayout(layout: PosterLayout) = updateConfig(_layoutConfig.value.copy(posterLayout = layout))
     fun updateHomeShelfRows(rows: Int) = updateConfig(_layoutConfig.value.copy(homeShelfRows = rows.coerceIn(1, 2)))
+    fun updateFluidViscosity(viscosity: FluidViscosity) = updateConfig(_layoutConfig.value.copy(fluidViscosity = viscosity))
 }

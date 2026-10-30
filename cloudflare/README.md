@@ -12,7 +12,7 @@ This directory contains the production Cloudflare Edge Worker script (`worker.js
 | **KV Storage** | 1 GB Free | ~15 MB for 500 shows + sessions |
 | **KV Read Operations** | 100,000 reads / day | Edge-cached via ETag (304 Not Modified) |
 | **KV Write Operations** | 1,000 writes / day | Only on show edits / imports |
-| **Viewer Heartbeats** | 180s auto-purged KV sessions | 60s client interval with command piggybacking |
+| **Announcements** | Passive GET reads on launch | 1 read on launch/foreground, 0 writes |
 | **Video Streaming** | Unlimited Bandwidth | Cloudflare Anycast edge routing (10–15ms ping) |
 
 ---

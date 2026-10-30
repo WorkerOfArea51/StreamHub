@@ -27,17 +27,28 @@ Engineered from the ground up for low latency, zero-login instant playback, aggr
 
 ---
 
+## 📱 Visual Showcase
+
+| 🏠 Home Feed | 🔍 Explore & Search | 📥 Offline Downloads | 📑 Watchlist | 👤 Personal Hub |
+| :---: | :---: | :---: | :---: | :---: |
+| <img src="art/screenshot_home.jpg" alt="Home Feed" width="200" /> | <img src="art/screenshot_search.jpg" alt="Explore & Search" width="200" /> | <img src="art/screenshot_downloads.jpg" alt="Offline Downloads" width="200" /> | <img src="art/screenshot_watchlist.jpg" alt="My List & Watchlist" width="200" /> | <img src="art/screenshot_profile.jpg" alt="Personal Hub" width="200" /> |
+
+---
+
 ## ✨ Key Highlights & Features
 
 | 🚀 Feature | 💡 Description |
 | :--- | :--- |
-| **🎨 Material 3 Expressive UI** | Native 5-level dark tonal elevation (`surfaceContainer`), split-button navigation dock, borderless tactile pills (`CircleShape`), and clean vector iconography. |
+| **🏝️ Floating Island Navigation** | Independent floating pill chips with zero-gap touch shield, dynamic fluid viscosity transitions (Water Flow, Honey Viscous, Snappy), and seamless content peek-through. |
+| **🎨 Material 3 Expressive UI** | Native dark tonal elevation, custom-crafted vector iconography, tactile bouncy spring physics, and cinema-grade layout alignment across all tabs. |
 | **⚡ Turbo HTTP Progressive Engine** | Sub-second playback initialization with byte-range requests, 2 MB TCP window scaling, and dynamic bitrate-proportional disk caching (`SimpleCache`). |
 | **🌸 AniList GraphQL Engine** | Zero-auth, sub-200ms anime metadata queries (`graphql.anilist.co`) fetching synopses, voice actors, high-res posters, banners, and trailers. |
-| **📦 Collapsible Downloads & Batch Deletion** | Accordion series grouping, multi-select batch deletion, instant offline search, sequential auto-advance, and TTL auto-delete expiration policies. |
-| **🌐 Live Online Subtitle Search** | OpenSubtitles & Cinemeta CDN integration with 1-tap player injection, live language filters, and real-time millisecond offset sync. |
-| **🎬 Multi-Arc Story Hub** | Dedicated Arc-Level episode manager with automatic missing episode gap detection, 1-click batch importer, and snippet insertion. |
+| **📑 3×2 Watchlist & Hero Dock** | Fast one-tap filtering across *All Saved*, *Favorites*, *In Progress*, *Watch Later*, *Completed*, and *Folders* with dynamic theme adaptation and 1-tap Grid/List switcher. |
+| **📥 Offline Storage Dashboard** | Real-time disk capacity gauge, collapsible series accordions, multi-select deletion, anchored squircle preference menus, and indefinite retention ("Never"). |
+| **🔍 High-Performance Explore & Search** | Fluid category switcher, multi-tag genre chips, quick ratings (8.0+ Top Rated, 7.0+ High Quality), and single-scroll 120 FPS catalog feed. |
+| **👤 Personal Hub & Persona System** | Distinct identity Hero card with verified VIP badge, one-tap Member ID copy, and unified dark preferences containers with custom stroke vector iconography. |
 | **🎧 Dual-Audio & Vocal Enhancement** | Embedded MKV multi-audio track switcher, hardware dialogue boost, night cinema mode, subtitle track selector with delay sync, and ASS/SSA styling. |
+| **🎬 Multi-Arc Story Hub** | Dedicated Arc-Level episode manager with automatic missing episode gap detection, 1-click batch importer, and snippet insertion. |
 | **📺 XPlayer-Grade Immersion HUD** | Pure containerless corner countdown time, horizontal battery gauge, and live system clock that auto-hides during active full-screen video. |
 | **⚠️ Cinematic Content Advisory** | Starts playback with signature vertical cyan indicator bar and stacked maturity category/severity rows. |
 | **🎨 Expressive Theming & Display** | 7 Classic solid themes, 6 Enhanced dual-tonal gradients, AMOLED black switch, customizable catalog grid density, and poster aspect ratios. |
@@ -106,7 +117,7 @@ StreamHub is designed so anyone can fork the repository and launch their own cus
 ### 1. Database Setup (Cloudflare Edge Worker & KV)
 StreamHub runs on a 100% free serverless backend using Cloudflare Workers and Workers KV storage (zero Firebase dependencies):
 1. Create a free account on [Cloudflare](https://dash.cloudflare.com/).
-2. Deploy the Worker script provided in `cloudflare/worker.js` with KV namespace bindings `CATALOG_KV`, `VIP_VOUCHERS_KV`, `TELEMETRY_KV`, and `BROADCAST_KV` (see [cloudflare/README.md](cloudflare/README.md) for step-by-step deploy instructions).
+2. Deploy the Worker script provided in `cloudflare/worker.js` with KV namespace bindings `CATALOG_KV`, `VIP_VOUCHERS_KV`, and `BROADCAST_KV` (see [cloudflare/README.md](cloudflare/README.md) for step-by-step deploy instructions).
 3. Set your Cloudflare Worker URL in `app/src/main/java/com/streamhub/app/data/edge/CatalogEdgeClient.kt` or configure your custom domain.
 
 ### 2. Configure API Keys (`local.properties`)

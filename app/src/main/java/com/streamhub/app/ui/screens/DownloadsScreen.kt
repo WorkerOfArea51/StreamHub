@@ -73,6 +73,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
@@ -81,6 +84,24 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.widthIn
+import com.streamhub.app.ui.theme.ThemeManager
+import com.streamhub.app.R
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import com.streamhub.app.data.DownloadManager
 import com.streamhub.app.data.DownloadedItem
 import com.streamhub.app.data.models.Episode
@@ -110,6 +131,7 @@ data class DownloadedSeriesGroup(
 fun DownloadsScreen(
     onPlayEpisode: (MediaItem, Int) -> Unit,
     onNavigateToStorage: () -> Unit = {},
+    onFindContent: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -125,7 +147,26 @@ fun DownloadsScreen(
     var itemToDelete by remember { mutableStateOf<DownloadedItem?>(null) }
     var seriesToDelete by remember { mutableStateOf<DownloadedSeriesGroup?>(null) }
     var batchToDelete by remember { mutableStateOf<List<DownloadedItem>?>(null) }
-    var showTtlDialog by remember { mutableStateOf(false) }
+    var showTopMenu by remember { mutableStateOf(false) }
+    var showResumeDropdown by remember { mutableStateOf(false) }
+    var showWifiDropdown by remember { mutableStateOf(false) }
+    var showTtlDropdown by remember { mutableStateOf(false) }
+
+    val isAmoled by ThemeManager.isAmoledBlack.collectAsState()
+    val menuBg = if (isAmoled) Color(0xFF101010) else Color(0xFF161622)
+    val menuBorder = if (isAmoled) Color(0xFF222222) else Color(0xFF26263A)
+    val menuShape = RoundedCornerShape(16.dp)
+
+    val infiniteTransition = rememberInfiniteTransition(label = "ActiveDotBlink")
+    val dotAlpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "DotAlpha"
+    )
 
     // Real Device Storage Calculation
     val storageInfo = remember(downloadsList) {
@@ -205,213 +246,573 @@ fun DownloadsScreen(
         onPlayEpisode(offlineMedia, targetIndex)
     }
 
+    val isDownloadsEmpty = downloadsList.isEmpty()
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surfaceContainerLowest)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .then(
+                if (isDownloadsEmpty) Modifier.verticalScroll(rememberScrollState())
+                else Modifier
+            )
+            .padding(start = 16.dp, end = 16.dp, top = 3.dp, bottom = 12.dp)
     ) {
+        // 1. Header Row: Eyebrow + Hamburger Options Menu
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "OFFLINE DOWNLOADS",
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 1.5.sp
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .bouncyClickable { showTopMenu = true },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Menu,
+                    contentDescription = "Menu",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(20.dp)
+                )
+
+                DropdownMenu(
+                    expanded = showTopMenu,
+                    onDismissRequest = { showTopMenu = false },
+                    shape = RoundedCornerShape(18.dp),
+                    containerColor = menuBg,
+                    border = BorderStroke(1.dp, menuBorder),
+                    modifier = Modifier.widthIn(min = 220.dp)
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Storage Management", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Storage,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        },
+                        onClick = {
+                            showTopMenu = false
+                            onNavigateToStorage()
+                        },
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Auto-Delete Retention", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Schedule,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        },
+                        onClick = {
+                            showTopMenu = false
+                            showTtlDropdown = true
+                        },
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                    )
+                    val completedCount = downloadsList.count { it.isCompleted }
+                    if (completedCount > 0) {
+                        HorizontalDivider(color = menuBorder, thickness = 0.8.dp)
+                        DropdownMenuItem(
+                            text = { Text("Clear Completed ($completedCount)", color = Color(0xFFEF4444), fontSize = 13.sp, fontWeight = FontWeight.SemiBold) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = null,
+                                    tint = Color(0xFFEF4444),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
+                            onClick = {
+                                showTopMenu = false
+                                DownloadManager.clearCompletedDownloads()
+                                ToastManager.showToast("Cleared $completedCount completed downloads", Icons.Default.Delete)
+                            },
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Display Headline
         Text(
-            text = "Offline Downloads",
+            text = "Good stories.\nNo signal.",
             color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold
+            fontSize = 34.sp,
+            fontWeight = FontWeight.ExtraBold,
+            lineHeight = 38.sp
         )
 
-        Spacer(modifier = Modifier.height(2.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
         Text(
-            text = "Watch your downloaded anime, movies and series with ZERO internet connection",
+            text = "Your anime, movies and series. Anywhere.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 11.5.sp
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium
         )
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // Expressive Storage Usage & Location Banner (M3 Expressive Borderless Grouped Container)
+        // 2. Storage Card (Figma: 372x161, rx: 28dp)
         Card(
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(28.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .bouncyClickable { onNavigateToStorage() }
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                // Top row: Vector Icon + Internal storage + Blinking ● Active
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f, fill = false)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(primaryColor.copy(alpha = 0.15f))
-                                .padding(10.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (storageLocation == "SD Card") Icons.Default.SdCard else Icons.Default.Folder,
-                                contentDescription = "Storage",
-                                tint = primaryColor,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = storageLocation,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clip(CircleShape)
-                                        .background(Color(0x2210B981))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text("Active", color = Color(0xFF10B981), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                            Text(
-                                text = if (totalMbUsed > 0)
-                                    "${String.format(Locale.US, "%.1f", totalMbUsed)} MB used (${String.format(Locale.US, "%.1f", freeGb)} GB free)"
-                                else
-                                    "0.0 MB used / ${String.format(Locale.US, "%.1f", freeGb)} GB free of ${String.format(Locale.US, "%.1f", totalGb)} GB",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 11.sp
-                            )
-                        }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_figma_storage_drive),
+                            contentDescription = "Internal storage",
+                            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = storageLocation,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
-
+                    // Blinking Active Indicator
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = CircleShape,
-                            color = primaryColor.copy(alpha = 0.18f),
-                            modifier = Modifier.padding(end = 4.dp)
-                        ) {
-                            Text(
-                                text = "${downloadsList.size} Files",
-                                color = primaryColor,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                            )
-                        }
-                        Icon(
-                            imageVector = Icons.Default.Storage,
-                            contentDescription = "Storage Dashboard",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFBCDBAA).copy(alpha = dotAlpha))
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Active",
+                            color = Color(0xFFBCDBAA),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
                         )
                     }
                 }
 
-                if (totalMbUsed > 0) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    LinearProgressIndicator(
-                        progress = { storageFraction.coerceAtLeast(0.02f) },
-                        color = primaryColor,
-                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(5.dp)
-                            .clip(CircleShape)
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Metric display
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    Text(
+                        text = if (totalMbUsed > 0)
+                            "${String.format(Locale.US, "%.1f", totalMbUsed)} MB"
+                        else
+                            "0.0 MB",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 32.sp
+                    )
+
+                    Text(
+                        text = "${downloadsList.size} files",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(bottom = 4.dp)
                     )
                 }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Progress Bar (6dp height, rounded 3dp, Dynamic Accent Color)
+                LinearProgressIndicator(
+                    progress = { storageFraction.coerceAtLeast(0.02f) },
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = "${String.format(Locale.US, "%.1f", freeGb)} GB free of ${String.format(Locale.US, "%.1f", totalGb)} GB",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // Quick Preferences Row: Wi-Fi Only, Auto-Resume, and Smart Auto-Delete
+        // 3. Quick Preferences Row (3 Squircles, rx: 16dp) with Interactive Dropdowns
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Auto-Resume on Wi-Fi Toggle Pill
-            Surface(
-                shape = CircleShape,
-                color = if (downloadSettings.autoResumeOnWifi) Color(0x2610B981) else MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.bouncyClickable {
-                    com.streamhub.app.data.DownloadSettingsManager.updateAutoResumeOnWifi(!downloadSettings.autoResumeOnWifi)
-                }
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
+            // Button 1: Resume Dropdown
+            Box(modifier = Modifier.weight(1f)) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(63.dp)
+                        .bouncyClickable { showResumeDropdown = true }
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Wifi,
-                        contentDescription = null,
-                        tint = if (downloadSettings.autoResumeOnWifi) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(5.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Resume",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (downloadSettings.autoResumeOnWifi) "On" else "Off",
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                }
+
+                DropdownMenu(
+                    expanded = showResumeDropdown,
+                    onDismissRequest = { showResumeDropdown = false },
+                    shape = menuShape,
+                    containerColor = menuBg,
+                    border = BorderStroke(1.dp, menuBorder),
+                    modifier = Modifier.widthIn(min = 180.dp)
+                ) {
                     Text(
-                        text = if (downloadSettings.autoResumeOnWifi) "Resume: ON" else "Resume: OFF",
-                        color = if (downloadSettings.autoResumeOnWifi) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
+                        text = "RESUME MODE",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    HorizontalDivider(color = menuBorder, thickness = 0.8.dp)
+                    DropdownMenuItem(
+                        text = {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "Off (Manual)",
+                                    fontSize = 13.sp,
+                                    fontWeight = if (!downloadSettings.autoResumeOnWifi) FontWeight.Bold else FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                if (!downloadSettings.autoResumeOnWifi) {
+                                    Icon(Icons.Default.Check, contentDescription = null, tint = primaryColor, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        },
+                        onClick = {
+                            com.streamhub.app.data.DownloadSettingsManager.updateAutoResumeOnWifi(false)
+                            showResumeDropdown = false
+                            ToastManager.showToast("Auto-resume set to Off", Icons.Default.Wifi)
+                        },
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                    DropdownMenuItem(
+                        text = {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "On (Wi-Fi Auto)",
+                                    fontSize = 13.sp,
+                                    fontWeight = if (downloadSettings.autoResumeOnWifi) FontWeight.Bold else FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                if (downloadSettings.autoResumeOnWifi) {
+                                    Icon(Icons.Default.Check, contentDescription = null, tint = primaryColor, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        },
+                        onClick = {
+                            com.streamhub.app.data.DownloadSettingsManager.updateAutoResumeOnWifi(true)
+                            showResumeDropdown = false
+                            ToastManager.showToast("Auto-resume set to On", Icons.Default.Wifi)
+                        },
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
                     )
                 }
             }
 
-            // Wi-Fi Only Toggle Pill
-            Surface(
-                shape = CircleShape,
-                color = if (downloadSettings.downloadOverWifiOnly) primaryColor.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.bouncyClickable {
-                    com.streamhub.app.data.DownloadSettingsManager.updateDownloadOverWifiOnly(!downloadSettings.downloadOverWifiOnly)
+            // Button 2: Wi-Fi only Dropdown
+            Box(modifier = Modifier.weight(1f)) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(63.dp)
+                        .bouncyClickable { showWifiDropdown = true }
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Wi-Fi only",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (downloadSettings.downloadOverWifiOnly) "On" else "Off",
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
                 }
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
+
+                DropdownMenu(
+                    expanded = showWifiDropdown,
+                    onDismissRequest = { showWifiDropdown = false },
+                    shape = menuShape,
+                    containerColor = menuBg,
+                    border = BorderStroke(1.dp, menuBorder),
+                    modifier = Modifier.widthIn(min = 190.dp)
                 ) {
                     Text(
-                        text = if (downloadSettings.downloadOverWifiOnly) "Wi-Fi Only: ON" else "Wi-Fi Only: OFF",
-                        color = if (downloadSettings.downloadOverWifiOnly) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
+                        text = "NETWORK POLICY",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    HorizontalDivider(color = menuBorder, thickness = 0.8.dp)
+                    DropdownMenuItem(
+                        text = {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "On (Wi-Fi Only)",
+                                    fontSize = 13.sp,
+                                    fontWeight = if (downloadSettings.downloadOverWifiOnly) FontWeight.Bold else FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                if (downloadSettings.downloadOverWifiOnly) {
+                                    Icon(Icons.Default.Check, contentDescription = null, tint = primaryColor, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        },
+                        onClick = {
+                            com.streamhub.app.data.DownloadSettingsManager.updateDownloadOverWifiOnly(true)
+                            showWifiDropdown = false
+                            ToastManager.showToast("Download over Wi-Fi only: On", Icons.Default.Wifi)
+                        },
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                    DropdownMenuItem(
+                        text = {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "Off (Any Network)",
+                                    fontSize = 13.sp,
+                                    fontWeight = if (!downloadSettings.downloadOverWifiOnly) FontWeight.Bold else FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                if (!downloadSettings.downloadOverWifiOnly) {
+                                    Icon(Icons.Default.Check, contentDescription = null, tint = primaryColor, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        },
+                        onClick = {
+                            com.streamhub.app.data.DownloadSettingsManager.updateDownloadOverWifiOnly(false)
+                            showWifiDropdown = false
+                            ToastManager.showToast("Download over Wi-Fi only: Off", Icons.Default.Wifi)
+                        },
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
                     )
                 }
             }
 
-            // Downloads Auto-Delete TTL Selector Pill
-            Surface(
-                shape = CircleShape,
-                color = Color(0x2638BDF8),
-                modifier = Modifier.bouncyClickable {
-                    showTtlDialog = true
-                }
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
+            // Button 3: Auto-delete Dropdown (Anchored to Squircle, Matching Figma Preview)
+            Box(modifier = Modifier.weight(1f)) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(63.dp)
+                        .bouncyClickable { showTtlDropdown = true }
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Schedule,
-                        contentDescription = null,
-                        tint = Color(0xFF38BDF8),
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(5.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Auto-delete",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (downloadSettings.downloadTtlDays <= 0) "Never" else "${downloadSettings.downloadTtlDays}d",
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                }
+
+                DropdownMenu(
+                    expanded = showTtlDropdown,
+                    onDismissRequest = { showTtlDropdown = false },
+                    shape = menuShape,
+                    containerColor = menuBg,
+                    border = BorderStroke(1.dp, menuBorder),
+                    modifier = Modifier.widthIn(min = 210.dp)
+                ) {
                     Text(
-                        text = "Auto-Delete: ${downloadSettings.downloadTtlDays}d",
-                        color = Color(0xFF38BDF8),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
+                        text = "RETENTION TTL",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                     )
+                    HorizontalDivider(color = menuBorder, thickness = 0.8.dp)
+
+                    val ttlOptions = listOf(
+                        1 to "1 Day (24h)",
+                        3 to "3 Days",
+                        7 to "7 Days (1 week)",
+                        14 to "14 Days (2 weeks)",
+                        30 to "30 Days (Recommended)",
+                        60 to "60 Days",
+                        90 to "90 Days",
+                        0 to "Never (Keep all)"
+                    )
+
+                    ttlOptions.forEach { (days, label) ->
+                        val isSelected = downloadSettings.downloadTtlDays == days
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f)
+                                    )
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = primaryColor,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            },
+                            onClick = {
+                                com.streamhub.app.data.DownloadSettingsManager.updateDownloadTtlDays(days)
+                                showTtlDropdown = false
+                                ToastManager.showToast("Auto-delete TTL: ${if (days == 0) "Never" else "${days}d"}", Icons.Default.Schedule)
+                            },
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
         }
@@ -478,14 +879,108 @@ fun DownloadsScreen(
         Spacer(modifier = Modifier.height(12.dp))
 
         if (downloadsList.isEmpty()) {
-            EmptyStateCard(
-                icon = Icons.Default.DownloadDone,
-                title = "No Offline Downloads Yet",
-                subtitle = "Tap the download icon beside any episode while online to save it for offline playback anywhere!",
+            Column(
                 modifier = Modifier
-                    .weight(1f)
                     .fillMaxWidth()
-            )
+                    .padding(vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                // Dynamic 240x188 Illustration with centered play icon & app theme accent badge
+                Box(
+                    modifier = Modifier.size(width = 240.dp, height = 188.dp)
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_figma_empty_downloads_base),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // 14-Degree Rotated Play Badge (Dynamically adapted to App Theme Crimson Red / Primary)
+                    Box(
+                        modifier = Modifier
+                            .offset(x = 171.dp, y = 15.dp)
+                            .size(42.dp)
+                            .graphicsLayer {
+                                rotationZ = 14f
+                                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                            }
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    // Orbital Circle Dot (Dynamically adapted to App Theme Primary)
+                    Box(
+                        modifier = Modifier
+                            .offset(x = 24.dp, y = 142.dp)
+                            .size(12.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    text = "No offline downloads yet",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "Tap the download icon beside any episode while online to save it for offline playback anywhere.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 32.dp),
+                    lineHeight = 18.sp
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Exact Asymmetric CTA Button (264x52dp, rx: 22-22-22-10dp, Dynamically adapted to App Theme)
+                Box(
+                    modifier = Modifier
+                        .size(width = 264.dp, height = 52.dp)
+                        .bouncyClickable(role = androidx.compose.ui.semantics.Role.Button) { onFindContent() }
+                        .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp, bottomEnd = 22.dp, bottomStart = 10.dp))
+                        .background(MaterialTheme.colorScheme.primary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 22.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_figma_arrow_forward),
+                            contentDescription = null,
+                            colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onPrimary),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "Find something to download",
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
         } else if (groupedSeriesList.isEmpty()) {
             EmptyStateCard(
                 icon = Icons.Default.Search,
@@ -716,77 +1211,7 @@ fun DownloadsScreen(
             )
         }
 
-        // Downloads Auto-Delete TTL Lifespan Picker Dialog
-        if (showTtlDialog) {
-            val ttlOptions = listOf(
-                1 to "1 Day (24h)",
-                3 to "3 Days",
-                7 to "7 Days",
-                14 to "14 Days",
-                30 to "30 Days (Recommended)",
-                60 to "60 Days",
-                90 to "90 Days"
-            )
-            AlertDialog(
-                onDismissRequest = { showTtlDialog = false },
-                title = {
-                    Text(
-                        text = "Downloads Auto-Delete TTL",
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                text = {
-                    Column {
-                        Text(
-                            text = "Automatically purge offline downloads older than the selected retention lifespan to keep your device storage clean.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        )
-                        ttlOptions.forEach { (days, label) ->
-                            val isSelected = downloadSettings.downloadTtlDays == days
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable {
-                                        com.streamhub.app.data.DownloadSettingsManager.updateDownloadTtlDays(days)
-                                        showTtlDialog = false
-                                        ToastManager.showToast("Auto-delete set to $label", Icons.Default.Schedule)
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = label,
-                                    color = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    fontSize = 13.sp
-                                )
-                                if (isSelected) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = "Selected",
-                                        tint = primaryColor,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                },
-                confirmButton = {},
-                dismissButton = {
-                    TextButton(onClick = { showTtlDialog = false }) {
-                        Text("Close", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                },
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = RoundedCornerShape(28.dp)
-            )
-        }
+        
     }
 }
 
@@ -794,6 +1219,7 @@ fun DownloadsScreen(
  * Helper to compute human-friendly expiration countdown text for offline media files.
  */
 fun formatDownloadExpiryBadge(completedAt: Long, localFilePath: String, ttlDays: Int): String {
+    if (ttlDays <= 0) return "Never expires"
     val now = System.currentTimeMillis()
     val file = java.io.File(localFilePath)
     val effectiveTime = if (completedAt > 0L) completedAt else if (file.exists()) file.lastModified() else now

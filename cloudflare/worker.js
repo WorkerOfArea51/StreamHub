@@ -8,11 +8,8 @@
  *    Serves pre-compiled JSON from KV with ETag & 304 Not Modified support.
  * 3. Creator Studio CRUD Endpoints (/api/catalog/item, /api/catalog/import):
  *    Direct PUT, DELETE, and batch import with catalog hash updating.
- * 4. User Presence & Telemetry (/api/telemetry/heartbeat, /api/telemetry/audience):
- *    Stores active viewer sessions with 180s auto-expiry in KV.
- *    Piggybacks remote commands (NOTIFICATION, REFRESH, KICK) onto 60s heartbeats.
- * 5. Global Announcements (/api/broadcasts):
- *    Publishes and delivers self-expiring announcements.
+ * 4. Global Announcements (/api/broadcasts):
+ *    Publishes and delivers self-expiring announcements with zero background write drain.
  */
 
 // Upstream VPS host for video file streaming
@@ -294,140 +291,7 @@ export default {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // 3. USER TELEMETRY & HEARTBEATS
-    // ─────────────────────────────────────────────────────────────
-
-    // POST /api/telemetry/heartbeat
-    if (pathname === "/api/telemetry/heartbeat" && request.method === "POST") {
-      try {
-        const session = await request.json();
-        const clientId = session.clientId;
-        if (!clientId) {
-          return new Response(JSON.stringify({ error: "Missing clientId" }), {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-
-        // Store session in KV with 180-second TTL (auto-purges after 3 minutes)
-        await env.CATALOG_KV.put(`session:${clientId}`, JSON.stringify(session), {
-          expirationTtl: 180,
-        });
-
-        // Check if there is any pending command for this client
-        let pendingCommand = null;
-        const cmdKey = `cmd:${clientId}`;
-        const cmdRaw = await env.CATALOG_KV.get(cmdKey);
-        if (cmdRaw) {
-          try {
-            pendingCommand = JSON.parse(cmdRaw);
-            await env.CATALOG_KV.delete(cmdKey); // Consume command
-          } catch (e) {}
-        }
-
-        // Check if there is an active broadcast
-        let activeBroadcast = null;
-        const bcastRaw = await env.CATALOG_KV.get("broadcast:latest");
-        if (bcastRaw) {
-          try {
-            const parsed = JSON.parse(bcastRaw);
-            if (parsed.expiresAt && Date.now() < parsed.expiresAt) {
-              activeBroadcast = parsed;
-            }
-          } catch (e) {}
-        }
-
-        return new Response(
-          JSON.stringify({
-            ok: true,
-            command: pendingCommand,
-            broadcast: activeBroadcast,
-          }),
-          {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    // GET /api/telemetry/audience
-    if (pathname === "/api/telemetry/audience" && request.method === "GET") {
-      try {
-        // List active session keys
-        const listResult = await env.CATALOG_KV.list({ prefix: "session:" });
-        const sessions = [];
-
-        // Fetch up to 50 active sessions concurrently
-        const fetchPromises = listResult.keys.slice(0, 50).map(async (key) => {
-          const raw = await env.CATALOG_KV.get(key.name);
-          if (raw) {
-            try {
-              return JSON.parse(raw);
-            } catch (e) {}
-          }
-          return null;
-        });
-
-        const resolved = await Promise.all(fetchPromises);
-        for (const s of resolved) {
-          if (s) sessions.push(s);
-        }
-
-        return new Response(JSON.stringify({ activeWatchers: sessions }), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      } catch (err) {
-        return new Response(JSON.stringify({ error: err.message, activeWatchers: [] }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    // POST /api/telemetry/command (Admin dispatch command)
-    if (pathname === "/api/telemetry/command" && request.method === "POST") {
-      try {
-        const body = await request.json();
-        const { targetClientId, command, title, message } = body;
-        if (!targetClientId || !command) {
-          return new Response(JSON.stringify({ error: "Missing targetClientId or command" }), {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-
-        const cmdPayload = {
-          type: command,
-          title: title || "",
-          message: message || "",
-          timestamp: Date.now(),
-        };
-
-        await env.CATALOG_KV.put(`cmd:${targetClientId}`, JSON.stringify(cmdPayload), {
-          expirationTtl: 300, // 5 min TTL
-        });
-
-        return new Response(JSON.stringify({ ok: true }), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // 4. GLOBAL BROADCAST ANNOUNCEMENTS
+    // 3. GLOBAL BROADCAST ANNOUNCEMENTS
     // ─────────────────────────────────────────────────────────────
 
     // GET /api/broadcasts/latest

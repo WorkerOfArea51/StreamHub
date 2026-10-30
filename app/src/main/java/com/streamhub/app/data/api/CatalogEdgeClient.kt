@@ -11,7 +11,6 @@ import com.google.gson.stream.JsonToken
 import com.streamhub.app.BuildConfig
 import com.streamhub.app.data.EpisodeOrderingManager
 import com.streamhub.app.data.StreamBackendConfig
-import com.streamhub.app.data.UserSessionInfo
 import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.models.VipVoucher
 import com.streamhub.app.data.models.VoucherStatusCheck
@@ -43,13 +42,6 @@ data class CatalogVersionInfo(
     val updatedAt: Long = 0L
 )
 
-data class TelemetryCommand(
-    val type: String = "", // "NOTIFICATION", "REFRESH", "KICK"
-    val title: String = "",
-    val message: String = "",
-    val timestamp: Long = 0L
-)
-
 data class BroadcastPayload(
     val id: String = "",
     val title: String = "",
@@ -59,24 +51,13 @@ data class BroadcastPayload(
     val sender: String = "Owner Admin"
 )
 
-data class TelemetryHeartbeatResponse(
-    val ok: Boolean = true,
-    val command: TelemetryCommand? = null,
-    val broadcast: BroadcastPayload? = null
-)
-
-data class AudienceResponse(
-    val activeWatchers: List<UserSessionInfo> = emptyList()
-)
-
 /**
  * Cloudflare Edge Catalog & Telemetry Client.
  *
  * Provides a 100% Free Tier Cloudflare Edge backend replacement for Firebase Firestore:
  * 1. Global catalog distribution via Cloudflare Worker KV / D1 with ETag and HTTP 304 caching.
  * 2. Instant Creator Studio CRUD updates (PUT show, DELETE show, POST batch import).
- * 3. Real-time viewer presence and telemetry via lightweight 60s heartbeats with command dispatch.
- * 4. Zero Firebase reads and writes across standard user browsing and live streaming.
+  * 4. Zero Firebase reads and writes across standard user browsing and live streaming.
  */
 object CatalogEdgeClient {
 
@@ -87,9 +68,6 @@ object CatalogEdgeClient {
     private val ITEM_URL = "$BASE_URL/api/catalog/item"
     private val IMPORT_URL = "$BASE_URL/api/catalog/import"
     private val VERSION_URL = "$BASE_URL/api/catalog/version"
-    private val TELEMETRY_URL = "$BASE_URL/api/telemetry/heartbeat"
-    private val AUDIENCE_URL = "$BASE_URL/api/telemetry/audience"
-    private val COMMAND_URL = "$BASE_URL/api/telemetry/command"
     private val BROADCAST_URL = "$BASE_URL/api/broadcasts"
     private val VOUCHERS_URL = "$BASE_URL/api/vouchers"
 
@@ -186,24 +164,58 @@ object CatalogEdgeClient {
     }
 
     /**
+     * Executes a network operation with automatic retry on transient network drops (e.g. SocketTimeout, connection reset).
+     * Applies exponential backoff (1.0s, 1.5s, 2.25s) across 3 attempts before reporting failure.
+     */
+    private suspend fun <T> executeWithRetry(
+        maxAttempts: Int = 3,
+        initialDelayMs: Long = 1000L,
+        backoffMultiplier: Double = 1.5,
+        tag: String = "EdgeOperation",
+        block: () -> T
+    ): T {
+        var currentDelay = initialDelayMs
+        var lastException: Throwable? = null
+
+        for (attempt in 1..maxAttempts) {
+            try {
+                return block()
+            } catch (e: Exception) {
+                lastException = e
+                val isNetworkError = e is IOException || e is SocketTimeoutException || e.message?.contains("50") == true
+                if (!isNetworkError || attempt == maxAttempts) {
+                    Log.e(TAG, "❌ $tag failed permanently on attempt $attempt: ${e.message}")
+                    throw e
+                }
+                Log.w(TAG, "⚠️ $tag attempt $attempt failed (${e.message}) — retrying in ${currentDelay}ms...")
+                kotlinx.coroutines.delay(currentDelay)
+                currentDelay = (currentDelay * backoffMultiplier).toLong()
+            }
+        }
+        throw (lastException ?: IllegalStateException("$tag failed after $maxAttempts attempts"))
+    }
+
+    /**
      * Saves or updates a single media item in Cloudflare Worker KV storage.
      */
     suspend fun saveMediaItem(item: MediaItem): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val jsonPayload = gson.toJson(item)
-            val body = jsonPayload.toRequestBody(jsonMediaType)
-            val request = Request.Builder()
-                .url(ITEM_URL)
-                .header("User-Agent", userAgentHeader())
-                .put(body)
-                .build()
+            executeWithRetry(tag = "saveMediaItem(${item.id})") {
+                val jsonPayload = gson.toJson(item)
+                val body = jsonPayload.toRequestBody(jsonMediaType)
+                val request = Request.Builder()
+                    .url(ITEM_URL)
+                    .header("User-Agent", userAgentHeader())
+                    .put(body)
+                    .build()
 
-            val response = SharedHttpClient.baseClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                throw IllegalStateException("Cloudflare Edge save item returned HTTP ${response.code}: ${response.message}")
+                val response = SharedHttpClient.baseClient.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("Cloudflare Edge save item returned HTTP ${response.code}: ${response.message}")
+                }
+                Log.d(TAG, "✅ Successfully saved show to Cloudflare Edge KV: ${item.id}")
+                Unit
             }
-            Log.d(TAG, "✅ Successfully saved show to Cloudflare Edge KV: ${item.id}")
-            Unit
         }
     }
 
@@ -212,18 +224,20 @@ object CatalogEdgeClient {
      */
     suspend fun deleteMediaItem(itemId: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val request = Request.Builder()
-                .url("$ITEM_URL/$itemId")
-                .header("User-Agent", userAgentHeader())
-                .delete()
-                .build()
+            executeWithRetry(tag = "deleteMediaItem($itemId)") {
+                val request = Request.Builder()
+                    .url("$ITEM_URL/$itemId")
+                    .header("User-Agent", userAgentHeader())
+                    .delete()
+                    .build()
 
-            val response = SharedHttpClient.baseClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                throw IllegalStateException("Cloudflare Edge delete item returned HTTP ${response.code}: ${response.message}")
+                val response = SharedHttpClient.baseClient.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("Cloudflare Edge delete item returned HTTP ${response.code}: ${response.message}")
+                }
+                Log.d(TAG, "🗑️ Successfully deleted show from Cloudflare Edge KV: $itemId")
+                Unit
             }
-            Log.d(TAG, "🗑️ Successfully deleted show from Cloudflare Edge KV: $itemId")
-            Unit
         }
     }
 
@@ -232,97 +246,23 @@ object CatalogEdgeClient {
      */
     suspend fun saveMediaItemsBatch(items: List<MediaItem>): Result<Int> = withContext(Dispatchers.IO) {
         runCatching {
-            val payload = mapOf("items" to items)
-            val jsonPayload = gson.toJson(payload)
-            val body = jsonPayload.toRequestBody(jsonMediaType)
-            val request = Request.Builder()
-                .url(IMPORT_URL)
-                .header("User-Agent", userAgentHeader())
-                .post(body)
-                .build()
+            executeWithRetry(tag = "saveMediaItemsBatch(${items.size} items)") {
+                val payload = mapOf("items" to items)
+                val jsonPayload = gson.toJson(payload)
+                val body = jsonPayload.toRequestBody(jsonMediaType)
+                val request = Request.Builder()
+                    .url(IMPORT_URL)
+                    .header("User-Agent", userAgentHeader())
+                    .post(body)
+                    .build()
 
-            val response = SharedHttpClient.baseClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                throw IllegalStateException("Cloudflare Edge batch import returned HTTP ${response.code}: ${response.message}")
+                val response = SharedHttpClient.baseClient.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("Cloudflare Edge batch import returned HTTP ${response.code}: ${response.message}")
+                }
+                Log.d(TAG, "🚀 Successfully imported ${items.size} items to Cloudflare Edge KV!")
+                items.size
             }
-            Log.d(TAG, "🚀 Successfully imported ${items.size} items to Cloudflare Edge KV!")
-            items.size
-        }
-    }
-
-    /**
-     * Sends user telemetry heartbeat to Cloudflare Worker.
-     * Receives any pending remote commands (e.g. NOTIFICATION, REFRESH, KICK) and active announcements.
-     */
-    suspend fun sendTelemetryHeartbeat(session: Map<String, Any?>): Result<TelemetryHeartbeatResponse> = withContext(Dispatchers.IO) {
-        runCatching {
-            val jsonPayload = gson.toJson(session)
-            val body = jsonPayload.toRequestBody(jsonMediaType)
-            val request = Request.Builder()
-                .url(TELEMETRY_URL)
-                .header("User-Agent", userAgentHeader())
-                .post(body)
-                .build()
-
-            val response = SharedHttpClient.baseClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                throw IllegalStateException("Cloudflare telemetry heartbeat returned HTTP ${response.code}")
-            }
-            val bodyStr = response.body?.string() ?: "{}"
-            gson.fromJson(bodyStr, TelemetryHeartbeatResponse::class.java)
-        }
-    }
-
-    /**
-     * Fetches current active viewer sessions from Cloudflare Edge (for Admin Live Audience sheet).
-     */
-    suspend fun fetchLiveAudience(): Result<List<UserSessionInfo>> = withContext(Dispatchers.IO) {
-        runCatching {
-            val request = Request.Builder()
-                .url(AUDIENCE_URL)
-                .header("User-Agent", userAgentHeader())
-                .get()
-                .build()
-
-            val response = SharedHttpClient.baseClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                throw IllegalStateException("Cloudflare live audience returned HTTP ${response.code}")
-            }
-            val bodyStr = response.body?.string() ?: "{}"
-            val audience = gson.fromJson(bodyStr, AudienceResponse::class.java)
-            audience.activeWatchers
-        }
-    }
-
-    /**
-     * Dispatches an administrative command to a specific device client ID.
-     */
-    suspend fun sendRemoteCommand(
-        targetClientId: String,
-        command: String,
-        title: String = "",
-        message: String = ""
-    ): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
-            val payload = mapOf(
-                "targetClientId" to targetClientId,
-                "command" to command,
-                "title" to title,
-                "message" to message,
-                "timestamp" to System.currentTimeMillis()
-            )
-            val body = gson.toJson(payload).toRequestBody(jsonMediaType)
-            val request = Request.Builder()
-                .url(COMMAND_URL)
-                .header("User-Agent", userAgentHeader())
-                .post(body)
-                .build()
-
-            val response = SharedHttpClient.baseClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                throw IllegalStateException("Command dispatch failed HTTP ${response.code}")
-            }
-            Unit
         }
     }
 
@@ -335,24 +275,27 @@ object CatalogEdgeClient {
         expiryHours: Int = 24
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val payload = mapOf(
-                "title" to title,
-                "message" to message,
-                "expiryHours" to expiryHours,
-                "timestamp" to System.currentTimeMillis()
-            )
-            val body = gson.toJson(payload).toRequestBody(jsonMediaType)
-            val request = Request.Builder()
-                .url(BROADCAST_URL)
-                .header("User-Agent", userAgentHeader())
-                .post(body)
-                .build()
+            executeWithRetry(tag = "sendGlobalBroadcast") {
+                val payload = mapOf(
+                    "title" to title,
+                    "message" to message,
+                    "expiryHours" to expiryHours,
+                    "timestamp" to System.currentTimeMillis()
+                )
+                val body = gson.toJson(payload).toRequestBody(jsonMediaType)
+                val request = Request.Builder()
+                    .url(BROADCAST_URL)
+                    .header("User-Agent", userAgentHeader())
+                    .post(body)
+                    .build()
 
-            val response = SharedHttpClient.baseClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                throw IllegalStateException("Broadcast failed HTTP ${response.code}")
+                val response = SharedHttpClient.baseClient.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("Broadcast publish failed HTTP ${response.code}: ${response.message}")
+                }
+                Log.d(TAG, "📢 Successfully dispatched global broadcast to Cloudflare Edge KV!")
+                Unit
             }
-            Unit
         }
     }
 
@@ -361,17 +304,20 @@ object CatalogEdgeClient {
      */
     suspend fun clearActiveBroadcast(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val request = Request.Builder()
-                .url(BROADCAST_URL)
-                .header("User-Agent", userAgentHeader())
-                .delete()
-                .build()
+            executeWithRetry(tag = "clearActiveBroadcast") {
+                val request = Request.Builder()
+                    .url(BROADCAST_URL)
+                    .header("User-Agent", userAgentHeader())
+                    .delete()
+                    .build()
 
-            val response = SharedHttpClient.baseClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                throw IllegalStateException("Clear broadcast failed HTTP ${response.code}")
+                val response = SharedHttpClient.baseClient.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("Clear broadcast failed HTTP ${response.code}: ${response.message}")
+                }
+                Log.d(TAG, "📢 Successfully cleared active broadcast from Cloudflare Edge KV!")
+                Unit
             }
-            Unit
         }
     }
 

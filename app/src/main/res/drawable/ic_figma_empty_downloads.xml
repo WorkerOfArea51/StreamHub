@@ -1,0 +1,46 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="240dp"
+    android:height="188dp"
+    android:viewportWidth="240"
+    android:viewportHeight="188">
+  <!-- Outer Ellipse Guide -->
+  <path
+      android:pathData="M220,96 C220,134.108 175.228,165 120,165 C64.7715,165 20,134.108 20,96 C20,57.8924 64.7715,27 120,27 C175.228,27 220,57.8924 220,96 Z"
+      android:strokeColor="#4C403D"
+      android:strokeWidth="2"/>
+
+  <!-- Peach Organic Pebble Shape -->
+  <path
+      android:pathData="M54.1016,92.1533 C49.4898,59.3387 72.3527,28.9986 105.167,24.3868 L115.07,22.9951 C147.885,18.3833 178.225,41.2462 182.836,74.0608 L185.898,95.8467 C190.51,128.661 167.647,159.001 134.833,163.613 L83.3386,170.85 C73.4942,172.234 64.3922,165.375 63.0087,155.53 L54.1016,92.1533 Z"
+      android:fillColor="#FFD0B8"/>
+
+  <!-- Download Tray and Arrow Inside Pebble (Centered, Straight & Clean) -->
+  <path
+      android:pathData="M118,72 L118,100 M107,89 L118,100 L129,89 M100,102 L100,113 C100,116 102,118 105,118 L131,118 C134,118 136,116 136,113 L136,102"
+      android:strokeColor="#330A02"
+      android:strokeWidth="1.8"
+      android:strokeLineCap="round"
+      android:strokeLineJoin="round"/>
+
+  <!-- 14-Degree Rotated Coral Play Square Badge -->
+  <group
+      android:pivotX="171"
+      android:pivotY="15"
+      android:rotation="14">
+    <path
+        android:pathData="M185,15 h14 a14,14 0 0,1 14,14 v14 a14,14 0 0,1 -14,14 h-14 a14,14 0 0,1 -14,-14 v-14 a14,14 0 0,1 14,-14 z"
+        android:fillColor="#FF6348"/>
+  </group>
+
+  <!-- Triangle Play Icon inside Square -->
+  <path
+      android:pathData="M181.621,32.6784 C181.699,32.3654 181.858,32.0785 182.083,31.8467 C182.307,31.6149 182.589,31.4463 182.899,31.3581 C183.209,31.2699 183.537,31.2651 183.85,31.3442 C184.163,31.4233 184.449,31.5835 184.68,31.8087 L193.8,40.6934 C194.031,40.9168 194.198,41.1967 194.287,41.5052 C194.375,41.8137 194.381,42.1399 194.303,42.4513 C194.226,42.7627 194.068,43.0483 193.846,43.2796 C193.624,43.511 193.344,43.6799 193.036,43.7695 L180.809,47.3337 C180.5,47.424 180.172,47.431 179.858,47.3541 C179.545,47.2771 179.258,47.1188 179.025,46.8952 C178.792,46.6716 178.623,46.3907 178.534,46.0807 C178.445,45.7707 178.439,45.4427 178.517,45.1297 L181.621,32.6784 Z"
+      android:strokeColor="#330A02"
+      android:strokeWidth="1.8"
+      android:strokeLineCap="round"/>
+
+  <!-- Orbital Coral Circle Dot -->
+  <path
+      android:pathData="M30,142 a6,6 0 1,0 0.001,0 z"
+      android:fillColor="#FF6348"/>
+</vector>

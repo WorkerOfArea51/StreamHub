@@ -10,6 +10,25 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.unit.Dp
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.unit.lerp
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -192,21 +211,6 @@ fun HomeScreen(
     var showSortMenu by remember { mutableStateOf(false) }
 
     val haptic = LocalHapticFeedback.current
-    var categoryHoldLabel by remember { mutableStateOf<String?>(null) }
-    var categoryHoldIcon by remember { mutableStateOf<ImageVector?>(null) }
-    var categoryDismissJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-
-    fun triggerCategoryHold(label: String, icon: ImageVector) {
-        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-        categoryHoldLabel = label
-        categoryHoldIcon = icon
-        categoryDismissJob?.cancel()
-        categoryDismissJob = coroutineScope.launch {
-            kotlinx.coroutines.delay(1800)
-            categoryHoldLabel = null
-            categoryHoldIcon = null
-        }
-    }
 
     val sortedCatalog = remember(catalog, sortOrder) {
         when (sortOrder) {
@@ -428,156 +432,276 @@ fun HomeScreen(
         }
     }
 
+    val currentHour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
+    val greetingText = remember(currentHour) {
+        when (currentHour) {
+            in 5..11 -> "GOOD MORNING"
+            in 12..16 -> "GOOD AFTERNOON"
+            in 17..20 -> "GOOD EVENING"
+            else -> "GOOD NIGHT"
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerLowest)) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Pinned Top Header Nav Bar (Immediately below status bar, Icon-Only M3 Expressive Split Button Design)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 6.dp),
-            contentAlignment = Alignment.Center
-        ) {
+            // ── Editorial Header (Figma M3E Layout with StreamHub Brand Theme) ──
             Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.wrapContentWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 10.dp)
             ) {
-                // M3 Expressive Floating Hold Popup Pill for Category Bar
-                com.streamhub.app.ui.components.ExpressiveHoldPopup(
-                    visible = categoryHoldLabel != null,
-                    label = categoryHoldLabel,
-                    icon = categoryHoldIcon,
-                    accentColor = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(bottom = 6.dp)
-                )
-
-                // Split Button Segmented Dock Container (Zero Text Names, Icon-Only M3 Expressive Design)
-                Surface(
-                    shape = RoundedCornerShape(32.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    shadowElevation = 14.dp,
-                    tonalElevation = 6.dp,
-                    modifier = Modifier
-                        .padding(horizontal = 10.dp)
-                        .wrapContentWidth()
+                // Top Editorial Row: Timezone Greeting + Headline + Sculptural Surprise Me Button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Column(
+                        modifier = Modifier.weight(1f).padding(end = 16.dp)
+                    ) {
+                        Text(
+                            text = greetingText,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 1.2.sp
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = "A little escape from reality.",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 23.sp,
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = 28.sp,
+                            maxLines = 2
+                        )
+                    }
+
+                    // Sculptural Surprise Me Button (Asymmetric squircle matching Figma, StreamHub brand primary)
+                    Surface(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            showSurpriseMeDialog = true
+                        },
+                        shape = RoundedCornerShape(topStart = 23.dp, topEnd = 23.dp, bottomEnd = 24.dp, bottomStart = 12.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        shadowElevation = 0.dp,
+                        modifier = Modifier.size(width = 46.dp, height = 48.dp)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            Icon(
+                                painter = androidx.compose.ui.res.painterResource(id = com.streamhub.app.R.drawable.ic_figma_surprise_me),
+                                contentDescription = "Surprise Me",
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // ── Category M3E Split Button Rail (Connected Segments with 3.5dp Split Gaps & Fluid Water-Flowing Indicator) ──
+                val categories = listOf(
+                    "ALL" to "All",
+                    "ANIME" to "Anime",
+                    "MOVIES" to "Movies",
+                    "SERIES" to "Series"
+                )
+                val selectedIndex = remember(selectedCategoryFilter) {
+                    categories.indexOfFirst { it.first == selectedCategoryFilter }.coerceAtLeast(0)
+                }
+                var previousIndex by remember { mutableIntStateOf(selectedIndex) }
+                val movingRight = selectedIndex >= previousIndex
+                LaunchedEffect(selectedIndex) {
+                    previousIndex = selectedIndex
+                }
+
+                val fluidViscosity = homeLayoutConfig.fluidViscosity
+
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                ) {
+                    val totalWidth = maxWidth
+                    val sortButtonWidth = 44.dp
+                    val splitGap = 3.5.dp
+                    val categoriesWidth = totalWidth - sortButtonWidth - splitGap
+                    val segmentCount = categories.size
+                    val singleSegmentWidth = (categoriesWidth - (splitGap * (segmentCount - 1))) / segmentCount
+                    val stepDistance = singleSegmentWidth + splitGap
+
+                    val targetStart = stepDistance * selectedIndex
+                    val targetEnd = targetStart + singleSegmentWidth
+
+                    // Dual Spring physics based on selected FluidViscosity setting
+                    val leadSpring = spring<Dp>(
+                        dampingRatio = fluidViscosity.dampingRatio,
+                        stiffness = fluidViscosity.leadStiffness
+                    )
+                    val tailSpring = spring<Dp>(
+                        dampingRatio = fluidViscosity.dampingRatio,
+                        stiffness = fluidViscosity.tailStiffness
+                    )
+
+                    val startSpring = if (movingRight) tailSpring else leadSpring
+                    val endSpring = if (movingRight) leadSpring else tailSpring
+
+                    val animatedStart by animateDpAsState(
+                        targetValue = targetStart,
+                        animationSpec = startSpring,
+                        label = "fluidStart"
+                    )
+                    val animatedEnd by animateDpAsState(
+                        targetValue = targetEnd,
+                        animationSpec = endSpring,
+                        label = "fluidEnd"
+                    )
+
+                    // Asymmetric morphing corner radiuses
+                    val targetStartRadius = if (selectedIndex == 0) 20.dp else 6.dp
+                    val targetEndRadius = if (selectedIndex == 3) 20.dp else 6.dp
+
+                    val animatedStartRadius by animateDpAsState(
+                        targetValue = targetStartRadius,
+                        animationSpec = spring(dampingRatio = 0.75f, stiffness = 400f),
+                        label = "fluidRadiusStart"
+                    )
+                    val animatedEndRadius by animateDpAsState(
+                        targetValue = targetEndRadius,
+                        animationSpec = spring(dampingRatio = 0.75f, stiffness = 400f),
+                        label = "fluidRadiusEnd"
+                    )
+
+                    val morphingPillShape = RoundedCornerShape(
+                        topStart = animatedStartRadius,
+                        bottomStart = animatedStartRadius,
+                        topEnd = animatedEndRadius,
+                        bottomEnd = animatedEndRadius
+                    )
+
                     Row(
-                        modifier = Modifier
-                            .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        modifier = Modifier.fillMaxSize(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // 1. All Media (Leading Asymmetric Segment)
-                        com.streamhub.app.ui.components.ExpressiveSplitCategoryIconItem(
-                            icon = Icons.Default.Apps,
-                            contentDescription = "All Media",
-                            isSelected = selectedCategoryFilter == "ALL",
-                            shape = RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp, topEnd = 4.dp, bottomEnd = 4.dp),
-                            onClick = {
-                                categoryHoldLabel = null
-                                if (selectedCategoryFilter == "ALL") {
-                                    coroutineScope.launch { homeVerticalListState.animateScrollToItem(0) }
-                                } else {
-                                    com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("ALL")
+                        // 1. Categories Segmented Container Area
+                        Box(
+                            modifier = Modifier
+                                .width(categoriesWidth)
+                                .fillMaxHeight()
+                        ) {
+                            // A. Background Split Segments (Tonal containers with 3.5dp physical gap)
+                            Row(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalArrangement = Arrangement.spacedBy(splitGap),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                categories.forEachIndexed { index, _ ->
+                                    val shape = when (index) {
+                                        0 -> RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp, topEnd = 6.dp, bottomEnd = 6.dp)
+                                        3 -> RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp, topEnd = 20.dp, bottomEnd = 20.dp)
+                                        else -> RoundedCornerShape(6.dp)
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .clip(shape)
+                                            .background(MaterialTheme.colorScheme.surfaceContainer)
+                                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f), shape)
+                                    )
                                 }
-                            },
-                            onHold = {
-                                triggerCategoryHold("All Catalog", Icons.Default.Apps)
                             }
-                        )
 
-                        // 2. Anime
-                        com.streamhub.app.ui.components.ExpressiveSplitCategoryIconItem(
-                            icon = Icons.Default.Animation,
-                            contentDescription = "Anime",
-                            isSelected = selectedCategoryFilter == "ANIME",
-                            shape = RoundedCornerShape(4.dp),
-                            onClick = {
-                                categoryHoldLabel = null
-                                if (selectedCategoryFilter == "ANIME") {
-                                    coroutineScope.launch { homeVerticalListState.animateScrollToItem(0) }
-                                } else {
-                                    com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("ANIME")
-                                }
-                            },
-                            onHold = {
-                                triggerCategoryHold("Anime & Animation", Icons.Default.Animation)
-                            }
-                        )
-
-                        // 3. Movies
-                        com.streamhub.app.ui.components.ExpressiveSplitCategoryIconItem(
-                            icon = Icons.Default.Movie,
-                            contentDescription = "Movies",
-                            isSelected = selectedCategoryFilter == "MOVIES",
-                            shape = RoundedCornerShape(4.dp),
-                            onClick = {
-                                categoryHoldLabel = null
-                                if (selectedCategoryFilter == "MOVIES") {
-                                    coroutineScope.launch { homeVerticalListState.animateScrollToItem(0) }
-                                } else {
-                                    com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("MOVIES")
-                                }
-                            },
-                            onHold = {
-                                triggerCategoryHold("Blockbuster Movies", Icons.Default.Movie)
-                            }
-                        )
-
-                        // 4. Series
-                        com.streamhub.app.ui.components.ExpressiveSplitCategoryIconItem(
-                            icon = Icons.Default.Tv,
-                            contentDescription = "Series",
-                            isSelected = selectedCategoryFilter == "SERIES",
-                            shape = RoundedCornerShape(4.dp),
-                            onClick = {
-                                categoryHoldLabel = null
-                                if (selectedCategoryFilter == "SERIES") {
-                                    coroutineScope.launch { homeVerticalListState.animateScrollToItem(0) }
-                                } else {
-                                    com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter("SERIES")
-                                }
-                            },
-                            onHold = {
-                                triggerCategoryHold("Web Series & Shows", Icons.Default.Tv)
-                            }
-                        )
-
-                        // 5. Surprise Me
-                        com.streamhub.app.ui.components.ExpressiveSplitCategoryIconItem(
-                            icon = Icons.Default.Casino,
-                            contentDescription = "Surprise Roulette",
-                            isSelected = false,
-                            isGradient = true,
-                            shape = RoundedCornerShape(4.dp),
-                            onClick = {
-                                categoryHoldLabel = null
-                                showSurpriseMeDialog = true
-                            },
-                            onHold = {
-                                triggerCategoryHold("Surprise Roulette", Icons.Default.Casino)
-                            }
-                        )
-
-                        // 6. M3 Expressive Split Sort Button (Direction + Menu)
-                        Box {
-                            com.streamhub.app.ui.components.ExpressiveSortSplitIconButton(
-                                isSelected = sortOrder != com.streamhub.app.data.CatalogSortOrder.NEWEST_FIRST,
-                                isMenuOpen = showSortMenu,
-                                onDirectionClick = {
-                                    categoryHoldLabel = null
-                                    val toggled = sortOrder.toggleDirection()
-                                    com.streamhub.app.data.HomeScreenLayoutManager.setSortOrder(toggled)
-                                    triggerCategoryHold("Sort: ${toggled.displayName}", Icons.AutoMirrored.Filled.Sort)
-                                },
-                                onMenuClick = {
-                                    categoryHoldLabel = null
-                                    showSortMenu = true
-                                },
-                                onHold = {
-                                    triggerCategoryHold("Sort Order", Icons.AutoMirrored.Filled.Sort)
-                                }
+                            // B. Fluid Water Flowing Indicator Layer (Surges & stretches across segments and gaps!)
+                            val pillWidth = (animatedEnd - animatedStart).coerceAtLeast(singleSegmentWidth)
+                            Box(
+                                modifier = Modifier
+                                    .offset(x = animatedStart)
+                                    .width(pillWidth)
+                                    .fillMaxHeight()
+                                    .clip(morphingPillShape)
+                                    .background(MaterialTheme.colorScheme.primary)
                             )
+
+                            // C. Foreground Interactive Buttons with Text Crossfade
+                            Row(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalArrangement = Arrangement.spacedBy(splitGap),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                categories.forEachIndexed { index, (key, label) ->
+                                    val isSelected = selectedCategoryFilter == key
+                                    val shape = when (index) {
+                                        0 -> RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp, topEnd = 6.dp, bottomEnd = 6.dp)
+                                        3 -> RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp, topEnd = 20.dp, bottomEnd = 20.dp)
+                                        else -> RoundedCornerShape(6.dp)
+                                    }
+                                    val textColor by animateColorAsState(
+                                        targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        animationSpec = tween(durationMillis = 180),
+                                        label = "textColor$key"
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .clip(shape)
+                                            .clickable(
+                                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                                indication = null
+                                            ) {
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                if (isSelected) {
+                                                    coroutineScope.launch { homeVerticalListState.animateScrollToItem(0) }
+                                                } else {
+                                                    com.streamhub.app.data.HomeScreenLayoutManager.setSelectedCategoryFilter(key)
+                                                }
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            color = textColor,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // M3E Split Gap (3.5dp) to Sort Button
+                        Spacer(modifier = Modifier.width(splitGap))
+
+                        // 2. Trailing Sort Button (Symmetrical Split Squircle)
+                        Box(
+                            modifier = Modifier
+                                .size(width = sortButtonWidth, height = 44.dp)
+                        ) {
+                            Surface(
+                                onClick = { showSortMenu = true },
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.Sort,
+                                        contentDescription = "Sort Options",
+                                        tint = if (sortOrder != com.streamhub.app.data.CatalogSortOrder.NEWEST_FIRST) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
+                            }
 
                             DropdownMenu(
                                 expanded = showSortMenu,
@@ -586,7 +710,6 @@ fun HomeScreen(
                                     .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(16.dp))
                                     .padding(vertical = 4.dp)
                             ) {
-                                // Direction Toggle Header Row
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -600,7 +723,7 @@ fun HomeScreen(
                                             com.streamhub.app.data.HomeScreenLayoutManager.setSortOrder(newOrder)
                                         },
                                         shape = CircleShape,
-                                        color = if (!isAsc) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        color = if (!isAsc) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
                                         modifier = Modifier.weight(1f)
                                     ) {
                                         Box(
@@ -622,7 +745,7 @@ fun HomeScreen(
                                             com.streamhub.app.data.HomeScreenLayoutManager.setSortOrder(newOrder)
                                         },
                                         shape = CircleShape,
-                                        color = if (isAsc) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                        color = if (isAsc) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
                                         modifier = Modifier.weight(1f)
                                     ) {
                                         Box(
@@ -639,10 +762,9 @@ fun HomeScreen(
                                     }
                                 }
 
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 4.dp))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, modifier = Modifier.padding(vertical = 4.dp))
 
-                                // 4 Clean Criteria Options
-                                listOf<Triple<String, String, ImageVector>>(
+                                listOf(
                                     Triple("DATE", "Upload Date", Icons.Default.Schedule),
                                     Triple("RATING", "Rating", Icons.Default.Star),
                                     Triple("YEAR", "Release Year", Icons.Default.CalendarToday),
@@ -678,7 +800,6 @@ fun HomeScreen(
                     }
                 }
             }
-        }
 
             // Scrollable Content (Edge-to-Edge Full-Bleed under floating header)
             CompositionLocalProvider(LocalIsScrollInProgress provides homeVerticalListState.isScrollInProgress) {
@@ -1205,6 +1326,7 @@ fun MediaSectionRow(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ContinueWatchingSection(
     continueWatchingList: List<Pair<MediaItem, PlaybackProgress>>,
@@ -1215,8 +1337,29 @@ fun ContinueWatchingSection(
     onLongClick: (Pair<MediaItem, PlaybackProgress>) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    if (continueWatchingList.isEmpty()) return
+
+    val n = continueWatchingList.size
     val primaryColor = MaterialTheme.colorScheme.primary
-    Column(modifier = modifier.fillMaxWidth().padding(top = 0.dp, bottom = 6.dp)) {
+    val coroutineScope = rememberCoroutineScope()
+    val currentScroll = remember { Animatable(0f) }
+    var isDragging by remember { mutableStateOf(false) }
+
+    LaunchedEffect(n) {
+        if (currentScroll.value > (n - 1).toFloat()) {
+            currentScroll.snapTo((n - 1).toFloat().coerceAtLeast(0f))
+        }
+    }
+
+    val scrollVal = currentScroll.value
+    val activeIndex = scrollVal.roundToInt().coerceIn(0, (n - 1).coerceAtLeast(0))
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 0.dp, bottom = 8.dp)
+    ) {
+        // ── 1. TOP HEADER (StreamHub Squircle + Title + Actions, No Count Badge) ──
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1226,26 +1369,37 @@ fun ContinueWatchingSection(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // Optically centered Play Squircle in StreamHub Primary Theme Gradient
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(primaryColor, primaryColor.copy(alpha = 0.78f))
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.foundation.Canvas(modifier = Modifier.size(10.dp)) {
+                        val path = Path().apply {
+                            moveTo(size.width * 0.22f, size.height * 0.15f)
+                            lineTo(size.width * 0.22f, size.height * 0.85f)
+                            lineTo(size.width * 0.90f, size.height * 0.50f)
+                            close()
+                        }
+                        drawPath(path, color = Color.White)
+                    }
+                }
+
                 Text(
-                    text = "▶️ Continue Watching",
+                    text = "Continue Watching",
                     color = TextPrimary,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold
                 )
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh
-                ) {
-                    Text(
-                        text = "${continueWatchingList.size}",
-                        color = primaryColor,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
-                }
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1275,50 +1429,234 @@ fun ContinueWatchingSection(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        val cwRowState = rememberLazyListState()
-        val isParentScrolling = LocalIsScrollInProgress.current
-        val isCwScrolling = isParentScrolling || cwRowState.isScrollInProgress
+        // ── 2. FLUID M3E SHOWCASE STAGE (146dp Height, SurfaceDark Matte Black) ──
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(146.dp)
+                .padding(horizontal = 16.dp)
+        ) {
+            val stageWidth = maxWidth
+            val density = LocalDensity.current
 
-        CompositionLocalProvider(LocalIsScrollInProgress provides isCwScrolling) {
-            LazyRow(
-                state = cwRowState,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                items(continueWatchingList, key = { it.first.id }) { (media, progress) ->
-                    val targetEpIndex = if (progress.episodeTitle.isNotBlank()) {
-                        val idx = media.episodes.indexOfFirst { it.title.equals(progress.episodeTitle, ignoreCase = true) }
-                        if (idx >= 0) idx else progress.episodeNumber
-                    } else {
-                        progress.episodeNumber
+            val pillWidth = 52.dp
+            val gap = 10.dp
+            val heroWidth = if (n > 1) (stageWidth - pillWidth - gap).coerceAtLeast(180.dp) else stageWidth
+            val stepDistancePx = with(density) { (heroWidth + gap).toPx() }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(n) {
+                        if (n <= 1) return@pointerInput
+                        detectHorizontalDragGestures(
+                            onDragStart = { isDragging = true },
+                            onDragEnd = {
+                                isDragging = false
+                                coroutineScope.launch {
+                                    val snapTarget = currentScroll.value.roundToInt().coerceIn(0, n - 1)
+                                    currentScroll.animateTo(
+                                        targetValue = snapTarget.toFloat(),
+                                        animationSpec = spring(dampingRatio = 0.85f, stiffness = 380f)
+                                    )
+                                }
+                            },
+                            onDragCancel = {
+                                isDragging = false
+                                coroutineScope.launch {
+                                    val snapTarget = currentScroll.value.roundToInt().coerceIn(0, n - 1)
+                                    currentScroll.animateTo(
+                                        targetValue = snapTarget.toFloat(),
+                                        animationSpec = spring(dampingRatio = 0.85f, stiffness = 380f)
+                                    )
+                                }
+                            },
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                coroutineScope.launch {
+                                    val deltaScroll = dragAmount / stepDistancePx
+                                    val newScroll = (currentScroll.value - deltaScroll).coerceIn(-0.15f, (n - 1).toFloat() + 0.15f)
+                                    currentScroll.snapTo(newScroll)
+                                }
+                            }
+                        )
                     }
-                    ContinueWatchingRowItem(
+            ) {
+                if (n == 1) {
+                    val (media, progress) = continueWatchingList[0]
+                    val targetEpIndex = resolveTargetEpIndex(media, progress)
+                    ContinueWatchingShowcaseCard(
                         media = media,
                         progress = progress,
+                        modifier = Modifier.fillMaxSize(),
                         onPlay = { onPlayEpisode(media, targetEpIndex) },
                         onRemove = { onRemove(media, progress) },
                         onLongClick = { onLongClick(media to progress) }
                     )
+                } else {
+                    val s = scrollVal.coerceIn(0f, (n - 1).toFloat())
+                    val k = s.toInt().coerceIn(0, (n - 2).coerceAtLeast(0))
+                    val p = (s - k).coerceIn(0f, 1f)
+
+                    continueWatchingList.forEachIndexed { idx, (media, progress) ->
+                        val targetEpIndex = resolveTargetEpIndex(media, progress)
+                        val isTransitionToLast = k == n - 2
+
+                        val (itemLeft, itemWidth, fullAlpha, pillAlpha, isVisible) = when {
+                            isTransitionToLast -> {
+                                when (idx) {
+                                    k -> {
+                                        // Item (n - 2) contracts in-place at left = 0 into the LEFT PILL
+                                        val w = lerp(heroWidth, pillWidth, p)
+                                        val fA = (1f - p * 1.8f).coerceIn(0f, 1f)
+                                        val pA = (p * 1.8f - 0.15f).coerceIn(0f, 1f)
+                                        Tuple5(0.dp, w, fA, pA, true)
+                                    }
+                                    k + 1 -> {
+                                        // Item (n - 1, LAST item) starts as Right Pill, moves to (pillWidth + gap) and expands to heroWidth
+                                        val l = lerp(heroWidth + gap, pillWidth + gap, p)
+                                        val w = lerp(pillWidth, heroWidth, p)
+                                        val fA = (p * 1.6f - 0.2f).coerceIn(0f, 1f)
+                                        val pA = (1f - p * 1.6f).coerceIn(0f, 1f)
+                                        Tuple5(l, w, fA, pA, true)
+                                    }
+                                    k - 1 -> {
+                                        Tuple5(-(heroWidth + gap) - 30.dp, heroWidth, 0f, 0f, false)
+                                    }
+                                    else -> Tuple5(stageWidth + 40.dp, pillWidth, 0f, 0f, false)
+                                }
+                            }
+                            else -> {
+                                when (idx) {
+                                    k -> {
+                                        val l = -(heroWidth + gap) * p
+                                        val fA = (1f - p * 1.5f).coerceIn(0f, 1f)
+                                        Tuple5(l, heroWidth, fA, 0f, true)
+                                    }
+                                    k + 1 -> {
+                                        val l = lerp(heroWidth + gap, 0.dp, p)
+                                        val w = lerp(pillWidth, heroWidth, p)
+                                        val fA = (p * 1.6f - 0.2f).coerceIn(0f, 1f)
+                                        val pA = (1f - p * 1.6f).coerceIn(0f, 1f)
+                                        Tuple5(l, w, fA, pA, true)
+                                    }
+                                    k + 2 -> {
+                                        val l = lerp(stageWidth + 20.dp, heroWidth + gap, p)
+                                        val pA = (p * 1.5f).coerceIn(0f, 1f)
+                                        Tuple5(l, pillWidth, 0f, pA, true)
+                                    }
+                                    else -> Tuple5(-(heroWidth + gap) - 30.dp, heroWidth, 0f, 0f, false)
+                                }
+                            }
+                        }
+
+                        if (isVisible) {
+                            Box(
+                                modifier = Modifier
+                                    .offset(x = itemLeft)
+                                    .width(itemWidth)
+                                    .height(146.dp)
+                                    .clip(RoundedCornerShape(24.dp))
+                                    .background(SurfaceDark)
+                            ) {
+                                if (fullAlpha > 0.01f) {
+                                    ContinueWatchingShowcaseCard(
+                                        media = media,
+                                        progress = progress,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .graphicsLayer(alpha = fullAlpha),
+                                        onPlay = { onPlayEpisode(media, targetEpIndex) },
+                                        onRemove = { onRemove(media, progress) },
+                                        onLongClick = { onLongClick(media to progress) }
+                                    )
+                                }
+
+                                if (pillAlpha > 0.01f) {
+                                    ContinueWatchingPillCard(
+                                        media = media,
+                                        progress = progress,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .graphicsLayer(alpha = pillAlpha)
+                                            .clickable {
+                                                coroutineScope.launch {
+                                                    currentScroll.animateTo(
+                                                        idx.toFloat(),
+                                                        spring(dampingRatio = 0.85f, stiffness = 380f)
+                                                    )
+                                                }
+                                            }
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
-        Spacer(modifier = Modifier.height(18.dp))
+
+        // ── 3. BOTTOM PROGRESS INDICATOR (Counting on left, dots on right) ──
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "${activeIndex + 1} of $n in progress",
+                color = TextSecondary,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Medium
+            )
+
+            if (n > 1) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    repeat(n) { i ->
+                        val isCurrent = i == activeIndex
+                        Box(
+                            modifier = Modifier
+                                .height(6.dp)
+                                .width(if (isCurrent) 20.dp else 6.dp)
+                                .clip(CircleShape)
+                                .background(if (isCurrent) primaryColor else Color.White.copy(alpha = 0.2f))
+                                .clickable {
+                                    coroutineScope.launch {
+                                        currentScroll.animateTo(
+                                            i.toFloat(),
+                                            spring(dampingRatio = 0.85f, stiffness = 380f)
+                                        )
+                                    }
+                                }
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ContinueWatchingRowItem(
+private fun ContinueWatchingShowcaseCard(
     media: MediaItem,
     progress: PlaybackProgress,
+    modifier: Modifier = Modifier,
     onPlay: () -> Unit,
     onRemove: () -> Unit,
-    onLongClick: () -> Unit = {}
+    onLongClick: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
+    val primaryColor = MaterialTheme.colorScheme.primary
+
     val progressFraction = if (progress.durationMs > 0) {
         (progress.positionMs.toFloat() / progress.durationMs.toFloat()).coerceIn(0f, 1f)
     } else 0f
@@ -1338,159 +1676,281 @@ fun ContinueWatchingRowItem(
         media.episodes.getOrNull(progress.episodeNumber)
     }
 
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceDark),
-        modifier = Modifier
-            .width(200.dp)
-            .border(1.dp, CardBorderDark, RoundedCornerShape(14.dp))
+    val subtitleText = if (isMovie) {
+        if (media.releaseYear.isNotBlank()) "Movie • ${media.releaseYear}" else "Movie"
+    } else {
+        val seasonNum = if (progress.seasonNumber > 0) progress.seasonNumber else (currentEp?.seasonNumber ?: 1)
+        val epNum = currentEp?.episodeNumber?.takeIf { it > 0 } ?: (progress.episodeNumber + 1)
+        if (currentEp != null && currentEp.title.isNotBlank() && !currentEp.title.equals(media.title, ignoreCase = true)) {
+            "S$seasonNum:E$epNum • ${currentEp.title}"
+        } else {
+            "S$seasonNum:E$epNum"
+        }
+    }
+
+    val thumbModel = currentEp?.thumbnailUrl?.ifEmpty { media.bannerUrl.ifEmpty { media.posterUrl } } ?: media.posterUrl
+
+    Row(
+        modifier = modifier
+            .fillMaxSize()
             .combinedClickable(
-                onClick = { onPlay() },
+                onClick = onPlay,
                 onLongClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     onLongClick()
                 }
             )
     ) {
-        Column {
+        // ── LEFT THUMBNAIL (133dp width, full 146dp height with bottom progress bar) ──
+        Box(
+            modifier = Modifier
+                .width(133.dp)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(topStart = 24.dp, bottomStart = 24.dp))
+                .background(SurfaceDark)
+        ) {
+            AsyncImage(
+                model = thumbModel,
+                contentDescription = media.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Vignette overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color(0x33000000), Color.Transparent, Color(0x66000000))
+                        )
+                    )
+            )
+
+            // 4dp Progress Bar at bottom of thumbnail
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(114.dp)
+                    .height(4.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(Color(0xFF22222E))
             ) {
-                AsyncImage(
-                    model = currentEp?.thumbnailUrl?.ifEmpty { media.bannerUrl.ifEmpty { media.posterUrl } } ?: media.posterUrl,
-                    contentDescription = media.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-
-                // Dark gradient overlay
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            androidx.compose.ui.graphics.Brush.verticalGradient(
-                                colors = listOf(Color(0x33000000), Color(0x99000000))
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
+                if (progressFraction > 0f) {
                     Box(
                         modifier = Modifier
-                            .clip(CircleShape)
-                            .background(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.92f))
-                            .padding(9.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "Resume Episode",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
+                            .fillMaxHeight()
+                            .fillMaxWidth(progressFraction.coerceIn(0.04f, 1f))
+                            .background(primaryColor)
+                    )
                 }
+            }
+        }
 
-                // Time remaining chip on top-left
-                if (remainingMinutes > 0) {
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = Color(0xD9000000),
-                        border = BorderStroke(0.5.dp, Color(0x33FFFFFF)),
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(6.dp)
-                    ) {
-                        Text(
-                            text = "${remainingMinutes}m left",
-                            color = Color.White,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
+        // ── RIGHT CONTENT COLUMN (Padded, SurfaceDark Matte Black) ──
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Row 1: Time Left + Close Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (remainingMinutes > 0) "${remainingMinutes}m left" else "In progress",
+                    color = primaryColor,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.3.sp
+                )
 
-                // Remove from History Close Icon with 48dp minimum touch target
                 Box(
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(2.dp)
-                        .size(48.dp)
+                        .size(24.dp)
+                        .clip(CircleShape)
                         .clickable(
                             onClick = onRemove,
                             onClickLabel = "Remove ${media.title} from history"
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xCC000000)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Remove from history",
-                            tint = Color.White,
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                }
-
-                // Seamless horizontal progress bar at bottom of card (no vertical stop indicators)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(3.5.dp)
-                        .align(Alignment.BottomCenter)
-                        .background(Color(0x55000000))
-                ) {
-                    if (progressFraction > 0f) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .fillMaxWidth(progressFraction.coerceIn(0.04f, 1f))
-                                .clip(RoundedCornerShape(topEnd = 2.dp, bottomEnd = 2.dp))
-                                .background(MaterialTheme.colorScheme.primary)
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Remove from history",
+                        tint = Color(0xFF8E8E98),
+                        modifier = Modifier.size(14.dp)
+                    )
                 }
             }
 
-            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+            // Row 2 & 3: Title + Subtitle
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
                     text = media.title,
                     color = TextPrimary,
-                    fontSize = 12.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = if (isMovie) {
-                        "Movie"
-                    } else {
-                        val seasonNum = if (progress.seasonNumber > 0) progress.seasonNumber else (currentEp?.seasonNumber ?: 1)
-                        val epNum = currentEp?.episodeNumber?.takeIf { it > 0 } ?: (progress.episodeNumber + 1)
-                        if (currentEp != null && currentEp.title.isNotBlank() && !currentEp.title.equals(media.title, ignoreCase = true)) {
-                            "S$seasonNum:E$epNum • ${currentEp.title}"
-                        } else {
-                            "S$seasonNum:E$epNum"
-                        }
-                    },
-                    color = AccentOrange,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    text = subtitleText,
+                    color = TextSecondary,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Normal,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // Row 4: Exact Figma Play Outline Icon (stroke-width 1.8) + Resume Action
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                FigmaPlayOutlineIcon(
+                    tint = primaryColor,
+                    modifier = Modifier.size(15.dp)
+                )
+
+                Text(
+                    text = "Resume ${if (isMovie) "movie" else "episode"}",
+                    color = primaryColor,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.2.sp
                 )
             }
         }
     }
 }
+
+@Composable
+private fun ContinueWatchingPillCard(
+    media: MediaItem,
+    progress: PlaybackProgress,
+    modifier: Modifier = Modifier
+) {
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val currentEp = if (progress.episodeTitle.isNotBlank()) {
+        media.episodes.firstOrNull { it.title.equals(progress.episodeTitle, ignoreCase = true) }
+            ?: media.episodes.getOrNull(progress.episodeNumber)
+    } else {
+        media.episodes.getOrNull(progress.episodeNumber)
+    }
+    val thumbModel = currentEp?.thumbnailUrl?.ifEmpty { media.bannerUrl.ifEmpty { media.posterUrl } } ?: media.posterUrl
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(24.dp))
+            .background(SurfaceDark),
+        contentAlignment = Alignment.Center
+    ) {
+        AsyncImage(
+            model = thumbModel,
+            contentDescription = media.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(alpha = 0.55f)
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0x80000000))
+        )
+
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(primaryColor),
+            contentAlignment = Alignment.Center
+        ) {
+            androidx.compose.foundation.Canvas(modifier = Modifier.size(12.dp)) {
+                val path = Path().apply {
+                    moveTo(size.width * 0.25f, size.height * 0.18f)
+                    lineTo(size.width * 0.25f, size.height * 0.82f)
+                    lineTo(size.width * 0.88f, size.height * 0.50f)
+                    close()
+                }
+                drawPath(path, color = Color.White)
+            }
+        }
+    }
+}
+
+@Composable
+private fun FigmaPlayOutlineIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    androidx.compose.foundation.Canvas(modifier = modifier) {
+        val sx = size.width / 16f
+        val sy = size.height / 16f
+
+        val path = Path().apply {
+            moveTo(3.125f * sx, 3.625f * sy)
+            lineTo(12.504f * sx, 6.919f * sy)
+            cubicTo(
+                12.96f * sx, 7.376f * sy,
+                13.126f * sx, 7.80f * sy,
+                13.126f * sx, 8.00f * sy
+            )
+            cubicTo(
+                13.126f * sx, 8.22f * sy,
+                12.96f * sx, 8.622f * sy,
+                12.506f * sx, 9.080f * sy
+            )
+            lineTo(5.005f * sx, 13.455f * sy)
+            cubicTo(
+                4.379f * sx, 13.625f * sy,
+                3.752f * sx, 13.459f * sy,
+                3.293f * sx, 13.001f * sy
+            )
+            cubicTo(
+                3.124f * sx, 12.811f * sy,
+                3.124f * sx, 12.595f * sy,
+                3.124f * sx, 12.375f * sy
+            )
+            close()
+        }
+
+        drawPath(
+            path = path,
+            color = tint,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = 1.6.dp.toPx(),
+                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                join = androidx.compose.ui.graphics.StrokeJoin.Round
+            )
+        )
+    }
+}
+
+private fun resolveTargetEpIndex(media: MediaItem, progress: PlaybackProgress): Int {
+    return if (progress.episodeTitle.isNotBlank()) {
+        val idx = media.episodes.indexOfFirst { it.title.equals(progress.episodeTitle, ignoreCase = true) }
+        if (idx >= 0) idx else progress.episodeNumber
+    } else {
+        progress.episodeNumber
+    }
+}
+
+private data class Tuple5<A, B, C, D, E>(
+    val a: A,
+    val b: B,
+    val c: C,
+    val d: D,
+    val e: E
+)
 
 @Composable
 fun CategoryFilterChip(

@@ -18,7 +18,6 @@ import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import androidx.core.content.ContextCompat
 import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
@@ -39,16 +38,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.draw.blur
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -66,7 +59,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -92,10 +84,8 @@ import com.streamhub.app.ui.screens.SettingsScreen
 import com.streamhub.app.ui.screens.SplashScreen
 import com.streamhub.app.ui.screens.StorageManagementScreen
 import com.streamhub.app.ui.components.StreamHubToastHost
-import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.StreamHubTheme
-import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 import kotlinx.coroutines.delay
@@ -223,7 +213,6 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         unregisterPipActionReceiver()
-        runCatching { com.streamhub.app.data.UserTelemetryManager.onAppBackgrounded() }
     }
 
     /**
@@ -494,25 +483,6 @@ fun StreamHubApp(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
-    LaunchedEffect(currentRoute) {
-        if (currentRoute != null) {
-            val screenTitle = when {
-                currentRoute.startsWith("details/") -> "Media Details"
-                currentRoute.startsWith("player/") -> "Video Player"
-                currentRoute == Screen.Home.route -> "Home Feed"
-                currentRoute == Screen.Search.route -> "Explore & Search"
-                currentRoute == Screen.Downloads.route -> "Downloads Manager"
-                currentRoute == Screen.MyList.route -> "My List"
-                currentRoute == Screen.Profile.route -> "My Space & Settings"
-                currentRoute == Screen.History.route -> "Watch History"
-                currentRoute == Screen.Admin.route -> "Admin Studio"
-                currentRoute == Screen.Settings.route -> "Settings"
-                else -> currentRoute
-            }
-            com.streamhub.app.data.UserTelemetryManager.updateCurrentScreen(screenTitle)
-        }
-    }
-
     val bottomBarScreens = remember {
         listOf(
             Screen.Home,
@@ -650,6 +620,11 @@ fun StreamHubApp(
                     onPlayEpisode = safePlayEpisode,
                     onNavigateToStorage = {
                         navController.navigate(Screen.StorageManagement.route)
+                    },
+                    onFindContent = {
+                        navController.navigate(Screen.Search.route) {
+                            launchSingleTop = true
+                        }
                     }
                 )
             }
@@ -660,6 +635,9 @@ fun StreamHubApp(
                     onMediaClick = { media ->
                         com.streamhub.app.data.api.MetadataFetchManager.prewarmExtendedDetails(media)
                         navController.navigate(Screen.Details.createRoute(media.id)) { launchSingleTop = true }
+                    },
+                    onExploreClick = {
+                        navController.navigate(Screen.Search.route) { launchSingleTop = true }
                     }
                 )
             }

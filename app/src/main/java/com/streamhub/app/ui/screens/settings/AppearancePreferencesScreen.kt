@@ -571,6 +571,67 @@ fun AppearancePreferencesScreen(
                             }
                         }
                     }
+
+                    PreferenceDivider()
+
+                    // Option 5: Tab Fluid Viscosity (Water Flow, Honey, Snappy M3E)
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(currentAccent.color.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Outlined.Waves, contentDescription = null, tint = currentAccent.color, modifier = Modifier.size(20.dp))
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Tab Fluid Viscosity", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                Text("Customize the spring elasticity and water-flowing drag of split tabs", color = TextSecondary, fontSize = 11.sp)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            com.streamhub.app.data.FluidViscosity.values().forEach { viscosity ->
+                                val isSelected = layoutConfig.fluidViscosity == viscosity
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSelected) currentAccent.color else Color(0xFF14141E))
+                                        .border(if (isSelected) 0.dp else 1.dp, Color(0xFF2A2A3A), RoundedCornerShape(10.dp))
+                                        .clickable { HomeScreenLayoutManager.updateFluidViscosity(viscosity) }
+                                        .padding(horizontal = 6.dp, vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            text = "${viscosity.emoji} ${viscosity.displayName}",
+                                            color = if (isSelected) Color.White else TextPrimary,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = viscosity.description,
+                                            color = if (isSelected) Color.White.copy(alpha = 0.8f) else TextSecondary,
+                                            fontSize = 9.sp,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                            maxLines = 2,
+                                            lineHeight = 11.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

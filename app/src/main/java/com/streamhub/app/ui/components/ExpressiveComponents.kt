@@ -5,6 +5,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
@@ -73,6 +74,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -473,10 +482,15 @@ fun ExpressiveLoadingIndicator(
 // =========================================================================
 
 /**
- * Material 3 Expressive Floating Navigation Dock:
- * Clean, icon-only capsule dock floating above content.
- * When any button is held (long-pressed), an M3 Expressive popup pill springs in
- * above the dock revealing the screen name with haptic feedback.
+ * Material 3 Expressive Floating Chips Navigation Bar:
+ * - ZERO Matte Dock Surface: The heavy enclosing background container is completely removed,
+ *   allowing content and media cards to float freely behind individual chips.
+ * - Individual Floating Island Chips (50dp × 46dp, RoundedCornerShape(16.dp)) with subtle dark surface,
+ *   subtle border, and elevation.
+ * - Fluid Viscosity Liquid Indicator: Dynamically wired to HomeScreenLayoutManager.layoutConfig.fluidViscosity
+ *   (Water Flow, Honey / Viscous, Snappy M3E). Uses dual-spring harmonic oscillation (lead/tail springs)
+ *   to create authentic liquid droplet stretching and snapping between tabs, 100% cohesive with the top nav bar!
+ * - Interactive Press & Hold Feedback: Long-pressing any chip pops up the M3 Expressive Hold Pill with haptic feedback.
  */
 @Composable
 fun ExpressiveFloatingNavBar(
@@ -503,11 +517,59 @@ fun ExpressiveFloatingNavBar(
         }
     }
 
+    // Connect to User-Configured Fluid Viscosity from Settings
+    val homeLayoutConfig by com.streamhub.app.data.HomeScreenLayoutManager.layoutConfig.collectAsState()
+    val fluidViscosity = homeLayoutConfig.fluidViscosity
+
+    val selectedIndex = remember(currentRoute, screens) {
+        screens.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
+    }
+    var previousIndex by remember { mutableIntStateOf(selectedIndex) }
+    val movingRight = selectedIndex >= previousIndex
+    LaunchedEffect(selectedIndex) {
+        previousIndex = selectedIndex
+    }
+
+    val singleChipWidth = 50.dp
+    val chipHeight = 46.dp
+    val chipGap = 6.dp
+    val chipShape = RoundedCornerShape(16.dp)
+
+    val stepDistance = singleChipWidth + chipGap
+    val targetStart = stepDistance * selectedIndex
+    val targetEnd = targetStart + singleChipWidth
+
+    // Dual Spring physics based on selected FluidViscosity setting (Matching Top Nav Bar 1:1)
+    val leadSpring = spring<Dp>(
+        dampingRatio = fluidViscosity.dampingRatio,
+        stiffness = fluidViscosity.leadStiffness
+    )
+    val tailSpring = spring<Dp>(
+        dampingRatio = fluidViscosity.dampingRatio,
+        stiffness = fluidViscosity.tailStiffness
+    )
+
+    val startSpring = if (movingRight) tailSpring else leadSpring
+    val endSpring = if (movingRight) leadSpring else tailSpring
+
+    val animatedStart by animateDpAsState(
+        targetValue = targetStart,
+        animationSpec = startSpring,
+        label = "navFluidStart"
+    )
+    val animatedEnd by animateDpAsState(
+        targetValue = targetEnd,
+        animationSpec = endSpring,
+        label = "navFluidEnd"
+    )
+
+    val fluidIndicatorWidth = (animatedEnd - animatedStart).coerceAtLeast(singleChipWidth)
+
     Box(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
         Column(
@@ -553,31 +615,75 @@ fun ExpressiveFloatingNavBar(
                 }
             }
 
-            // Floating Capsule Dock Container (Icon-Only, M3 Expressive Split Button Segmented Design)
-            Surface(
-                shape = RoundedCornerShape(32.dp),
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                shadowElevation = 14.dp,
-                tonalElevation = 6.dp,
-                modifier = Modifier.wrapContentWidth()
+            // Floating Chips Cluster Container (ZERO Matte Dock Surface)
+            val totalClusterWidth = (singleChipWidth * screens.size) + (chipGap * (screens.size - 1))
+
+            Box(
+                modifier = Modifier
+                    .width(totalClusterWidth)
+                    .height(chipHeight)
+                    .pointerInput(screens) {
+                        detectTapGestures(
+                            onTap = { offset ->
+                                val stepPx = size.width / screens.size.toFloat()
+                                val tappedIndex = (offset.x / stepPx).toInt().coerceIn(0, screens.lastIndex)
+                                activeHoldLabel = null
+                                onScreenSelected(screens[tappedIndex])
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.CenterStart
             ) {
+                // Layer 1: Background Floating Island Chips (Subtle Dark Surface & Elevation)
                 Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(chipGap),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    screens.forEachIndexed { index, screen ->
+                    screens.forEach { _ ->
+                        Box(
+                            modifier = Modifier
+                                .size(width = singleChipWidth, height = chipHeight)
+                                .shadow(elevation = 8.dp, shape = chipShape, ambientColor = Color.Black, spotColor = Color.Black)
+                                .clip(chipShape)
+                                .background(Color(0xFF171722))
+                                .border(
+                                    width = 1.dp,
+                                    color = Color.White.copy(alpha = 0.15f),
+                                    shape = chipShape
+                                )
+                        )
+                    }
+                }
+
+                // Layer 2: Fluid Viscosity Liquid Indicator (Surges & Stretches Across Chips!)
+                Box(
+                    modifier = Modifier
+                        .offset(x = animatedStart)
+                        .size(width = fluidIndicatorWidth, height = chipHeight)
+                        .shadow(
+                            elevation = 10.dp,
+                            shape = chipShape,
+                            spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                        )
+                        .clip(chipShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                )
+
+                // Layer 3: Foreground Interactive Icon Chips with Touch Spring & Long-Press
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(chipGap),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    screens.forEachIndexed { _, screen ->
                         val isSelected = currentRoute == screen.route
-                        val itemShape = when {
-                            screens.size <= 1 -> CircleShape
-                            index == 0 -> RoundedCornerShape(topStart = 22.dp, bottomStart = 22.dp, topEnd = 6.dp, bottomEnd = 6.dp)
-                            index == screens.lastIndex -> RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp, topEnd = 22.dp, bottomEnd = 22.dp)
-                            else -> RoundedCornerShape(6.dp)
-                        }
-                        ExpressiveNavDockIconItem(
+                        ExpressiveNavFloatingChipItem(
                             screen = screen,
                             isSelected = isSelected,
-                            shape = itemShape,
+                            chipWidth = singleChipWidth,
+                            chipHeight = chipHeight,
+                            shape = chipShape,
                             onClick = {
                                 activeHoldLabel = null
                                 onScreenSelected(screen)
@@ -595,19 +701,20 @@ fun ExpressiveFloatingNavBar(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ExpressiveNavDockIconItem(
+private fun ExpressiveNavFloatingChipItem(
     screen: Screen,
     isSelected: Boolean,
+    chipWidth: Dp,
+    chipHeight: Dp,
     shape: androidx.compose.ui.graphics.Shape,
     onClick: () -> Unit,
     onHold: () -> Unit
 ) {
-    val primaryColor = MaterialTheme.colorScheme.primary
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.88f else if (isSelected) 1.05f else 1.0f,
+        targetValue = if (isPressed) 0.88f else 1.0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMediumLow
@@ -615,18 +722,20 @@ private fun ExpressiveNavDockIconItem(
         label = "nav_item_scale"
     )
 
-    val pillBgColor = if (isSelected) primaryColor else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)
-    val contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+    val contentColor by animateColorAsState(
+        targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimary else Color(0xFFE2E2E8),
+        animationSpec = tween(180),
+        label = "nav_item_color"
+    )
 
     Box(
         modifier = Modifier
-            .size(width = 52.dp, height = 44.dp)
+            .size(width = chipWidth, height = chipHeight)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
             }
             .clip(shape)
-            .background(pillBgColor)
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -1369,6 +1478,31 @@ fun ExpressiveStudioButton(
     val scope = rememberCoroutineScope()
     var job by remember { mutableStateOf<Job?>(null) }
 
+    // 90° Snap Rotation animation on click
+    val rotation = remember { Animatable(0f) }
+    var isRotating by remember { mutableStateOf(false) }
+
+    val handleFabClick: () -> Unit = {
+        if (!isRotating) {
+            isRotating = true
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            scope.launch {
+                // Smooth 90° snap rotation with spring physics
+                rotation.animateTo(
+                    targetValue = 90f,
+                    animationSpec = spring(
+                        dampingRatio = 0.65f,
+                        stiffness = 420f
+                    )
+                )
+                onClick()
+                delay(450)
+                rotation.snapTo(0f)
+                isRotating = false
+            }
+        }
+    }
+
     Column(
         horizontalAlignment = Alignment.End,
         modifier = modifier
@@ -1392,7 +1526,7 @@ fun ExpressiveStudioButton(
                 .bouncyTouch(pressedScale = 0.88f)
                 .clip(RoundedCornerShape(18.dp))
                 .combinedClickable(
-                    onClick = onClick,
+                    onClick = handleFabClick,
                     onLongClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         holdLabel = "Add Media & Creator Studio 🎬"
@@ -1409,7 +1543,11 @@ fun ExpressiveStudioButton(
                     imageVector = Icons.Default.Add,
                     contentDescription = "Add Media & Creator Studio",
                     tint = Color.White,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier
+                        .size(28.dp)
+                        .graphicsLayer {
+                            rotationZ = rotation.value
+                        }
                 )
             }
         }

@@ -3,18 +3,36 @@ package com.streamhub.app.ui.screens
 import android.widget.Toast
 import com.streamhub.app.ui.components.ToastManager
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
+
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -24,6 +42,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,9 +54,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.Close
@@ -50,9 +74,9 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircleOutline
 import androidx.compose.material.icons.filled.Schedule
@@ -60,8 +84,6 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Tv
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -70,6 +92,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -82,23 +105,37 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import androidx.compose.foundation.basicMarquee
+import com.streamhub.app.data.FranchiseManager
+import com.streamhub.app.data.HomeScreenLayoutManager
 import com.streamhub.app.data.MyListItem
 import com.streamhub.app.data.MyListManager
 import com.streamhub.app.data.WatchHistoryManager
@@ -106,23 +143,18 @@ import com.streamhub.app.data.models.MediaItem
 import com.streamhub.app.data.models.PlaybackProgress
 import com.streamhub.app.data.models.isFullyCompleted
 import com.streamhub.app.data.repository.CatalogRepository
-import com.streamhub.app.ui.components.FolderSelectionDialog
-import com.streamhub.app.ui.components.MediaCard
-import androidx.compose.runtime.saveable.rememberSaveable
 import com.streamhub.app.data.repository.CatalogState
 import com.streamhub.app.ui.components.AppErrorState
+import com.streamhub.app.ui.components.FolderSelectionDialog
+import com.streamhub.app.ui.components.MediaCard
 import com.streamhub.app.ui.theme.AccentGold
-import androidx.compose.foundation.basicMarquee
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import com.streamhub.app.ui.theme.bouncyCombinedClickable
-import com.streamhub.app.ui.theme.bouncyClickable
 import com.streamhub.app.ui.theme.CardBorderDark
+import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.SurfaceDark
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
-import com.streamhub.app.ui.theme.PrimaryRed
-import com.streamhub.app.data.FranchiseManager
+import com.streamhub.app.ui.theme.bouncyClickable
+import com.streamhub.app.ui.theme.bouncyCombinedClickable
 
 enum class MyListStatusCategory(val label: String, val icon: ImageVector) {
     ALL("All Saved", Icons.Default.Bookmark),
@@ -136,10 +168,10 @@ enum class MyListStatusCategory(val label: String, val icon: ImageVector) {
 enum class MyListSortOption(val label: String, val shortLabel: String) {
     RECENTLY_ADDED("Recently Saved", "Recent"),
     OLDEST_ADDED("Oldest Saved", "Oldest"),
-    RATING_DESC("Rating: High to Low", "Rating ↓"),
-    RATING_ASC("Rating: Low to High", "Rating ↑"),
-    RELEASE_YEAR_DESC("Release Year: Newest", "Year ↓"),
-    RELEASE_YEAR_ASC("Release Year: Oldest", "Year ↑"),
+    RATING_DESC("Rating: High to Low", "Rating \u2193"),
+    RATING_ASC("Rating: Low to High", "Rating \u2191"),
+    RELEASE_YEAR_DESC("Release Year: Newest", "Year \u2193"),
+    RELEASE_YEAR_ASC("Release Year: Oldest", "Year \u2191"),
     ALPHABETICAL_ASC("Title: (A - Z)", "A - Z"),
     ALPHABETICAL_DESC("Title: (Z - A)", "Z - A");
 
@@ -184,25 +216,34 @@ enum class MyListSortOption(val label: String, val shortLabel: String) {
 }
 
 enum class MyListTypeFilter(val label: String) {
-    ALL("All Types"),
+    ALL("All types"),
     MOVIES("Movies"),
     SERIES("TV & Anime")
 }
+
+// Inviolable Figma & App Color Constants
+private val CreamyPeach = Color(0xFFFFD0B8)
+private val DarkCreamText = Color(0xFF330A02)
+private val CoralAccent = Color(0xFFFF725E)
+private val LavenderPebble = Color(0xFFDDD8FC)
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun MyListScreen(
     repository: CatalogRepository,
     onMediaClick: (MediaItem) -> Unit,
+    onExploreClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     val catalogState by repository.catalogState.collectAsState()
     val catalog by repository.mediaCatalog.collectAsState()
     val myItemsMap by MyListManager.itemsFlow.collectAsState()
     val historyMap by WatchHistoryManager.historyFlow.collectAsState()
     val collections by MyListManager.collectionsFlow.collectAsState()
     val primaryColor = MaterialTheme.colorScheme.primary
+    val homeLayoutConfig by HomeScreenLayoutManager.layoutConfig.collectAsState()
 
     // View States
     var selectedStatus by rememberSaveable { mutableStateOf(MyListStatusCategory.ALL) }
@@ -212,6 +253,7 @@ fun MyListScreen(
     var selectedCollection by rememberSaveable { mutableStateOf("All") }
     var isGridView by rememberSaveable { mutableStateOf(true) }
     var showSortMenu by remember { mutableStateOf(false) }
+    var showFoldersDropdown by remember { mutableStateOf(false) }
     var showNewCollectionDialog by remember { mutableStateOf(false) }
     var newCollectionName by remember { mutableStateOf("") }
     var itemToManageCollection by remember { mutableStateOf<MediaItem?>(null) }
@@ -229,6 +271,8 @@ fun MyListScreen(
     var showRenameFolderDialog by remember { mutableStateOf(false) }
     var showDeleteFolderDialog by remember { mutableStateOf(false) }
     var renameFolderInput by remember { mutableStateOf("") }
+    var showAddShowToFolderDialog by remember { mutableStateOf(false) }
+    var addShowSearchQuery by remember { mutableStateOf("") }
 
     // Card Action Sheet State
     var itemForActionSheet by remember { mutableStateOf<MediaItem?>(null) }
@@ -254,13 +298,11 @@ fun MyListScreen(
         }
     }
 
-    val watchLaterMedia = remember(allSavedMedia, historyMap, myItemsMap) {
+    val watchLaterMedia = remember(allSavedMedia, historyMap) {
         allSavedMedia.filter { item ->
             val progress = historyMap[item.id]
-            val col = myItemsMap[item.id]?.collection ?: "Favorites"
-            val isFav = myItemsMap[item.id]?.isFavorite == true
-            (col.equals("Watchlist", ignoreCase = true) || col.equals("Watch Later", ignoreCase = true) || (!isFav && (progress == null || progress.positionMs <= 5000L))) &&
-            (progress == null || progress.positionMs <= 5000L)
+            val isCompleted = progress?.isFullyCompleted(item.episodes.size) == true
+            !isCompleted && (progress == null || progress.positionMs <= 5000L)
         }
     }
 
@@ -345,69 +387,100 @@ fun MyListScreen(
         }
     }
 
+    val isListEmpty = finalDisplayList.isEmpty()
+    val scrollState = rememberScrollState()
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surfaceContainerLowest)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .then(
+                if (isListEmpty) Modifier.verticalScroll(scrollState)
+                else Modifier
+            )
+            .padding(start = 16.dp, end = 16.dp, top = 3.dp, bottom = 12.dp)
     ) {
-        // ── Header & Action Bar ──
+        // ── 1. Top Section: Eyebrow + Actions + Display Headline (Figma Exact) ──
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text(
-                    text = "My List & Watchlist",
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "Your curated library & real-time watch progress",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 11.5.sp
-                )
-            }
+            Text(
+                text = "MY LIST & WATCHLIST",
+                color = primaryColor,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.6.sp
+            )
 
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                // Search Toggle Button
-                IconButton(onClick = {
-                    isSearchActive = !isSearchActive
-                    if (!isSearchActive) searchQuery = ""
-                }) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Bouncy 36dp Search Toggle Button
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainer)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f), CircleShape)
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            isSearchActive = !isSearchActive
+                            if (!isSearchActive) searchQuery = ""
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
                     Icon(
                         imageVector = if (isSearchActive) Icons.Default.Close else Icons.Default.Search,
                         contentDescription = "Search Watchlist",
                         tint = if (isSearchActive) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-
-                // Layout Toggle (Grid vs List)
-                IconButton(onClick = { isGridView = !isGridView }) {
-                    Icon(
-                        imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
-                        contentDescription = "Toggle View",
-                        tint = primaryColor,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
                 // Quick Clear Completed Button (Protected by confirmation dialog)
                 if (completedMedia.isNotEmpty() && (selectedStatus == MyListStatusCategory.COMPLETED || selectedStatus == MyListStatusCategory.ALL)) {
-                    IconButton(
-                        onClick = { showClearCompletedDialog = true }
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF2B0E10))
+                            .border(1.dp, Color(0xFFFF5252).copy(alpha = 0.4f), CircleShape)
+                            .clickable { showClearCompletedDialog = true },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.ClearAll, contentDescription = "Clear Completed", tint = Color(0xFFFF5252), modifier = Modifier.size(22.dp))
+                        Icon(
+                            imageVector = Icons.Default.ClearAll,
+                            contentDescription = "Clear Completed",
+                            tint = Color(0xFFFF5252),
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
             }
         }
 
-        // ── Collapsible Instant Library Search Bar ──
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Large Display Headline & Subtitle
+        Text(
+            text = "Make room\nfor your next.",
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 30.sp,
+            fontWeight = FontWeight.Black,
+            lineHeight = 34.sp,
+            letterSpacing = (-0.5).sp
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Text(
+            text = "Your curated library & real-time watch progress.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Normal
+        )
+
+        // Collapsible Instant Library Search Bar
         AnimatedVisibility(
             visible = isSearchActive,
             enter = fadeIn() + expandVertically(),
@@ -428,7 +501,7 @@ fun MyListScreen(
                     }
                 },
                 singleLine = true,
-                shape = androidx.compose.foundation.shape.CircleShape,
+                shape = CircleShape,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Color.Transparent,
                     unfocusedBorderColor = Color.Transparent,
@@ -439,145 +512,661 @@ fun MyListScreen(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp)
+                    .padding(top = 10.dp)
             )
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // ── Core Status Category Tabs (M3 Expressive Borderless Pills) ──
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(vertical = 4.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            items(MyListStatusCategory.values()) { cat ->
-                val isSelected = selectedStatus == cat
-                val count = when (cat) {
-                    MyListStatusCategory.ALL -> allSavedMedia.size
-                    MyListStatusCategory.IN_PROGRESS -> inProgressMedia.size
-                    MyListStatusCategory.WATCH_LATER -> watchLaterMedia.size
-                    MyListStatusCategory.FAVORITES -> favoriteMedia.size
-                    MyListStatusCategory.COMPLETED -> completedMedia.size
-                    MyListStatusCategory.COLLECTIONS -> collections.size
-                }
-
-                Surface(
-                    shape = androidx.compose.foundation.shape.CircleShape,
-                    color = if (isSelected) primaryColor else MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.clickable { selectedStatus = cat }
-                ) {
+        // ── 2. Dedicated Folder Header (When inside a specific collection) OR 3x2 Hero Dock ──
+        if (selectedCollection != "All") {
+            // Dedicated Folder View Header: Hide the 3x2 dock and show collection details + "+ Add Show"
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f), RoundedCornerShape(20.dp))
+                    .padding(14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        modifier = Modifier.clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            selectedCollection = "All"
+                            selectedStatus = MyListStatusCategory.ALL
+                        }
                     ) {
                         Icon(
-                            imageVector = cat.icon,
-                            contentDescription = null,
-                            tint = if (isSelected) Color.White else (if (cat == MyListStatusCategory.FAVORITES) Color(0xFFFF5252) else MaterialTheme.colorScheme.onSurfaceVariant),
-                            modifier = Modifier.size(14.dp)
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = primaryColor,
+                            modifier = Modifier.size(15.dp)
                         )
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "${cat.label} ($count)",
-                            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-                            fontSize = 11.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                            text = "All Saved & Watchlist",
+                            color = primaryColor,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = selectedCollection,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "${statusFiltered.size} titles in this folder",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp
+                    )
+                }
+
+                Button(
+                    onClick = { showAddShowToFolderDialog = true },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Add Show", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                 }
             }
-        }
-
-        // ── Sub-Collection Folders (When Collections Tab is Active) ──
-        if (selectedStatus == MyListStatusCategory.COLLECTIONS) {
-            Spacer(modifier = Modifier.height(8.dp))
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
+        } else {
+            // 3×2 Asymmetric Hero Dock (Row 1: All saved & Favs, Row 2: Progress & Watch later, Row 3: Completed & Folders)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                item {
-                    Surface(
-                        shape = androidx.compose.foundation.shape.CircleShape,
-                        color = if (selectedCollection == "All") Color(0xFF38BDF8) else MaterialTheme.colorScheme.surfaceContainerHigh,
-                        modifier = Modifier.clickable { selectedCollection = "All" }
-                    ) {
-                        Text(
-                            text = "All Folders",
-                            color = if (selectedCollection == "All") Color.Black else MaterialTheme.colorScheme.onSurface,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                        )
-                    }
-                }
+                // Row 1: All saved (topStart: 24dp) & Favorites (topEnd: 24dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // All Saved Card
+                    val isAllSel = selectedStatus == MyListStatusCategory.ALL
+                    val allBgColor by animateColorAsState(if (isAllSel) CreamyPeach else MaterialTheme.colorScheme.surfaceContainer, tween(180))
+                    val allTextColor by animateColorAsState(if (isAllSel) DarkCreamText else MaterialTheme.colorScheme.onSurfaceVariant, tween(180))
+                    val allTitleColor by animateColorAsState(if (isAllSel) DarkCreamText else MaterialTheme.colorScheme.onSurface, tween(180))
+                    val allBorderColor = if (isAllSel) CreamyPeach else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                    val allShape = RoundedCornerShape(topStart = 24.dp, topEnd = 8.dp, bottomEnd = 8.dp, bottomStart = 8.dp)
 
-                items(collections.toList()) { col ->
-                    val isColSelected = selectedCollection.equals(col, ignoreCase = true)
-                    val isCustom = !MyListManager.isSystemCollection(col)
-                    val count = remember(col, myItemsMap) {
-                        myItemsMap.values.count { it.collection.equals(col, ignoreCase = true) }
-                    }
-
-                    Surface(
-                        shape = androidx.compose.foundation.shape.CircleShape,
-                        color = if (isColSelected) Color(0xFF38BDF8) else MaterialTheme.colorScheme.surfaceContainerHigh,
-                        modifier = Modifier.combinedClickable(
-                            onClick = { selectedCollection = col },
-                            onLongClick = {
-                                if (isCustom) {
-                                    folderToManage = col
-                                    showFolderOptionsSheet = true
-                                }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(68.dp)
+                            .clip(allShape)
+                            .background(allBgColor)
+                            .border(1.dp, allBorderColor, allShape)
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                selectedStatus = MyListStatusCategory.ALL
                             }
-                        )
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
                     ) {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Folder,
-                                contentDescription = null,
-                                tint = if (isColSelected) Color.Black else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Text(
-                                text = "$col ($count)",
-                                color = if (isColSelected) Color.Black else MaterialTheme.colorScheme.onSurface,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            if (isCustom) {
-                                Icon(
-                                    imageVector = Icons.Default.MoreVert,
-                                    contentDescription = "Manage Folder",
-                                    tint = if (isColSelected) Color.Black.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier
-                                        .size(14.dp)
-                                        .clickable {
-                                            folderToManage = col
-                                            showFolderOptionsSheet = true
-                                        }
+                            Column {
+                                Text(
+                                    text = "All saved",
+                                    color = allTitleColor,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Entire library",
+                                    color = allTextColor.copy(alpha = 0.8f),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium
                                 )
                             }
+                            Text(
+                                text = "${allSavedMedia.size}",
+                                color = if (isAllSel) DarkCreamText else MaterialTheme.colorScheme.onSurface,
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                    }
+
+                    // Favorites Card
+                    val isFavSel = selectedStatus == MyListStatusCategory.FAVORITES
+                    val favBgColor by animateColorAsState(if (isFavSel) CreamyPeach else MaterialTheme.colorScheme.surfaceContainer, tween(180))
+                    val favTextColor by animateColorAsState(if (isFavSel) DarkCreamText else MaterialTheme.colorScheme.onSurfaceVariant, tween(180))
+                    val favTitleColor by animateColorAsState(if (isFavSel) DarkCreamText else MaterialTheme.colorScheme.onSurface, tween(180))
+                    val favBorderColor = if (isFavSel) CreamyPeach else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                    val favShape = RoundedCornerShape(topStart = 8.dp, topEnd = 24.dp, bottomEnd = 8.dp, bottomStart = 8.dp)
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(68.dp)
+                            .clip(favShape)
+                            .background(favBgColor)
+                            .border(1.dp, favBorderColor, favShape)
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                selectedStatus = MyListStatusCategory.FAVORITES
+                            }
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Favorites",
+                                    color = favTitleColor,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Loved shows",
+                                    color = favTextColor.copy(alpha = 0.8f),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            Text(
+                                text = "${favoriteMedia.size}",
+                                color = if (isFavSel) DarkCreamText else MaterialTheme.colorScheme.onSurface,
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Black
+                            )
                         }
                     }
                 }
 
-                item {
-                    Surface(
-                        shape = androidx.compose.foundation.shape.CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        modifier = Modifier.clickable { showNewCollectionDialog = true }
+                // Row 2: In progress (8dp) & Watch later (8dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // In Progress Card
+                    val isProgSel = selectedStatus == MyListStatusCategory.IN_PROGRESS
+                    val progBgColor by animateColorAsState(if (isProgSel) CreamyPeach else MaterialTheme.colorScheme.surfaceContainer, tween(180))
+                    val progColor by animateColorAsState(if (isProgSel) DarkCreamText else MaterialTheme.colorScheme.onSurfaceVariant, tween(180))
+                    val progBorderColor = if (isProgSel) CreamyPeach else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                    val progShape = RoundedCornerShape(8.dp)
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp)
+                            .clip(progShape)
+                            .background(progBgColor)
+                            .border(1.dp, progBorderColor, progShape)
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                selectedStatus = MyListStatusCategory.IN_PROGRESS
+                            }
+                            .padding(horizontal = 14.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayCircleOutline,
+                                    contentDescription = null,
+                                    tint = progColor,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "In progress",
+                                    color = progColor,
+                                    fontSize = 12.5.sp,
+                                    fontWeight = if (isProgSel) FontWeight.ExtraBold else FontWeight.SemiBold
+                                )
+                            }
+                            Text(
+                                text = "${inProgressMedia.size}",
+                                color = progColor,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    // Watch Later Card
+                    val isLaterSel = selectedStatus == MyListStatusCategory.WATCH_LATER
+                    val laterBgColor by animateColorAsState(if (isLaterSel) CreamyPeach else MaterialTheme.colorScheme.surfaceContainer, tween(180))
+                    val laterColor by animateColorAsState(if (isLaterSel) DarkCreamText else MaterialTheme.colorScheme.onSurfaceVariant, tween(180))
+                    val laterBorderColor = if (isLaterSel) CreamyPeach else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                    val laterShape = RoundedCornerShape(8.dp)
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp)
+                            .clip(laterShape)
+                            .background(laterBgColor)
+                            .border(1.dp, laterBorderColor, laterShape)
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                selectedStatus = MyListStatusCategory.WATCH_LATER
+                            }
+                            .padding(horizontal = 14.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                Icon(
+                                    imageVector = Icons.Default.HourglassEmpty,
+                                    contentDescription = null,
+                                    tint = laterColor,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "Watch later",
+                                    color = laterColor,
+                                    fontSize = 12.5.sp,
+                                    fontWeight = if (isLaterSel) FontWeight.ExtraBold else FontWeight.SemiBold
+                                )
+                            }
+                            Text(
+                                text = "${watchLaterMedia.size}",
+                                color = laterColor,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                // Row 3: Completed (bottomStart: 24dp) & Folders (bottomEnd: 24dp) with Dropdown
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Completed Card
+                    val isCompSel = selectedStatus == MyListStatusCategory.COMPLETED
+                    val compBgColor by animateColorAsState(if (isCompSel) CreamyPeach else MaterialTheme.colorScheme.surfaceContainer, tween(180))
+                    val compColor by animateColorAsState(if (isCompSel) DarkCreamText else MaterialTheme.colorScheme.onSurfaceVariant, tween(180))
+                    val compBorderColor = if (isCompSel) CreamyPeach else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                    val compShape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomEnd = 8.dp, bottomStart = 24.dp)
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp)
+                            .clip(compShape)
+                            .background(compBgColor)
+                            .border(1.dp, compBorderColor, compShape)
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                selectedStatus = MyListStatusCategory.COMPLETED
+                            }
+                            .padding(horizontal = 14.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = compColor,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "Completed",
+                                    color = compColor,
+                                    fontSize = 12.5.sp,
+                                    fontWeight = if (isCompSel) FontWeight.ExtraBold else FontWeight.SemiBold
+                                )
+                            }
+                            Text(
+                                text = "${completedMedia.size}",
+                                color = compColor,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    // Folders Card with Fluid Dropdown Menu
+                    val isFoldSel = selectedStatus == MyListStatusCategory.COLLECTIONS
+                    val foldBgColor by animateColorAsState(if (isFoldSel || showFoldersDropdown) CreamyPeach else MaterialTheme.colorScheme.surfaceContainer, tween(180))
+                    val foldColor by animateColorAsState(if (isFoldSel || showFoldersDropdown) DarkCreamText else MaterialTheme.colorScheme.onSurfaceVariant, tween(180))
+                    val foldBorderColor = if (isFoldSel || showFoldersDropdown) CreamyPeach else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                    val foldShape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomEnd = 24.dp, bottomStart = 8.dp)
+
+                    Box(modifier = Modifier.weight(1f)) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .clip(foldShape)
+                                .background(foldBgColor)
+                                .border(1.dp, foldBorderColor, foldShape)
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    showFoldersDropdown = !showFoldersDropdown
+                                    selectedStatus = MyListStatusCategory.COLLECTIONS
+                                }
+                                .padding(horizontal = 14.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                    Icon(
+                                        imageVector = Icons.Default.Folder,
+                                        contentDescription = null,
+                                        tint = foldColor,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "Folders",
+                                        color = foldColor,
+                                        fontSize = 12.5.sp,
+                                        fontWeight = if (isFoldSel || showFoldersDropdown) FontWeight.ExtraBold else FontWeight.SemiBold
+                                    )
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Text(
+                                        text = "${collections.size}",
+                                        color = foldColor,
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.KeyboardArrowDown,
+                                        contentDescription = "Expand Folders",
+                                        tint = foldColor,
+                                        modifier = Modifier
+                                            .size(16.dp)
+                                            .rotate(if (showFoldersDropdown) 180f else 0f)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Fluid Animated Dropdown Menu for Folders
+                        DropdownMenu(
+                            expanded = showFoldersDropdown,
+                            onDismissRequest = { showFoldersDropdown = false },
+                            modifier = Modifier
+                                .width(220.dp)
+                                .background(Color(0xFF1A1618))
+                                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                                .clip(RoundedCornerShape(16.dp))
+                                .padding(4.dp)
+                        ) {
+                            Text(
+                                text = "YOUR FOLDERS",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.sp,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+
+                            // All Folders Option
+                            DropdownMenuItem(
+                                leadingIcon = {
+                                    Icon(Icons.Default.Folder, contentDescription = null, tint = primaryColor, modifier = Modifier.size(16.dp))
+                                },
+                                text = {
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("All Folders", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                        Text("${allSavedMedia.size}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                },
+                                onClick = {
+                                    selectedCollection = "All"
+                                    showFoldersDropdown = false
+                                }
+                            )
+
+                            // Custom Folders
+                            collections.forEach { col ->
+                                val isCustom = !MyListManager.isSystemCollection(col)
+                                val count = myItemsMap.values.count { it.collection.equals(col, ignoreCase = true) }
+                                DropdownMenuItem(
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Folder, contentDescription = null, tint = AccentGold, modifier = Modifier.size(16.dp))
+                                    },
+                                    text = {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = col,
+                                                fontSize = 12.5.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("$count", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    },
+                                    trailingIcon = if (isCustom) {
+                                        {
+                                            IconButton(
+                                                onClick = {
+                                                    folderToManage = col
+                                                    showFolderOptionsSheet = true
+                                                    showFoldersDropdown = false
+                                                },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(Icons.Default.MoreVert, contentDescription = "Manage", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+                                    } else null,
+                                    onClick = {
+                                        selectedCollection = col
+                                        showFoldersDropdown = false
+                                    }
+                                )
+                            }
+
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), modifier = Modifier.padding(vertical = 4.dp))
+
+                            // + Create New Folder Action
+                            DropdownMenuItem(
+                                leadingIcon = {
+                                    Icon(Icons.Default.Add, contentDescription = null, tint = primaryColor, modifier = Modifier.size(16.dp))
+                                },
+                                text = {
+                                    Text("+ Create New Folder", color = primaryColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                },
+                                onClick = {
+                                    showFoldersDropdown = false
+                                    showNewCollectionDialog = true
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // ── 3. Split-Segmented Media Dock (All types vs Movies vs TV & Anime with Dual-Spring Fluid Viscosity) ──
+        val mediaFilterCategories = remember {
+            listOf(
+                MyListTypeFilter.ALL to "All types",
+                MyListTypeFilter.MOVIES to "Movies",
+                MyListTypeFilter.SERIES to "TV & Anime"
+            )
+        }
+        val selectedMediaIndex = remember(selectedType) {
+            mediaFilterCategories.indexOfFirst { it.first == selectedType }.coerceAtLeast(0)
+        }
+        var previousMediaIndex by remember { mutableIntStateOf(selectedMediaIndex) }
+        val movingRight = selectedMediaIndex >= previousMediaIndex
+        LaunchedEffect(selectedMediaIndex) {
+            previousMediaIndex = selectedMediaIndex
+        }
+
+        val fluidViscosity = homeLayoutConfig.fluidViscosity
+
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+        ) {
+            val totalWidth = maxWidth
+            val splitGap = 3.5.dp
+            val segmentCount = mediaFilterCategories.size
+            val singleSegmentWidth = (totalWidth - (splitGap * (segmentCount - 1))) / segmentCount
+            val stepDistance = singleSegmentWidth + splitGap
+
+            val targetStart = stepDistance * selectedMediaIndex
+            val targetEnd = targetStart + singleSegmentWidth
+
+            val leadSpring = spring<Dp>(
+                dampingRatio = fluidViscosity.dampingRatio,
+                stiffness = fluidViscosity.leadStiffness
+            )
+            val tailSpring = spring<Dp>(
+                dampingRatio = fluidViscosity.dampingRatio,
+                stiffness = fluidViscosity.tailStiffness
+            )
+
+            val startSpring = if (movingRight) tailSpring else leadSpring
+            val endSpring = if (movingRight) leadSpring else tailSpring
+
+            val animatedStart by animateDpAsState(
+                targetValue = targetStart,
+                animationSpec = startSpring,
+                label = "myListFluidStart"
+            )
+            val animatedEnd by animateDpAsState(
+                targetValue = targetEnd,
+                animationSpec = endSpring,
+                label = "myListFluidEnd"
+            )
+
+            val targetStartRadius = if (selectedMediaIndex == 0) 20.dp else 6.dp
+            val targetEndRadius = if (selectedMediaIndex == 2) 20.dp else 6.dp
+
+            val animatedStartRadius by animateDpAsState(
+                targetValue = targetStartRadius,
+                animationSpec = spring(dampingRatio = 0.75f, stiffness = 400f),
+                label = "myListRadiusStart"
+            )
+            val animatedEndRadius by animateDpAsState(
+                targetValue = targetEndRadius,
+                animationSpec = spring(dampingRatio = 0.75f, stiffness = 400f),
+                label = "myListRadiusEnd"
+            )
+
+            val morphingPillShape = RoundedCornerShape(
+                topStart = animatedStartRadius,
+                bottomStart = animatedStartRadius,
+                topEnd = animatedEndRadius,
+                bottomEnd = animatedEndRadius
+            )
+
+            // Layer A: Background Split Segments (Tonal containers with 3.5dp physical gap)
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(splitGap),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                mediaFilterCategories.forEachIndexed { index, _ ->
+                    val shape = when (index) {
+                        0 -> RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp, topEnd = 6.dp, bottomEnd = 6.dp)
+                        2 -> RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp, topEnd = 20.dp, bottomEnd = 20.dp)
+                        else -> RoundedCornerShape(6.dp)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(shape)
+                            .background(MaterialTheme.colorScheme.surfaceContainer)
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f), shape)
+                    )
+                }
+            }
+
+            // Layer B: Fluid Water Flowing Indicator (Creamy Peach Pill surging across segments)
+            val pillWidth = (animatedEnd - animatedStart).coerceAtLeast(singleSegmentWidth)
+            Box(
+                modifier = Modifier
+                    .offset(x = animatedStart)
+                    .width(pillWidth)
+                    .fillMaxHeight()
+                    .clip(morphingPillShape)
+                    .background(primaryColor)
+            )
+
+            // Layer C: Foreground Interactive Buttons with Smooth Color Transitions
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(splitGap),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                mediaFilterCategories.forEachIndexed { index, (typeFilter, label) ->
+                    val isSelected = selectedType == typeFilter
+                    val shape = when (index) {
+                        0 -> RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp, topEnd = 6.dp, bottomEnd = 6.dp)
+                        2 -> RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp, topEnd = 20.dp, bottomEnd = 20.dp)
+                        else -> RoundedCornerShape(6.dp)
+                    }
+                    val textColor by animateColorAsState(
+                        targetValue = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                        animationSpec = tween(durationMillis = 180),
+                        label = "mediaSegTextColor$typeFilter"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(shape)
+                            .clickable(
+                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                selectedType = typeFilter
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "+ New Folder",
-                            color = Color(0xFF38BDF8),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            text = label,
+                            color = textColor,
+                            fontSize = 13.sp,
+                            fontWeight = if (isSelected) FontWeight.Black else FontWeight.Medium
                         )
                     }
                 }
@@ -586,52 +1175,58 @@ fun MyListScreen(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // ── Controls Bar: Type Filter + Sort Selector ──
+        // ── 4. Controls Row: Squircle "Recent ⌄" Button & View Toggle (Grid ⊞ vs List ☰) ──
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Type Filter Chips (All vs Movies vs Series - M3 Expressive Borderless Pills)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                MyListTypeFilter.values().forEach { t ->
-                    val isSel = selectedType == t
-                    Surface(
-                        shape = androidx.compose.foundation.shape.CircleShape,
-                        color = if (isSel) primaryColor.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceContainerHigh,
-                        modifier = Modifier.clickable { selectedType = t }
+            // Squircle Recent Button with Dropdown (border-radius: 13dp)
+            Box {
+                val squircleShape = RoundedCornerShape(13.dp)
+                Box(
+                    modifier = Modifier
+                        .clip(squircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceContainer)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f), squircleShape)
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            showSortMenu = true
+                        }
+                        .padding(horizontal = 12.dp, vertical = 7.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Sort,
+                            contentDescription = "Sort Direction",
+                            tint = if (selectedSort != MyListSortOption.RECENTLY_ADDED) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(15.dp)
+                        )
                         Text(
-                            text = t.label,
-                            color = if (isSel) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            text = selectedSort.shortLabel,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Expand Sort",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(15.dp)
                         )
                     }
                 }
-            }
 
-            // M3 Expressive Split Sort Button
-            Box {
-                com.streamhub.app.ui.components.ExpressiveSortSplitButton(
-                    text = selectedSort.shortLabel,
-                    isSelected = selectedSort != MyListSortOption.RECENTLY_ADDED,
-                    isMenuOpen = showSortMenu,
-                    onDirectionClick = {
-                        val toggled = selectedSort.toggleDirection()
-                        selectedSort = toggled
-                    },
-                    onMenuClick = {
-                        showSortMenu = true
-                    }
-                )
-
+                // Expressive Sort Dropdown Menu
                 DropdownMenu(
                     expanded = showSortMenu,
                     onDismissRequest = { showSortMenu = false },
                     modifier = Modifier
-                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .background(Color(0xFF1A1618))
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
                         .clip(RoundedCornerShape(16.dp))
                         .padding(vertical = 4.dp)
                 ) {
@@ -640,14 +1235,14 @@ fun MyListScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 12.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         val isAsc = selectedSort.isAscending
                         Surface(
                             onClick = {
                                 selectedSort = selectedSort.withDirection(false)
                             },
-                            shape = androidx.compose.foundation.shape.CircleShape,
+                            shape = CircleShape,
                             color = if (!isAsc) primaryColor else MaterialTheme.colorScheme.surfaceContainerHighest,
                             modifier = Modifier.weight(1f)
                         ) {
@@ -665,7 +1260,7 @@ fun MyListScreen(
                             onClick = {
                                 selectedSort = selectedSort.withDirection(true)
                             },
-                            shape = androidx.compose.foundation.shape.CircleShape,
+                            shape = CircleShape,
                             color = if (isAsc) primaryColor else MaterialTheme.colorScheme.surfaceContainerHighest,
                             modifier = Modifier.weight(1f)
                         ) {
@@ -718,9 +1313,35 @@ fun MyListScreen(
                     }
                 }
             }
+
+            // Grid ⊞ vs List ☰ View Mode Toggle
+            // ── Single Merged View Mode Toggle Button: Grid (⊞) ↔ List (☰) ──
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .border(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                        RoundedCornerShape(11.dp)
+                    )
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        isGridView = !isGridView
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
+                    contentDescription = if (isGridView) "Switch to List View" else "Switch to Grid View",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(19.dp)
+                )
+            }
         }
 
-        // ── Dynamic Genre Filter Row ──
+        // Dynamic Genre Filter Row (if present)
         if (availableGenres.size > 2 && allSavedMedia.size >= 5) {
             Spacer(modifier = Modifier.height(8.dp))
             LazyRow(
@@ -730,7 +1351,7 @@ fun MyListScreen(
                 items(availableGenres) { genre ->
                     val isGenreSel = selectedGenre.equals(genre, ignoreCase = true)
                     Surface(
-                        shape = androidx.compose.foundation.shape.CircleShape,
+                        shape = CircleShape,
                         color = if (isGenreSel) AccentGold.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceContainerHigh,
                         modifier = Modifier.clickable { selectedGenre = genre }
                     ) {
@@ -748,7 +1369,7 @@ fun MyListScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // ── Main Content Area ──
+        // ── 5. Main Content Area: Populated Media Grid/List OR Whimsical Empty State ──
         val currentCatalogState = catalogState
         if (currentCatalogState is CatalogState.Error && finalDisplayList.isEmpty()) {
             AppErrorState(
@@ -761,7 +1382,7 @@ fun MyListScreen(
             )
         } else if (finalDisplayList.isEmpty()) {
             val emptyTitle = when (selectedStatus) {
-                MyListStatusCategory.ALL -> "Your Watchlist is Empty"
+                MyListStatusCategory.ALL -> "Your watchlist is empty"
                 MyListStatusCategory.IN_PROGRESS -> "No Shows In Progress"
                 MyListStatusCategory.WATCH_LATER -> "No Watch Later Titles"
                 MyListStatusCategory.FAVORITES -> "No Favorites Saved Yet"
@@ -769,23 +1390,172 @@ fun MyListScreen(
                 MyListStatusCategory.COLLECTIONS -> "No Items in this Folder"
             }
             val emptySubtitle = when (selectedStatus) {
-                MyListStatusCategory.ALL -> "Tap '+ My List' on any show to bookmark it here for quick access anytime!"
+                MyListStatusCategory.ALL -> "Tap \"+ My List\" on any show to bookmark it\nhere for quick access anytime."
                 MyListStatusCategory.IN_PROGRESS -> "Start watching any anime or movie to track your resume points here!"
                 MyListStatusCategory.WATCH_LATER -> "Saved shows you haven't started yet will appear here."
                 MyListStatusCategory.FAVORITES -> "Tap the heart on any title card to add it to your loved favorites list."
                 MyListStatusCategory.COMPLETED -> "Finished anime and movies will be organized here."
                 MyListStatusCategory.COLLECTIONS -> "Move titles into custom folders to organize your collection."
             }
-            com.streamhub.app.ui.components.EmptyStateCard(
-                icon = selectedStatus.icon,
-                title = emptyTitle,
-                subtitle = emptySubtitle,
+
+            // Figma Exact Whimsical Illustration Empty State (Scrollable with Bottom Clearance)
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
-            )
+                    .padding(top = 16.dp, bottom = 120.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                // Whimsical Illustration with Exact Figma Geometry & Live Glowing Dot
+                Box(
+                    modifier = Modifier.size(width = 240.dp, height = 188.dp),
+                    contentAlignment = Alignment.TopStart
+                ) {
+                    // 1. Exact Vector Artwork Base (Outer Orbit Oval, Soft Lavender Pebble, Bookmark Ribbon with +)
+                    Image(
+                        painter = painterResource(id = com.streamhub.app.R.drawable.ic_figma_empty_watchlist_base),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // 2. 14-Degree Rotated Squircle Badge with Plus (+) inside in Primary Accent
+                    Box(
+                        modifier = Modifier
+                            .offset(x = 171.dp, y = 15.dp)
+                            .size(42.dp)
+                            .graphicsLayer {
+                                rotationZ = 14f
+                                transformOrigin = TransformOrigin(0f, 0f)
+                            }
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(primaryColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    // 3. Orbital Blinking & Bobbing Coral Dot with Live Glow Animation ("going down and coming up")
+                    val infiniteTransition = rememberInfiniteTransition(label = "EmptyWatchlistDot")
+                    val bobOffset by infiniteTransition.animateFloat(
+                        initialValue = -8f,
+                        targetValue = 8f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(1800, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "DotBob"
+                    )
+                    val pulseScale by infiniteTransition.animateFloat(
+                        initialValue = 0.85f,
+                        targetValue = 1.35f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(1800, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "DotPulse"
+                    )
+                    val glowAlpha by infiniteTransition.animateFloat(
+                        initialValue = 0.35f,
+                        targetValue = 0.95f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(1800, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "DotGlow"
+                    )
+
+                    // Dot Box positioned along the orbit at cx=30, cy=148
+                    Box(
+                        modifier = Modifier
+                            .offset(x = 18.dp, y = (136f + bobOffset).dp)
+                            .size(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Outer Glowing Radial Bloom
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp * pulseScale)
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.radialGradient(
+                                        colors = listOf(
+                                            primaryColor.copy(alpha = glowAlpha * 0.75f),
+                                            primaryColor.copy(alpha = glowAlpha * 0.25f),
+                                            Color.Transparent
+                                        )
+                                    )
+                                )
+                        )
+                        // Solid Core Dot
+                        Box(
+                            modifier = Modifier
+                                .size(11.dp * pulseScale)
+                                .clip(CircleShape)
+                                .background(primaryColor)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                Text(
+                    text = emptyTitle,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = emptySubtitle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // CTA Button: Explore your next watch (Figma Exact: Asymmetric Shape, Primary Red, 264x52dp)
+                Button(
+                    onClick = {
+                        selectedStatus = MyListStatusCategory.ALL
+                        selectedType = MyListTypeFilter.ALL
+                        selectedGenre = "All"
+                        selectedCollection = "All"
+                        onExploreClick?.invoke()
+                    },
+                    shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp, bottomEnd = 22.dp, bottomStart = 10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
+                    modifier = Modifier
+                        .width(264.dp)
+                        .height(52.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Explore your next watch",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
         } else {
-            val layoutConfig by com.streamhub.app.data.HomeScreenLayoutManager.layoutConfig.collectAsState()
+            val layoutConfig by HomeScreenLayoutManager.layoutConfig.collectAsState()
             if (isGridView) {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(layoutConfig.catalogGridColumns),
@@ -842,22 +1612,111 @@ fun MyListScreen(
         }
     }
 
-    // ── Dialog: Create New Collection / Folder ──
+    // ── Dialog: Add Show into Current Collection ──
+    if (showAddShowToFolderDialog && selectedCollection != "All") {
+        AlertDialog(
+            onDismissRequest = {
+                showAddShowToFolderDialog = false
+                addShowSearchQuery = ""
+            },
+            shape = RoundedCornerShape(24.dp),
+            title = {
+                Text(
+                    text = "Add to '$selectedCollection'",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = addShowSearchQuery,
+                        onValueChange = { addShowSearchQuery = it },
+                        placeholder = { Text("Search catalog shows...", fontSize = 12.sp) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    val searchResults = remember(catalog, addShowSearchQuery) {
+                        val q = addShowSearchQuery.trim().lowercase()
+                        if (q.isBlank()) catalog.take(15)
+                        else catalog.filter { it.title.lowercase().contains(q) }.take(20)
+                    }
+
+                    androidx.compose.foundation.lazy.LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(240.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(searchResults) { show ->
+                            val alreadyInCol = myItemsMap[show.id]?.collection.equals(selectedCollection, ignoreCase = true)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f))
+                                    .clickable {
+                                        MyListManager.toggleBookmark(show.id)
+                                        MyListManager.setCollection(show.id, selectedCollection)
+                                        ToastManager.showToast("Added '${show.title}' to $selectedCollection")
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = show.title,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                Text(
+                                    text = if (alreadyInCol) "Saved" else "+ Add",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (alreadyInCol) AccentGold else primaryColor
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showAddShowToFolderDialog = false
+                    addShowSearchQuery = ""
+                }) {
+                    Text("Done", color = primaryColor, fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    }
+
+    // ── Dialog: Create New Folder / Collection ──
     if (showNewCollectionDialog) {
         AlertDialog(
             onDismissRequest = { showNewCollectionDialog = false },
-            shape = RoundedCornerShape(28.dp),
-            title = { Text("Create Custom Collection", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold) },
+            shape = RoundedCornerShape(24.dp),
+            title = { Text("Create New Folder", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    Text("Enter a folder name (e.g. Anime Classics, Late Night):", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Organize your favorite movies and shows into custom lists.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(10.dp))
                     OutlinedTextField(
                         value = newCollectionName,
                         onValueChange = { newCollectionName = it },
-                        placeholder = { Text("Folder Name", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) },
+                        placeholder = { Text("Folder Name (e.g. Weekend Binges)", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) },
                         singleLine = true,
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(14.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = primaryColor,
                             unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
@@ -905,7 +1764,7 @@ fun MyListScreen(
         val currentTarget = folderToManage ?: ""
         AlertDialog(
             onDismissRequest = { showRenameFolderDialog = false },
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(24.dp),
             title = { Text("Rename Folder", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
@@ -916,7 +1775,7 @@ fun MyListScreen(
                         onValueChange = { renameFolderInput = it },
                         placeholder = { Text("New Folder Name", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) },
                         singleLine = true,
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(14.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = primaryColor,
                             unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
@@ -962,19 +1821,19 @@ fun MyListScreen(
         )
     }
 
-    // ── Dialog: Delete Folder Confirmation (With Safe Item Migration) ──
+    // ── Dialog: Delete Custom Collection / Folder ──
     if (showDeleteFolderDialog && folderToManage != null) {
         val currentTarget = folderToManage ?: ""
-        val count = MyListManager.getItemsInCollectionCount(currentTarget)
         AlertDialog(
             onDismissRequest = { showDeleteFolderDialog = false },
-            shape = RoundedCornerShape(28.dp),
-            title = { Text("Delete '$currentTarget'?", color = Color(0xFFFF5252), fontWeight = FontWeight.Bold) },
+            shape = RoundedCornerShape(24.dp),
+            title = { Text("Delete Folder?", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    text = "Are you sure you want to delete this folder?\n\nAll $count saved show(s) inside will be safely moved to your main 'Watchlist'. No titles will be lost.",
+                    text = "Are you sure you want to delete '$currentTarget'? Saved shows in this folder will be kept and moved back to Watchlist.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 13.sp
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
                 )
             },
             confirmButton = {
@@ -986,13 +1845,13 @@ fun MyListScreen(
                             }
                             showDeleteFolderDialog = false
                             folderToManage = null
-                            ToastManager.showToast("Deleted '$currentTarget'. Shows moved to Watchlist")
+                            ToastManager.showToast("Folder deleted")
                         }
                     },
                     shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252))
                 ) {
-                    Text("Delete Folder", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Delete", color = Color.White)
                 }
             },
             dismissButton = {
@@ -1004,30 +1863,32 @@ fun MyListScreen(
         )
     }
 
-    // ── Dialog: Clear Completed Confirmation (Destructive Safety) ──
+    // ── Dialog: Clear All Completed Titles Confirmation ──
     if (showClearCompletedDialog) {
         AlertDialog(
             onDismissRequest = { showClearCompletedDialog = false },
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(24.dp),
             title = { Text("Clear Completed Titles?", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    text = "Remove all ${completedMedia.size} finished show(s) from your watchlist? Your episode watch history progress will remain intact.",
+                    text = "This will remove ${completedMedia.size} finished titles from your Watchlist. This cannot be undone.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 13.sp
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
                 )
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        MyListManager.removeCompletedItems(completedMedia.map { it.id }.toSet())
+                        val ids = completedMedia.map { it.id }.toSet()
+                        MyListManager.removeCompletedItems(ids)
                         showClearCompletedDialog = false
-                        ToastManager.showToast("Cleared completed items from watchlist")
+                        ToastManager.showToast("Cleared ${ids.size} completed titles")
                     },
                     shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252))
                 ) {
-                    Text("Clear", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Clear All", color = Color.White)
                 }
             },
             dismissButton = {
@@ -1042,38 +1903,29 @@ fun MyListScreen(
     // ── Bottom Sheet: Custom Folder Options (Rename / Delete) ──
     if (showFolderOptionsSheet && folderToManage != null) {
         val currentTarget = folderToManage ?: ""
-        val count = MyListManager.getItemsInCollectionCount(currentTarget)
         ModalBottomSheet(
             onDismissRequest = {
                 showFolderOptionsSheet = false
                 folderToManage = null
             },
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(Icons.Default.Folder, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(24.dp))
-                    Column {
-                        Text(text = currentTarget, color = MaterialTheme.colorScheme.onSurface, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                        Text(text = "$count saved show(s)", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
-                    }
-                }
+                Text(
+                    text = "Folder: $currentTarget",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                // Rename
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
@@ -1081,59 +1933,66 @@ fun MyListScreen(
                             renameFolderInput = currentTarget
                             showRenameFolderDialog = true
                         }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(Icons.Default.Edit, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
-                        Text("Rename Folder", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    }
+                    Icon(Icons.Default.Edit, contentDescription = null, tint = primaryColor)
+                    Text("Rename Folder", color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
                 }
 
-                // Delete
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color(0x22FF5252),
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
                             showFolderOptionsSheet = false
                             showDeleteFolderDialog = true
                         }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = Color(0xFFFF5252), modifier = Modifier.size(18.dp))
-                        Text("Delete Folder (Migrate to Watchlist)", color = Color(0xFFFF5252), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    }
+                    Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFFF5252))
+                    Text("Delete Folder", color = Color(0xFFFF5252), fontSize = 14.sp)
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
             }
         }
     }
 
-    // ── Bottom Sheet: Quick Actions for Media Item ──
+    // ── Bottom Sheet: Title Card Quick Actions ──
     itemForActionSheet?.let { item ->
         val isFav = myItemsMap[item.id]?.isFavorite == true
         val currentFolder = myItemsMap[item.id]?.collection ?: "Watchlist"
+        val progress = historyMap[item.id]
+        val isCompleted = progress?.isFullyCompleted(item.episodes.size) == true
+        val hasProgress = progress != null && progress.positionMs > 5000L
 
         MyListCardActionSheet(
             item = item,
             isFavorite = isFav,
             currentFolder = currentFolder,
+            isCompleted = isCompleted,
+            hasProgress = hasProgress,
             onDismiss = { itemForActionSheet = null },
             onPlay = { onMediaClick(item) },
             onManageFolder = {
                 itemForActionSheet = null
                 itemToManageCollection = item
             },
-            onToggleFavorite = { MyListManager.toggleFavorite(item.id) },
+            onToggleFavorite = {
+                MyListManager.toggleFavorite(item.id)
+                ToastManager.showToast(if (isFav) "Removed from Favorites" else "Added to Favorites")
+            },
+            onMarkCompleted = {
+                WatchHistoryManager.markAsCompleted(item)
+                ToastManager.showToast("Marked as Completed")
+            },
+            onMarkUnwatched = {
+                WatchHistoryManager.markAsUnwatched(item.id)
+                ToastManager.showToast("Moved to Watch Later")
+            },
             onRemove = {
                 MyListManager.toggleBookmark(item.id)
                 ToastManager.showToast("Removed from My List")
@@ -1149,6 +2008,7 @@ fun MyListScreen(
         )
     }
 }
+
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -1550,10 +2410,14 @@ fun MyListCardActionSheet(
     item: MediaItem,
     isFavorite: Boolean,
     currentFolder: String,
+    isCompleted: Boolean,
+    hasProgress: Boolean,
     onDismiss: () -> Unit,
     onPlay: () -> Unit,
     onManageFolder: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onMarkCompleted: () -> Unit,
+    onMarkUnwatched: () -> Unit,
     onRemove: () -> Unit
 ) {
     ModalBottomSheet(
@@ -1674,6 +2538,52 @@ fun MyListCardActionSheet(
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold
                     )
+                }
+            }
+
+            // Action: Mark as Completed (Manual Lifecycle Control)
+            if (!isCompleted) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            onMarkCompleted()
+                            onDismiss()
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF4ADE80), modifier = Modifier.size(20.dp))
+                        Text("Mark as Completed", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+
+            // Action: Mark as Unwatched (Move to Watch Later)
+            if (isCompleted || hasProgress) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            onMarkUnwatched()
+                            onDismiss()
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(Icons.Default.HourglassEmpty, contentDescription = null, tint = AccentGold, modifier = Modifier.size(20.dp))
+                        Text("Mark as Unwatched (Watch Later)", color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
 

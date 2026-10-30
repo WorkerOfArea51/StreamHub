@@ -86,14 +86,13 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
         startBackgroundServices()
 
         // FIX: Track foreground/background transitions WITHOUT releasing caches on every stop.
-        // FIX: Track foreground/background transitions WITHOUT releasing caches on every stop.
         // StreamCacheManager is kept warm so video resumes instantly.
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) {
                 lastForegroundTimeMs = System.currentTimeMillis()
                 Log.d(TAG, "App returned to foreground — caches preserved")
                 runCatching { DownloadManager.resumeProgressPolling() }
-                runCatching { com.streamhub.app.data.UserTelemetryManager.onAppForegrounded() }
+                runCatching { com.streamhub.app.data.BroadcastManager.checkBroadcast() }
             }
 
             override fun onStop(owner: LifecycleOwner) {
@@ -101,7 +100,6 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
                 Log.d(TAG, "App moved to background (foreground lasted ${backgroundDuration}ms)")
                 // FIX: Only pause download progress polling, do NOT wipe media caches.
                 runCatching { DownloadManager.pauseProgressPolling() }
-                runCatching { com.streamhub.app.data.UserTelemetryManager.onAppBackgrounded() }
             }
         })
     }
@@ -167,8 +165,8 @@ class StreamHubApplication : Application(), coil.ImageLoaderFactory {
                 .onFailure { Log.e(TAG, "StorageCacheManager.init failed", it) }
             runCatching { com.streamhub.app.data.NotificationAlertManager.init(applicationContext) }
                 .onFailure { Log.e(TAG, "NotificationAlertManager.init failed", it) }
-            runCatching { com.streamhub.app.data.UserTelemetryManager.init(applicationContext) }
-                .onFailure { Log.e(TAG, "UserTelemetryManager.init failed", it) }
+            runCatching { com.streamhub.app.data.BroadcastManager.init(applicationContext) }
+                .onFailure { Log.e(TAG, "BroadcastManager.init failed", it) }
             runCatching { com.streamhub.app.data.UserProfileManager.init(applicationContext) }
                 .onFailure { Log.e(TAG, "UserProfileManager.init failed", it) }
 

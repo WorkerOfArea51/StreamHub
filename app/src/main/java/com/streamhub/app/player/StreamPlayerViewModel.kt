@@ -272,11 +272,8 @@ class StreamPlayerViewModel : ViewModel() {
                 _uiState.update { it.copy(isPlaying = isPlayingNow) }
                 if (!playWhenReady || isEnded) {
                     lastPauseTimestampMs = System.currentTimeMillis()
-                    syncTelemetry(if (isEnded) "IDLE" else "PAUSED")
                 } else {
                     lastPauseTimestampMs = 0L
-                    val isBuffering = exoPlayer?.playbackState == Player.STATE_BUFFERING
-                    syncTelemetry(if (isBuffering) "BUFFERING" else "PLAYING")
                 }
             }
 
@@ -284,12 +281,7 @@ class StreamPlayerViewModel : ViewModel() {
                 val isEnded = exoPlayer?.playbackState == Player.STATE_ENDED
                 val pwr = (exoPlayer?.playWhenReady ?: isPlaying) && !isEnded
                 _uiState.update { it.copy(isPlaying = pwr) }
-                if (pwr) {
-                    val isBuffering = exoPlayer?.playbackState == Player.STATE_BUFFERING
-                    syncTelemetry(if (isBuffering) "BUFFERING" else "PLAYING")
-                } else {
-                    syncTelemetry(if (isEnded) "IDLE" else "PAUSED")
-                }
+
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -318,14 +310,7 @@ class StreamPlayerViewModel : ViewModel() {
                     resetRetryCounter()  // NEW: clear retry counter on successful playback
                 }
 
-                val isPaused = exoPlayer?.playWhenReady == false
-                val state = when {
-                    isPaused -> "PAUSED"
-                    isBuffering -> "BUFFERING"
-                    playbackState == Player.STATE_ENDED -> "IDLE"
-                    else -> "PLAYING"
-                }
-                syncTelemetry(state)
+
 
                 if (playbackState == Player.STATE_ENDED) {
                     handlePlaybackEnded()
@@ -1072,18 +1057,7 @@ class StreamPlayerViewModel : ViewModel() {
             )
         }
 
-        val watchingTitle = currentMediaItem?.title ?: episode.title
-        if (watchingTitle.isNotBlank()) {
-            com.streamhub.app.data.UserTelemetryManager.updatePlaybackState(
-                mediaTitle = currentMediaItem?.title ?: episode.title,
-                episodeTitle = episode.title,
-                seasonNumber = episode.seasonNumber,
-                episodeNumber = if (episode.episodeNumber > 0) episode.episodeNumber else (index + 1),
-                positionMs = startPositionMs,
-                durationMs = fallbackDurationMs,
-                playerState = "BUFFERING"
-            )
-        }
+
 
         // Cancel active preload jobs when starting a new episode — preloader will be eligible again.
         StreamPreloadManager.cancelDetailsPrewarm()
@@ -1870,7 +1844,6 @@ class StreamPlayerViewModel : ViewModel() {
         val pitch = if (pitchCorrection) 1.0f else clamped
         exoPlayer?.playbackParameters = androidx.media3.common.PlaybackParameters(clamped, pitch)
         _uiState.update { it.copy(playbackSpeed = clamped, pitchCorrection = pitchCorrection) }
-        com.streamhub.app.data.UserTelemetryManager.recordAction("Speed changed to ${clamped}x")
     }
 
     fun cycleAspectRatio() {
@@ -1957,7 +1930,6 @@ class StreamPlayerViewModel : ViewModel() {
     private fun startPositionTracker() {
         var lastProgressSaveMs = 0L
         var watchTimeAccumulatorMs = 0L
-        var lastTelemetrySyncMs = 0L
         stallAccumulatorMs = 0L
         positionTrackerJob?.cancel()
         positionTrackerJob = viewModelScope.launch {
@@ -1996,12 +1968,7 @@ class StreamPlayerViewModel : ViewModel() {
                         _uiState.update { it.copy(isBuffering = isBuffering) }
                     }
 
-                    // Periodic real-time playback telemetry sync (every 5 seconds)
-                    val nowMs = System.currentTimeMillis()
-                    if (nowMs - lastTelemetrySyncMs >= 5000L) {
-                        lastTelemetrySyncMs = nowMs
-                        syncTelemetry(if (isBuffering) "BUFFERING" else if (player.isPlaying) "PLAYING" else "PAUSED")
-                    }
+
 
                     // Active Stream Stall Watchdog:
                     // Guard: Offline local files (downloads, storage files) are not network streams.
@@ -2559,50 +2526,10 @@ class StreamPlayerViewModel : ViewModel() {
         bandwidthTracker = null
         PlayerHolder.currentBandwidthTracker = null
         com.streamhub.app.data.UserStatsManager.flushToDisk()
-        com.streamhub.app.data.UserTelemetryManager.clearPlaybackState()
         com.streamhub.app.data.StorageCacheManager.enforceCachePolicies()
     }
 
-    private fun syncTelemetry(playerState: String) {
-        val media = currentMediaItem ?: return
-        val epIndex = _uiState.value.currentEpisodeIndex
-        val ep = media.episodes.getOrNull(epIndex)
-        val pos = exoPlayer?.currentPosition?.coerceAtLeast(0L) ?: _uiState.value.currentPositionMs
-        val dur = exoPlayer?.duration?.coerceAtLeast(0L) ?: _uiState.value.durationMs
-        val epNum = if (ep != null && ep.episodeNumber > 0) ep.episodeNumber else (epIndex + 1)
-        val speedKbps = bandwidthTracker?.sampleSpeedKBps() ?: 0L
-        val speedText = if (speedKbps >= 1024L) String.format(java.util.Locale.US, "%.1f MB/s", speedKbps / 1024.0) else "$speedKbps KB/s"
-        val bufferSec = ((exoPlayer?.bufferedPosition ?: 0L) - pos).coerceAtLeast(0L) / 1000L
 
-        val vFmt = exoPlayer?.videoFormat
-        val vWidth = exoPlayer?.videoSize?.width ?: 0
-        val vHeight = exoPlayer?.videoSize?.height ?: 0
-        val res = if (vWidth > 0 && vHeight > 0) "${vWidth}x${vHeight}" else "1080p (FHD)"
-        val codec = vFmt?.sampleMimeType?.let { mime ->
-            when {
-                mime.contains("avc", ignoreCase = true) || mime.contains("h264", ignoreCase = true) -> "H.264 / AVC"
-                mime.contains("hevc", ignoreCase = true) || mime.contains("h265", ignoreCase = true) -> "H.265 / HEVC"
-                mime.contains("vp9", ignoreCase = true) -> "VP9"
-                mime.contains("av01", ignoreCase = true) || mime.contains("av1", ignoreCase = true) -> "AV1"
-                else -> mime.substringAfter("/")
-            }
-        } ?: "HEVC / H.265"
-
-        com.streamhub.app.data.UserTelemetryManager.updatePlaybackState(
-            mediaTitle = media.title,
-            episodeTitle = ep?.title ?: "",
-            seasonNumber = ep?.seasonNumber ?: 1,
-            episodeNumber = epNum,
-            positionMs = pos,
-            durationMs = dur,
-            playerState = playerState,
-            speed = speedText,
-            resolution = res,
-            videoCodec = codec,
-            bufferHealthSec = bufferSec,
-            playbackSpeed = _uiState.value.playbackSpeed
-        )
-    }
 
     override fun onCleared() {
         super.onCleared()

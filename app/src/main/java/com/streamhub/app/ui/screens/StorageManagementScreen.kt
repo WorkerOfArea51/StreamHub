@@ -603,11 +603,12 @@ fun StorageManagementScreen(
                         modifier = Modifier.padding(vertical = 14.dp)
                     )
 
-                    // Downloads TTL Auto-Delete Row (Finite lifespans, zero Never)
+                    // Downloads TTL Auto-Delete Row (Includes Never option)
                     DropdownSettingRow(
                         title = "Downloads Auto-Delete TTL",
                         subtitle = "Automatically purge completed offline downloads older than",
                         currentValue = when (downloadSettings.downloadTtlDays) {
+                            0 -> "Never (Keep all)"
                             1 -> "1 Day (24h)"
                             3 -> "3 Days"
                             7 -> "7 Days"
@@ -615,7 +616,7 @@ fun StorageManagementScreen(
                             30 -> "30 Days (Recommended)"
                             60 -> "60 Days"
                             90 -> "90 Days"
-                            else -> "${downloadSettings.downloadTtlDays} Days"
+                            else -> if (downloadSettings.downloadTtlDays <= 0) "Never (Keep all)" else "${downloadSettings.downloadTtlDays} Days"
                         },
                         options = listOf(
                             "1 Day (24h)" to 1,
@@ -624,7 +625,8 @@ fun StorageManagementScreen(
                             "14 Days" to 14,
                             "30 Days (Recommended)" to 30,
                             "60 Days" to 60,
-                            "90 Days" to 90
+                            "90 Days" to 90,
+                            "Never (Keep all)" to 0
                         ),
                         onSelect = { DownloadSettingsManager.updateDownloadTtlDays(it) }
                     )

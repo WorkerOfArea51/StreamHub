@@ -42,11 +42,6 @@
     @com.google.gson.annotations.SerializedName <fields>;
 }
 
-# --- Firebase Firestore ---
--keep class com.google.firebase.firestore.** { *; }
--dontwarn com.google.firebase.**
--keep class com.google.android.gms.internal.** { *; }
--dontwarn com.google.android.gms.**
 
 # --- OkHttp / Okio ---
 -dontwarn okhttp3.**

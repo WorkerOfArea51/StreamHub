@@ -1090,6 +1090,14 @@ object DownloadManager {
     }
 
     /**
+     * Purges all completed offline downloaded items and files.
+     */
+    fun clearCompletedDownloads() {
+        val targets = _downloads.value.filter { it.isCompleted }
+        targets.forEach { deleteDownload(it) }
+    }
+
+    /**
      * Purges all offline downloaded items and files across all media.
      */
     fun deleteAllDownloads() {
