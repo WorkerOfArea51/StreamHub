@@ -518,7 +518,7 @@ class StreamPlayerViewModel : ViewModel() {
                         600             // bufferForPlaybackAfterRebufferMs (600ms rapid seek & scrub recovery pad)
                     )
                     .setBackBuffer(15_000, false)
-                    .setPrioritizeTimeOverSizeThresholds(false)
+                    .setPrioritizeTimeOverSizeThresholds(true)
                     .setTargetBufferBytes(320 * 1024 * 1024)
                     .build()
 
@@ -1992,8 +1992,8 @@ class StreamPlayerViewModel : ViewModel() {
                         // Check if bytes are actively arriving from the server.
                         // When stalled at 0s buffer, a slow trickle (< 250 KB/s) cannot unfreeze a 1080p movie (~450 KB/s).
                         // Only healthy incoming throughput (>= 250 KB/s with recent packets < 2.5s) counts as active recovery.
-                        val isActivelyTransferring = (speedKbps >= 250L && timeSinceLastByteMs < 2_500L) ||
-                            (speedKbps > 20L && timeSinceLastByteMs < 2_000L && bufferHealthSec > 0L)
+                        val isActivelyTransferring = (speedKbps >= 15L && timeSinceLastByteMs < 3_500L) ||
+                            (timeSinceLastByteMs < 4_000L && bufferHealthSec > 0L)
                         val isNearEnd = totalDuration > 10_000L && currentPos >= totalDuration - 2_000L
                         val isStalledAtZeroBuffer = isBuffering && bufferHealthSec == 0L && player.playWhenReady &&
                             !isActivelyTransferring && !isNearEnd &&
@@ -2002,9 +2002,9 @@ class StreamPlayerViewModel : ViewModel() {
                         if (isStalledAtZeroBuffer) {
                             stallAccumulatorMs += 200L
                             // 4.0s threshold: fast recovery from frozen 0s buffer without interrupting active downloads
-                            if (stallAccumulatorMs >= 4000L) {
+                            if (stallAccumulatorMs >= 15_000L) {
                                 stallAccumulatorMs = 0L
-                                Log.w("StreamPlayerViewModel", "Stall watchdog triggered: 0s buffer starved for 4.0s (speed: ${speedKbps} KB/s, last byte: ${timeSinceLastByteMs}ms ago). Reconnecting...")
+                                Log.w("StreamPlayerViewModel", "Stall watchdog triggered: 0s buffer starved for 15.0s (speed: ${speedKbps} KB/s, last byte: ${timeSinceLastByteMs}ms ago). Reconnecting...")
                                 handleStreamStall(playerPos)
                             }
                         } else if (!isBuffering || bufferHealthSec > 0L || isActivelyTransferring) {
