@@ -38,7 +38,6 @@ import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.ui.components.AdminEditorDialog
 import com.streamhub.app.ui.components.AdminPasswordDialog
 import com.streamhub.app.ui.components.ToastManager
-import com.streamhub.app.ui.dialogs.GlobalBroadcastAnnouncementDialog
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.bouncyClickable
 
@@ -64,6 +63,7 @@ fun ProfileScreen(
     onOpenAddContent: () -> Unit = {},
     onNavigateToAbout: () -> Unit = {},
     onNavigateToMyList: () -> Unit = {},
+    onNavigateToBroadcastStudio: () -> Unit = {},
     repository: CatalogRepository = remember { CatalogRepository.getInstance() },
     modifier: Modifier = Modifier
 ) {
@@ -79,7 +79,6 @@ fun ProfileScreen(
 
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
     var showAddContentDialog by remember { mutableStateOf(false) }
-    var showBroadcastDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         StorageCacheManager.calculateStorageUsage()
@@ -257,7 +256,7 @@ fun ProfileScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .bouncyClickable {
-                            showBroadcastDialog = true
+                            onNavigateToBroadcastStudio()
                         }
                 ) {
                     Row(
@@ -402,11 +401,6 @@ fun ProfileScreen(
     }
 
     // ── Floating Dialogs ──
-    if (showBroadcastDialog) {
-        GlobalBroadcastAnnouncementDialog(
-            onDismiss = { showBroadcastDialog = false }
-        )
-    }
 
     if (showAdminPasswordDialog) {
         AdminPasswordDialog(

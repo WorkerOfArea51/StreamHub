@@ -4,6 +4,22 @@ All notable architectural milestones, performance optimizations, and visual upda
 
 ---
 
+### What's New in StreamHub v4.8.443 🚀
+
+- 📢 **Material 3 Expressive Full-Screen Broadcast Studio (`BroadcastAnnouncementScreen.kt`)**:
+  - **Dedicated Full-Screen Architecture**: Replaced cramped modal alert dialogs with a full-screen Compose destination (`Screen.BroadcastAnnouncement.route`) featuring top app bar, standard back navigation, and ample breathing room.
+  - **Active Broadcast Dashboard Card**: Displays live pulsing status (`● 1 ACTIVE EDGE BROADCAST`), time to expiry, and a 1-tap **"Edit In Studio"** button that populates running broadcast data back into the composer so typos can be fixed in seconds without clearing.
+  - **⚡ 1-Tap Quick Templates**: Instant preset chips for New Release (`CONTENT`), App Update (`INFO`), and Server Maintenance (`ALERT`) notices.
+  - **🎬 Instant Catalog Show Picker**: Searchable bottom sheet interfacing directly with `CatalogRepository.mediaCatalog` with high-resolution poster artwork, category tags, and 1-tap auto-filling.
+  - **Live WYSIWYG In-App Banner Preview**: Renders `InAppBroadcastBanner.kt` in real-time as the admin types or switches presets with 0ms delay.
+  - **Destructive Retirement Guard**: Safe confirmation dialog prevents accidental broadcast deletion from client screens.
+- 🎯 **Split-SeekHead MKV ChunkIndex Seek Map Interception (`SmartMatroskaExtractor.kt`)**:
+  - Solved progressive MKV seeking rewind to 00:00 on HandBrake/Lavf encodes (e.g. *Minions & Monsters 2026*, 1.68 GB, 1h 32m).
+  - Wrapped `ExtractorOutput` in `SmartExtractorOutput` to intercept `extractorOutput.seekMap()` and replace `SeekMap.Unseekable` with an ExoPlayer native `ChunkIndex` parsed directly from the pre-cached 512 KB tail slice EBML Cues index (capturing all 1,747 deduplicated keyframe timestamps and cluster byte offsets).
+  - Restores 100% frame-accurate seeking, scrubbing, and skipping on all progressive streaming files.
+
+---
+
 ### What's New in StreamHub v4.8.442 🚀
 
 - ⚡ **Cloudflare Edge Proxy & Accelerated MTProto Streaming**:

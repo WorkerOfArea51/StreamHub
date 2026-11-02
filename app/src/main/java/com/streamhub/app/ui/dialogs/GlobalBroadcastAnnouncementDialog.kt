@@ -11,10 +11,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -39,16 +45,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streamhub.app.data.BroadcastManager
+import com.streamhub.app.data.api.BroadcastPayload
+import com.streamhub.app.ui.components.InAppBroadcastBanner
 import com.streamhub.app.ui.components.ToastManager
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.TextSecondary
 import com.streamhub.app.ui.theme.bouncyTouch
 
 /**
- * Clean, dedicated Admin Broadcast Announcement Dialog.
- *
- * Allows the owner/admin to send an instant heads-up notification banner to all active
- * users or clear an active broadcast from Cloudflare KV.
+ * Modern Admin Broadcast Announcement Dialog with Category Selector,
+ * 1-Tap Action Deep Linking, and Live WYSIWYG Banner Preview.
  */
 @Composable
 fun GlobalBroadcastAnnouncementDialog(
@@ -56,7 +62,13 @@ fun GlobalBroadcastAnnouncementDialog(
 ) {
     var broadcastTitle by remember { mutableStateOf("StreamHub Announcement 📢") }
     var broadcastMessage by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf(BroadcastPayload.CATEGORY_INFO) }
+    var selectedActionType by remember { mutableStateOf(BroadcastPayload.ACTION_NONE) }
+    var actionTarget by remember { mutableStateOf("") }
+    var actionLabel by remember { mutableStateOf("") }
     var expiryHours by remember { mutableIntStateOf(24) }
+
+    val scrollState = rememberScrollState()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -88,12 +100,57 @@ fun GlobalBroadcastAnnouncementDialog(
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.verticalScroll(scrollState)
+            ) {
                 Text(
-                    text = "Broadcasts a live heads-up notification to all users. Stored as a self-expiring broadcast key in Cloudflare Edge KV.",
+                    text = "Broadcast a live heads-up notification and in-app banner to all users via Cloudflare Edge KV.",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
+
+                // Category selector pills
+                Column(modifier = Modifier.padding(top = 2.dp)) {
+                    Text(
+                        text = "Announcement Category:",
+                        color = TextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        listOf(
+                            Triple(BroadcastPayload.CATEGORY_CONTENT, "Content", Color(0xFF00E676)),
+                            Triple(BroadcastPayload.CATEGORY_INFO, "Info", Color(0xFF38BDF8)),
+                            Triple(BroadcastPayload.CATEGORY_ALERT, "Alert", Color(0xFFFFA726))
+                        ).forEach { (cat, label, col) ->
+                            val isSelected = selectedCategory == cat
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isSelected) col.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceContainer,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(CircleShape)
+                                    .clickable { selectedCategory = cat }
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (isSelected) col else TextSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Title
                 OutlinedTextField(
                     value = broadcastTitle,
                     onValueChange = { broadcastTitle = it },
@@ -102,17 +159,82 @@ fun GlobalBroadcastAnnouncementDialog(
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                // Message
                 OutlinedTextField(
                     value = broadcastMessage,
                     onValueChange = { broadcastMessage = it },
                     label = { Text("Broadcast Message") },
-                    placeholder = { Text("e.g. Bleach Thousand-Year Blood War Ep 13 is now streaming in 1080p!") },
+                    placeholder = { Text("e.g. Minions & Monsters is now streaming in full 1080p!") },
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                // Action Deep Link Selector
+                Column(modifier = Modifier.padding(top = 2.dp)) {
+                    Text(
+                        text = "Interactive 1-Tap Action:",
+                        color = TextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        listOf(
+                            BroadcastPayload.ACTION_NONE to "None",
+                            BroadcastPayload.ACTION_WATCH to "Watch Show",
+                            BroadcastPayload.ACTION_LINK to "Open Link"
+                        ).forEach { (type, label) ->
+                            val isSelected = selectedActionType == type
+                            Surface(
+                                shape = CircleShape,
+                                color = if (isSelected) Color(0xFF38BDF8).copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceContainer,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(CircleShape)
+                                    .clickable { selectedActionType = type }
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (isSelected) Color(0xFF38BDF8) else TextSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Target input (if action enabled)
+                if (selectedActionType != BroadcastPayload.ACTION_NONE) {
+                    val isWatch = selectedActionType == BroadcastPayload.ACTION_WATCH
+                    OutlinedTextField(
+                        value = actionTarget,
+                        onValueChange = { actionTarget = it },
+                        label = { Text(if (isWatch) "Show Media ID" else "External URL") },
+                        placeholder = { Text(if (isWatch) "e.g. minions_monsters_2026" else "e.g. https://t.me/...") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = actionLabel,
+                        onValueChange = { actionLabel = it },
+                        label = { Text("Button Text (Optional)") },
+                        placeholder = { Text(if (isWatch) "Watch Now" else "Open Link") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
                 // Expiration duration selector
-                Column(modifier = Modifier.padding(top = 4.dp)) {
+                Column(modifier = Modifier.padding(top = 2.dp)) {
                     Text(
                         text = "Notification Lifespan (Auto-Expires After):",
                         color = TextSecondary,
@@ -146,6 +268,32 @@ fun GlobalBroadcastAnnouncementDialog(
                         }
                     }
                 }
+
+                // Live WYSIWYG Preview Box
+                Column(modifier = Modifier.padding(top = 6.dp)) {
+                    Text(
+                        text = "Live In-App Banner Preview:",
+                        color = TextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    val previewPayload = BroadcastPayload(
+                        id = "preview",
+                        title = broadcastTitle.ifBlank { "StreamHub Announcement" },
+                        message = broadcastMessage.ifBlank { "Preview announcement text will appear here." },
+                        category = selectedCategory,
+                        actionType = selectedActionType,
+                        actionTarget = actionTarget,
+                        actionLabel = actionLabel
+                    )
+                    InAppBroadcastBanner(
+                        broadcast = previewPayload,
+                        onDismiss = {},
+                        onActionClick = { _, _ -> },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         },
         confirmButton = {
@@ -155,7 +303,11 @@ fun GlobalBroadcastAnnouncementDialog(
                         BroadcastManager.sendGlobalBroadcast(
                             title = broadcastTitle.trim(),
                             message = broadcastMessage.trim(),
-                            expiryHours = expiryHours
+                            expiryHours = expiryHours,
+                            category = selectedCategory,
+                            actionType = selectedActionType,
+                            actionTarget = actionTarget.trim(),
+                            actionLabel = actionLabel.trim()
                         )
                         ToastManager.showToast("Broadcast announcement published to all users!")
                         onDismiss()
@@ -193,9 +345,6 @@ fun GlobalBroadcastAnnouncementDialog(
                     Text("Cancel", color = TextSecondary)
                 }
             }
-        },
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = RoundedCornerShape(20.dp)
+        }
     )
 }
-

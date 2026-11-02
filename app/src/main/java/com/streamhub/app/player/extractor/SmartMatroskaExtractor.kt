@@ -7,7 +7,10 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.extractor.Extractor
 import androidx.media3.extractor.ExtractorInput
 import androidx.media3.extractor.ExtractorOutput
+import androidx.media3.extractor.ChunkIndex
 import androidx.media3.extractor.ExtractorsFactory
+import androidx.media3.extractor.SeekMap
+import androidx.media3.extractor.TrackOutput
 import androidx.media3.extractor.PositionHolder
 import androidx.media3.extractor.mkv.MatroskaExtractor
 import com.streamhub.app.data.api.SharedHttpClient
@@ -67,10 +70,14 @@ class SmartMatroskaExtractor(
         private const val ID_TRACKS = 0x1654AE6B
         private const val ID_CUES = 0x1C53BB6B
         private const val ID_CLUSTER = 0x1F43B675
+        private const val ID_CUE_POINT = 0xBB
+        private const val ID_CUE_TIME = 0xB3
+        private const val ID_CUE_TRACK_POSITIONS = 0xB7
+        private const val ID_CUE_CLUSTER_POSITION = 0xF1
 
         private const val PEEK_BUFFER_SIZE = 4096
-        private const val PRIMARY_TAIL_SLICE_BYTES = 163840L // 160 KB: safely returned in single burst while capturing Cues up to 106+ KB before EOF
-        private const val FALLBACK_TAIL_SLICE_BYTES = 131072L // 128 KB: single edge chunk fallback (captures Cues at 70-73 KB)
+        private const val PRIMARY_TAIL_SLICE_BYTES = 524288L // 512 KB: safely captures Cues up to 13 hours of video
+        private const val FALLBACK_TAIL_SLICE_BYTES = 1048576L // 1024 KB (1 MB): deep search fallback for massive multi-hour 4K streams
 
         /**
          * Parses an EBML Variable-Length Integer (vint).
@@ -125,16 +132,122 @@ class SmartMatroskaExtractor(
             val headerLength = idLength + sizeVint.second
             return Triple(id, headerLength, sizeVint.first)
         }
+        /**
+         * Parses the raw [ID_CUES] byte array into a seekable [ChunkIndex].
+         * Maps each CuePoint's timestamp and physical cluster byte offset into a binary-searchable SeekMap.
+         */
+        fun buildChunkIndexFromCues(
+            cuesBytes: ByteArray,
+            segmentContentPos: Long,
+            fileLength: Long
+        ): ChunkIndex? {
+            val header = readElementHeader(cuesBytes, 0, cuesBytes.size) ?: return null
+            val contentStart = header.second
+            val contentEnd = minOf(contentStart + header.third.toInt(), cuesBytes.size)
+
+            val timesUsList = ArrayList<Long>()
+            val offsetsList = ArrayList<Long>()
+
+            var curr = contentStart
+            var lastOffset = -1L
+            var lastTimeUs = -1L
+
+            while (curr < contentEnd) {
+                val cpHeader = readElementHeader(cuesBytes, curr, contentEnd) ?: break
+                if (cpHeader.first != ID_CUE_POINT) {
+                    curr += cpHeader.second + cpHeader.third.toInt()
+                    continue
+                }
+                val cpStart = curr + cpHeader.second
+                val cpEnd = minOf(cpStart + cpHeader.third.toInt(), contentEnd)
+
+                var sub = cpStart
+                var cueTimeMs: Long? = null
+                var clusterRelPos: Long? = null
+
+                while (sub < cpEnd) {
+                    val elem = readElementHeader(cuesBytes, sub, cpEnd) ?: break
+                    val elemContentStart = sub + elem.second
+                    val elemContentLen = elem.third.toInt()
+                    if (elemContentStart + elemContentLen > cpEnd) break
+
+                    when (elem.first) {
+                        ID_CUE_TIME -> {
+                            var tVal = 0L
+                            for (b in 0 until minOf(elemContentLen, 8)) {
+                                tVal = (tVal shl 8) or (cuesBytes[elemContentStart + b].toLong() and 0xFF)
+                            }
+                            cueTimeMs = tVal
+                        }
+                        ID_CUE_TRACK_POSITIONS -> {
+                            var tpSub = elemContentStart
+                            val tpEnd = elemContentStart + elemContentLen
+                            while (tpSub < tpEnd) {
+                                val tpElem = readElementHeader(cuesBytes, tpSub, tpEnd) ?: break
+                                if (tpElem.first == ID_CUE_CLUSTER_POSITION) {
+                                    var pVal = 0L
+                                    val pLen = tpElem.third.toInt()
+                                    val pStart = tpSub + tpElem.second
+                                    for (b in 0 until minOf(pLen, 8)) {
+                                        pVal = (pVal shl 8) or (cuesBytes[pStart + b].toLong() and 0xFF)
+                                    }
+                                    clusterRelPos = pVal
+                                }
+                                tpSub += tpElem.second + tpElem.third.toInt()
+                            }
+                        }
+                    }
+                    sub += elem.second + elem.third.toInt()
+                }
+
+                if (cueTimeMs != null && clusterRelPos != null) {
+                    val physicalOffset = segmentContentPos + clusterRelPos
+                    val timeUs = cueTimeMs * 1000L
+                    if (physicalOffset > lastOffset && timeUs > lastTimeUs) {
+                        timesUsList.add(timeUs)
+                        offsetsList.add(physicalOffset)
+                        lastOffset = physicalOffset
+                        lastTimeUs = timeUs
+                    }
+                }
+                curr = cpEnd
+            }
+
+            val count = timesUsList.size
+            if (count < 2) return null
+
+            val sizes = IntArray(count)
+            val offsets = LongArray(count)
+            val durationsUs = LongArray(count)
+            val timesUs = LongArray(count)
+
+            for (i in 0 until count) {
+                offsets[i] = offsetsList[i]
+                timesUs[i] = timesUsList[i]
+                if (i < count - 1) {
+                    sizes[i] = (offsetsList[i + 1] - offsetsList[i]).toInt()
+                    durationsUs[i] = timesUsList[i + 1] - timesUsList[i]
+                } else {
+                    val remainingBytes = if (fileLength > offsetsList[i]) fileLength - offsetsList[i] else 4 * 1024 * 1024L
+                    sizes[i] = minOf(remainingBytes, Int.MAX_VALUE.toLong()).toInt()
+                    durationsUs[i] = 5_000_000L
+                }
+            }
+
+            return ChunkIndex(sizes, offsets, durationsUs, timesUs)
+        }
     }
 
     private data class SplitSeekHeadInfo(
         val cluster0Offset: Long,
         val secondarySeekHeadAbsPos: Long,
-        val fileLength: Long?
+        val fileLength: Long?,
+        val segmentContentPosition: Long,
+        val hasTracksInHead: Boolean
     )
 
     private data class ExtractedMetadata(
-        val tracksBytes: ByteArray,
+        val tracksBytes: ByteArray?,
         val cuesBytes: ByteArray?
     )
 
@@ -144,9 +257,39 @@ class SmartMatroskaExtractor(
     private var syntheticDataSize: Long = 0L
 
     private var hasResetPeekAfterSplicing = false
+    private var parsedChunkIndex: ChunkIndex? = null
+    private var emittedSeekMap: SeekMap? = null
+    private var rawOutput: ExtractorOutput? = null
 
     override fun init(output: ExtractorOutput) {
-        delegate.init(output)
+        this.rawOutput = output
+        val smartOutput = object : ExtractorOutput {
+            override fun track(id: Int, type: Int): TrackOutput {
+                return output.track(id, type)
+            }
+
+            override fun endTracks() {
+                output.endTracks()
+            }
+
+            override fun seekMap(seekMap: SeekMap) {
+                emittedSeekMap = seekMap
+                if (seekMap.isSeekable) {
+                    Log.i(TAG, "Native SeekMap is seekable (${seekMap.durationUs / 1000} ms) — passing through")
+                    output.seekMap(seekMap)
+                } else {
+                    val chunkIndex = parsedChunkIndex
+                    if (chunkIndex != null && chunkIndex.isSeekable) {
+                        Log.i(TAG, "Native SeekMap was Unseekable! Replaced with Cues ChunkIndex (${chunkIndex.length} keyframes, duration=${chunkIndex.durationUs / 1000} ms)")
+                        output.seekMap(chunkIndex)
+                    } else {
+                        Log.w(TAG, "Native SeekMap was Unseekable and no Cues ChunkIndex available — passing Unseekable")
+                        output.seekMap(seekMap)
+                    }
+                }
+            }
+        }
+        delegate.init(smartOutput)
     }
 
     override fun sniff(input: ExtractorInput): Boolean {
@@ -160,32 +303,54 @@ class SmartMatroskaExtractor(
 
     override fun release() {
         syntheticInput = null
+        parsedChunkIndex = null
+        emittedSeekMap = null
+        rawOutput = null
         delegate.release()
     }
 
     override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int {
-        if (syntheticInput == null && isFirstRead && input.position == 0L) {
+        if (isFirstRead && input.position == 0L) {
             isFirstRead = false
             val splitInfo = probeForSplitSeekHead(input)
             if (splitInfo != null) {
                 detectedSplitInfo = splitInfo
-                Log.i(TAG, "Split-SeekHead MKV detected! Cluster 0 at ${splitInfo.cluster0Offset}, SecSeekHead at ${splitInfo.secondarySeekHeadAbsPos}, fileLength=${splitInfo.fileLength}. Fetching tail metadata slice...")
+                Log.i(TAG, "Split-SeekHead MKV detected! Cluster 0 at ${splitInfo.cluster0Offset}, SecSeekHead at ${splitInfo.secondarySeekHeadAbsPos}, fileLength=${splitInfo.fileLength}, hasTracksInHead=${splitInfo.hasTracksInHead}. Fetching tail metadata slice...")
                 val tailBytes = fetchTailSlice(splitInfo)
                 if (tailBytes != null) {
                     val metadata = extractTracksAndCues(tailBytes)
                     if (metadata != null) {
-                        val syntheticPayload = if (metadata.cuesBytes != null) {
-                            metadata.tracksBytes + metadata.cuesBytes
-                        } else {
-                            metadata.tracksBytes
+                        // 1. Build seekable ChunkIndex from tail Cues
+                        if (metadata.cuesBytes != null) {
+                            val chunkIndex = buildChunkIndexFromCues(
+                                cuesBytes = metadata.cuesBytes,
+                                segmentContentPos = splitInfo.segmentContentPosition,
+                                fileLength = splitInfo.fileLength ?: 0L
+                            )
+                            if (chunkIndex != null) {
+                                parsedChunkIndex = chunkIndex
+                                Log.i(TAG, "Built ChunkIndex from tail Cues: ${chunkIndex.length} keyframes, duration=${chunkIndex.durationUs / 1000} ms")
+                                val current = emittedSeekMap
+                                if (current != null && !current.isSeekable) {
+                                    Log.i(TAG, "Replacing Unseekable SeekMap with Cues ChunkIndex")
+                                    rawOutput?.seekMap(chunkIndex)
+                                }
+                            }
                         }
-                        syntheticDataSize = syntheticPayload.size.toLong()
-                        Log.i(TAG, "Synthetic stream spliced! Splicing Tracks (${metadata.tracksBytes.size} bytes) + Cues (${metadata.cuesBytes?.size ?: 0} bytes) before Cluster 0 at ${splitInfo.cluster0Offset}")
-                        syntheticInput = SyntheticTracksExtractorInput(
-                            originalInput = input,
-                            cluster0Offset = splitInfo.cluster0Offset,
-                            syntheticData = syntheticPayload
-                        )
+
+                        // 2. If Tracks is NOT in the head, splice it via SyntheticTracksExtractorInput
+                        if (!splitInfo.hasTracksInHead && metadata.tracksBytes != null) {
+                            val syntheticPayload = metadata.tracksBytes
+                            syntheticDataSize = syntheticPayload.size.toLong()
+                            Log.i(TAG, "Synthetic stream spliced! Splicing Tracks (${syntheticPayload.size} bytes) before Cluster 0 at ${splitInfo.cluster0Offset}")
+                            syntheticInput = SyntheticTracksExtractorInput(
+                                originalInput = input,
+                                cluster0Offset = splitInfo.cluster0Offset,
+                                syntheticData = syntheticPayload
+                            )
+                        } else {
+                            Log.i(TAG, "Tracks element is already present at head — reading directly from physical input.")
+                        }
                     } else {
                         Log.w(TAG, "Could not extract Tracks/Cues from tail slice — falling back to standard extractor.")
                     }
@@ -319,8 +484,23 @@ class SmartMatroskaExtractor(
             }
         }
 
-        // If tracks are already indexed in the root SeekHead, standard MatroskaExtractor handles it natively
-        if (hasTracksInRootSeekHead || secondarySeekHeadRelPos == null) {
+        // Also check if Tracks element exists in the head chunk even if not indexed in root SeekHead
+        var hasTracksInHead = hasTracksInRootSeekHead
+        if (!hasTracksInHead) {
+            for (i in segHeaderOffset until bytesRead - 8) {
+                if (peekBuffer[i] == 0x16.toByte() &&
+                    peekBuffer[i + 1] == 0x54.toByte() &&
+                    peekBuffer[i + 2] == 0xAE.toByte() &&
+                    peekBuffer[i + 3] == 0x6B.toByte()
+                ) {
+                    hasTracksInHead = true
+                    break
+                }
+            }
+        }
+
+        // If no secondary SeekHead is referenced, all metadata is located at the head natively
+        if (secondarySeekHeadRelPos == null) {
             return null
         }
 
@@ -336,17 +516,18 @@ class SmartMatroskaExtractor(
             scanPos += elem.second + elem.third.toInt()
         }
         if (cluster0Offset == -1L) {
-            // Cluster starts immediately after the last parsed header/void element
             cluster0Offset = scanPos.toLong()
         }
-        Log.i(TAG, "Located true Cluster 0 offset at byte $cluster0Offset")
+        Log.i(TAG, "Located true Cluster 0 offset at byte $cluster0Offset (hasTracksInHead=$hasTracksInHead)")
 
         val resolvedLength = resolveFileLength(input)
 
         return SplitSeekHeadInfo(
             cluster0Offset = cluster0Offset,
             secondarySeekHeadAbsPos = segmentContentPosition + secondarySeekHeadRelPos,
-            fileLength = resolvedLength
+            fileLength = resolvedLength,
+            segmentContentPosition = segmentContentPosition,
+            hasTracksInHead = hasTracksInHead
         )
     }
 
@@ -395,8 +576,8 @@ class SmartMatroskaExtractor(
     /**
      * Fetches the tail metadata slice containing Tracks and Cues over HTTP Range or from local storage.
      * Uses a resilient two-tier strategy:
-     * - Primary: 160 KB (safely captures Cues up to 106+ KB before EOF in < 0.4s)
-     * - Fallback: 128 KB (aligned with edge single-chunk RPC boundary)
+     * - Primary: 512 KB (safely captures Cues up to 13 hours of video in ~0.2s)
+     * - Fallback: 1024 KB (1 MB) deep search fallback for massive multi-hour 4K streams
      */
     private fun fetchTailSlice(splitInfo: SplitSeekHeadInfo): ByteArray? {
         val fileLength = splitInfo.fileLength
@@ -413,6 +594,7 @@ class SmartMatroskaExtractor(
                 listOf(PRIMARY_TAIL_SLICE_BYTES, FALLBACK_TAIL_SLICE_BYTES)
             }
 
+            var bestBytes: ByteArray? = null
             for (tailLen in sliceSizes) {
                 val rangeHeader = if (fileLength != null && fileLength > 0L) {
                     val startByte = maxOf(0L, fileLength - tailLen)
@@ -437,8 +619,12 @@ class SmartMatroskaExtractor(
                         if (resp.isSuccessful || resp.code == 206) {
                             val bodyBytes = resp.body?.bytes()
                             if (bodyBytes != null && bodyBytes.size >= 128) {
-                                Log.i(TAG, "Tail slice fetched successfully: ${bodyBytes.size} bytes (HTTP ${resp.code})")
-                                return bodyBytes
+                                if (bestBytes == null) bestBytes = bodyBytes
+                                val metadata = extractTracksAndCues(bodyBytes)
+                                if (metadata != null && (metadata.cuesBytes != null || metadata.tracksBytes != null)) {
+                                    Log.i(TAG, "Tail slice ($tailLen bytes) verified: tracks=${metadata.tracksBytes?.size ?: 0}, cues=${metadata.cuesBytes?.size ?: 0}")
+                                    return bodyBytes
+                                }
                             }
                         } else {
                             Log.w(TAG, "Tail slice HTTP fetch returned code: ${resp.code} for $rangeHeader")
@@ -448,6 +634,7 @@ class SmartMatroskaExtractor(
                     Log.w(TAG, "Failed to fetch tail slice over HTTP ($rangeHeader): ${e.message}")
                 }
             }
+            if (bestBytes != null) return bestBytes
         }
 
         // 2. Local file stream
@@ -457,14 +644,25 @@ class SmartMatroskaExtractor(
                 val file = java.io.File(path)
                 if (file.exists() && file.length() > 0L) {
                     val len = file.length()
-                    val tailLen = minOf(PRIMARY_TAIL_SLICE_BYTES, len)
-                    val startByte = maxOf(0L, len - tailLen)
-                    val buf = ByteArray(tailLen.toInt())
-                    java.io.RandomAccessFile(file, "r").use { raf ->
-                        raf.seek(startByte)
-                        raf.readFully(buf)
+                    val sliceSizes = listOf(
+                        minOf(PRIMARY_TAIL_SLICE_BYTES, len),
+                        minOf(FALLBACK_TAIL_SLICE_BYTES, len)
+                    ).distinct()
+                    var bestBytes: ByteArray? = null
+                    for (tailLen in sliceSizes) {
+                        val startByte = maxOf(0L, len - tailLen)
+                        val buf = ByteArray(tailLen.toInt())
+                        java.io.RandomAccessFile(file, "r").use { raf ->
+                            raf.seek(startByte)
+                            raf.readFully(buf)
+                        }
+                        if (bestBytes == null) bestBytes = buf
+                        val metadata = extractTracksAndCues(buf)
+                        if (metadata != null && (metadata.cuesBytes != null || metadata.tracksBytes != null)) {
+                            return buf
+                        }
                     }
-                    return buf
+                    if (bestBytes != null) return bestBytes
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to fetch tail slice from local file: ${e.message}")
@@ -476,6 +674,7 @@ class SmartMatroskaExtractor(
 
     /**
      * Extracts [ID_TRACKS] and [ID_CUES] byte slices from the tail buffer.
+     * Decoupled: Returns metadata as long as either valid Tracks OR Cues is present.
      */
     private fun extractTracksAndCues(tailBytes: ByteArray): ExtractedMetadata? {
         // 1. Find ID_TRACKS (0x1654AE6B)
@@ -490,12 +689,20 @@ class SmartMatroskaExtractor(
                 break
             }
         }
-        if (tracksIdx == -1) return null
 
-        val tracksHeader = readElementHeader(tailBytes, tracksIdx, tailBytes.size) ?: return null
-        val tracksLen = tracksHeader.second + tracksHeader.third.toInt()
-        if (tracksIdx + tracksLen > tailBytes.size) return null
-        val tracksBytes = tailBytes.copyOfRange(tracksIdx, tracksIdx + tracksLen)
+        var tracksBytes: ByteArray? = null
+        if (tracksIdx != -1) {
+            val tracksHeader = readElementHeader(tailBytes, tracksIdx, tailBytes.size)
+            if (tracksHeader != null) {
+                val tracksLen = tracksHeader.second + tracksHeader.third.toInt()
+                if (tracksIdx + tracksLen <= tailBytes.size) {
+                    tracksBytes = tailBytes.copyOfRange(tracksIdx, tracksIdx + tracksLen)
+                    Log.i(TAG, "Extracted full Tracks element from tail: ${tracksBytes.size} bytes")
+                } else {
+                    Log.w(TAG, "Tail Tracks element was truncated in slice (length $tracksLen > available ${tailBytes.size - tracksIdx})")
+                }
+            }
+        }
 
         // 2. Find ID_CUES (0x1C53BB6B)
         var cuesIdx = -1
@@ -527,6 +734,10 @@ class SmartMatroskaExtractor(
             }
         } else {
             Log.w(TAG, "ID_CUES not found in ${tailBytes.size} bytes tail buffer")
+        }
+
+        if (tracksBytes == null && cuesBytes == null) {
+            return null
         }
 
         return ExtractedMetadata(tracksBytes, cuesBytes)

@@ -28,6 +28,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     object About : Screen("about", "About StreamHub")
     object MyProfile : Screen("my-profile", "My Profile")
     object EditProfile : Screen("edit-profile", "Edit Profile")
+    object BroadcastAnnouncement : Screen("broadcast-announcement", "Broadcast Studio")
     
     object Details : Screen("details/{mediaId}?episodeIndex={episodeIndex}", "Details") {
         fun createRoute(mediaId: String, episodeIndex: Int = -1): String {

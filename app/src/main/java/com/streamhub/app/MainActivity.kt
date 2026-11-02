@@ -70,6 +70,8 @@ import com.streamhub.app.data.repository.CatalogState
 import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.player.StreamPlayerViewModel
 import com.streamhub.app.ui.navigation.Screen
+import com.streamhub.app.ui.screens.AboutScreen
+import com.streamhub.app.ui.screens.BroadcastAnnouncementScreen
 import com.streamhub.app.ui.screens.DetailsScreen
 import com.streamhub.app.ui.screens.DownloadsScreen
 import com.streamhub.app.ui.screens.HistoryScreen
@@ -664,6 +666,9 @@ fun StreamHubApp(
                     },
                     onNavigateToMyList = {
                         navController.navigate(Screen.MyList.route)
+                    },
+                    onNavigateToBroadcastStudio = {
+                        navController.navigate(Screen.BroadcastAnnouncement.route)
                     }
                 )
             }
@@ -705,6 +710,16 @@ fun StreamHubApp(
                     onBackClick = { navController.popBackStack() },
                     onNavigateToDownloads = {
                         navController.navigate(Screen.Downloads.route) { launchSingleTop = true }
+                    }
+                )
+            }
+
+            composable(Screen.BroadcastAnnouncement.route) {
+                BroadcastAnnouncementScreen(
+                    onBackClick = { navController.popBackStack() },
+                    repository = repository,
+                    onMediaClick = { mediaItem ->
+                        navController.navigate(Screen.Details.createRoute(mediaItem.id))
                     }
                 )
             }
