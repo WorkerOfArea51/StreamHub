@@ -512,14 +512,14 @@ class StreamPlayerViewModel : ViewModel() {
                 // - backBuffer = 15_000: Purges watched frames from RAM; disk cache handles persistence.
                 val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
                     .setBufferDurationsMs(
-                        900_000,        // minBufferMs (15-minute continuous charging floor)
-                        1_200_000,      // maxBufferMs (20-minute forward ceiling)
+                        720_000,        // minBufferMs (12-minute continuous charging floor)
+                        900_000,        // maxBufferMs (15-minute forward ceiling)
                         250,            // bufferForPlaybackMs (instant 250ms cold-start pad)
                         600             // bufferForPlaybackAfterRebufferMs (600ms rapid seek & scrub recovery pad)
                     )
                     .setBackBuffer(15_000, false)
-                    .setPrioritizeTimeOverSizeThresholds(true)
-                    .setTargetBufferBytes(320 * 1024 * 1024)
+                    .setPrioritizeTimeOverSizeThresholds(false)
+                    .setTargetBufferBytes(256 * 1024 * 1024)
                     .build()
 
                 // CRITICAL: DO NOT ADD FLAG_DISABLE_SEEK_FOR_CUES.
