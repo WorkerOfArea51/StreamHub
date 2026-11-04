@@ -14,6 +14,14 @@ import androidx.media3.extractor.SeekMap
 import androidx.media3.extractor.TrackOutput
 import androidx.media3.extractor.mkv.MatroskaExtractor
 import com.streamhub.app.data.api.SharedHttpClient
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import okhttp3.Call
 import okhttp3.Request
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -278,6 +286,11 @@ class SmartMatroskaExtractor(
         val cuesBytes: ByteArray?
     )
 
+    private val extractorScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var cuesJob: Job? = null
+    @Volatile private var activeTailCall: Call? = null
+    @Volatile private var pendingChunkIndex: ChunkIndex? = null
+
     private var syntheticInput: SyntheticTracksExtractorInput? = null
     private var isFirstRead = true
     private var detectedSplitInfo: SplitSeekHeadInfo? = null
@@ -302,11 +315,15 @@ class SmartMatroskaExtractor(
             override fun seekMap(seekMap: SeekMap) {
                 emittedSeekMap = seekMap
                 if (seekMap.isSeekable) {
-                    Log.i(TAG, "Native SeekMap is seekable (${seekMap.durationUs / 1000} ms) — passing through")
+                    Log.i(TAG, "Native SeekMap is seekable (${seekMap.durationUs / 1000} ms) — passing through and cancelling tail probe")
+                    cuesJob?.cancel()
+                    activeTailCall?.cancel()
                     output.seekMap(seekMap)
                 } else {
-                    val chunkIndex = parsedChunkIndex
+                    val chunkIndex = parsedChunkIndex ?: pendingChunkIndex
                     if (chunkIndex != null && chunkIndex.isSeekable) {
+                        parsedChunkIndex = chunkIndex
+                        pendingChunkIndex = null
                         Log.i(TAG, "Native SeekMap was Unseekable! Replaced with Cues ChunkIndex (${chunkIndex.length} keyframes, duration=${chunkIndex.durationUs / 1000} ms)")
                         output.seekMap(chunkIndex)
                     } else {
@@ -314,7 +331,7 @@ class SmartMatroskaExtractor(
                         val fileLen = detectedSplitInfo?.fileLength ?: 0L
                         val cluster0 = detectedSplitInfo?.cluster0Offset ?: 0L
                         if (durationUs > 0L && fileLen > cluster0) {
-                            Log.i(TAG, "Native SeekMap was Unseekable and no Cues available. Engaged Tier 3 LinearInterpolatedSeekMap! (duration=${durationUs / 1000} ms, fileLen=$fileLen, cluster0=$cluster0)")
+                            Log.i(TAG, "Native SeekMap was Unseekable. Emitting Tier 3 LinearInterpolatedSeekMap immediately! (duration=${durationUs / 1000} ms, fileLen=$fileLen, cluster0=$cluster0)")
                             val linearSeekMap = LinearInterpolatedSeekMap(durationUs, fileLen, cluster0)
                             output.seekMap(linearSeekMap)
                         } else {
@@ -338,7 +355,11 @@ class SmartMatroskaExtractor(
     }
 
     override fun release() {
+        cuesJob?.cancel()
+        activeTailCall?.cancel()
+        extractorScope.cancel()
         syntheticInput = null
+        pendingChunkIndex = null
         parsedChunkIndex = null
         emittedSeekMap = null
         rawOutput = null
@@ -346,6 +367,16 @@ class SmartMatroskaExtractor(
     }
 
     override fun read(input: ExtractorInput, seekPosition: PositionHolder): Int {
+        // 1. Upgrade SeekMap if background Cues resolution completed
+        val pending = pendingChunkIndex
+        if (pending != null) {
+            pendingChunkIndex = null
+            parsedChunkIndex = pending
+            Log.i(TAG, "Upgrading SeekMap to frame-accurate Tier 1 Cues ChunkIndex (${pending.length} keyframes, duration=${pending.durationUs / 1000} ms)")
+            rawOutput?.seekMap(pending)
+        }
+
+        // 2. Initial probe on first read
         if (isFirstRead) {
             isFirstRead = false
             val splitInfo = probeForSplitSeekHead(input)
@@ -354,39 +385,19 @@ class SmartMatroskaExtractor(
                 Log.i(TAG, "MKV probe: cluster0=${splitInfo.cluster0Offset}, secSeekHead=${splitInfo.secondarySeekHeadAbsPos}, directCues=${splitInfo.directCuesAbsPos}, fileLen=${splitInfo.fileLength}, tracksInHead=${splitInfo.hasTracksInHead}")
 
                 val targetUri = effectiveUri
-                var metadata: ExtractedMetadata? = null
 
-                // Tier 1: Targeted precision fetch via Secondary SeekHead or Direct Cues pointer
-                if (targetUri != null && (splitInfo.secondarySeekHeadAbsPos != null || splitInfo.directCuesAbsPos != null)) {
-                    metadata = extractMetadataViaSeekHead(targetUri, splitInfo)
-                }
-
-                // Tier 2: Adaptive tail probe fallback
-                if (metadata?.cuesBytes == null && targetUri != null && splitInfo.fileLength != null) {
-                    metadata = extractMetadataViaAdaptiveTailProbe(targetUri, splitInfo.fileLength)
-                }
-
-                if (metadata != null) {
-                    // 1. Build seekable ChunkIndex from Cues
-                    if (metadata.cuesBytes != null) {
-                        val chunkIndex = buildChunkIndexFromCues(
-                            cuesBytes = metadata.cuesBytes,
-                            segmentContentPos = splitInfo.segmentContentPosition,
-                            fileLength = splitInfo.fileLength ?: 0L
-                        )
-                        if (chunkIndex != null) {
-                            parsedChunkIndex = chunkIndex
-                            Log.i(TAG, "Successfully built ChunkIndex from Cues: ${chunkIndex.length} keyframes, duration=${chunkIndex.durationUs / 1000} ms")
-                            val current = emittedSeekMap
-                            if (current != null && !current.isSeekable) {
-                                Log.i(TAG, "Active SeekMap was Unseekable — updating ExtractorOutput with Cues ChunkIndex now")
-                                rawOutput?.seekMap(chunkIndex)
-                            }
-                        }
+                if (!splitInfo.hasTracksInHead) {
+                    // Rare HandBrake split-tracks: Tracks element missing from head.
+                    // Must synchronously fetch Tracks before Cluster 0 so audio/video codecs can initialize.
+                    Log.i(TAG, "Tracks missing from head — performing synchronous splice before Cluster 0")
+                    var metadata: ExtractedMetadata? = null
+                    if (targetUri != null && (splitInfo.secondarySeekHeadAbsPos != null || splitInfo.directCuesAbsPos != null)) {
+                        metadata = extractMetadataViaSeekHead(targetUri, splitInfo)
                     }
-
-                    // 2. Splice Tracks if missing from head
-                    if (!splitInfo.hasTracksInHead && metadata.tracksBytes != null) {
+                    if (metadata?.tracksBytes == null && targetUri != null && splitInfo.fileLength != null) {
+                        metadata = extractMetadataViaAdaptiveTailProbe(targetUri, splitInfo.fileLength)
+                    }
+                    if (metadata?.tracksBytes != null) {
                         val syntheticPayload = metadata.tracksBytes
                         syntheticDataSize = syntheticPayload.size.toLong()
                         Log.i(TAG, "Synthetic stream spliced! Splicing Tracks (${syntheticPayload.size} bytes) before Cluster 0 at ${splitInfo.cluster0Offset}")
@@ -395,8 +406,30 @@ class SmartMatroskaExtractor(
                             cluster0Offset = splitInfo.cluster0Offset,
                             syntheticData = syntheticPayload
                         )
-                    } else {
-                        Log.i(TAG, "Tracks element is already present at head — reading directly from physical input.")
+                    }
+                    if (metadata?.cuesBytes != null) {
+                        val chunkIndex = buildChunkIndexFromCues(
+                            cuesBytes = metadata.cuesBytes,
+                            segmentContentPos = splitInfo.segmentContentPosition,
+                            fileLength = splitInfo.fileLength ?: 0L
+                        )
+                        if (chunkIndex != null) {
+                            parsedChunkIndex = chunkIndex
+                            val current = emittedSeekMap
+                            if (current != null && !current.isSeekable) {
+                                rawOutput?.seekMap(chunkIndex)
+                            }
+                        }
+                    }
+                } else {
+                    // Standard MKV (98%+ of files, including all normal DC4 files):
+                    // Tracks are ALREADY in the head! DO NOT BLOCK!
+                    // Let ExoPlayer start decoding and rendering the first frame IMMEDIATELY (1-2s cold start).
+                    // Launch Cues resolution asynchronously in the background.
+                    if (targetUri != null) {
+                        cuesJob = extractorScope.launch {
+                            resolveCuesInBackground(targetUri, splitInfo)
+                        }
                     }
                 }
             }
@@ -419,6 +452,36 @@ class SmartMatroskaExtractor(
             Log.d(TAG, "delegate.read requested seek to physical position ${seekPosition.position}")
         }
         return result
+    }
+
+    /**
+     * Resolves Cues asynchronously in the background without blocking video playback cold start.
+     */
+    private fun resolveCuesInBackground(uri: Uri, splitInfo: SplitSeekHeadInfo) {
+        if (!extractorScope.isActive) return
+        var metadata: ExtractedMetadata? = null
+
+        // Tier 1: Targeted precision fetch via Secondary SeekHead or Direct Cues pointer
+        if (splitInfo.secondarySeekHeadAbsPos != null || splitInfo.directCuesAbsPos != null) {
+            metadata = extractMetadataViaSeekHead(uri, splitInfo)
+        }
+
+        // Tier 2: Adaptive tail probe fallback
+        if (metadata?.cuesBytes == null && splitInfo.fileLength != null && extractorScope.isActive) {
+            metadata = extractMetadataViaAdaptiveTailProbe(uri, splitInfo.fileLength)
+        }
+
+        if (metadata?.cuesBytes != null && extractorScope.isActive) {
+            val chunkIndex = buildChunkIndexFromCues(
+                cuesBytes = metadata.cuesBytes,
+                segmentContentPos = splitInfo.segmentContentPosition,
+                fileLength = splitInfo.fileLength ?: 0L
+            )
+            if (chunkIndex != null && chunkIndex.isSeekable) {
+                Log.i(TAG, "Background Cues resolution succeeded: ${chunkIndex.length} keyframes (duration=${chunkIndex.durationUs / 1000} ms). Staged for SeekMap upgrade.")
+                pendingChunkIndex = chunkIndex
+            }
+        }
     }
 
     /**
@@ -627,6 +690,7 @@ class SmartMatroskaExtractor(
      * Prevents OkHttp [IOException] connection drops on partial worker reads and salvages incoming bytes.
      */
     private fun fetchRangeBytes(uri: Uri, startByte: Long, endByte: Long?): ByteArray? {
+        if (!extractorScope.isActive) return null
         if (uri.scheme == "file" || uri.scheme == null) {
             return fetchLocalFileRange(uri, startByte, endByte)
         }
@@ -648,7 +712,9 @@ class SmartMatroskaExtractor(
                 .header("User-Agent", "StreamHub/4.8 (Linux; Android 14; Mobile)")
                 .build()
 
-            SharedHttpClient.streamingClient.newCall(req).execute().use { resp ->
+            val call = SharedHttpClient.streamingClient.newCall(req)
+            activeTailCall = call
+            call.execute().use { resp ->
                 if (!resp.isSuccessful && resp.code != 206) {
                     Log.w(TAG, "fetchRangeBytes HTTP ${resp.code} for $rangeHeader")
                     return null
@@ -661,6 +727,7 @@ class SmartMatroskaExtractor(
                         val buf = ByteArray(8192)
                         var n: Int
                         while (input.read(buf).also { n = it } != -1) {
+                            if (!extractorScope.isActive) return null
                             out.write(buf, 0, n)
                             if (expectedLen > 0 && out.size() >= expectedLen) break
                             if (out.size() >= 1048576) break
@@ -668,6 +735,8 @@ class SmartMatroskaExtractor(
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "Streaming read caught exception: ${e.message}, salvaged ${out.size()} bytes for $rangeHeader")
+                } finally {
+                    activeTailCall = null
                 }
                 val result = out.toByteArray()
                 return if (result.isNotEmpty()) result else null
@@ -675,6 +744,8 @@ class SmartMatroskaExtractor(
         } catch (e: Exception) {
             Log.w(TAG, "Failed fetchRangeBytes over HTTP ($rangeHeader): ${e.message}")
             return null
+        } finally {
+            activeTailCall = null
         }
     }
 
@@ -839,9 +910,10 @@ class SmartMatroskaExtractor(
         uri: Uri,
         fileLength: Long?
     ): ExtractedMetadata? {
-        if (fileLength == null || fileLength <= 0L) return null
+        if (fileLength == null || fileLength <= 0L || !extractorScope.isActive) return null
         val probeSizes = listOf(65536L, 131072L, 262144L, 524288L) // 64 KB -> 128 KB -> 256 KB -> 512 KB
         for (sliceSize in probeSizes) {
+            if (!extractorScope.isActive) return null
             if (sliceSize >= fileLength) continue
             val startByte = maxOf(0L, fileLength - sliceSize)
             val endByte = fileLength - 1

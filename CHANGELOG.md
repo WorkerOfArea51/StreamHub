@@ -4,6 +4,17 @@ All notable architectural milestones, performance optimizations, and visual upda
 
 ---
 
+### What's New in StreamHub v4.8.445 🚀
+
+- ⚡ **1–2s Non-Blocking Instant Cold-Start & Asynchronous Cues Engine (`SmartMatroskaExtractor.kt`)**:
+  - **Zero-Block Startup for Head-Tracked MKVs**: For standard and Telegram DC4 MKVs where tracks are defined in the head (`hasTracksInHead == true`), initial extraction (`SmartMatroskaExtractor.read()`) never executes blocking synchronous network I/O. ExoPlayer reads Cluster 0 immediately, restoring instant **1–2 real-time second cold-starts**.
+  - **Asynchronous Background Cues Resolution**: Tail Cues probing (Tier 1 Secondary SeekHead & Tier 2 Adaptive Tail Probe) runs non-blockingly on `Dispatchers.IO` via `extractorScope`. As soon as Cues are parsed, the seek map is seamlessly upgraded to frame-accurate `ChunkIndex` on the playback thread in `read()` without stopping or interrupting video playback.
+  - **Early Native SeekMap Cancellation Guard**: When native ExoPlayer finds Cues in the head (`seekMap.isSeekable == true`), background jobs and in-flight OkHttp range calls are cancelled instantly, eliminating redundant network queries.
+  - **Zero-Latency Tier 3 Fallback Protection**: If native SeekMap is unseekable, `LinearInterpolatedSeekMap` activates at `0ms`, guaranteeing scrub/seek protection from the very first frame even if scrubbed before background Cues resolves.
+  - **Lifecycle-Bound Clean Teardown**: On `release()`, active coroutines, pending staged indexes, and in-flight OkHttp calls (`activeTailCall?.cancel()`) are cancelled immediately, preventing zombie sockets.
+
+---
+
 ### What's New in StreamHub v4.8.444 🚀
 
 - 🎯 **Universal 3-Tier MKV Seek Engine (`SmartMatroskaExtractor.kt`, `LinearInterpolatedSeekMap.kt`)**:
