@@ -27,7 +27,3 @@ All notable architectural milestones, performance optimizations, and visual upda
   - Reinstated strict byte ceiling priority (`prioritizeTimeOverSizeThresholds = false`) locked to `256 * 1024 * 1024` (256 MB), completely eliminating `OutOfMemoryError` crashes on heavy 8.2+ Mbps streams while retaining >115 MB JVM heap headroom on 512 MB Android devices.
   - Reclaims watched frames older than 15s via `setBackBuffer(15_000, false)`.
 
----
-
-> [!NOTE]
-> For historical release notes and sprint archives prior to v4.8.444, see [`.agents/SPRINT_HISTORY.md`](.agents/SPRINT_HISTORY.md).
