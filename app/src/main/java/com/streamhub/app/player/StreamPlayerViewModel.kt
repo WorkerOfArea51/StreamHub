@@ -2353,7 +2353,9 @@ class StreamPlayerViewModel : ViewModel() {
                 val currentSnapshot = _uiState.value
                 val isPlayingNow = exoPlayer?.isPlaying == true
                 val hasForwardBuffer = ((exoPlayer?.bufferedPosition ?: 0L) - (exoPlayer?.currentPosition ?: 0L)) > 1500L
-                if (currentSnapshot.isReconnecting && !isPlayingNow && !hasForwardBuffer) {
+                val isActivelyTransferring = (bandwidthTracker?.currentSpeedKBps ?: 0L) >= 15L &&
+                    (bandwidthTracker?.timeSinceLastTransferMs ?: Long.MAX_VALUE) < 3_500L
+                if (currentSnapshot.isReconnecting && !isPlayingNow && !hasForwardBuffer && !isActivelyTransferring) {
                     Log.w("StreamPlayerViewModel", "Reconnect attempt #$autoRetryCount timed out after 8.5s without resuming playback. Escalating...")
                     handleStreamStall(savedPositionMs)
                 }
