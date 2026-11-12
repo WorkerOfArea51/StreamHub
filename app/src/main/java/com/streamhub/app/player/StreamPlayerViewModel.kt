@@ -164,16 +164,20 @@ class StreamPlayerViewModel : ViewModel() {
         viewModelScope.launch {
             NetworkMonitor.lastReconnectedAt.collect { timestamp ->
                 if (timestamp > 0L) {
+                    val player = exoPlayer ?: return@collect
                     val snapshot = _uiState.value
-                    val isNetworkIssue = snapshot.playerErrorInfo?.type == PlayerErrorType.NETWORK ||
-                                         snapshot.isReconnecting ||
-                                         (snapshot.isBuffering && snapshot.bufferHealthSeconds == 0L)
-                    val isLocalStream = snapshot.resolvedStreamUrl.startsWith("/") || snapshot.resolvedStreamUrl.startsWith("file://")
-                    if (isNetworkIssue && !snapshot.isPlaying && exoPlayer != null && !isLocalStream) {
+                    val isExplicitNetworkError = snapshot.playerErrorInfo?.type == PlayerErrorType.NETWORK ||
+                                                 snapshot.isReconnecting
+                    val isActivelyStalledWhilePlaying = player.playWhenReady &&
+                                                        snapshot.isBuffering &&
+                                                        snapshot.bufferHealthSeconds == 0L &&
+                                                        !hasHealthyForwardBuffer(player, 1_000L)
+                    val isLocalStream = isStreamLocal(snapshot.resolvedStreamUrl)
+                    if ((isExplicitNetworkError || isActivelyStalledWhilePlaying) && !snapshot.isPlaying && !isLocalStream) {
                         Log.i("StreamPlayerViewModel", "Network restored ($timestamp). Auto-healing player connection immediately.")
                         autoRetryCount = 0
                         val lastProgressPos = _playbackProgress.value.currentPositionMs
-                        val playerPos = exoPlayer?.currentPosition?.takeIf { it > 0L }
+                        val playerPos = player.currentPosition.takeIf { it > 0L }
                         val historyPos = WatchHistoryManager.getProgress(currentMediaItem?.id ?: "")?.positionMs ?: 0L
                         val resumePos = pendingSeekTargetMs
                             ?: playerPos
@@ -1661,6 +1665,58 @@ class StreamPlayerViewModel : ViewModel() {
         _uiState.update { it.copy(showSubtitleDialog = !it.showSubtitleDialog, showAudioDialog = false) }
     }
 
+    private fun isStreamLocal(url: String): Boolean =
+        url.startsWith("/") || url.startsWith("file://") || url.startsWith("content://")
+
+    private fun isBufferedToEnd(player: ExoPlayer): Boolean {
+        val duration = player.duration.coerceAtLeast(0L)
+        return duration > 10_000L && player.bufferedPosition.coerceAtLeast(0L) >= (duration - 3_000L)
+    }
+
+    private fun hasHealthyForwardBuffer(player: ExoPlayer, minAheadMs: Long = 3_000L): Boolean {
+        val buffered = player.bufferedPosition.coerceAtLeast(0L)
+        val current = player.currentPosition.coerceAtLeast(0L)
+        return isBufferedToEnd(player) || (buffered - current).coerceAtLeast(0L) >= minAheadMs
+    }
+
+    /**
+     * Silently refreshes stale HTTP keep-alive sockets after pause or backgrounding without
+     * wiping ExoPlayer's active SampleQueue buffer. Only forces stream recovery when playback
+     * genuinely cannot continue from its existing buffer (IDLE, error state, or stalled at 0s).
+     */
+    private fun recoverConnectionAfterIdleIfNeeded(
+        player: ExoPlayer,
+        assumeWantsPlay: Boolean,
+        cancelInFlight: Boolean = false
+    ) {
+        if (isStreamLocal(_uiState.value.resolvedStreamUrl)) return
+        if (!isBufferedToEnd(player)) {
+            try {
+                com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+            } catch (e: Exception) {
+                Log.w("StreamPlayerViewModel", "Failed to evict streaming connection pool", e)
+            }
+        }
+        val isEmptyStalled = !hasHealthyForwardBuffer(player, 1_000L) &&
+            player.playbackState == Player.STATE_BUFFERING &&
+            (bandwidthTracker?.timeSinceLastTransferMs ?: Long.MAX_VALUE) >= 4_000L
+        val isBrokenOrIdle = player.playbackState == Player.STATE_IDLE || _uiState.value.playerErrorInfo != null
+        if (isBrokenOrIdle || (assumeWantsPlay && isEmptyStalled)) {
+            Log.i("StreamPlayerViewModel", "Recovering stalled/idle stream pipeline after pause (state=${player.playbackState}, error=${_uiState.value.playerErrorInfo != null})")
+            if (cancelInFlight) {
+                try {
+                    com.streamhub.app.data.api.SharedHttpClient.streamingClient.dispatcher.cancelAll()
+                    com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
+                } catch (_: Exception) {}
+            }
+            val pos = pendingSeekTargetMs ?: player.currentPosition
+            if (player.playbackState == Player.STATE_IDLE) {
+                player.prepare()
+            }
+            player.seekTo(pos)
+        }
+    }
+
     fun togglePlayPause() {
         val player = exoPlayer ?: return
         if (player.playbackState == Player.STATE_ENDED) {
@@ -1675,15 +1731,9 @@ class StreamPlayerViewModel : ViewModel() {
         } else {
             val pauseDurationMs = if (lastPauseTimestampMs > 0L) System.currentTimeMillis() - lastPauseTimestampMs else 0L
             lastPauseTimestampMs = 0L
-            // If the player was paused for >= 10 seconds (whether in-app or in background),
-            // the server-side keep-alive socket is likely closed. Refresh the socket pool
-            // and reconnect cleanly so resuming is instant and never hangs on a dead socket.
             if (pauseDurationMs >= 10_000L) {
-                Log.i("StreamPlayerViewModel", "Resuming after prolonged pause (${pauseDurationMs}ms). Refreshing connection...")
-                try {
-                    com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
-                } catch (_: Exception) {}
-                player.seekTo(player.currentPosition)
+                Log.d("StreamPlayerViewModel", "Resuming after pause (${pauseDurationMs}ms); checking buffer & socket state...")
+                recoverConnectionAfterIdleIfNeeded(player, assumeWantsPlay = true, cancelInFlight = false)
             }
             player.play()
         }
@@ -1717,23 +1767,19 @@ class StreamPlayerViewModel : ViewModel() {
 
         stallAccumulatorMs = 0L // Reset stall accumulator to prevent false watchdog trigger upon returning
 
-        // If the app was in the background for >= 3 seconds, the TCP connection to the streaming
-        // server is likely dead or timed out by the server/proxy. Proactively refresh it.
-        if (elapsedMs >= 3000L && exoPlayer != null && _uiState.value.resolvedStreamUrl.isNotBlank()) {
+        val url = _uiState.value.resolvedStreamUrl
+        if (elapsedMs >= 3000L && exoPlayer != null && url.isNotBlank() && !isStreamLocal(url)) {
             refreshStreamConnection()
         }
     }
 
     fun refreshStreamConnection() {
-        Log.i("StreamPlayerViewModel", "Proactively refreshing streaming connection...")
-        try {
-            com.streamhub.app.data.api.SharedHttpClient.streamingClient.connectionPool.evictAll()
-        } catch (e: Exception) {
-            Log.w("StreamPlayerViewModel", "Failed to evict connection pool", e)
-        }
         val player = exoPlayer ?: return
-        val pos = pendingSeekTargetMs ?: player.currentPosition
-        player.seekTo(pos)
+        recoverConnectionAfterIdleIfNeeded(
+            player = player,
+            assumeWantsPlay = player.playWhenReady,
+            cancelInFlight = true
+        )
     }
 
     fun seekTo(positionMs: Long) {
@@ -1879,7 +1925,13 @@ class StreamPlayerViewModel : ViewModel() {
     }
 
     fun toggleLock() {
-        _uiState.update { it.copy(isLocked = !it.isLocked) }
+        _uiState.update { state ->
+            val nextLocked = !state.isLocked
+            state.copy(
+                isLocked = nextLocked,
+                isControlsVisible = if (!nextLocked) true else state.isControlsVisible
+            )
+        }
     }
 
     fun setSleepTimer(minutes: Int) {
@@ -2159,6 +2211,9 @@ class StreamPlayerViewModel : ViewModel() {
         val urlToUse = (customUrl ?: snapshot.resolvedStreamUrl).trim()
         if (urlToUse.isBlank()) return
 
+        // Capture play intent before pausing/clearing items so background reconnects preserve paused state
+        val preservePlayWhenReady = exoPlayer?.playWhenReady ?: snapshot.isPlaying
+
         exoPlayer?.apply {
             pause()
             clearMediaItems()
@@ -2184,7 +2239,7 @@ class StreamPlayerViewModel : ViewModel() {
         exoPlayer?.apply {
             setMediaItem(mediaItem, savedPositionMs)
             prepare()
-            playWhenReady = true
+            playWhenReady = preservePlayWhenReady
         }
     }
 

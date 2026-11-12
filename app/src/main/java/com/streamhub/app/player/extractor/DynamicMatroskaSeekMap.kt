@@ -39,6 +39,10 @@ class DynamicMatroskaSeekMap(
     @Volatile
     private var activeSeekMap: SeekMap? = null
 
+    @Volatile
+    var lastSeekUsedFallback: Boolean = false
+        private set
+
     private val fallbackSeekMap = LinearInterpolatedSeekMap(durationUs, fileLength, cluster0Offset)
 
     val isUpgraded: Boolean
@@ -47,6 +51,7 @@ class DynamicMatroskaSeekMap(
     fun upgradeToChunkIndex(chunkIndex: ChunkIndex) {
         if (chunkIndex.isSeekable) {
             activeSeekMap = chunkIndex
+            lastSeekUsedFallback = false
             Log.i(TAG, "Upgraded to frame-accurate ChunkIndex with ${chunkIndex.length} keyframes (duration=${chunkIndex.durationUs / 1000} ms)")
         }
     }
@@ -61,8 +66,10 @@ class DynamicMatroskaSeekMap(
         }
         val current = activeSeekMap
         return if (current != null && current.isSeekable) {
+            lastSeekUsedFallback = false
             current.getSeekPoints(timeUs)
         } else {
+            lastSeekUsedFallback = true
             fallbackSeekMap.getSeekPoints(timeUs)
         }
     }

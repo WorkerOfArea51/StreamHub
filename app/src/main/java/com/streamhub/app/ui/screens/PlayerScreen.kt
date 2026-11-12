@@ -376,10 +376,28 @@ fun PlayerScreen(
         }
     }
 
+    var isLockOverlayVisible by remember { mutableStateOf(false) }
+    var lockOverlayTrigger by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(uiState.isLocked) {
+        isLockOverlayVisible = uiState.isLocked
+        if (uiState.isLocked) {
+            lockOverlayTrigger = System.currentTimeMillis()
+        }
+    }
+
+    LaunchedEffect(uiState.isLocked, isLockOverlayVisible, lockOverlayTrigger) {
+        if (uiState.isLocked && isLockOverlayVisible) {
+            delay(2500L)
+            isLockOverlayVisible = false
+        }
+    }
+
     // FIX: When the player is locked, intercept the system back button to prevent
     // accidental exit. User must unlock first (via the floating unlock pill) to leave.
     androidx.activity.compose.BackHandler(enabled = uiState.isLocked) {
-        // Show a hint toast instead of exiting.
+        isLockOverlayVisible = true
+        lockOverlayTrigger = System.currentTimeMillis()
         ToastManager.showToast("Screen is locked. Tap unlock to exit 🔒")
     }
 
@@ -2107,10 +2125,7 @@ fun PlayerScreen(
                                     // 1. Lock Controls Button
                                     ControlsButton(
                                         icon = Icons.Default.LockOpen,
-                                        onClick = {
-                                            viewModel.toggleLock()
-                                            triggerHudPill("Controls locked", Icons.Default.Lock)
-                                        },
+                                        onClick = { viewModel.toggleLock() },
                                         size = 40.dp,
                                         iconSize = 18.dp,
                                         title = "Lock Controls"
@@ -2378,10 +2393,7 @@ fun PlayerScreen(
                                     // Lock Controls Button (Matching mpvEx)
                                     ControlsButton(
                                         icon = Icons.Default.LockOpen,
-                                        onClick = {
-                                            viewModel.toggleLock()
-                                            triggerHudPill("Controls locked", Icons.Default.Lock)
-                                        },
+                                        onClick = { viewModel.toggleLock() },
                                         size = 40.dp,
                                         iconSize = 18.dp,
                                         title = "Lock Controls"
@@ -2615,9 +2627,46 @@ fun PlayerScreen(
         }
 
 
-        // ── Slide to Unlock Pill (When Screen is Locked) ──
+        // ── Screen-Lock Touch Shield & Auto-Hiding Unlock Pill ──
+        if (uiState.isLocked && !isPipMode) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
+                            val downPos = down.position
+                            var maxDistSq = 0f
+                            var pointerCountMax = 1
+                            val touchSlopSq = viewConfiguration.touchSlop * viewConfiguration.touchSlop
+
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                pointerCountMax = maxOf(pointerCountMax, event.changes.size)
+                                event.changes.forEach { change ->
+                                    val dx = change.position.x - downPos.x
+                                    val dy = change.position.y - downPos.y
+                                    maxDistSq = maxOf(maxDistSq, dx * dx + dy * dy)
+                                    change.consume()
+                                }
+                                if (event.changes.none { it.pressed }) {
+                                    if (pointerCountMax == 1 && maxDistSq <= touchSlopSq) {
+                                        isLockOverlayVisible = !isLockOverlayVisible
+                                        if (isLockOverlayVisible) {
+                                            lockOverlayTrigger = System.currentTimeMillis()
+                                        }
+                                    }
+                                    break
+                                }
+                            }
+                        }
+                    }
+            )
+        }
+
         SlideToUnlock(
-            isLocked = uiState.isLocked,
+            isLocked = uiState.isLocked && isLockOverlayVisible && !isPipMode,
             onUnlock = { viewModel.toggleLock() },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -2887,7 +2936,7 @@ fun PlayerScreen(
         }
 
         // Smart Resume Prompt — non-intrusive floating pill that auto-dismisses after 7s
-        if (uiState.showResumePrompt && uiState.pendingResumePositionMs > 0L && errorInfo == null) {
+        if (uiState.showResumePrompt && uiState.pendingResumePositionMs > 0L && errorInfo == null && !uiState.isLocked) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()

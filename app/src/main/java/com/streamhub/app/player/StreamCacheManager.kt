@@ -87,6 +87,59 @@ object StreamCacheManager {
         }
     }
 
+    /**
+     * Reads an exact pre-cached byte range from [SimpleCache] without opening any network socket.
+     * Returns null unless the entire [startByte, startByte + length) span is already persisted locally.
+     */
+    fun readCachedRange(key: String, startByte: Long, length: Int): ByteArray? {
+        if (length <= 0 || startByte < 0L) return null
+        val cache = cacheLock.read { simpleCache }
+            ?: cachedContext?.let { getCache(it) }
+            ?: return null
+
+        val isFullyCached = try {
+            cache.isCached(key, startByte, length.toLong())
+        } catch (_: Exception) {
+            false
+        }
+        if (!isFullyCached) return null
+
+        val dataSource = try {
+            androidx.media3.datasource.cache.CacheDataSource.Factory()
+                .setCache(cache)
+                .setCacheWriteDataSinkFactory(null)
+                .setUpstreamDataSourceFactory(null)
+                .setCacheKeyFactory { ds -> ds.key ?: key }
+                .createDataSource()
+        } catch (_: Exception) {
+            return null
+        }
+
+        return try {
+            val spec = androidx.media3.datasource.DataSpec.Builder()
+                .setUri(android.net.Uri.EMPTY)
+                .setKey(key)
+                .setPosition(startByte)
+                .setLength(length.toLong())
+                .build()
+            dataSource.open(spec)
+            val out = ByteArray(length)
+            var totalRead = 0
+            while (totalRead < length) {
+                val n = dataSource.read(out, totalRead, length - totalRead)
+                if (n <= 0) break
+                totalRead += n
+            }
+            if (totalRead == length) out else null
+        } catch (_: Exception) {
+            null
+        } finally {
+            try {
+                dataSource.close()
+            } catch (_: Exception) {}
+        }
+    }
+
     fun getCachedBytesForResource(context: Context, key: String): Long {
         val cache = getCache(context)
         return cacheLock.read {
