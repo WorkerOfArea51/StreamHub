@@ -269,7 +269,7 @@ object FranchiseManager {
         if (hasRelWord("TV SPECIAL") || hasTitleWord("TV SPECIAL") || hasRelWord("TV-SPECIAL")) return "TV SPECIAL"
         if (hasRelWord("OVA") || hasTitleWord("OVA")) return "OVA"
         if (hasRelWord("ONA") || hasTitleWord("ONA")) return "ONA"
-        if (hasRelWord("EXTRA") || hasTitleWord("EXTRA") || hasTitleWord("EXTRAS")) return "EXTRA"
+        if (hasRelWord("EXTRA")) return "EXTRA"
         if (hasRelWord("SPECIAL") || hasTitleWord("SPECIAL")) return "SPECIAL"
 
         if (isMovie(item) || hasRelWord("MOVIE")) {
@@ -452,18 +452,17 @@ object FranchiseManager {
                 parts.add("${item.episodes.size} Episodes")
             }
         } else if (isMovieItem) {
-            // Case 2: Movie (Standalone, Multi-part, or Special Edition)
-            if (pNum != null && pNum > 1) {
-                parts.add("Movie $pNum")
-            } else if (relUpper.contains("ENCORE")) {
-                parts.add("Encore Cut")
-            } else if (relUpper.contains("EXTENDED CUT") || relUpper.contains("EXTENDED")) {
-                parts.add("Extended Cut")
-            } else if (relUpper.contains("DIRECTOR'S CUT") || relUpper.contains("DIRECTOR")) {
-                parts.add("Director's Cut")
-            } else if (relUpper.contains("REMASTER")) {
-                parts.add("Remaster")
-            } else if (item.releaseYear.isNotBlank()) {
+            // Case 2: Movie (Standalone, Numbered, Multi-part, or Special Edition)
+            when {
+                sNum > 0 && pNum != null && pNum > 0 -> parts.add("Movie $sNum Pt $pNum")
+                sNum > 0 -> parts.add("Movie $sNum")
+                pNum != null && pNum > 0 -> parts.add("Part $pNum")
+                relUpper.contains("ENCORE") -> parts.add("Encore Cut")
+                relUpper.contains("EXTENDED CUT") || relUpper.contains("EXTENDED") -> parts.add("Extended Cut")
+                relUpper.contains("DIRECTOR'S CUT") || relUpper.contains("DIRECTOR") -> parts.add("Director's Cut")
+                relUpper.contains("REMASTER") -> parts.add("Remaster")
+            }
+            if (item.releaseYear.isNotBlank()) {
                 parts.add(item.releaseYear)
             }
             if (includeDuration) {
@@ -508,12 +507,65 @@ object FranchiseManager {
     }
 
     /**
+     * Single Source of Truth for top-left poster badge in Franchise Carousels,
+     * Media Cards, and Dropdown selectors.
+     *
+     * Invariants:
+     * 1. Movie Editions (ENCORE, EXTENDED, DIRECTOR'S CUT, REMASTER) take top priority.
+     * 2. Non-season tags (EXTRA, OVA, ONA, TV SPECIAL, SPECIAL) reflect creator explicit selection.
+     * 3. Movies:
+     *    - Movie# > 0 && Part# > 0 -> "M$movie P$part"
+     *    - Movie# > 0 -> "M$movie" (e.g. M1 for Demon Slayer Infinity Castle Movie 1)
+     *    - Part# > 0 -> "Pt $part" (e.g. Pt 1 for Dune Part 1)
+     *    - Otherwise -> "MOVIE" (Code Geass, Kaguya-sama, standalone movies)
+     * 4. Series:
+     *    - Season# > 0 && Part# > 0 -> "S$season P$part" (e.g. S4 P3 for AoT)
+     *    - Season# > 0 -> "S$season"
+     * 5. Zero-Season Series: formatLabel (EXTRA, OVA, etc.)
+     * 6. franchiseOrder is SOLELY for timeline position on the shelf and NEVER touches poster badges.
+     */
+    fun getPosterBadge(item: MediaItem): String? {
+        val relUpper = item.relationType.trim().uppercase(Locale.ROOT)
+        val sNum = getEffectiveSeasonNumber(item)
+        val pNum = getEffectivePartNumber(item)
+        val isMovieItem = isMovie(item)
+        val formatLabel = getMediaFormatLabel(item)
+
+        return when {
+            // 1. Movie Editions take top precedence
+            relUpper.contains("ENCORE") -> "ENCORE"
+            relUpper.contains("EXTENDED CUT") || relUpper.contains("EXTENDED") -> "EXTENDED"
+            relUpper.contains("DIRECTOR'S CUT") || relUpper.contains("DIRECTOR") -> "DIRECTOR"
+            relUpper.contains("REMASTER") -> "REMASTER"
+
+            // 2. Explicit Creator Relation (EXTRA, OVA, ONA, SPECIAL) - Creator authority!
+            relUpper.contains("EXTRA") || formatLabel == "EXTRA" -> "EXTRA"
+            sNum == 0 && formatLabel in listOf("OVA", "ONA", "SPECIAL", "TV SPECIAL") -> formatLabel
+
+            // 3. Movies
+            isMovieItem -> when {
+                sNum > 0 && pNum != null && pNum > 0 -> "M$sNum P$pNum"
+                sNum > 0 -> "M$sNum"
+                pNum != null && pNum > 0 -> "Pt $pNum"
+                else -> "MOVIE"
+            }
+
+            // 4. Regular TV Seasons
+            !isMovieItem && sNum > 0 -> when {
+                pNum != null && pNum > 0 -> "S$sNum P$pNum"
+                else -> "S$sNum"
+            }
+
+            // 5. Zero-Season Series fallback
+            sNum == 0 -> formatLabel
+
+            else -> null
+        }
+    }
+
+    /**
      * Builds unified options for the interactive Season & Arc Dropdown in the EPISODES tab.
      * Merges internal arcs/seasons inside [currentItem] with sibling franchise entries in [catalog].
-     */
-    /**
-     * Builds list of Season/Media options for the franchise universe selector.
-     * Exclusively contains actual Seasons, Sequels, Prequels, and Movies.
      */
     fun buildSeasonOptions(
         currentItem: MediaItem,
@@ -539,19 +591,7 @@ object FranchiseManager {
             val isRemaster = relUpper.contains("REMASTER")
             val isExtra = relUpper.contains("EXTRA") || format == "EXTRA"
 
-            val badgeStr = when {
-                isEncore -> "ENCORE"
-                isExtended -> "EXTENDED"
-                isDirector -> "DIRECTOR"
-                isRemaster -> "REMASTER"
-                isExtra -> "EXTRA"
-                format in listOf("OVA", "ONA", "SPECIAL", "TV SPECIAL") && sNum == 0 -> format
-                isMovie && pNum != null && pNum > 1 -> "M$pNum"
-                isMovie -> "MOVIE"
-                pNum != null && pNum > 0 -> "S$sNum P$pNum"
-                sNum > 0 -> "S$sNum"
-                else -> format
-            }
+            val badgeStr = getPosterBadge(fItem) ?: (if (isMovie) "MOVIE" else "TV")
 
             val shortLabelStr = when {
                 isEncore -> "Encore Cut"
@@ -560,7 +600,9 @@ object FranchiseManager {
                 isRemaster -> "Remaster"
                 isExtra -> "Extras"
                 format in listOf("OVA", "ONA", "SPECIAL", "TV SPECIAL") && sNum == 0 -> format
-                isMovie && pNum != null && pNum > 1 -> "Movie $pNum"
+                isMovie && sNum > 0 && pNum != null && pNum > 0 -> "Movie $sNum Pt $pNum"
+                isMovie && sNum > 0 -> "Movie $sNum"
+                isMovie && pNum != null && pNum > 0 -> "Part $pNum"
                 isMovie -> "Movie"
                 pNum != null && pNum > 0 -> "Season $sNum Pt $pNum"
                 sNum > 0 -> "Season $sNum"

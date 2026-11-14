@@ -97,9 +97,9 @@ fun MediaCard(
 
     val effectiveSeason = com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(item)
     val effectivePart = com.streamhub.app.data.FranchiseManager.getEffectivePartNumber(item)
-    val movieSeq = if (isMovie) (effectivePart?.takeIf { it > 1 }) else null
-    val seasonBadgeText = if (effectivePart != null && effectivePart > 0) "S$effectiveSeason P$effectivePart" else "S$effectiveSeason"
-    val seasonSubtitleText = if (effectivePart != null && effectivePart > 0) "Season $effectiveSeason Pt $effectivePart" else "Season $effectiveSeason"
+    val movieSeq = if (isMovie) (effectiveSeason.takeIf { it > 0 }) else null
+    val seasonBadgeText = com.streamhub.app.data.FranchiseManager.getPosterBadge(item) ?: (if (isMovie) "MOVIE" else "S$effectiveSeason")
+    val seasonSubtitleText = com.streamhub.app.data.FranchiseManager.getSeasonCardSubtitle(item, includeDuration = false)
 
     val watchHistory by WatchHistoryManager.historyFlow.collectAsState()
     val progress = watchHistory[item.id]

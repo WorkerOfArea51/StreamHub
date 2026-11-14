@@ -1,5 +1,6 @@
 package com.streamhub.app.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -31,6 +33,7 @@ import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 import com.streamhub.app.ui.theme.bouncyTouch
+import java.util.Locale
 
 /**
  * Tab 2: Full Metadata & Technical Specifications for Creator Studio.
@@ -320,8 +323,8 @@ fun AdminSpecsTab(
     Spacer(modifier = Modifier.height(8.dp))
 
     val isMovieCategory = state.isMovieFormat
-    val seasonLabel = if (isMovieCategory) "Movie # (or 0 for Standalone)" else "Season # (0 for Specials/Extras)"
-    val partLabel = if (isMovieCategory) "Part # / Edition (e.g. 2)" else "Part # (e.g. 2, or blank)"
+    val seasonLabel = if (isMovieCategory) "Movie # (0 for Standalone)" else "Season # (0 for Specials/Extras)"
+    val partLabel = if (isMovieCategory) "Part # (e.g. 1, 2 for split movies, or blank)" else "Part # (e.g. 2, 3 or blank)"
 
     MetadataRow(
         val1 = state.seasonNumberText,
@@ -336,11 +339,78 @@ fun AdminSpecsTab(
     OutlinedTextField(
         value = state.franchiseOrderText,
         onValueChange = { state.franchiseOrderText = it },
-        label = { Text("Franchise Watch Order # (e.g. 1, 2, 4, 4.1...)", color = TextSecondary) },
-        placeholder = { Text("Master order slot (overrides auto sorting)", color = Color(0x66FFFFFF)) },
+        label = { Text("Franchise Watch Order # (Timeline sorting slot only)", color = TextSecondary) },
+        placeholder = { Text("Timeline position on shelf (e.g. 1, 2, 6) - does not affect poster badge", color = Color(0x66FFFFFF)) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth()
     )
+    Spacer(modifier = Modifier.height(8.dp))
+
+    // Real-Time Poster Badge & Timeline Preview
+    val previewSeason = state.seasonNumberText.trim().toIntOrNull() ?: 0
+    val previewPart = state.partNumberText.trim().toIntOrNull()
+    val previewRelUpper = state.relationType.trim().uppercase(Locale.ROOT)
+    val previewOrder = state.franchiseOrderText.trim().toDoubleOrNull()
+
+    val previewBadge = when {
+        previewRelUpper.contains("ENCORE") -> "ENCORE"
+        previewRelUpper.contains("EXTENDED CUT") || previewRelUpper.contains("EXTENDED") -> "EXTENDED"
+        previewRelUpper.contains("DIRECTOR'S CUT") || previewRelUpper.contains("DIRECTOR") -> "DIRECTOR"
+        previewRelUpper.contains("REMASTER") -> "REMASTER"
+        previewRelUpper.contains("EXTRA") -> "EXTRA"
+        isMovieCategory -> when {
+            previewSeason > 0 && previewPart != null && previewPart > 0 -> "M$previewSeason P$previewPart"
+            previewSeason > 0 -> "M$previewSeason"
+            previewPart != null && previewPart > 0 -> "Pt $previewPart"
+            else -> "MOVIE"
+        }
+        previewSeason > 0 -> when {
+            previewPart != null && previewPart > 0 -> "S$previewSeason P$previewPart"
+            else -> "S$previewSeason"
+        }
+        previewRelUpper.contains("OVA") -> "OVA"
+        previewRelUpper.contains("ONA") -> "ONA"
+        previewRelUpper.contains("TV SPECIAL") -> "TV SPECIAL"
+        previewRelUpper.contains("SPECIAL") -> "SPECIAL"
+        else -> "TV"
+    }
+
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLowest,
+        border = BorderStroke(0.6.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Poster Badge Preview:", color = TextSecondary, fontSize = 11.sp)
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = Color(0xD9000000),
+                    border = BorderStroke(0.6.dp, Color(0x66FFFFFF))
+                ) {
+                    Text(
+                        text = previewBadge,
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            if (previewOrder != null && previewOrder > 0.0) {
+                val orderText = if (previewOrder % 1.0 == 0.0) "#${previewOrder.toInt()}" else "#$previewOrder"
+                Text("Shelf Slot: $orderText", color = AccentGold, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
     Spacer(modifier = Modifier.height(8.dp))
 
     Text("Relation Type & Story Role (Multi-Selectable)", color = TextSecondary, fontSize = 11.sp)

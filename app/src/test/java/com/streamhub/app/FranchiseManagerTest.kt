@@ -342,9 +342,9 @@ class FranchiseManagerTest {
         // 2. Tag must be SEQUEL • MOVIE
         assertEquals("SEQUEL • MOVIE", FranchiseManager.getFranchiseTag(brolyMovie, dbsTv))
 
-        // 3. Subtitle must show release year and duration, NOT "Season 4"
+        // 3. Subtitle must show Movie number and duration, NOT "Season 4"
         val subtitle = FranchiseManager.getSeasonCardSubtitle(brolyMovie)
-        assertEquals("2018 • 100 min", subtitle)
+        assertEquals("Movie 4 • 2018 • 100 min", subtitle)
     }
 
     @Test
@@ -671,6 +671,173 @@ class FranchiseManagerTest {
         assertEquals("Short label must be Season 4 Pt 3", "Season 4 Pt 3", p3Opt.shortLabel)
         assertEquals("Badge must be S4 P3", "S4 P3", p3Opt.badge)
     }
+
+    @Test
+    fun testDemonSlayerInfinityCastleMovie1FranchiseOrder6NeverDisplaysM6() {
+        val s1 = MediaItem(id = "ds_s1", title = "Demon Slayer: Kimetsu no Yaiba", type = "SERIES", seasonNumber = 1, franchiseId = "demon-slayer")
+        val s2 = MediaItem(id = "ds_s2", title = "Demon Slayer Mugen Train Arc", type = "SERIES", seasonNumber = 2, franchiseId = "demon-slayer")
+        val s3 = MediaItem(id = "ds_s3", title = "Demon Slayer Entertainment District Arc", type = "SERIES", seasonNumber = 3, franchiseId = "demon-slayer")
+        val s4 = MediaItem(id = "ds_s4", title = "Demon Slayer Swordsmith Village Arc", type = "SERIES", seasonNumber = 4, franchiseId = "demon-slayer")
+        val s5 = MediaItem(id = "ds_s5", title = "Demon Slayer Hashira Training Arc", type = "SERIES", seasonNumber = 5, franchiseId = "demon-slayer")
+        val movie1 = MediaItem(
+            id = "ds_infinity_castle_1",
+            title = "Demon Slayer: Kimetsu no Yaiba Infinity Castle",
+            type = "MOVIE",
+            seasonNumber = 1, // Movie # 1
+            partNumber = 0,
+            franchiseOrder = 6.0, // Sort 6th on the timeline
+            releaseYear = "2025",
+            relationType = "Sequel • Movie",
+            franchiseId = "demon-slayer",
+            duration = "120 min"
+        )
+
+        val catalog = listOf(movie1, s3, s1, s5, s2, s4)
+        val sorted = FranchiseManager.getFranchiseItems(s1, catalog)
+
+        // 1. Sorting Invariant: Movie 1 with franchiseOrder 6.0 MUST sort 6th at the very end
+        assertEquals("Should contain 6 items", 6, sorted.size)
+        assertEquals("Last item must be Infinity Castle", "ds_infinity_castle_1", sorted.last().id)
+
+        // 2. Poster Badge Invariant: Movie 1 with franchiseOrder 6.0 MUST display M1, NEVER M6!
+        val posterBadge = FranchiseManager.getPosterBadge(movie1)
+        assertEquals("Badge must be M1, NEVER M6", "M1", posterBadge)
+
+        // 3. Subtitle Invariant: Subtitle must say Movie 1
+        val subtitle = FranchiseManager.getSeasonCardSubtitle(movie1, includeDuration = true)
+        assertTrue("Subtitle must contain Movie 1", subtitle.contains("Movie 1"))
+        assertTrue("Subtitle must contain 2025", subtitle.contains("2025"))
+        assertTrue("Subtitle must contain 120min or 120 min", subtitle.contains("120min") || subtitle.contains("120m") || subtitle.contains("120 min"))
+    }
+
+    @Test
+    fun testCodeGeassLelouchOfTheResurrectionStandaloneMovie() {
+        val s1 = MediaItem(id = "cg_s1", title = "Code Geass: Lelouch of the Rebellion", type = "SERIES", seasonNumber = 1, franchiseId = "code-geass")
+        val s2 = MediaItem(id = "cg_s2", title = "Code Geass: Lelouch of the Rebellion R2", type = "SERIES", seasonNumber = 2, franchiseId = "code-geass")
+        val movie = MediaItem(
+            id = "cg_resurrection",
+            title = "Code Geass: Lelouch of the Re;surrection",
+            type = "MOVIE",
+            seasonNumber = 0, // Standalone Movie
+            partNumber = 0,
+            franchiseOrder = 0.0,
+            releaseYear = "2019",
+            relationType = "Sequel • Movie",
+            franchiseId = "code-geass",
+            duration = "112 min"
+        )
+
+        // Standalone movie with seasonNumber = 0 MUST display MOVIE badge
+        assertEquals("Code Geass movie badge must be MOVIE", "MOVIE", FranchiseManager.getPosterBadge(movie))
+        val subtitle = FranchiseManager.getSeasonCardSubtitle(movie, includeDuration = true)
+        assertTrue("Subtitle must contain 2019", subtitle.contains("2019"))
+        assertFalse("Subtitle must not say Movie 0", subtitle.contains("Movie 0"))
+    }
+
+    @Test
+    fun testDunePartOneAndPartTwoStandaloneMoviesWithParts() {
+        val dune1 = MediaItem(
+            id = "dune_pt1",
+            title = "Dune: Part One",
+            type = "MOVIE",
+            seasonNumber = 0, // Standalone movie franchise
+            partNumber = 1,   // Part 1
+            franchiseOrder = 1.0,
+            releaseYear = "2021",
+            relationType = "Prequel • Movie",
+            franchiseId = "dune"
+        )
+        val dune2 = MediaItem(
+            id = "dune_pt2",
+            title = "Dune: Part Two",
+            type = "MOVIE",
+            seasonNumber = 0,
+            partNumber = 2,   // Part 2
+            franchiseOrder = 2.0,
+            releaseYear = "2024",
+            relationType = "Sequel • Movie",
+            franchiseId = "dune"
+        )
+
+        // Standalone movies with parts must display Pt 1 and Pt 2
+        assertEquals("Dune 1 badge must be Pt 1", "Pt 1", FranchiseManager.getPosterBadge(dune1))
+        assertEquals("Dune 2 badge must be Pt 2", "Pt 2", FranchiseManager.getPosterBadge(dune2))
+
+        val subtitle1 = FranchiseManager.getSeasonCardSubtitle(dune1, includeDuration = false)
+        val subtitle2 = FranchiseManager.getSeasonCardSubtitle(dune2, includeDuration = false)
+        assertTrue("Subtitle 1 must contain Part 1", subtitle1.contains("Part 1"))
+        assertTrue("Subtitle 2 must contain Part 2", subtitle2.contains("Part 2"))
+    }
+
+    @Test
+    fun testMultiMovieSeriesWithParts() {
+        val movie1Pt2 = MediaItem(
+            id = "film_m1_p2",
+            title = "Epic Movie 1 Part 2",
+            type = "MOVIE",
+            seasonNumber = 1, // Movie 1
+            partNumber = 2,   // Part 2
+            releaseYear = "2025",
+            relationType = "Movie",
+            franchiseId = "epic"
+        )
+
+        assertEquals("Multi-movie with parts must be M1 P2", "M1 P2", FranchiseManager.getPosterBadge(movie1Pt2))
+        val subtitle = FranchiseManager.getSeasonCardSubtitle(movie1Pt2, includeDuration = false)
+        assertTrue("Subtitle must contain Movie 1 Pt 2", subtitle.contains("Movie 1 Pt 2"))
+    }
+
+    @Test
+    fun testSwordArtOnlineExtraEditionNoGhostExtraBadge() {
+        // Show has 'EXTRA' in title, but creator selected Special relation
+        val saoExtra = MediaItem(
+            id = "sao_extra_edition",
+            title = "Sword Art Online EXTRA EDITION",
+            type = "MOVIE",
+            seasonNumber = 0,
+            relationType = "Sequel • Special",
+            franchiseId = "sword-art-online"
+        )
+
+        // Must respect creator's explicit relation 'Special', NOT auto-hijack to EXTRA from title!
+        val badge = FranchiseManager.getPosterBadge(saoExtra)
+        assertEquals("Badge must be SPECIAL, not ghost EXTRA", "SPECIAL", badge)
+    }
+
+    @Test
+    fun testDragonBallSuperBrolyAndSuperHeroFranchiseSortingWithoutM5M7() {
+        val db = MediaItem(id = "db_1", title = "Dragon Ball", type = "SERIES", seasonNumber = 1, franchiseId = "dragon-ball")
+        val dbz = MediaItem(id = "db_2", title = "Dragon Ball Z", type = "SERIES", seasonNumber = 2, franchiseId = "dragon-ball")
+        val dbs = MediaItem(id = "db_3", title = "Dragon Ball Super", type = "SERIES", seasonNumber = 4, franchiseId = "dragon-ball")
+        val broly = MediaItem(
+            id = "db_broly",
+            title = "Dragon Ball Super: Broly",
+            type = "MOVIE",
+            seasonNumber = 1, // Super Movie 1
+            franchiseOrder = 5.0, // Sort 5th in franchise timeline
+            relationType = "Sequel • Movie",
+            franchiseId = "dragon-ball"
+        )
+        val superHero = MediaItem(
+            id = "db_super_hero",
+            title = "Dragon Ball Super: SUPER HERO",
+            type = "MOVIE",
+            seasonNumber = 2, // Super Movie 2
+            franchiseOrder = 7.0, // Sort 7th in franchise timeline
+            relationType = "Sequel • Movie",
+            franchiseId = "dragon-ball"
+        )
+
+        // 1. Badges must be M1 and M2, NEVER M5 or M7!
+        assertEquals("Broly badge must be M1, never M5", "M1", FranchiseManager.getPosterBadge(broly))
+        assertEquals("Super Hero badge must be M2, never M7", "M2", FranchiseManager.getPosterBadge(superHero))
+
+        // 2. Timeline scores must properly sort them
+        val brolyScore = FranchiseManager.getChronologicalScore(broly)
+        val shScore = FranchiseManager.getChronologicalScore(superHero)
+        assertTrue("Super Hero (Order 7) must sort after Broly (Order 5)", shScore > brolyScore)
+    }
 }
+
 
 

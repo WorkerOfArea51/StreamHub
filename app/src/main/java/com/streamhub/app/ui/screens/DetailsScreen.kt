@@ -2355,43 +2355,7 @@ private fun FranchiseCard(
                 )
 
                 // Watch Order or Season Badge (#1, S1, S2...) on Top-Left of Poster
-                val effectiveSeason = com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(fItem)
-                val effectivePart = com.streamhub.app.data.FranchiseManager.getEffectivePartNumber(fItem)
-                val formatLabel = com.streamhub.app.data.FranchiseManager.getMediaFormatLabel(fItem)
-                val isMovieFormat = com.streamhub.app.data.FranchiseManager.isMovie(fItem)
-                val relUpper = fItem.relationType.trim().uppercase(Locale.ROOT)
-
-                val orderOrSeasonStr = when {
-                    // 1. Movie Editions take top precedence
-                    relUpper.contains("ENCORE") -> "ENCORE"
-                    relUpper.contains("EXTENDED CUT") || relUpper.contains("EXTENDED") -> "EXTENDED"
-                    relUpper.contains("DIRECTOR'S CUT") || relUpper.contains("DIRECTOR") -> "DIRECTOR"
-                    relUpper.contains("REMASTER") -> "REMASTER"
-
-                    // 2. Extras & non-season formats
-                    relUpper.contains("EXTRA") || fItem.title.contains("Extras", ignoreCase = true) || formatLabel == "EXTRA" -> "EXTRA"
-                    effectiveSeason == 0 && formatLabel in listOf("OVA", "ONA", "SPECIAL", "TV SPECIAL") -> formatLabel
-
-                    // 3. Explicit franchise master order (e.g. M1, M2... or #1, #2...)
-                    fItem.franchiseOrder > 0.0 -> {
-                        if (isMovieFormat) {
-                            if (fItem.franchiseOrder % 1.0 == 0.0) "M${fItem.franchiseOrder.toInt()}" else "M${fItem.franchiseOrder}"
-                        } else {
-                            if (fItem.franchiseOrder % 1.0 == 0.0) "#${fItem.franchiseOrder.toInt()}" else "#${fItem.franchiseOrder}"
-                        }
-                    }
-
-                    // 4. Regular TV Seasons
-                    !isMovieFormat && effectiveSeason > 0 -> if (effectivePart != null && effectivePart > 0) "S$effectiveSeason P$effectivePart" else "S$effectiveSeason"
-
-                    // 5. Numbered Movie parts
-                    isMovieFormat && effectivePart != null && effectivePart > 1 -> "M$effectivePart"
-
-                    // 6. Standalone Movie format badge
-                    isMovieFormat -> "MOVIE"
-
-                    else -> null
-                }
+                val orderOrSeasonStr = com.streamhub.app.data.FranchiseManager.getPosterBadge(fItem)
 
                 if (orderOrSeasonStr != null) {
                     Surface(

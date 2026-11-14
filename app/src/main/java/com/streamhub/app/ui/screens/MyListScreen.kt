@@ -2034,8 +2034,8 @@ fun MyListGridCard(
 
     val effectiveSeason = FranchiseManager.getEffectiveSeasonNumber(item)
     val effectivePart = FranchiseManager.getEffectivePartNumber(item)
-    val movieSeq = if (isMovie) (effectivePart?.takeIf { it > 1 }) else null
-    val seasonBadgeText = if (effectivePart != null && effectivePart > 0) "S$effectiveSeason P$effectivePart" else "S$effectiveSeason"
+    val movieSeq = if (isMovie) (effectiveSeason.takeIf { it > 0 }) else null
+    val seasonBadgeText = FranchiseManager.getPosterBadge(item) ?: (if (isMovie) "MOVIE" else "S$effectiveSeason")
 
     val isCompleted = progress?.isFullyCompleted(item.episodes.size) == true
     val isWatchingInProgress = progress != null && progress.positionMs > 5000L && progress.durationMs > 0L && !isCompleted
