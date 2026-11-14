@@ -1,5 +1,6 @@
 package com.streamhub.app.ui.screens
 
+import java.util.Locale
 import android.content.Intent
 import android.net.Uri
 import com.streamhub.app.ui.components.ToastManager
@@ -2356,12 +2357,39 @@ private fun FranchiseCard(
                 // Watch Order or Season Badge (#1, S1, S2...) on Top-Left of Poster
                 val effectiveSeason = com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(fItem)
                 val effectivePart = com.streamhub.app.data.FranchiseManager.getEffectivePartNumber(fItem)
-                val isMovieFormat = com.streamhub.app.data.FranchiseManager.getMediaFormatLabel(fItem) == "MOVIE"
+                val formatLabel = com.streamhub.app.data.FranchiseManager.getMediaFormatLabel(fItem)
+                val isMovieFormat = formatLabel == "MOVIE"
+                val relUpper = fItem.relationType.trim().uppercase(Locale.ROOT)
 
                 val orderOrSeasonStr = when {
-                    fItem.franchiseOrder > 0.0 -> if (fItem.franchiseOrder % 1.0 == 0.0) "#${fItem.franchiseOrder.toInt()}" else "#${fItem.franchiseOrder}"
+                    // 1. Movie Editions take top precedence
+                    relUpper.contains("ENCORE") -> "ENCORE"
+                    relUpper.contains("EXTENDED CUT") || relUpper.contains("EXTENDED") -> "EXTENDED"
+                    relUpper.contains("DIRECTOR'S CUT") || relUpper.contains("DIRECTOR") -> "DIRECTOR"
+                    relUpper.contains("REMASTER") -> "REMASTER"
+
+                    // 2. Extras & non-season formats
+                    relUpper.contains("EXTRA") || fItem.title.contains("Extras", ignoreCase = true) || formatLabel == "EXTRA" -> "EXTRA"
+                    effectiveSeason == 0 && formatLabel in listOf("OVA", "ONA", "SPECIAL", "TV SPECIAL") -> formatLabel
+
+                    // 3. Explicit franchise master order (e.g. M1, M2... or #1, #2...)
+                    fItem.franchiseOrder > 0.0 -> {
+                        if (isMovieFormat) {
+                            if (fItem.franchiseOrder % 1.0 == 0.0) "M${fItem.franchiseOrder.toInt()}" else "M${fItem.franchiseOrder}"
+                        } else {
+                            if (fItem.franchiseOrder % 1.0 == 0.0) "#${fItem.franchiseOrder.toInt()}" else "#${fItem.franchiseOrder}"
+                        }
+                    }
+
+                    // 4. Regular TV Seasons
                     !isMovieFormat && effectiveSeason > 0 -> if (effectivePart != null && effectivePart > 0) "S$effectiveSeason P$effectivePart" else "S$effectiveSeason"
+
+                    // 5. Numbered Movie parts
                     isMovieFormat && effectivePart != null && effectivePart > 1 -> "M$effectivePart"
+
+                    // 6. Standalone Movie format badge
+                    isMovieFormat -> "MOVIE"
+
                     else -> null
                 }
 
@@ -2488,6 +2516,11 @@ private fun FranchiseCard(
                                 FranchiseTagType.CURRENT -> AccentGold
                                 FranchiseTagType.SEQUEL -> Color(0xFF00E676)
                                 FranchiseTagType.PREQUEL -> Color(0xFFA855F7)
+                                FranchiseTagType.ENCORE -> Color(0xFF00E5FF)
+                                FranchiseTagType.EXTENDED_CUT, FranchiseTagType.DIRECTORS_CUT, FranchiseTagType.ALTERNATE_VERSION -> Color(0xFFFF4081)
+                                FranchiseTagType.REMASTER -> Color(0xFFFFD700)
+                                FranchiseTagType.EXTRA -> Color(0xFFFFB300)
+                                FranchiseTagType.MAIN_STORY -> Color(0xFF3B82F6)
                                 FranchiseTagType.SIDE_STORY, FranchiseTagType.SPIN_OFF -> Color(0xFF38BDF8)
                                 FranchiseTagType.MOVIE -> Color(0xFFFF7043)
                                 FranchiseTagType.SPECIAL -> Color(0xFFF59E0B)

@@ -4,6 +4,18 @@ All notable architectural milestones, performance optimizations, and visual upda
 
 ---
 
+### What's New in StreamHub v4.8.448 🚀
+
+- 🎬 **Unified Franchise, Movie Editions & Zero-Season Engine (`FranchiseManager.kt`, `AdminSpecsTab.kt`, `AdminEditorDialog.kt`, `AdminEditorState.kt`, `DetailsScreen.kt`, `SeasonArcSelectorSheet.kt`)**:
+  - **Zero-Season Standard (`seasonNumber = 0`)**: Removed forced `?: 1` coercing across `FranchiseManager.getEffectiveSeasonNumber`, `AdminEditorState.seasonNumberText`, and `AdminEditorDialog.parsedSeasonNum`. Extras, Specials, OVAs, ONAs, and Movies now preserve `seasonNumber = 0`, permanently fixing duplicate `S1` badges across the entire 554-show catalog (e.g. *Scissor Seven Extras*, *Re:ZERO OVAs*, and *Dr. STONE RYUSUI* automatically display `[EXTRA]`, `[OVA]`, or `[SPECIAL]` instead of colliding with Season 1).
+  - **Movie Editions & Story Roles**: Added dedicated first-class relation pills in Creator Studio (`AdminSpecsTab.kt`) for `Main Story`, `Encore`, `Extended Cut`, `Director's Cut`, `Alternate Version`, `Remaster`, and `Extra`.
+  - **Non-Directional Edition Immunity (`FranchiseManager.getFranchiseTags`)**: Added non-linear role immunity for `Encore`, `Extended Cut`, `Director's Cut`, `Alternate Version`, `Remaster`, `Extra`, and `Main Story`. Editions (e.g. *Avengers Endgame: Encore*) are never automatically labeled as `SEQUEL` or `PREQUEL`, displaying an elegant neon cyan `[ENCORE]` badge rather than confusing sequel labels or colliding `#4` watch order badges.
+  - **Dynamic Creator Studio UI**: Adapted inputs dynamically in Creator Studio between Movies (`Movie #`, `Part # / Edition`) and Series/Anime (`Season # (0 for Specials/Extras)`, `Part # / Cour`).
+  - **Smart Poster & Carousel Badging (`DetailsScreen.kt`, `SeasonArcSelectorSheet.kt`)**: Posters and dropdown options now render dedicated, high-contrast badges for `[ENCORE]`, `[EXTENDED]`, `[DIRECTOR]`, `[REMASTER]`, `[EXTRA]`, `[OVA]`, `[ONA]`, `[SPECIAL]`, `[M1..M4]`, and `[S1..Sn]`.
+  - **Comprehensive Test Suite (`FranchiseManagerTest.kt`)**: Added unit tests verifying Avengers Endgame vs Encore Cut edition isolation, Scissor Seven vs Extras zero-season badge differentiation, and subtitle formatting.
+
+---
+
 ### What's New in StreamHub v4.8.447 🚀
 
 - ⚡ **Buffer-Preserving Pause/Resume & Smart Wakeup Recovery (`StreamPlayerViewModel.kt`, `SmartMatroskaExtractor.kt`)**:

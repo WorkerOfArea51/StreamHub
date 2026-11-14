@@ -1,5 +1,6 @@
 package com.streamhub.app.ui.components
 
+import java.util.Locale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -343,11 +344,15 @@ fun AdminEditorDialog(
                                     state.title.isBlank() -> state.validationError = "Title is required (Type title in Tab 1)"
                                     state.category.isBlank() -> state.validationError = "Category is required"
                                     else -> {
+                                        val isZeroSeasonRole = state.relationType.split("•", ",").any { token ->
+                                            val t = token.trim().uppercase(Locale.ROOT)
+                                            t in listOf("EXTRA", "EXTRAS", "SPECIAL", "TV SPECIAL", "OVA", "ONA", "ENCORE", "EXTENDED CUT", "DIRECTOR'S CUT", "MOVIE")
+                                        }
                                         val isMovieItem = state.isMovieFormat ||
                                                 state.relationType.equals("Movie", ignoreCase = true) ||
                                                 state.category.equals("Movie", ignoreCase = true) ||
                                                 state.category.equals("Movies", ignoreCase = true)
-                                        val parsedSeasonNum = state.seasonNumberText.trim().toIntOrNull() ?: if (isMovieItem) 0 else 1
+                                        val parsedSeasonNum = state.seasonNumberText.trim().toIntOrNull() ?: if (isMovieItem || isZeroSeasonRole) 0 else 1
                                         val episodes = when {
                                             state.isMovieFormat && state.currentEpisodes.size <= 1 && (state.startBatchLink.isNotBlank() || state.generatedEpisodesText.isNotBlank()) -> {
                                                 val link = StreamLinkResolver.sanitizePlayableUrl(state.startBatchLink.ifBlank { state.generatedEpisodesText }.trim())
@@ -355,7 +360,7 @@ fun AdminEditorDialog(
                                                 listOf(
                                                     Episode(
                                                         episodeNumber = 1,
-                                                        seasonNumber = if (isMovieItem) 0 else 1,
+                                                        seasonNumber = if (isMovieItem || isZeroSeasonRole) 0 else 1,
                                                         title = state.title.ifBlank { "Movie Stream" },
                                                         streamUrl = link,
                                                         mirrorStreamUrl = link,

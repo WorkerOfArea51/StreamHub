@@ -520,6 +520,106 @@ class FranchiseManagerTest {
         val subtitle = FranchiseManager.getSeasonCardSubtitle(unova, includeDuration = false)
         assertEquals("Season 6 • 2013 • 14 Episodes", subtitle)
     }
+
+    @Test
+    fun testAvengersEndgameVsEncoreEdition() {
+        val endgame = MediaItem(
+            id = "avengers_endgame",
+            title = "Avengers: Endgame",
+            category = "Movies",
+            type = "MOVIE",
+            releaseYear = "2019",
+            seasonNumber = 0,
+            franchiseOrder = 4.0,
+            relationType = "Main Story • Movie",
+            franchiseId = "avengers"
+        )
+        val encore = MediaItem(
+            id = "avengers_encore",
+            title = "Avengers Endgame: Encore",
+            category = "Movies",
+            type = "MOVIE",
+            releaseYear = "2026",
+            seasonNumber = 0,
+            franchiseOrder = 4.1,
+            relationType = "Encore • Movie",
+            franchiseId = "avengers"
+        )
+
+        val catalog = listOf(encore, endgame)
+        val sorted = FranchiseManager.getFranchiseItems(endgame, catalog)
+
+        assertEquals("Endgame must come first", "avengers_endgame", sorted[0].id)
+        assertEquals("Encore must come second", "avengers_encore", sorted[1].id)
+
+        // When viewing Endgame, Encore must be tagged ENCORE • MOVIE (NOT SEQUEL!)
+        val encoreTags = FranchiseManager.getFranchiseTags(encore, endgame)
+        val labels = encoreTags.map { it.label }
+        assertEquals(listOf("ENCORE", "MOVIE"), labels)
+        assertTrue("Encore must never be auto-tagged as SEQUEL", labels.none { it == "SEQUEL" })
+
+        // Options dropdown
+        val options = FranchiseManager.buildSeasonOptions(endgame, catalog)
+        val encoreOption = options.first { it.id == "avengers_encore" }
+        assertEquals("ENCORE", encoreOption.badge)
+        assertEquals("Encore Cut", encoreOption.shortLabel)
+    }
+
+    @Test
+    fun testScissorSevenVsExtrasZeroSeason() {
+        val extras = MediaItem(
+            id = "scissor_extras",
+            title = "Scissor Seven Extras",
+            category = "ANIME",
+            type = "SERIES",
+            releaseYear = "2018",
+            seasonNumber = 0,
+            relationType = "Prequel • Extra • ONA",
+            franchiseId = "scissor-seven"
+        )
+        val s1 = MediaItem(
+            id = "scissor_s1",
+            title = "Scissor Seven",
+            category = "ANIME",
+            type = "SERIES",
+            releaseYear = "2018",
+            seasonNumber = 1,
+            relationType = "Main Story • ONA",
+            franchiseId = "scissor-seven"
+        )
+        val s2 = MediaItem(
+            id = "scissor_s2",
+            title = "Scissor Seven Season 2",
+            category = "ANIME",
+            type = "SERIES",
+            releaseYear = "2019",
+            seasonNumber = 2,
+            relationType = "Sequel • ONA",
+            franchiseId = "scissor-seven"
+        )
+
+        val catalog = listOf(s2, extras, s1)
+        val sorted = FranchiseManager.getFranchiseItems(s1, catalog)
+
+        // Verify zero-season behavior:
+        assertEquals("Extras effective season must be 0", 0, FranchiseManager.getEffectiveSeasonNumber(extras))
+        assertEquals("S1 effective season must be 1", 1, FranchiseManager.getEffectiveSeasonNumber(s1))
+        assertEquals("S2 effective season must be 2", 2, FranchiseManager.getEffectiveSeasonNumber(s2))
+
+        // Options dropdown badges:
+        val options = FranchiseManager.buildSeasonOptions(s1, catalog)
+        val extrasOpt = options.first { it.id == "scissor_extras" }
+        val s1Opt = options.first { it.id == "scissor_s1" }
+        val s2Opt = options.first { it.id == "scissor_s2" }
+
+        assertEquals("Extras badge must be EXTRA, not S1", "EXTRA", extrasOpt.badge)
+        assertEquals("S1 badge must be S1", "S1", s1Opt.badge)
+        assertEquals("S2 badge must be S2", "S2", s2Opt.badge)
+
+        // Subtitles:
+        val extrasSubtitle = FranchiseManager.getSeasonCardSubtitle(extras, includeDuration = false)
+        assertTrue("Extras subtitle should not say Season 0", !extrasSubtitle.contains("Season 0"))
+    }
 }
 
 

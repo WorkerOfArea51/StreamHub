@@ -34,7 +34,14 @@ enum class FranchiseTagType {
     SIDE_STORY,
     SPIN_OFF,
     SPECIAL,
-    FORMAT
+    FORMAT,
+    ENCORE,
+    EXTENDED_CUT,
+    DIRECTORS_CUT,
+    ALTERNATE_VERSION,
+    REMASTER,
+    EXTRA,
+    MAIN_STORY
 }
 
 /**
@@ -108,8 +115,29 @@ object FranchiseManager {
             return item.seasonNumber
         }
         if (item.seasonNumber > 1) return item.seasonNumber
+
+        val format = getMediaFormatLabel(item)
+        val relUpper = item.relationType.trim().uppercase(Locale.ROOT)
+        val isNonSeason = format in listOf("MOVIE", "OVA", "ONA", "SPECIAL", "TV SPECIAL", "EXTRA") ||
+                relUpper.contains("EXTRA") ||
+                relUpper.contains("SPECIAL") ||
+                relUpper.contains("OVA") ||
+                relUpper.contains("ONA") ||
+                relUpper.contains("ENCORE") ||
+                relUpper.contains("EXTENDED") ||
+                relUpper.contains("DIRECTOR") ||
+                relUpper.contains("REMASTER")
+
+        // Zero-Season Invariant: If creator explicitly saved 0 on a movie, special, extra, OVA, ONA, or edition, preserve 0!
+        if (isNonSeason && item.seasonNumber == 0) {
+            return 0
+        }
+
         val detected = detectSeasonNumber(item.title)
-        return if (detected > 1) detected else (item.seasonNumber.takeIf { it > 0 } ?: 1)
+        if (detected > 1) return detected
+
+        // If creator explicitly saved seasonNumber = 0, preserve 0 (never force 0 to 1)!
+        return item.seasonNumber
     }
 
     fun getEffectivePartNumber(item: MediaItem): Int? {
@@ -155,6 +183,10 @@ object FranchiseManager {
         val format = getMediaFormatLabel(item)
         val isExplicitPrequel = item.relationType.contains("PREQUEL", ignoreCase = true)
         val isExplicitSequel = item.relationType.contains("SEQUEL", ignoreCase = true)
+        val isExplicitEdition = item.relationType.contains("ENCORE", ignoreCase = true) ||
+                item.relationType.contains("EXTENDED", ignoreCase = true) ||
+                item.relationType.contains("DIRECTOR", ignoreCase = true) ||
+                item.relationType.contains("REMASTER", ignoreCase = true)
 
         val baseScore = when {
             // Priority 1: Admin explicitly specified a Season / Sequence Number (e.g. 1, 2, 3...)
@@ -174,7 +206,7 @@ object FranchiseManager {
                     "TV" -> 10.0
                     "MOVIE" -> if (isExplicitSequel) 50.0 else 25.0
                     "OVA", "ONA" -> 30.0
-                    "SPECIAL", "TV SPECIAL" -> 40.0
+                    "SPECIAL", "TV SPECIAL", "EXTRA" -> 40.0
                     else -> 20.0
                 }
                 yearBase + formatOffset
@@ -190,6 +222,7 @@ object FranchiseManager {
         return when {
             isExplicitPrequel -> baseScore - 100_000_000.0
             isExplicitSequel -> baseScore + 500_000.0
+            isExplicitEdition -> baseScore + 5_000.0
             else -> baseScore
         }
     }
@@ -210,6 +243,7 @@ object FranchiseManager {
         if (hasRelWord("TV SPECIAL") || hasTitleWord("TV SPECIAL") || hasRelWord("TV-SPECIAL")) return "TV SPECIAL"
         if (hasRelWord("OVA") || hasTitleWord("OVA")) return "OVA"
         if (hasRelWord("ONA") || hasTitleWord("ONA")) return "ONA"
+        if (hasRelWord("EXTRA") || hasTitleWord("EXTRA") || hasTitleWord("EXTRAS")) return "EXTRA"
         if (hasRelWord("SPECIAL") || hasTitleWord("SPECIAL")) return "SPECIAL"
 
         val isExplicitMovie = hasRelWord("MOVIE") ||
@@ -248,7 +282,7 @@ object FranchiseManager {
         if (isCurrent) {
             val formatType = when {
                 format == "MOVIE" -> FranchiseTagType.MOVIE
-                format in listOf("OVA", "ONA", "SPECIAL", "TV SPECIAL") -> FranchiseTagType.SPECIAL
+                format in listOf("OVA", "ONA", "SPECIAL", "TV SPECIAL", "EXTRA") -> FranchiseTagType.SPECIAL
                 else -> FranchiseTagType.FORMAT
             }
             return listOf(
@@ -260,12 +294,25 @@ object FranchiseManager {
         val explicitRelation = candidate.relationType.trim().uppercase(Locale.ROOT)
         val isExplicitSequel = explicitRelation.contains("SEQUEL")
         val isExplicitPrequel = explicitRelation.contains("PREQUEL")
+        val isEncore = explicitRelation.contains("ENCORE")
+        val isExtended = explicitRelation.contains("EXTENDED")
+        val isDirector = explicitRelation.contains("DIRECTOR")
+        val isAlternate = explicitRelation.contains("ALTERNATIVE") || explicitRelation.contains("ALTERNATE")
+        val isRemaster = explicitRelation.contains("REMASTER")
+        val isExtra = explicitRelation.contains("EXTRA")
+        val isMainStory = explicitRelation.contains("MAIN STORY")
         val hasNonLinearTag = explicitRelation.contains("SIDE STORY") ||
                 explicitRelation.contains("SPIN-OFF") ||
                 explicitRelation.contains("SPINOFF") ||
-                explicitRelation.contains("ALTERNATIVE") ||
+                isAlternate ||
                 explicitRelation.contains("PARODY") ||
-                explicitRelation.contains("RECAP")
+                explicitRelation.contains("RECAP") ||
+                isEncore ||
+                isExtended ||
+                isDirector ||
+                isRemaster ||
+                isExtra ||
+                isMainStory
 
         val directionalRole = when {
             isExplicitSequel && isExplicitPrequel -> {
@@ -283,7 +330,7 @@ object FranchiseManager {
                 val currentScore = getChronologicalScore(currentItem)
                 if (candidateScore > currentScore) "SEQUEL" else "PREQUEL"
             }
-            hasNonLinearTag -> null // Pure side-story/spin-off without explicit sequel/prequel tag
+            hasNonLinearTag -> null // Pure non-linear role/edition without explicit sequel/prequel tag
             else -> {
                 val candidateScore = getChronologicalScore(candidate)
                 val currentScore = getChronologicalScore(currentItem)
@@ -302,14 +349,32 @@ object FranchiseManager {
             tags.add(FranchiseTag(directionalRole, roleType))
         }
 
+        if (isMainStory) {
+            tags.add(FranchiseTag("MAIN STORY", FranchiseTagType.MAIN_STORY))
+        }
+        if (isEncore) {
+            tags.add(FranchiseTag("ENCORE", FranchiseTagType.ENCORE))
+        }
+        if (isExtended) {
+            tags.add(FranchiseTag("EXTENDED CUT", FranchiseTagType.EXTENDED_CUT))
+        }
+        if (isDirector) {
+            tags.add(FranchiseTag("DIRECTOR'S CUT", FranchiseTagType.DIRECTORS_CUT))
+        }
+        if (isAlternate) {
+            tags.add(FranchiseTag("ALTERNATE", FranchiseTagType.ALTERNATE_VERSION))
+        }
+        if (isRemaster) {
+            tags.add(FranchiseTag("REMASTER", FranchiseTagType.REMASTER))
+        }
+        if (isExtra) {
+            tags.add(FranchiseTag("EXTRA", FranchiseTagType.EXTRA))
+        }
         if (explicitRelation.contains("SIDE STORY")) {
             tags.add(FranchiseTag("SIDE STORY", FranchiseTagType.SIDE_STORY))
         }
         if (explicitRelation.contains("SPIN-OFF") || explicitRelation.contains("SPINOFF")) {
             tags.add(FranchiseTag("SPIN-OFF", FranchiseTagType.SPIN_OFF))
-        }
-        if (explicitRelation.contains("ALTERNATIVE")) {
-            tags.add(FranchiseTag("ALTERNATIVE", FranchiseTagType.FORMAT))
         }
         if (explicitRelation.contains("PARODY")) {
             tags.add(FranchiseTag("PARODY", FranchiseTagType.FORMAT))
@@ -320,7 +385,7 @@ object FranchiseManager {
 
         val formatType = when {
             format == "MOVIE" -> FranchiseTagType.MOVIE
-            format in listOf("OVA", "ONA", "SPECIAL", "TV SPECIAL") -> FranchiseTagType.SPECIAL
+            format in listOf("OVA", "ONA", "SPECIAL", "TV SPECIAL", "EXTRA") -> FranchiseTagType.SPECIAL
             else -> FranchiseTagType.FORMAT
         }
         tags.add(FranchiseTag(format, formatType))
@@ -343,18 +408,18 @@ object FranchiseManager {
      */
     fun getSeasonCardSubtitle(item: MediaItem, includeDuration: Boolean = true): String {
         val format = getMediaFormatLabel(item)
-        val isMovie = format == "MOVIE" || format == "OVA" || format == "ONA" || format == "SPECIAL" || format == "TV SPECIAL"
+        val isNonSeason = format in listOf("MOVIE", "OVA", "ONA", "SPECIAL", "TV SPECIAL", "EXTRA")
         val sNum = getEffectiveSeasonNumber(item)
         val pNum = getEffectivePartNumber(item)
         val parts = mutableListOf<String>()
 
-        if (isMovie) {
+        if (isNonSeason || sNum == 0) {
             if (pNum != null && pNum > 1) {
                 parts.add("Movie $pNum")
             } else if (item.releaseYear.isNotBlank()) {
                 parts.add(item.releaseYear)
             }
-            if (format != "MOVIE") {
+            if (format != "MOVIE" && format != "TV") {
                 parts.add(format)
             }
             if (includeDuration) {
@@ -413,18 +478,40 @@ object FranchiseManager {
                 ?: fItem.totalEpisodes.filter { it.isDigit() }.toIntOrNull() 
                 ?: 0
 
+            val relUpper = fItem.relationType.trim().uppercase(Locale.ROOT)
+            val format = getMediaFormatLabel(fItem)
+            val isEncore = relUpper.contains("ENCORE")
+            val isExtended = relUpper.contains("EXTENDED")
+            val isDirector = relUpper.contains("DIRECTOR")
+            val isRemaster = relUpper.contains("REMASTER")
+            val isExtra = relUpper.contains("EXTRA") || format == "EXTRA"
+
             val badgeStr = when {
+                isEncore -> "ENCORE"
+                isExtended -> "EXTENDED"
+                isDirector -> "DIRECTOR"
+                isRemaster -> "REMASTER"
+                isExtra -> "EXTRA"
+                format in listOf("OVA", "ONA", "SPECIAL", "TV SPECIAL") && sNum == 0 -> format
                 isMovie && pNum != null && pNum > 1 -> "M$pNum"
                 isMovie -> "MOVIE"
                 pNum != null && pNum > 0 -> "S$sNum P$pNum"
-                else -> "S$sNum"
+                sNum > 0 -> "S$sNum"
+                else -> format
             }
 
             val shortLabelStr = when {
+                isEncore -> "Encore Cut"
+                isExtended -> "Extended Cut"
+                isDirector -> "Director's Cut"
+                isRemaster -> "Remaster"
+                isExtra -> "Extras"
+                format in listOf("OVA", "ONA", "SPECIAL", "TV SPECIAL") && sNum == 0 -> format
                 isMovie && pNum != null && pNum > 1 -> "Movie $pNum"
                 isMovie -> "Movie"
                 pNum != null && pNum > 0 -> "Season $sNum Pt $pNum"
-                else -> "Season $sNum"
+                sNum > 0 -> "Season $sNum"
+                else -> format
             }
 
             val titleStr = fItem.title

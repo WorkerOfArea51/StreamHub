@@ -319,20 +319,24 @@ fun AdminSpecsTab(
     MetadataRow(state.franchiseTitle, { state.franchiseTitle = it }, "Franchise Name (e.g. Solo Leveling)", state.franchiseId, { state.franchiseId = it }, "Franchise Slug (e.g. solo-leveling)")
     Spacer(modifier = Modifier.height(8.dp))
 
+    val isMovieCategory = state.isMovieFormat || state.relationType.contains("Movie", ignoreCase = true)
+    val seasonLabel = if (isMovieCategory) "Movie # (or 0 for Standalone)" else "Season # (0 for Specials/Extras)"
+    val partLabel = if (isMovieCategory) "Part # / Edition (e.g. 2)" else "Part # (e.g. 2, or blank)"
+
     MetadataRow(
         val1 = state.seasonNumberText,
         onVal1Change = { state.seasonNumberText = it },
-        label1 = "Season # (1, 2, 3...)",
+        label1 = seasonLabel,
         val2 = state.partNumberText,
         onVal2Change = { state.partNumberText = it },
-        label2 = "Part # (e.g. 2, or blank)"
+        label2 = partLabel
     )
     Spacer(modifier = Modifier.height(8.dp))
 
     OutlinedTextField(
         value = state.franchiseOrderText,
         onValueChange = { state.franchiseOrderText = it },
-        label = { Text("Franchise Watch Order # (e.g. 1, 2, 3... or 1.5)", color = TextSecondary) },
+        label = { Text("Franchise Watch Order # (e.g. 1, 2, 4, 4.1...)", color = TextSecondary) },
         placeholder = { Text("Master order slot (overrides auto sorting)", color = Color(0x66FFFFFF)) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth()
@@ -347,7 +351,12 @@ fun AdminSpecsTab(
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
     ) {
-        val relationPills = listOf("Sequel", "Prequel", "Movie", "Side Story", "Spin-Off", "TV", "TV Special", "OVA", "Special", "ONA")
+        val relationPills = listOf(
+            "Main Story", "Sequel", "Prequel",
+            "Encore", "Extended Cut", "Director's Cut", "Alternate Version", "Remaster",
+            "Extra", "Side Story", "Spin-Off",
+            "Movie", "TV", "TV Special", "OVA", "ONA", "Special"
+        )
         val currentTokens = state.relationType.split("•", ",").map { it.trim() }.filter { it.isNotBlank() }
 
         relationPills.forEach { rel ->
@@ -372,10 +381,12 @@ fun AdminSpecsTab(
                             tokens.add(rel)
                         }
 
-                        // Role tokens first, Format tokens second
+                        // Role tokens first, Editions second, Formats third
                         val roleWeights = mapOf(
-                            "Sequel" to 1, "Prequel" to 2, "Side Story" to 3, "Spin-Off" to 4,
-                            "Movie" to 5, "TV" to 6, "TV Special" to 7, "OVA" to 8, "ONA" to 9, "Special" to 10
+                            "Main Story" to 1, "Sequel" to 2, "Prequel" to 3,
+                            "Encore" to 4, "Extended Cut" to 5, "Director's Cut" to 6, "Alternate Version" to 7, "Remaster" to 8,
+                            "Extra" to 9, "Side Story" to 10, "Spin-Off" to 11,
+                            "Movie" to 12, "TV" to 13, "TV Special" to 14, "OVA" to 15, "ONA" to 16, "Special" to 17
                         )
                         tokens.sortBy { roleWeights[it] ?: 99 }
                         state.relationType = tokens.joinToString(" • ")
@@ -406,9 +417,14 @@ fun AdminSpecsTab(
                 val chipColor = when {
                     t.equals("Sequel", ignoreCase = true) -> Color(0xFF00E676)
                     t.equals("Prequel", ignoreCase = true) -> Color(0xFF7C4DFF)
+                    t.equals("Encore", ignoreCase = true) -> Color(0xFF00E5FF)
+                    t.equals("Extended Cut", ignoreCase = true) || t.equals("Director's Cut", ignoreCase = true) || t.equals("Alternate Version", ignoreCase = true) -> Color(0xFFFF4081)
+                    t.equals("Remaster", ignoreCase = true) -> Color(0xFFFFD700)
+                    t.equals("Extra", ignoreCase = true) -> Color(0xFFFFB300)
+                    t.equals("Main Story", ignoreCase = true) -> Color(0xFF3B82F6)
                     t.equals("Movie", ignoreCase = true) -> Color(0xFFFF5722)
                     t.equals("Side Story", ignoreCase = true) || t.equals("Spin-Off", ignoreCase = true) -> Color(0xFF38BDF8)
-                    t.equals("OVA", ignoreCase = true) || t.equals("Special", ignoreCase = true) -> Color(0xFFFFB300)
+                    t.equals("OVA", ignoreCase = true) || t.equals("ONA", ignoreCase = true) || t.equals("Special", ignoreCase = true) || t.equals("TV Special", ignoreCase = true) -> Color(0xFFFFB300)
                     else -> PrimaryRed
                 }
                 Surface(

@@ -4,6 +4,17 @@ Welcome to the official release notes for **StreamHub** — the ultimate high-pe
 
 ---
 
+### What's New in StreamHub v4.8.448 🚀
+
+- 🎬 **Unified Franchise, Movie Editions & Zero-Season Engine**:
+  - **Zero-Season Architecture (`seasonNumber = 0`)**: Extras, Specials, OVAs, ONAs, and standalone Movies now cleanly support Season 0 without being forced into Season 1. Permanently eliminates duplicate `S1` badges across the entire catalog (e.g. *Scissor Seven Extras*, *Re:ZERO OVAs*, and *Dr. STONE RYUSUI* automatically display `[EXTRA]`, `[OVA]`, or `[SPECIAL]` instead of colliding with Season 1).
+  - **Movie Editions & Cinematic Roles**: Added first-class support for `Encore`, `Extended Cut`, `Director's Cut`, `Alternate Version`, `Remaster`, `Extra`, and `Main Story` in Creator Studio.
+  - **Non-Directional Edition Immunity**: Editions like *Avengers Endgame: Encore* are 100% immune to automatic `SEQUEL` / `PREQUEL` tagging, displaying a dedicated neon cyan `[ENCORE]` badge rather than confusing sequel labels or colliding `#4` watch order badges.
+  - **Dynamic Creator Studio UI**: Adapted inputs dynamically in Creator Studio between Movies (`Movie #`, `Part # / Edition`) and Series/Anime (`Season # (0 for Specials/Extras)`, `Part # / Cour`).
+  - **Smart Poster & Carousel Badging**: Cinema carousel cards now render dedicated, high-contrast badges for `[ENCORE]`, `[EXTENDED]`, `[DIRECTOR]`, `[REMASTER]`, `[EXTRA]`, `[OVA]`, `[ONA]`, `[SPECIAL]`, `[M1..M4]`, and `[S1..Sn]`.
+
+---
+
 ### What's New in StreamHub v4.8.447 🚀
 
 - ⚡ **Buffer-Preserving Pause/Resume & Instant Playback Recovery**:

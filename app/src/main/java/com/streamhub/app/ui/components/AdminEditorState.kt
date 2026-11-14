@@ -64,10 +64,10 @@ class AdminEditorState(
     var franchiseId by mutableStateOf(initialItem?.franchiseId ?: "")
     var franchiseTitle by mutableStateOf(initialItem?.franchiseTitle ?: "")
     var seasonNumberText by mutableStateOf(
-        if (initialItem != null && initialItem.seasonNumber > 0) {
-            initialItem.seasonNumber.toString()
+        if (initialItem != null) {
+            if (initialItem.seasonNumber > 0) initialItem.seasonNumber.toString() else "0"
         } else if (isInitMovie) {
-            ""
+            "0"
         } else {
             "1"
         }
