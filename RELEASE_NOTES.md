@@ -6,6 +6,10 @@ Welcome to the official release notes for **StreamHub** — the ultimate high-pe
 
 ### What's New in StreamHub v4.8.449 🚀
 
+- 🧭 **Rock-Solid Home Screen Scroll Persistence**:
+  - **Zero-Reset Vertical Navigation**: Returning to Home from a show's Details screen or bottom tabs (Downloads, Profile, My List) no longer forces the page back to the top banner. Your exact vertical position is saved and restored instantly.
+  - **Persistent Horizontal Shelves**: Every shelf (Trending, Recently Added, Anime, Movies, Series, Micro-genres, Offline Downloads) retains its exact horizontal scroll index. You will never lose your place when browsing deep into a row or navigating back from a title.
+  - **Smart Category Reset**: Automatically scrolls to the top only when you actively tap a different category filter (*ALL* $\to$ *MOVIES* or *ANIME*).
 - 🎬 **Overview Tab Master Authority & Series vs Movie Invariant**:
   - **Overview Format Authority**: The format selected on the Overview tab (`FORMAT: SERIES` vs `MOVIE`) is now the immutable source of truth. Narrative tags on the Specs tab (`TV Special`, `Side Story`, etc.) act strictly as cosmetic badges and will never override a Series into a Movie.
   - **Accurate Franchise Subtitles**: Entries like *Attack on Titan Final Season THE FINAL CHAPTERS* (Season 4, Part 3) now cleanly render `Season 4 Pt 3 · 2023 · 2 Episodes` under their title, permanently eliminating the incorrect `Movie 3 · TV SPECIAL` label.
