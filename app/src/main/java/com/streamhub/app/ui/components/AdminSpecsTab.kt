@@ -319,7 +319,7 @@ fun AdminSpecsTab(
     MetadataRow(state.franchiseTitle, { state.franchiseTitle = it }, "Franchise Name (e.g. Solo Leveling)", state.franchiseId, { state.franchiseId = it }, "Franchise Slug (e.g. solo-leveling)")
     Spacer(modifier = Modifier.height(8.dp))
 
-    val isMovieCategory = state.isMovieFormat || state.relationType.contains("Movie", ignoreCase = true)
+    val isMovieCategory = state.isMovieFormat
     val seasonLabel = if (isMovieCategory) "Movie # (or 0 for Standalone)" else "Season # (0 for Specials/Extras)"
     val partLabel = if (isMovieCategory) "Part # / Edition (e.g. 2)" else "Part # (e.g. 2, or blank)"
 

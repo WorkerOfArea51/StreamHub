@@ -2358,7 +2358,7 @@ private fun FranchiseCard(
                 val effectiveSeason = com.streamhub.app.data.FranchiseManager.getEffectiveSeasonNumber(fItem)
                 val effectivePart = com.streamhub.app.data.FranchiseManager.getEffectivePartNumber(fItem)
                 val formatLabel = com.streamhub.app.data.FranchiseManager.getMediaFormatLabel(fItem)
-                val isMovieFormat = formatLabel == "MOVIE"
+                val isMovieFormat = com.streamhub.app.data.FranchiseManager.isMovie(fItem)
                 val relUpper = fItem.relationType.trim().uppercase(Locale.ROOT)
 
                 val orderOrSeasonStr = when {

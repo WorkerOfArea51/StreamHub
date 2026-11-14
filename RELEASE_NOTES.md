@@ -4,6 +4,16 @@ Welcome to the official release notes for **StreamHub** — the ultimate high-pe
 
 ---
 
+### What's New in StreamHub v4.8.449 🚀
+
+- 🎬 **Overview Tab Master Authority & Series vs Movie Invariant**:
+  - **Overview Format Authority**: The format selected on the Overview tab (`FORMAT: SERIES` vs `MOVIE`) is now the immutable source of truth. Narrative tags on the Specs tab (`TV Special`, `Side Story`, etc.) act strictly as cosmetic badges and will never override a Series into a Movie.
+  - **Accurate Franchise Subtitles**: Entries like *Attack on Titan Final Season THE FINAL CHAPTERS* (Season 4, Part 3) now cleanly render `Season 4 Pt 3 · 2023 · 2 Episodes` under their title, permanently eliminating the incorrect `Movie 3 · TV SPECIAL` label.
+  - **Multi-Part Label Guard**: `"Movie $pNum"` is strictly restricted to genuine Movie formats; series specials or OVAs are labeled as `Part $pNum` or `OVA Pt $pNum` instead.
+  - **Centralized Format Detection**: Unified movie vs series logic across `FranchiseManager`, `DetailsScreen`, and `AdminSpecsTab`.
+
+---
+
 ### What's New in StreamHub v4.8.448 🚀
 
 - 🎬 **Unified Franchise, Movie Editions & Zero-Season Engine**:

@@ -4,6 +4,17 @@ All notable architectural milestones, performance optimizations, and visual upda
 
 ---
 
+### What's New in StreamHub v4.8.449 🚀
+
+- 🎬 **Overview Tab Master Authority & Series vs Movie Invariant (`FranchiseManager.kt`, `DetailsScreen.kt`, `AdminSpecsTab.kt`)**:
+  - **Overview Tab Master Authority**: Enforced the Creator Studio Overview tab format switch (`type: "MOVIE" | "SERIES"`) as the absolute master authority governing show format. Story role tags on the Specs tab (`TV Special`, `Side Story`, `OVA`, `Sequel`, etc.) remain purely cosmetic narrative badges/chips and can **never** hijack a Series into a Movie or distort season/part numbers.
+  - **Franchise Card Subtitle Architecture (`FranchiseManager.getSeasonCardSubtitle`)**: Fixed a legacy heuristic that treated any item tagged with `TV Special` or `Special` as `isNonSeason` and blindly labeled multi-part entries as `"Movie $pNum"`. Numbered series seasons (`!isMovie && sNum > 0`) now unconditionally render their clean season and episode metadata (e.g. *Attack on Titan Final Season THE FINAL CHAPTERS* with Season 4, Part 3 renders `Season 4 Pt 3 • 2023 • 2 Episodes`, permanently eliminating false `Movie 3 · TV SPECIAL` reports).
+  - **Movie Guard for `Movie $pNum`**: `"Movie $pNum"` is strictly locked behind `isMovie(item)`. Non-movie zero-season entries (e.g. multi-part OVAs or Specials) format cleanly as `"$format Pt $pNum"` or `"$format"` — never "Movie".
+  - **Centralized `FranchiseManager.isMovie`**: Unified movie detection across `FranchiseManager`, `DetailsScreen`, and `AdminSpecsTab`, replacing loose string comparisons with a single invariant-grounded function.
+  - **Unit Test Coverage (`FranchiseManagerTest.kt`)**: Added `testAttackOnTitanFinalSeasonTheFinalChaptersSeriesFormatMasterAuthority` verifying that an Anime Series tagged with `TV Special` preserves `isMovie == false`, `seasonNumber = 4`, `partNumber = 3`, and outputs `"Season 4 Pt 3 • 2023 • 2 Episodes"`.
+
+---
+
 ### What's New in StreamHub v4.8.448 🚀
 
 - 🎬 **Unified Franchise, Movie Editions & Zero-Season Engine (`FranchiseManager.kt`, `AdminSpecsTab.kt`, `AdminEditorDialog.kt`, `AdminEditorState.kt`, `DetailsScreen.kt`, `SeasonArcSelectorSheet.kt`)**:

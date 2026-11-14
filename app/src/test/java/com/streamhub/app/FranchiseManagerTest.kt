@@ -3,6 +3,7 @@ package com.streamhub.app
 import com.streamhub.app.data.FranchiseManager
 import com.streamhub.app.data.models.MediaItem
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -619,6 +620,56 @@ class FranchiseManagerTest {
         // Subtitles:
         val extrasSubtitle = FranchiseManager.getSeasonCardSubtitle(extras, includeDuration = false)
         assertTrue("Extras subtitle should not say Season 0", !extrasSubtitle.contains("Season 0"))
+    }
+
+    @Test
+    fun testAttackOnTitanFinalSeasonTheFinalChaptersSeriesFormatMasterAuthority() {
+        // Attack on Titan: The Final Chapters is added as FORMAT: SERIES with Season 4, Part 3, and relation "TV Special"
+        val aotS4P2 = MediaItem(
+            id = "aot_s4_p2",
+            title = "Attack on Titan Final Season Part 2",
+            type = "SERIES",
+            category = "ANIME",
+            seasonNumber = 4,
+            partNumber = 2,
+            releaseYear = "2022",
+            totalEpisodes = "12 Episodes",
+            relationType = "Prequel, TV",
+            franchiseId = "attack-on-titan",
+            franchiseTitle = "Attack on Titan"
+        )
+        val aotFinalChapters = MediaItem(
+            id = "aot_s4_p3",
+            title = "Attack on Titan Final Season THE FINAL CHAPTERS",
+            type = "SERIES",
+            category = "ANIME",
+            seasonNumber = 4,
+            partNumber = 3,
+            releaseYear = "2023",
+            totalEpisodes = "2 Episodes",
+            relationType = "TV Special",
+            franchiseId = "attack-on-titan",
+            franchiseTitle = "Attack on Titan"
+        )
+
+        val catalog = listOf(aotS4P2, aotFinalChapters)
+
+        // 1. Overview Tab Master Authority: isMovie must be FALSE because type == SERIES
+        assertFalse("Series format on Overview tab must prevent isMovie", FranchiseManager.isMovie(aotFinalChapters))
+
+        // 2. Season and Part numbers must be preserved
+        assertEquals("Effective season must be 4", 4, FranchiseManager.getEffectiveSeasonNumber(aotFinalChapters))
+        assertEquals("Effective part must be 3", 3, FranchiseManager.getEffectivePartNumber(aotFinalChapters))
+
+        // 3. Card subtitle MUST display Season 4 Pt 3, NOT Movie 3!
+        val subtitle = FranchiseManager.getSeasonCardSubtitle(aotFinalChapters, includeDuration = false)
+        assertEquals("Season 4 Pt 3 • 2023 • 2 Episodes", subtitle)
+
+        // 4. Dropdown options must show Season 4 Pt 3 and S4 P3 badge
+        val options = FranchiseManager.buildSeasonOptions(aotFinalChapters, catalog)
+        val p3Opt = options.first { it.id == "aot_s4_p3" }
+        assertEquals("Short label must be Season 4 Pt 3", "Season 4 Pt 3", p3Opt.shortLabel)
+        assertEquals("Badge must be S4 P3", "S4 P3", p3Opt.badge)
     }
 }
 

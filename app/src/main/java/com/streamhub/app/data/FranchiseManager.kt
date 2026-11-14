@@ -228,6 +228,32 @@ object FranchiseManager {
     }
 
     /**
+     * Determines whether a media item is fundamentally a Movie based on the Creator's
+     * Overview setting (type == "MOVIE" or category == "MOVIE").
+     * Story role tags (e.g. TV Special, Side Story) NEVER change a Series into a Movie.
+     */
+    fun isMovie(item: MediaItem): Boolean {
+        val typeUpper = item.type.trim().uppercase(Locale.ROOT)
+        val catUpper = item.category.trim().uppercase(Locale.ROOT)
+        val relUpper = item.relationType.trim().uppercase(Locale.ROOT)
+        val titleUpper = item.title.trim().uppercase(Locale.ROOT)
+
+        // 1. Explicit Series: If creator set type to SERIES, or category is SERIES / WEB_SERIES
+        if (typeUpper == "SERIES" || catUpper == "SERIES" || catUpper == "WEB_SERIES") return false
+
+        // 2. Explicit Movie: If category is MOVIE, or relationType explicitly contains MOVIE
+        if (catUpper == "MOVIE" || catUpper == "MOVIES" || relUpper.contains("MOVIE")) return true
+
+        // 3. If title explicitly indicates a Season (e.g. "Season 1", "Season 2"), it's a TV series even if type defaulted to MOVIE
+        if (titleUpper.contains("SEASON ") || titleUpper.endsWith(" SEASON") || titleUpper.contains(" S1") || titleUpper.contains(" S2")) return false
+
+        // 4. Default type check
+        if (typeUpper == "MOVIE") return true
+
+        return titleUpper.contains(" MOVIE") || titleUpper.endsWith(" MOVIE") || titleUpper.contains(" THE MOVIE")
+    }
+
+    /**
      * Extracts the format type of a media item: "TV", "MOVIE", "OVA", "ONA", "SPECIAL"
      */
     fun getMediaFormatLabel(item: MediaItem): String {
@@ -246,14 +272,7 @@ object FranchiseManager {
         if (hasRelWord("EXTRA") || hasTitleWord("EXTRA") || hasTitleWord("EXTRAS")) return "EXTRA"
         if (hasRelWord("SPECIAL") || hasTitleWord("SPECIAL")) return "SPECIAL"
 
-        val isExplicitMovie = hasRelWord("MOVIE") ||
-                catUpper == "MOVIE" ||
-                catUpper == "MOVIES" ||
-                titleUpper.contains(" MOVIE") ||
-                titleUpper.endsWith(" MOVIE") ||
-                titleUpper.contains(" THE MOVIE")
-
-        if (isExplicitMovie) {
+        if (isMovie(item) || hasRelWord("MOVIE")) {
             return "MOVIE"
         }
 
@@ -263,11 +282,7 @@ object FranchiseManager {
             return "TV"
         }
 
-        if (typeUpper == "MOVIE" || catUpper == "MOVIE" || catUpper == "MOVIES") {
-            return "MOVIE"
-        }
-
-        return "TV"
+        return if (isMovie(item)) "MOVIE" else "TV"
     }
 
     /**
@@ -405,40 +420,27 @@ object FranchiseManager {
     /**
      * Computes the display subtitle for a franchise card.
      * Supports optional inclusion of duration (defaults to true for test suite compatibility).
+     *
+     * Master Authority Invariant:
+     * - If !isMovie(item) && sNum > 0: Always formatted as a numbered Season (e.g. "Season 4 Pt 3 • 2023 • 2 Episodes").
+     *   Story role tags like "TV Special" NEVER turn a Series into a Movie or label it "Movie 3".
+     * - If isMovie(item): Formatted as a Movie (e.g. "Movie 2", "Encore Cut", "2018 • 100 min").
+     * - If !isMovie(item) && sNum == 0: Formatted as a Zero-Season entry (e.g. "Extras • 2018 • 4 Episodes", "OVA • 2 Episodes").
      */
     fun getSeasonCardSubtitle(item: MediaItem, includeDuration: Boolean = true): String {
-        val format = getMediaFormatLabel(item)
-        val isNonSeason = format in listOf("MOVIE", "OVA", "ONA", "SPECIAL", "TV SPECIAL", "EXTRA")
         val sNum = getEffectiveSeasonNumber(item)
         val pNum = getEffectivePartNumber(item)
+        val format = getMediaFormatLabel(item)
+        val relUpper = item.relationType.trim().uppercase(Locale.ROOT)
+        val isMovieItem = isMovie(item)
         val parts = mutableListOf<String>()
 
-        if (isNonSeason || sNum == 0) {
-            if (pNum != null && pNum > 1) {
-                parts.add("Movie $pNum")
-            } else if (item.releaseYear.isNotBlank()) {
-                parts.add(item.releaseYear)
-            }
-            if (format != "MOVIE" && format != "TV") {
-                parts.add(format)
-            }
-            if (includeDuration) {
-                if (item.duration.isNotBlank()) {
-                    val dur = item.duration.trim()
-                    parts.add(if (dur.endsWith("min", ignoreCase = true) || dur.endsWith("m", ignoreCase = true)) dur else "${dur}m")
-                } else if (item.episodes.isNotEmpty()) {
-                    val durMs = item.episodes.first().durationMs
-                    if (durMs > 0) parts.add("${durMs / 60000}m")
-                    else if (item.episodes.size > 1) parts.add("${item.episodes.size} Eps")
-                }
-            }
-        } else {
-            if (sNum > 0) {
-                if (pNum != null && pNum > 0) {
-                    parts.add("Season $sNum Pt $pNum")
-                } else {
-                    parts.add("Season $sNum")
-                }
+        if (!isMovieItem && sNum > 0) {
+            // Case 1: Numbered Season of a Series (e.g. S4 P3, S1, S2)
+            if (pNum != null && pNum > 0) {
+                parts.add("Season $sNum Pt $pNum")
+            } else {
+                parts.add("Season $sNum")
             }
             if (item.releaseYear.isNotBlank()) {
                 parts.add(item.releaseYear)
@@ -448,6 +450,57 @@ object FranchiseManager {
                 parts.add(if (epText.endsWith("Eps", ignoreCase = true) || epText.endsWith("Episodes", ignoreCase = true)) epText else "$epText Episodes")
             } else if (item.episodes.isNotEmpty()) {
                 parts.add("${item.episodes.size} Episodes")
+            }
+        } else if (isMovieItem) {
+            // Case 2: Movie (Standalone, Multi-part, or Special Edition)
+            if (pNum != null && pNum > 1) {
+                parts.add("Movie $pNum")
+            } else if (relUpper.contains("ENCORE")) {
+                parts.add("Encore Cut")
+            } else if (relUpper.contains("EXTENDED CUT") || relUpper.contains("EXTENDED")) {
+                parts.add("Extended Cut")
+            } else if (relUpper.contains("DIRECTOR'S CUT") || relUpper.contains("DIRECTOR")) {
+                parts.add("Director's Cut")
+            } else if (relUpper.contains("REMASTER")) {
+                parts.add("Remaster")
+            } else if (item.releaseYear.isNotBlank()) {
+                parts.add(item.releaseYear)
+            }
+            if (includeDuration) {
+                if (item.duration.isNotBlank()) {
+                    val dur = item.duration.trim()
+                    parts.add(if (dur.endsWith("min", ignoreCase = true) || dur.endsWith("m", ignoreCase = true)) dur else "${dur}m")
+                } else if (item.episodes.isNotEmpty()) {
+                    val durMs = item.episodes.first().durationMs
+                    if (durMs > 0) parts.add("${durMs / 60000}m")
+                }
+            }
+        } else {
+            // Case 3: Series Zero-Season entry (sNum == 0: Extras, OVAs, ONAs, Specials)
+            val isExtra = relUpper.contains("EXTRA") || format == "EXTRA"
+            when {
+                isExtra && pNum != null && pNum > 1 -> parts.add("Extras Pt $pNum")
+                isExtra -> parts.add("Extras")
+                format in listOf("OVA", "ONA", "SPECIAL", "TV SPECIAL") && pNum != null && pNum > 1 -> parts.add("$format Pt $pNum")
+                format in listOf("OVA", "ONA", "SPECIAL", "TV SPECIAL") -> parts.add(format)
+                pNum != null && pNum > 1 -> parts.add("Part $pNum")
+                item.releaseYear.isNotBlank() -> parts.add(item.releaseYear)
+            }
+            if (item.releaseYear.isNotBlank() && !parts.contains(item.releaseYear)) {
+                parts.add(item.releaseYear)
+            }
+            if (item.totalEpisodes.isNotBlank()) {
+                val epText = item.totalEpisodes.trim()
+                parts.add(if (epText.endsWith("Eps", ignoreCase = true) || epText.endsWith("Episodes", ignoreCase = true)) epText else "$epText Episodes")
+            } else if (item.episodes.size > 1) {
+                parts.add("${item.episodes.size} Episodes")
+            } else if (includeDuration) {
+                if (item.duration.isNotBlank()) {
+                    val dur = item.duration.trim()
+                    parts.add(if (dur.endsWith("min", ignoreCase = true) || dur.endsWith("m", ignoreCase = true)) dur else "${dur}m")
+                } else if (item.episodes.isNotEmpty() && item.episodes.first().durationMs > 0) {
+                    parts.add("${item.episodes.first().durationMs / 60000}m")
+                }
             }
         }
 
@@ -473,7 +526,7 @@ object FranchiseManager {
             val isThisItem = fItem.id == currentItem.id
             val sNum = getEffectiveSeasonNumber(fItem)
             val pNum = getEffectivePartNumber(fItem)
-            val isMovie = fItem.category.equals("MOVIE", ignoreCase = true) || fItem.type.equals("MOVIE", ignoreCase = true)
+            val isMovie = isMovie(fItem)
             val epCount = fItem.episodes.size.takeIf { it > 0 } 
                 ?: fItem.totalEpisodes.filter { it.isDigit() }.toIntOrNull() 
                 ?: 0
