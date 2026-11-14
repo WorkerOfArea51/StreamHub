@@ -4,6 +4,19 @@ Welcome to the official release notes for **StreamHub** — the ultimate high-pe
 
 ---
 
+### What's New in StreamHub v4.8.450 🚀
+
+- 🌟 **Real-Time Live Poster Badge Preview in Creator Studio (`AdminSpecsTab.kt`)**:
+  - Instant live feedback surface directly on the Specs tab: see `Poster Badge Preview: [ M1 ]` and `Shelf Slot: #6` update dynamically in real time as you adjust numbers or relation pills before tapping *Save Changes*.
+- 🎬 **Unified Franchise & Movie Numbering Architecture (`FranchiseManager.kt`, `DetailsScreen.kt`)**:
+  - **Zero Timeline Conflation (`M6` Bug Eradicated)**: `Franchise Watch Order #` strictly sorts the timeline shelf (1st, 2nd, 6th) and never prints on poster badges. *Demon Slayer: Infinity Castle* (`Movie # = 1`, `Order = 6`) cleanly displays `[ M1 ]` and sorts 6th at the end of the shelf.
+  - **Single Source of Truth (`FranchiseManager.getPosterBadge`)**: Centralized badging across Details carousels, Media Cards, My List, and season dropdowns.
+  - **Full Support for Split Movies**: Standalone split movies like *Dune: Part One & Two* cleanly badge as `[ Pt 1 ]` and `[ Pt 2 ]`; movie series split parts render as `[ M1 P2 ]`.
+  - **Eradicated Ghost `[EXTRA]` Badges**: Removed aggressive title regex matches. Titles with "Extra" in the name will no longer be hijacked into `[EXTRA]` unless the creator explicitly checks the `Extra` relation pill.
+  - **Movie Metadata Scraper Protection (`MetadataFetchManager.kt`)**: Preserves `seasonNumber = 0` on standalone movies when fetching metadata, preventing TV series season numbers from corrupting standalone films (e.g. *Kaguya-sama* `seasonNumber = 4`).
+
+---
+
 ### What's New in StreamHub v4.8.449 🚀
 
 - 🧭 **Rock-Solid Home Screen Scroll Persistence**:
