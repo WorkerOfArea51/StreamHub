@@ -25,6 +25,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     object StorageManagement : Screen("storage-management", "Storage & Cache")
     object History : Screen("history", "Watch History")
     object Admin : Screen("admin", "Admin Panel")
+    object AdminTools : Screen("admin-tools", "Studio Tools")
     object About : Screen("about", "About StreamHub")
     object MyProfile : Screen("my-profile", "My Profile")
     object EditProfile : Screen("edit-profile", "Edit Profile")

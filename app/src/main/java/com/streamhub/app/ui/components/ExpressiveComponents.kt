@@ -57,11 +57,13 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.Icon
@@ -1465,12 +1467,16 @@ fun ExpressiveDualSelectorSplitButton(
 
 /**
  * Material 3 Expressive Squircle Studio / Creator Button.
- * Replaces the multi-expansion FAB with a dedicated, tactile Creator Studio button.
+ * Features ultra-responsive 135° rotation and split tool tab navigation
+ * separating Creator Studio (Overview, Links, Specs) from Studio Tools (Health, Vouchers, Backup).
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ExpressiveStudioButton(
-    onClick: () -> Unit,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
+    onOpenCreatorStudio: () -> Unit,
+    onOpenTools: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
@@ -1478,35 +1484,70 @@ fun ExpressiveStudioButton(
     val scope = rememberCoroutineScope()
     var job by remember { mutableStateOf<Job?>(null) }
 
-    // 90° Snap Rotation animation on click
-    val rotation = remember { Animatable(0f) }
-    var isRotating by remember { mutableStateOf(false) }
-
-    val handleFabClick: () -> Unit = {
-        if (!isRotating) {
-            isRotating = true
-            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            scope.launch {
-                // Smooth 90° snap rotation with spring physics
-                rotation.animateTo(
-                    targetValue = 90f,
-                    animationSpec = spring(
-                        dampingRatio = 0.65f,
-                        stiffness = 420f
-                    )
-                )
-                onClick()
-                delay(450)
-                rotation.snapTo(0f)
-                isRotating = false
-            }
-        }
-    }
+    // Smooth 135° Snap Rotation with spring physics (transforms '+' to '×')
+    val rotation by animateFloatAsState(
+        targetValue = if (isExpanded) 135f else 0f,
+        animationSpec = spring(
+            dampingRatio = 0.65f,
+            stiffness = 500f
+        ),
+        label = "fab_rotation"
+    )
 
     Column(
         horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = modifier
     ) {
+        // Split Side Tool Tabs (Animate out when expanded)
+        AnimatedVisibility(
+            visible = isExpanded,
+            enter = fadeIn(animationSpec = tween(150)) +
+                    slideInVertically(
+                        initialOffsetY = { it / 2 },
+                        animationSpec = spring(dampingRatio = 0.68f, stiffness = 420f)
+                    ) +
+                    scaleIn(
+                        initialScale = 0.85f,
+                        animationSpec = spring(dampingRatio = 0.68f, stiffness = 420f)
+                    ),
+            exit = fadeOut(animationSpec = tween(100)) +
+                   slideOutVertically(
+                       targetOffsetY = { it / 3 },
+                       animationSpec = tween(100)
+                   ) +
+                   scaleOut(targetScale = 0.85f, animationSpec = tween(100))
+        ) {
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Pill 1: Creator Studio (3 Core Publication Tabs)
+                StudioToolTabPill(
+                    title = "Creator Studio",
+                    subtitle = "Overview • Links • Specs",
+                    icon = Icons.Default.Movie,
+                    iconBackground = Brush.linearGradient(listOf(Color(0xFFE50914), Color(0xFFFF8F00))),
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onOpenCreatorStudio()
+                    }
+                )
+
+                // Pill 2: Studio Tools (Dedicated Operations Suite)
+                StudioToolTabPill(
+                    title = "Studio Tools",
+                    subtitle = "Health Inspector • VIP Vouchers • Backup",
+                    icon = Icons.Default.Build,
+                    iconBackground = Brush.linearGradient(listOf(Color(0xFF7C4DFF), Color(0xFF3F51B5))),
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onOpenTools()
+                    }
+                )
+            }
+        }
+
         ExpressiveHoldPopup(
             visible = holdLabel != null,
             label = holdLabel,
@@ -1517,8 +1558,8 @@ fun ExpressiveStudioButton(
 
         Surface(
             shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.primary,
-            border = BorderStroke(1.dp, Color(0x55FFFFFF)),
+            color = if (isExpanded) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.primary,
+            border = BorderStroke(1.dp, if (isExpanded) Color(0x66FFFFFF) else Color(0x55FFFFFF)),
             shadowElevation = 10.dp,
             tonalElevation = 6.dp,
             modifier = Modifier
@@ -1526,10 +1567,13 @@ fun ExpressiveStudioButton(
                 .bouncyTouch(pressedScale = 0.88f)
                 .clip(RoundedCornerShape(18.dp))
                 .combinedClickable(
-                    onClick = handleFabClick,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onToggleExpand()
+                    },
                     onLongClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        holdLabel = "Add Media & Creator Studio 🎬"
+                        holdLabel = "Add Media & Studio Tools 🎬"
                         job?.cancel()
                         job = scope.launch {
                             delay(1800)
@@ -1541,17 +1585,98 @@ fun ExpressiveStudioButton(
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = Icons.Default.Add,
-                    contentDescription = "Add Media & Creator Studio",
+                    contentDescription = if (isExpanded) "Close Studio Tools" else "Open Studio Tools",
                     tint = Color.White,
                     modifier = Modifier
                         .size(28.dp)
                         .graphicsLayer {
-                            rotationZ = rotation.value
+                            rotationZ = rotation
                         }
                 )
             }
         }
     }
+}
+
+@Composable
+private fun StudioToolTabPill(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    iconBackground: Brush,
+    onClick: () -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.End,
+        modifier = Modifier
+            .bouncyTouch(pressedScale = 0.94f)
+            .clickable(onClick = onClick)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = Color(0xEE1C1C26),
+            border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+            shadowElevation = 8.dp
+        ) {
+            Column(
+                horizontalAlignment = Alignment.End,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 10.sp,
+                        color = Color(0xAAFFFFFF)
+                    )
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(10.dp))
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(iconBackground),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = Color.White,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+    }
+}
+
+/** Backward compatibility overload */
+@Composable
+fun ExpressiveStudioButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExpressiveStudioButton(
+        isExpanded = expanded,
+        onToggleExpand = { expanded = !expanded },
+        onOpenCreatorStudio = {
+            expanded = false
+            onClick()
+        },
+        onOpenTools = {
+            expanded = false
+            onClick()
+        },
+        modifier = modifier
+    )
 }
 
 /**

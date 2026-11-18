@@ -734,6 +734,12 @@ fun StreamHubApp(
                 )
             }
 
+            composable(Screen.AdminTools.route) {
+                com.streamhub.app.ui.components.AdminToolsDialog(
+                    onDismiss = { navController.popBackStack() }
+                )
+            }
+
             composable(Screen.Settings.route) {
                 SettingsScreen(
                     onBackClick = { navController.popBackStack() },

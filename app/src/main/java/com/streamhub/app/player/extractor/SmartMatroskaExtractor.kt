@@ -100,7 +100,7 @@ class SmartMatroskaExtractor(
         private const val SECONDARY_SEEK_HEAD_MAX_BYTES = 2048L
         private const val EOF_COALESCE_TAIL_BYTES = 4096L
         private const val MAX_SEEK_HEAD_HOPS = 4
-        private const val PRE_SEEK_AWAIT_MS = 2500L
+        private const val PRE_SEEK_AWAIT_MS = 800L
         private const val MAX_CLUSTER_RESYNC_BYTES = 4L * 1024 * 1024
         private const val MAX_CACHED_STREAMS = 12
 
@@ -230,7 +230,8 @@ class SmartMatroskaExtractor(
 
         private data class CachedMatroskaIndex(
             val chunkIndex: ChunkIndex? = null,
-            val tracksBytes: ByteArray? = null
+            val tracksBytes: ByteArray? = null,
+            val probedNoCues: Boolean = false
         )
 
         private val metadataCacheLock = Any()
@@ -248,14 +249,20 @@ class SmartMatroskaExtractor(
             }
         }
 
-        private fun putCachedMetadata(uri: Uri?, chunkIndex: ChunkIndex? = null, tracksBytes: ByteArray? = null) {
-            if (uri == null || (chunkIndex == null && tracksBytes == null)) return
+        private fun putCachedMetadata(
+            uri: Uri?,
+            chunkIndex: ChunkIndex? = null,
+            tracksBytes: ByteArray? = null,
+            probedNoCues: Boolean = false
+        ) {
+            if (uri == null || (chunkIndex == null && tracksBytes == null && !probedNoCues)) return
             val key = com.streamhub.app.player.StreamDataSourceFactory.sanitizeCacheKey(uri)
             synchronized(metadataCacheLock) {
                 val existing = metadataCache[key]
                 metadataCache[key] = CachedMatroskaIndex(
                     chunkIndex = chunkIndex ?: existing?.chunkIndex,
-                    tracksBytes = tracksBytes ?: existing?.tracksBytes
+                    tracksBytes = tracksBytes ?: existing?.tracksBytes,
+                    probedNoCues = probedNoCues || (existing?.probedNoCues == true && chunkIndex == null)
                 )
             }
         }
@@ -635,6 +642,8 @@ class SmartMatroskaExtractor(
                         Log.i(TAG, "Using memory-cached Cues ChunkIndex (${cachedChunkIndex.length} keyframes) — skipped F2L tail fetch")
                         pendingChunkIndex = cachedChunkIndex
                         dynamicSeekMap?.upgradeToChunkIndex(cachedChunkIndex)
+                    } else if (cached?.probedNoCues == true) {
+                        Log.i(TAG, "Stream probed previously: no tail Cues index present. Skipped redundant background tail fetch.")
                     } else if (targetUri != null) {
                         cuesJob = extractorScope.launch {
                             resolveCuesInBackground(targetUri, splitInfo)
@@ -773,7 +782,13 @@ class SmartMatroskaExtractor(
                 putCachedMetadata(uri, chunkIndex = chunkIndex)
                 pendingChunkIndex = chunkIndex
                 dynamicSeekMap?.upgradeToChunkIndex(chunkIndex)
+            } else {
+                Log.i(TAG, "Background Cues parsing yielded no seekable keyframes — recorded probedNoCues")
+                putCachedMetadata(uri, probedNoCues = true)
             }
+        } else {
+            Log.i(TAG, "Background Cues fetch yielded no cues payload — recorded probedNoCues")
+            putCachedMetadata(uri, probedNoCues = true)
         }
     }
 
@@ -783,6 +798,11 @@ class SmartMatroskaExtractor(
      * Prevents dispatching blind linear offsets into raw HEVC slice entropy.
      */
     private fun awaitCuesIfResolving(timeoutMs: Long = PRE_SEEK_AWAIT_MS) {
+        val cached = getCachedMetadata(effectiveUri)
+        if (cached?.probedNoCues == true) {
+            // Already probed: stream does not have a tail Cues index. Zero-delay fast path.
+            return
+        }
         val job = cuesJob
         if (job != null && job.isActive && pendingChunkIndex == null && parsedChunkIndex == null) {
             Log.i(TAG, "Seek requested while Cues resolution in-flight — briefly awaiting Cues up to ${timeoutMs}ms...")

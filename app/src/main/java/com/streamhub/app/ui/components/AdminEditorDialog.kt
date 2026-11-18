@@ -227,7 +227,7 @@ fun AdminEditorDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Custom Tab Switcher Pills
+                // Custom Tab Switcher Pills (3 Focused Publication Tabs)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -258,13 +258,6 @@ fun AdminEditorDialog(
                         modifier = Modifier.weight(1f),
                         onClick = { selectedTab = 2 }
                     )
-                    TabButton(
-                        icon = Icons.Default.Build,
-                        title = "Tools",
-                        isSelected = selectedTab == 3,
-                        modifier = Modifier.weight(1f),
-                        onClick = { selectedTab = 3 }
-                    )
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -279,7 +272,6 @@ fun AdminEditorDialog(
                         0 -> AdminOverviewTab(state = state, scope = scope)
                         1 -> AdminLinksTab(state = state, scope = scope)
                         2 -> AdminSpecsTab(state = state)
-                        3 -> AdminToolsTab(state = state)
                     }
                 }
 

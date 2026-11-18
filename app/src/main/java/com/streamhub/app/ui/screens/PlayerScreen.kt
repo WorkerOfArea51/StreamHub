@@ -464,25 +464,31 @@ fun PlayerScreen(
         uiState.isSeeking,
         playbackProgress.bufferHealthSeconds
     ) {
-        if (uiState.isBuffering && !uiState.isFirstFrameRendered) {
-            // Debounce initial episode startup/transition:
+        if (!uiState.isBuffering || playbackProgress.bufferHealthSeconds >= 10L) {
+            // Buffer runway is healthy (>= 10s) or stream is not buffering.
+            // Inviolable Law: Never show buffering indicators when forward buffer is healthy.
+            showBufferingHud = false
+        } else if (!uiState.isFirstFrameRendered) {
+            // Debounce initial episode startup/transition when buffer is low (< 10s):
             // If stream is pre-cached on disk or resuming from a saved position,
             // grant a smooth 3,500ms grace window for container demuxing and hardware video decoders.
             // If fresh uncached cold start, grant 1,500ms for network socket handshake,
             // completely eliminating the jarring flash of "Buffer: 0s" spinner.
             val startupGraceMs = if (uiState.isStreamPrecached || uiState.isResumedPlayback) 3500L else 1500L
             delay(startupGraceMs)
-            showBufferingHud = true
-        } else if (uiState.isBuffering) {
-            // Mid-stream buffering stall:
+            if (uiState.isBuffering && playbackProgress.bufferHealthSeconds < 10L) {
+                showBufferingHud = true
+            }
+        } else {
+            // Mid-stream buffering stall when buffer is starved (< 10s):
             // Routine MediaCodec keyframe flushes during seeks or scrubbing take 300-600ms.
-            // If seeking or if forward buffer is already positive, grant 1,200ms grace window
+            // If seeking or if forward buffer is slightly positive, grant 1,200ms grace window
             // to prevent false-positive spinner flicker. Genuine network stalls trigger in 500ms.
             val midStreamGraceMs = if (uiState.isSeeking || playbackProgress.bufferHealthSeconds > 0L) 1200L else 500L
             delay(midStreamGraceMs)
-            showBufferingHud = true
-        } else {
-            showBufferingHud = false
+            if (uiState.isBuffering && playbackProgress.bufferHealthSeconds < 10L) {
+                showBufferingHud = true
+            }
         }
     }
 

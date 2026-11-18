@@ -132,6 +132,7 @@ import com.streamhub.app.data.models.matchesCategory
 import com.streamhub.app.data.models.isFullyCompleted
 import com.streamhub.app.data.models.isActivelyTrending
 import com.streamhub.app.ui.components.AdminEditorDialog
+import com.streamhub.app.ui.components.AdminToolsDialog
 import com.streamhub.app.ui.components.MediaCard
 import com.streamhub.app.ui.components.MediaQuickActionsSheet
 import com.streamhub.app.ui.components.MinTouchTarget
@@ -181,7 +182,10 @@ fun HomeScreen(
     val coroutineScope = rememberCoroutineScope()
 
     val selectedCategoryFilter by com.streamhub.app.data.HomeScreenLayoutManager.selectedCategoryFilter.collectAsState()
+    var isStudioFabExpanded by remember { mutableStateOf(false) }
     var showAdminAddDialog by remember { mutableStateOf(false) }
+    var showStudioToolsDialog by remember { mutableStateOf(false) }
+    var adminEditorInitialItem by remember { mutableStateOf<MediaItem?>(null) }
     var showSurpriseMeDialog by remember { mutableStateOf(false) }
     var showClearHistoryDialog by remember { mutableStateOf(false) }
     var selectedQuickActionMedia by remember { mutableStateOf<MediaItem?>(null) }
@@ -1136,9 +1140,35 @@ fun HomeScreen(
         }
         }
 
+        // ── Responsive Studio FAB Scrim / Backdrop ──
+        if (isStudioFabExpanded) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(18f)
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        isStudioFabExpanded = false
+                    }
+            )
+        }
+
         if (isAdminMode) {
             com.streamhub.app.ui.components.ExpressiveStudioButton(
-                onClick = { onNavigateToAdmin() },
+                isExpanded = isStudioFabExpanded,
+                onToggleExpand = { isStudioFabExpanded = !isStudioFabExpanded },
+                onOpenCreatorStudio = {
+                    isStudioFabExpanded = false
+                    adminEditorInitialItem = null
+                    showAdminAddDialog = true
+                },
+                onOpenTools = {
+                    isStudioFabExpanded = false
+                    showStudioToolsDialog = true
+                },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .zIndex(20f)
@@ -1165,14 +1195,33 @@ fun HomeScreen(
         }
     }
 
+    androidx.activity.compose.BackHandler(enabled = isStudioFabExpanded) {
+        isStudioFabExpanded = false
+    }
+
     if (showAdminAddDialog) {
         AdminEditorDialog(
-            initialItem = null,
+            initialItem = adminEditorInitialItem,
             existingIds = catalog.map { it.id }.toSet(),
-            onDismiss = { showAdminAddDialog = false },
+            onDismiss = {
+                showAdminAddDialog = false
+                adminEditorInitialItem = null
+            },
             onSave = { newItem ->
                 repository.saveMediaItem(newItem)
                 showAdminAddDialog = false
+                adminEditorInitialItem = null
+            }
+        )
+    }
+
+    if (showStudioToolsDialog) {
+        AdminToolsDialog(
+            onDismiss = { showStudioToolsDialog = false },
+            onEditShow = { itemToEdit ->
+                showStudioToolsDialog = false
+                adminEditorInitialItem = itemToEdit
+                showAdminAddDialog = true
             }
         )
     }

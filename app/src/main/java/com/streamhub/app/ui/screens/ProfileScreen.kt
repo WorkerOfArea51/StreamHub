@@ -37,6 +37,7 @@ import com.streamhub.app.data.WatchHistoryManager
 import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.ui.components.AdminEditorDialog
 import com.streamhub.app.ui.components.AdminPasswordDialog
+import com.streamhub.app.ui.components.AdminToolsDialog
 import com.streamhub.app.ui.components.ToastManager
 import com.streamhub.app.ui.theme.BackgroundDark
 import com.streamhub.app.ui.theme.bouncyClickable
@@ -79,6 +80,7 @@ fun ProfileScreen(
 
     var showAdminPasswordDialog by remember { mutableStateOf(false) }
     var showAddContentDialog by remember { mutableStateOf(false) }
+    var showStudioToolsDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         StorageCacheManager.calculateStorageUsage()
@@ -205,30 +207,62 @@ fun ProfileScreen(
                         }
                     }
 
-                    // Lock Admin Access centered CTA
+                    // Actions Row: Studio Tools & Lock Admin Access
                     Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .bouncyClickable {
-                                AdminManager.disableAdmin()
-                                ToastManager.showToast("Admin access locked", Icons.Default.Lock)
-                            }
-                            .padding(horizontal = 14.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Lock,
-                            contentDescription = null,
-                            tint = FigmaAccentOrange,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Text(
-                            text = "Lock admin access",
-                            color = FigmaAccentOrange,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .bouncyClickable {
+                                    showStudioToolsDialog = true
+                                }
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Build,
+                                contentDescription = null,
+                                tint = FigmaHeroCream,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = "Studio tools",
+                                color = FigmaHeroCream,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .bouncyClickable {
+                                    AdminManager.disableAdmin()
+                                    ToastManager.showToast("Admin access locked", Icons.Default.Lock)
+                                }
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = FigmaAccentOrange,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = "Lock admin access",
+                                color = FigmaAccentOrange,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
             }
@@ -422,6 +456,12 @@ fun ProfileScreen(
                 repository.saveMediaItem(newItem)
                 showAddContentDialog = false
             }
+        )
+    }
+
+    if (showStudioToolsDialog) {
+        AdminToolsDialog(
+            onDismiss = { showStudioToolsDialog = false }
         )
     }
 }
