@@ -4,6 +4,19 @@ All notable architectural milestones, performance optimizations, and visual upda
 
 ---
 
+### What's New in StreamHub v4.8.454 🚀
+
+- 🎮 **Player HUDs & Content Warning Overlays Restored (`PlayerScreen.kt`)**:
+  - **Player Status Corner HUD**: Fully reconnected `PlayerCornerStatusHud` to `playerSettings.playerStatusOverlayEnabled`, restoring top-left remaining countdown and top-right battery gauge, percentage, and live clock in screen corners.
+  - **Content Advisory Banner**: Restored 5-second `ContentWarningBanner` on playback start, displaying age ratings and mature genre descriptors.
+  - **Reconnecting & Restored HUDs**: Reconnected `ReconnectingStreamHud` countdown and `StreamRestoredPill` badge during network recovery.
+  - **Smart Resume Auto-Dismiss**: Re-added 7-second timer to auto-dismiss pending resume prompt.
+- 🎬 **Details Screen Episode Badges & Gestures Restored (`DetailsEpisodesSection.kt`)**:
+  - **Duration & Progress Badges**: Restored runtime pill (`24:12` or `24m`) and in-progress remaining badge (`${m}m left`) on episode thumbnails.
+  - **Mark as Watched**: Re-enabled long-press on episode cards to toggle watched/unwatched status with haptic feedback and toast notification.
+
+---
+
 ### What's New in StreamHub v4.8.453 🚀
 
 - 🎮 **Video Player Controls: Restored Instant Tap-to-Hide & Cinematic Scrim (`PlayerScreen.kt`)**:
@@ -51,6 +64,19 @@ All notable architectural milestones, performance optimizations, and visual upda
   - Completely purged the legacy Metadata Health Inspector and deleted `MetadataInspectorDialog.kt` (674 lines of obsolete code).
   - Eradicated redundant full-catalog scans (`getMediaItemIssues`) on opening Studio Tools, reducing memory pressure.
   - Focused Studio Tools strictly on the 3 core operations: Single-Device VIP Vouchers (`VoucherManagerDialog`), Cloudflare KV Backup & Restore (`CatalogBackupDialog`), and Stream URL Rewriter (`ServerMigrationDialog`).
+
+---
+
+### What's New in StreamHub v4.8.454 🚀
+
+- 🎮 **Player HUDs & Content Warning Overlays Restored (`PlayerScreen.kt`)**:
+  - **Player Status Corner HUD**: Fully reconnected `PlayerCornerStatusHud` to `playerSettings.playerStatusOverlayEnabled`, restoring top-left remaining countdown and top-right battery gauge, percentage, and live clock in screen corners.
+  - **Content Advisory Banner**: Restored 5-second `ContentWarningBanner` on playback start, displaying age ratings and mature genre descriptors.
+  - **Reconnecting & Restored HUDs**: Reconnected `ReconnectingStreamHud` countdown and `StreamRestoredPill` badge during network recovery.
+  - **Smart Resume Auto-Dismiss**: Re-added 7-second timer to auto-dismiss pending resume prompt.
+- 🎬 **Details Screen Episode Badges & Gestures Restored (`DetailsEpisodesSection.kt`)**:
+  - **Duration & Progress Badges**: Restored runtime pill (`24:12` or `24m`) and in-progress remaining badge (`${m}m left`) on episode thumbnails.
+  - **Mark as Watched**: Re-enabled long-press on episode cards to toggle watched/unwatched status with haptic feedback and toast notification.
 
 ---
 

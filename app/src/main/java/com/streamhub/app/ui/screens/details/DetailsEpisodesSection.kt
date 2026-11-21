@@ -203,7 +203,6 @@ fun EpisodeRowItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 5.dp)
-            .bouncyClickable(pressedScale = 0.98f) { onPlay() }
     ) {
         Row(
             modifier = Modifier
@@ -211,89 +210,176 @@ fun EpisodeRowItem(
                 .padding(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Thumbnail container
-            Box(
+            val haptics = LocalHapticFeedback.current
+            // Playable left & center area (Thumbnail + Metadata) with Long-Press Mark as Watched
+            Row(
                 modifier = Modifier
-                    .width(115.dp)
-                    .aspectRatio(16f / 9f)
+                    .weight(1f)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color.Black),
-                contentAlignment = Alignment.Center
+                    .combinedClickable(
+                        onClick = { onPlay() },
+                        onLongClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            val newWatched = !isEpisodeWatched
+                            WatchHistoryManager.markEpisodeWatched(mediaItem.id, index, newWatched, mediaItem)
+                            ToastManager.showToast(
+                                if (newWatched) "Episode ${episode.episodeNumber} Marked as Watched ✓" else "Episode ${episode.episodeNumber} Marked as Unwatched ↺",
+                                if (newWatched) Icons.Default.Check else Icons.Default.Refresh
+                            )
+                        }
+                    ),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                AsyncImage(
-                    model = effectiveThumbnail,
-                    contentDescription = displayTitle,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-
-                // Play icon overlay
-                Surface(
-                    shape = CircleShape,
-                    color = Color(0x99000000),
-                    modifier = Modifier.size(28.dp)
+                // Thumbnail container
+                Box(
+                    modifier = Modifier
+                        .width(115.dp)
+                        .aspectRatio(16f / 9f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.Black),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "Play",
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
+                    AsyncImage(
+                        model = effectiveThumbnail,
+                        contentDescription = displayTitle,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
 
-                // Resume progress bar along bottom edge
-                if (hasEpProgress) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .height(3.dp)
-                            .background(Color(0x88000000))
+                    // Play icon overlay
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0x99000000),
+                        modifier = Modifier.size(28.dp)
                     ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Play",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    // Resume progress bar along bottom edge
+                    if (hasEpProgress) {
                         Box(
                             modifier = Modifier
-                                .fillMaxHeight()
-                                .fillMaxWidth(epFraction)
-                                .background(PrimaryRed)
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .background(Color(0x88000000))
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(epFraction)
+                                    .background(PrimaryRed)
+                            )
+                        }
+                    } else if (isEpisodeWatched) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .background(Color(0xFF4CAF50))
                         )
                     }
-                } else if (isEpisodeWatched) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .height(3.dp)
-                            .background(Color(0xFF4CAF50))
-                    )
+
+                    // Duration / Remaining Badge (bottom-right)
+                    val durationLabel = when {
+                        episode.durationMs > 0 -> {
+                            val totalSec = (episode.durationMs / 1000).toInt()
+                            val h = totalSec / 3600
+                            val m = (totalSec % 3600) / 60
+                            val s = totalSec % 60
+                            if (h > 0) String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, s)
+                            else String.format(java.util.Locale.US, "%02d:%02d", m, s)
+                        }
+                        mediaItem.duration.isNotBlank() -> {
+                            val raw = mediaItem.duration.trim()
+                            val cleaned = raw
+                                .replace("per ep.", "", ignoreCase = true)
+                                .replace("per episode", "", ignoreCase = true)
+                                .replace("per ep", "", ignoreCase = true)
+                                .replace(".", "")
+                                .trim()
+                            when {
+                                cleaned.endsWith("min", ignoreCase = true) -> "${cleaned.removeSuffix("min").trim()}m"
+                                cleaned.endsWith("m", ignoreCase = true) -> cleaned
+                                cleaned.isNotBlank() && cleaned.all { it.isDigit() } -> "${cleaned}m"
+                                else -> cleaned
+                            }
+                        }
+                        else -> ""
+                    }
+
+                    if (hasEpProgress && !mediaProgress!!.isCompleted) {
+                        val remainingMs = (mediaProgress.durationMs - mediaProgress.positionMs).coerceAtLeast(0L)
+                        val remainingMin = (remainingMs / 60000).toInt()
+                        val remainingLabel = if (remainingMin > 0) "${remainingMin}m left" else "<1m left"
+
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(4.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(PrimaryRed.copy(alpha = 0.9f))
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = remainingLabel,
+                                color = Color.White,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else if (durationLabel.isNotBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(4.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0xCC000000))
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = durationLabel,
+                                color = Color.White,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
-            }
 
-            Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
-            // Metadata column
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = displayTitle,
-                    color = if (isEpisodeWatched) TextSecondary else TextPrimary,
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                if (metaDetails.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
+                // Metadata column
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.Center
+                ) {
                     Text(
-                        text = metaDetails,
-                        color = TextSecondary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Normal
+                        text = displayTitle,
+                        color = if (isEpisodeWatched) TextSecondary else TextPrimary,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
+
+                    if (metaDetails.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = metaDetails,
+                            color = TextSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Normal
+                        )
+                    }
                 }
             }
 

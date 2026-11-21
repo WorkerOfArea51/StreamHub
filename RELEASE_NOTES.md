@@ -4,6 +4,18 @@ Welcome to the official release notes for **StreamHub** — the ultimate high-pe
 
 ---
 
+### What's New in StreamHub v4.8.454 🚀
+
+- 🎮 **Video Player HUD & Content Warning Restored**:
+  - Restored Player Status HUD in screen corners (live clock, battery gauge, and remaining countdown).
+  - Restored Content Advisory banner on playback start.
+  - Restored network reconnecting countdown HUD and auto-dismissing resume prompts.
+- 🎬 **Episode Runtime Badges & Watched Toggle Restored**:
+  - Episode thumbnails now display their duration runtime badge and watch progress badge.
+  - Long-pressing any episode card marks it as Watched / Unwatched.
+
+---
+
 ### What's New in StreamHub v4.8.453 🚀
 
 - 🎮 **Instant Player Controls Dismissal**:
@@ -23,6 +35,18 @@ Welcome to the official release notes for **StreamHub** — the ultimate high-pe
 
 - 💎 **System Stability & Polishing**:
   - Enhanced background memory cleanup and battery efficiency during continuous video streaming.
+
+---
+
+### What's New in StreamHub v4.8.454 🚀
+
+- 🎮 **Video Player HUD & Content Warning Restored**:
+  - Restored Player Status HUD in screen corners (live clock, battery gauge, and remaining countdown).
+  - Restored Content Advisory banner on playback start.
+  - Restored network reconnecting countdown HUD and auto-dismissing resume prompts.
+- 🎬 **Episode Runtime Badges & Watched Toggle Restored**:
+  - Episode thumbnails now display their duration runtime badge and watch progress badge.
+  - Long-pressing any episode card marks it as Watched / Unwatched.
 
 ---
 

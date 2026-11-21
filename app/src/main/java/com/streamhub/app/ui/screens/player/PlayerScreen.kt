@@ -483,6 +483,49 @@ fun PlayerScreen(
         }
     }
 
+    // Content Warning / Parental Guidance Banner state & 5s auto-hide timer
+    var showContentWarning by remember { mutableStateOf(false) }
+
+    LaunchedEffect(uiState.isFirstFrameRendered, playerSettings.contentWarningEnabled, mediaItem.id, uiState.currentEpisodeIndex) {
+        if (uiState.isFirstFrameRendered && playerSettings.contentWarningEnabled) {
+            val hasRating = mediaItem.maturityRating.isNotBlank()
+            val hasMatureGenre = mediaItem.genres.any { g ->
+                g.contains("Horror", ignoreCase = true) ||
+                g.contains("Thriller", ignoreCase = true) ||
+                g.contains("Crime", ignoreCase = true) ||
+                g.contains("Action", ignoreCase = true) ||
+                g.contains("Ecchi", ignoreCase = true) ||
+                g.contains("Psychological", ignoreCase = true) ||
+                g.contains("Mystery", ignoreCase = true)
+            }
+            if (hasRating || hasMatureGenre) {
+                showContentWarning = true
+                delay(5000L)
+                showContentWarning = false
+            }
+        } else {
+            showContentWarning = false
+        }
+    }
+
+    // Non-blocking auto-dismiss for Resume prompt after 7 seconds
+    LaunchedEffect(uiState.showResumePrompt) {
+        if (uiState.showResumePrompt) {
+            delay(7000L)
+            if (viewModel.uiState.value.showResumePrompt) {
+                viewModel.dismissResume()
+            }
+        }
+    }
+
+    // Clear stream restored toast after 2.5s
+    LaunchedEffect(uiState.streamRestoredToast) {
+        if (uiState.streamRestoredToast) {
+            delay(2500L)
+            viewModel.clearStreamRestoredToast()
+        }
+    }
+
     var scrubberThumbnailBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
 
     LaunchedEffect(isScrubbing, scrubbingPositionMs / 3000L, uiState.resolvedStreamUrl) {
@@ -959,6 +1002,46 @@ fun PlayerScreen(
                     errorInfo = errorInfo,
                     onRetry = { viewModel.playEpisode(uiState.currentEpisodeIndex) },
                     onBack = onBackClick
+                )
+            }
+
+            // Smart Auto-Reconnecting Stream HUD Overlay
+            ReconnectingStreamHud(
+                visible = uiState.isReconnecting,
+                attempt = uiState.reconnectAttempt,
+                maxAttempts = 3,
+                isOffline = !isOnline,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 18.dp)
+            )
+
+            // Stream Restored Pill Badge
+            StreamRestoredPill(
+                visible = uiState.streamRestoredToast,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 18.dp)
+            )
+
+            // Content Warning / Parental Guidance Banner (Cinematic Signature Style)
+            ContentWarningBanner(
+                visible = showContentWarning && !uiState.isControlsVisible && playerSettings.contentWarningEnabled,
+                maturityRating = mediaItem.maturityRating,
+                genres = mediaItem.genres,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 20.dp, top = 8.dp)
+            )
+
+            // Player Corner Status HUD (XPlayer style: countdown, battery, clock)
+            if (playerSettings.playerStatusOverlayEnabled) {
+                PlayerCornerStatusHud(
+                    visible = !uiState.isControlsVisible && !uiState.isLocked && !isPipMode,
+                    currentPositionMs = playbackProgress.currentPositionMs,
+                    durationMs = playbackProgress.durationMs,
+                    suppressLeftHud = showContentWarning && playerSettings.contentWarningEnabled,
+                    modifier = Modifier.fillMaxSize()
                 )
             }
 
