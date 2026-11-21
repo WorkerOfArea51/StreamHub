@@ -4,6 +4,14 @@ All notable architectural milestones, performance optimizations, and visual upda
 
 ---
 
+### What's New in StreamHub v4.8.453 🚀
+
+- 🎮 **Video Player Controls: Restored Instant Tap-to-Hide & Cinematic Scrim (`PlayerScreen.kt`)**:
+  - Restored full-screen touch interceptor and subtle dimming background (`Color(0x59000000)`) on the controls overlay container.
+  - Tapping anywhere on open screen space immediately dismisses/toggles the controls overlay without waiting for the 5-second auto-hide timeout.
+
+---
+
 ### What's New in StreamHub v4.8.452 🚀
 
 - ☁️ **Hybrid Cloudflare D1 Relational SQLite (5 GB) + Edge KV Cache (1 GB) Architecture (`cloudflare/`)**:

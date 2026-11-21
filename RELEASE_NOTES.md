@@ -4,6 +4,14 @@ Welcome to the official release notes for **StreamHub** — the ultimate high-pe
 
 ---
 
+### What's New in StreamHub v4.8.453 🚀
+
+- 🎮 **Instant Player Controls Dismissal**:
+  - Tapping anywhere on open video screen space now instantly dismisses the player controls and overlay, restoring seamless 1-tap show / 1-tap hide parity without waiting for the auto-hide timer.
+  - Restored cinematic background dimming behind controls for clearer button readability.
+
+---
+
 ### What's New in StreamHub v4.8.452 🚀
 
 - ☁️ **High-Performance Hybrid Cloud Database**:
