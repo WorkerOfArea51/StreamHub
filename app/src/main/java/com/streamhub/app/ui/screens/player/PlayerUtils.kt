@@ -1,5 +1,15 @@
 package com.streamhub.app.ui.screens.player
 
+/**
+ * =====================================================================================
+ * WHAT IS THIS FILE?
+ * =====================================================================================
+ * PlayerUtils.kt contains formatting helpers and utility functions for player calculations:
+ *  - formatTime: Formats milliseconds into human-readable HH:MM:SS or MM:SS strings.
+ *  - formatFileSize: Formats byte counts into KB, MB, or GB with appropriate precision.
+ * =====================================================================================
+ */
+
 import java.util.Locale
 
 fun formatTime(ms: Long): String {

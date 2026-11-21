@@ -157,18 +157,6 @@ fun AdminEditorDialog(
         )
     }
 
-    if (state.showMetadataInspector) {
-        MetadataInspectorDialog(
-            repository = CatalogRepository.getInstance(),
-            onDismiss = { state.showMetadataInspector = false },
-            onEditShow = { itemToEdit ->
-                state.showMetadataInspector = false
-                state.loadItem(itemToEdit)
-                selectedTab = 0
-            }
-        )
-    }
-
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(

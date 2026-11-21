@@ -1,5 +1,18 @@
 package com.streamhub.app.ui.navigation
 
+/**
+ * =====================================================================================
+ * WHAT IS THIS FILE?
+ * =====================================================================================
+ * NavGraph.kt defines the strongly-typed route definitions and navigation arguments
+ * for StreamHub's Compose Navigation Graph.
+ *
+ * Key components:
+ *  - Screen: Sealed class defining unique route strings for all app destinations
+ *    (Home, Player, Details, MyList, Downloads, Search, Profile, Settings, About, Splash).
+ * =====================================================================================
+ */
+
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Download

@@ -1,0 +1,181 @@
+package com.streamhub.app.ui.screens.splash
+
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.streamhub.app.data.repository.CatalogRepository
+import com.streamhub.app.data.repository.CatalogState
+import com.streamhub.app.ui.components.StreamHubBrandLogo
+import com.streamhub.app.ui.theme.BackgroundDark
+import com.streamhub.app.ui.theme.TextPrimary
+import com.streamhub.app.ui.theme.TextSecondary
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+
+/**
+ * =====================================================================================
+ * WHAT IS THIS FILE?
+ * =====================================================================================
+ * SplashScreen.kt provides the high-performance 120fps opening brand sequence for StreamHub.
+ *
+ * Architectural Invariants:
+ *  1. Zero Blocking on Main Thread: Heavy disk walks and network queries are deferred to
+ *     preserve fluid 120fps animation.
+ *  2. Expressive Scaling & Glow: Smooth CubicBezier easing (0.16f, 1f, 0.3f, 1f) and
+ *     ambient radial neon back-glow.
+ *  3. Catalog Pre-read: Asynchronously awaits `CatalogRepository.catalogState` with a 2.2s
+ *     timeout to guarantee warm catalog data before transitioning to HomeScreen.
+ *  4. Seamless Handoff: Calls `onSplashFinished` to trigger inclusive popUpTo navigation
+ *     into the main NavGraph.
+ * =====================================================================================
+ */
+
+private val ExpressiveScaleEasing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
+
+@Composable
+fun SplashScreen(
+    repository: CatalogRepository,
+    onSplashFinished: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scale = remember { Animatable(0.7f) }
+    val alpha = remember { Animatable(0f) }
+
+    LaunchedEffect(Unit) {
+        coroutineScope {
+            val catalogReady = async {
+                withTimeoutOrNull(2_200L) {
+                    repository.catalogState.first { it !is CatalogState.Loading }
+                }
+            }
+
+            val animJob = launch {
+                launch {
+                    alpha.animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(durationMillis = 550, easing = FastOutSlowInEasing)
+                    )
+                }
+                launch {
+                    scale.animateTo(
+                        targetValue = 1.0f,
+                        animationSpec = tween(durationMillis = 650, easing = ExpressiveScaleEasing)
+                    )
+                }
+            }
+
+            animJob.join()
+
+            // YouTube-style showcase hold: deliberate resting duration
+            // allowing user to clearly see and feel the animated equalizer waveforms and neon glow
+            delay(1_100L)
+
+            // Ensure catalog is ready before proceeding
+            catalogReady.await()
+
+            // Seamless handoff to NavHost cross-dissolve into HomeScreen
+            onSplashFinished()
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(BackgroundDark),
+        contentAlignment = Alignment.Center
+    ) {
+        // Ambient Neon Back-Glow Blob
+        Box(
+            modifier = Modifier
+                .size(260.dp)
+                .graphicsLayer {
+                    this.alpha = alpha.value * 0.25f
+                    this.scaleX = scale.value * 1.15f
+                    this.scaleY = scale.value * 1.15f
+                }
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFFF3366),
+                            Color(0xFFFF6B00).copy(alpha = 0.5f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Official StreamHub Animated Brand Logo
+            Box(
+                modifier = Modifier
+                    .graphicsLayer {
+                        scaleX = scale.value
+                        scaleY = scale.value
+                        this.alpha = alpha.value
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                StreamHubBrandLogo(
+                    size = 120.dp,
+                    animateWaveforms = true
+                )
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // Branding Text with subtle tracking
+            Text(
+                text = "StreamHub",
+                color = TextPrimary,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 2.sp,
+                modifier = Modifier.graphicsLayer {
+                    this.alpha = alpha.value
+                }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Fast. Premium. Unlimited.",
+                color = TextSecondary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 1.2.sp,
+                modifier = Modifier.graphicsLayer {
+                    this.alpha = alpha.value * 0.8f
+                }
+            )
+        }
+    }
+}

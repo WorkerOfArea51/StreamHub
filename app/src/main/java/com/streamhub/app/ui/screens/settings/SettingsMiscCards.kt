@@ -1,5 +1,14 @@
 package com.streamhub.app.ui.screens.settings
 
+/**
+ * =====================================================================================
+ * WHAT IS THIS FILE?
+ * =====================================================================================
+ * SettingsMiscCards.kt contains miscellaneous preference widgets and cards:
+ *  - Cache size summaries, legal notice cards, and feedback links.
+ * =====================================================================================
+ */
+
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border

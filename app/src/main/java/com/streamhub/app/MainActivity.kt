@@ -1,5 +1,20 @@
 package com.streamhub.app
 
+/**
+ * =====================================================================================
+ * WHAT IS THIS FILE?
+ * =====================================================================================
+ * MainActivity.kt is the primary Android Activity entry point for StreamHub.
+ *
+ * Core Responsibilities:
+ *  1. Window & System Bars: Configures edge-to-edge transparent system bars and 120Hz display.
+ *  2. Navigation Host (NavHost): Defines root navigation transitions and screen destinations
+ *     connecting all 13 modular packages.
+ *  3. Picture-in-Picture (PiP): Manages auto-PiP mode on user navigation gestures.
+ *  4. Global Overlays: AccessGate PIN protection, offline banner, and toast notifications.
+ * =====================================================================================
+ */
+
 import android.app.PendingIntent
 import android.app.PictureInPictureParams
 import android.app.RemoteAction
@@ -70,21 +85,22 @@ import com.streamhub.app.data.repository.CatalogState
 import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.player.StreamPlayerViewModel
 import com.streamhub.app.ui.navigation.Screen
-import com.streamhub.app.ui.screens.AboutScreen
-import com.streamhub.app.ui.screens.BroadcastAnnouncementScreen
-import com.streamhub.app.ui.screens.DetailsScreen
-import com.streamhub.app.ui.screens.DownloadsScreen
-import com.streamhub.app.ui.screens.HistoryScreen
-import com.streamhub.app.ui.screens.HomeScreen
-import com.streamhub.app.ui.screens.MyListScreen
-import com.streamhub.app.ui.screens.PlayerScreen
-import com.streamhub.app.ui.screens.EditProfileScreen
-import com.streamhub.app.ui.screens.MyProfileScreen
-import com.streamhub.app.ui.screens.ProfileScreen
-import com.streamhub.app.ui.screens.SearchScreen
-import com.streamhub.app.ui.screens.SettingsScreen
-import com.streamhub.app.ui.screens.SplashScreen
-import com.streamhub.app.ui.screens.StorageManagementScreen
+import com.streamhub.app.ui.screens.about.AboutScreen
+import com.streamhub.app.ui.screens.broadcast.BroadcastAnnouncementScreen
+import com.streamhub.app.ui.screens.details.DetailsScreen
+import com.streamhub.app.ui.screens.downloads.DownloadsScreen
+import com.streamhub.app.ui.screens.history.HistoryScreen
+import com.streamhub.app.ui.screens.home.HomeScreen
+import com.streamhub.app.ui.screens.mylist.MyListScreen
+import com.streamhub.app.ui.screens.player.PlayerScreen
+import com.streamhub.app.ui.screens.profile.EditProfileScreen
+import com.streamhub.app.ui.screens.profile.MyProfileScreen
+import com.streamhub.app.ui.screens.profile.ProfileScreen
+import com.streamhub.app.ui.screens.search.SearchScreen
+import com.streamhub.app.ui.screens.settings.SettingsScreen
+import com.streamhub.app.ui.screens.settings.VideoSettingsScreen
+import com.streamhub.app.ui.screens.splash.SplashScreen
+import com.streamhub.app.ui.screens.storage.StorageManagementScreen
 import com.streamhub.app.ui.components.StreamHubToastHost
 import com.streamhub.app.ui.theme.PrimaryRed
 import com.streamhub.app.ui.theme.StreamHubTheme
@@ -689,7 +705,7 @@ fun StreamHubApp(
             }
 
             composable(Screen.About.route) {
-                com.streamhub.app.ui.screens.AboutScreen(
+                AboutScreen(
                     onBackClick = { navController.popBackStack() }
                 )
             }
@@ -780,7 +796,7 @@ fun StreamHubApp(
             }
 
             composable(Screen.VideoSettings.route) {
-                com.streamhub.app.ui.screens.VideoSettingsScreen(
+                VideoSettingsScreen(
                     onBackClick = { navController.popBackStack() }
                 )
             }

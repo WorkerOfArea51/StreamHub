@@ -4,6 +4,48 @@ All notable architectural milestones, performance optimizations, and visual upda
 
 ---
 
+### What's New in StreamHub v4.8.452 🚀
+
+- ☁️ **Hybrid Cloudflare D1 Relational SQLite (5 GB) + Edge KV Cache (1 GB) Architecture (`cloudflare/`)**:
+  - **Relational Source of Truth**: Deployed Cloudflare D1 SQLite database (`streamhub-db`, database ID: `67231ae4-e3dc-4ba2-8c8e-8466b0e95203`) hosting structured relational tables:
+    - `shows`: Master catalog storing 560 shows, movies, and series with indexed columns (`category`, `type`, `release_year`, `updated_at`, `franchise_order`) and full lossless JSON payloads.
+    - `vouchers`: ACID relational table for Single-Device VIP access codes, hardware device hashes, status, and duration.
+    - `broadcasts`: Indexed notifications and global alerts with automated expiry.
+    - `system_meta`: Version hashes and ETag metadata.
+  - **Zero D1 Row Reads for App Users**: Regular browsing and streaming queries (`GET /api/catalog`) serve strictly from Workers KV edge cache with HTTP 304 ETags, maintaining 10–15ms latency across 300+ global edge locations while keeping D1 daily row reads at zero.
+  - **Auto-Sharded Category Edge Cache (80% / 20 MB Hard Ceiling)**: Partitioned KV cache by media category with an inviolable 80% capacity ceiling (20 MiB / 20,971,520 bytes) and a 5 MiB safety runway to prevent truncation or data loss:
+    - `catalog_animes_1`: 246 anime series (4.03 MB, 19.2% filled).
+    - `catalog_movies_1`: 204 blockbuster movies (425 KB, 2.0% filled).
+    - `catalog_series_1`: 110 web series (937 KB, 4.5% filled).
+    - `catalog_manifest`: Tracks active shard keys, total item counts (560 items), and fill statistics.
+    - **Infinite Scalability & Auto-Rollover**: Whenever any category approaches 20 MB, the worker automatically seals the shard and rolls over to index $N+1$ without chopping or corrupting any show.
+    - **100% Android App Backward Compatibility**: `GET /api/catalog` reads shards in parallel (`Promise.all`) and delivers the full catalog with ETag/304 caching with zero app code changes.
+  - **100% Migration Success**: Successfully executed one-time secure migration (`/api/migrate-all?key=...`), moving all 560 shows, 4 VIP vouchers, and metadata into D1 SQLite with zero data loss. Retired migration endpoint post-execution.
+- 🏛️ **Complete UI Modularization & Feature-Package Isolation (Zero Monoliths)**:
+  - **13 Self-Contained Feature Packages**: Completely dismantled all legacy monolithic files in `com.streamhub.app.ui.screens`, distributing them into 13 cleanly scoped, feature-isolated packages with zero loose files remaining in `ui/screens`:
+    - `ui/screens/home/` (6 files + README): `HomeHeroCarousel.kt`, `HomeCategoryFilter.kt`, `HomeShelfManager.kt`, `HomeMediaShelves.kt`, `HomeShimmerPlaceholder.kt`, `HomeScreen.kt`.
+    - `ui/screens/player/` (7 files + README): `PlayerTopBarControls.kt`, `PlayerBottomBarControls.kt`, `PlayerGesturesHandler.kt`, `PlayerSheetsCoordinator.kt`, `PlayerSubtitlesEngine.kt`, `PlayerDiagnosticsOverlay.kt`, `PlayerScreen.kt`.
+    - `ui/screens/details/` (6 files + README): `DetailsBackdropAndHeader.kt`, `DetailsSynopsisAndBadges.kt`, `DetailsSeasonsAndEpisodes.kt`, `DetailsFranchiseTimeline.kt`, `DetailsDialogsAndSheets.kt`, `DetailsScreen.kt`.
+    - `ui/screens/mylist/` (7 files + README): `MyListCustomTabs.kt`, `MyListMediaCards.kt`, `MyListEmptyState.kt`, `MyListCollectionDialogs.kt`, `MyListReorderDock.kt`, `MyListScreen.kt`.
+    - `ui/screens/downloads/` (6 files + README): `DownloadedSeriesGroup.kt`, `DownloadsStorageHeader.kt`, `DownloadsCards.kt`, `DownloadsEmptyState.kt`, `DownloadsDialogs.kt`, `DownloadsScreen.kt`.
+    - `ui/screens/search/` (6 files + README): `SearchTypes.kt`, `SearchHeaderAndBar.kt`, `SearchFilterDock.kt`, `SearchDiscoveryCards.kt`, `SearchResultsGrid.kt`, `SearchScreen.kt`.
+    - `ui/screens/broadcast/` (8 files + README): `BroadcastTheme.kt`, `BroadcastTopBar.kt`, `BroadcastActiveCard.kt`, `BroadcastQuickTemplates.kt`, `BroadcastFormInputs.kt`, `BroadcastCatalogPickerSheet.kt`, `BroadcastRetireDialog.kt`, `BroadcastAnnouncementScreen.kt`.
+    - `ui/screens/storage/` (6 files + README): `StorageGaugeCard.kt`, `StorageCacheBreakdown.kt`, `StorageDownloadedMediaSection.kt`, `StoragePoliciesSection.kt`, `StorageDialogs.kt`, `StorageManagementScreen.kt`.
+    - `ui/screens/history/` (5 files + README): `HistoryHeader.kt`, `HistoryItemCard.kt`, `HistoryEmptyState.kt`, `HistoryDialogs.kt`, `HistoryScreen.kt`.
+    - `ui/screens/profile/` (4 files + README): `ProfileComponents.kt`, `ProfileScreen.kt`, `MyProfileScreen.kt`, `EditProfileScreen.kt`.
+    - `ui/screens/settings/` (11 files + README): `SettingsScreen.kt`, `VideoSettingsScreen.kt`, `AppearancePreferencesScreen.kt`, `NotificationPreferencesScreen.kt`, `GesturePreferencesScreen.kt`, `AudioPreferencesScreen.kt`, `AdvancedPreferencesScreen.kt`, `PathSettingsCards.kt`, `LayoutSettingsCards.kt`, `SettingsMiscCards.kt`, `CardPreferences.kt`.
+    - `ui/screens/about/` (2 files + README): `AboutComponents.kt`, `AboutScreen.kt`.
+    - `ui/screens/splash/` (1 file + README): `SplashScreen.kt`.
+  - **Educational "Storybook-Style" Standard**: Every single Kotlin file begins with a plain English, beginner-friendly `WHAT IS THIS FILE?` explanation header outlining its role, responsibilities, parameters, and architectural connections.
+  - **Zero Security Risk**: ProGuard/R8 release builds (`isMinifyEnabled = true`, `isShrinkResources = true`) permanently strip all comments and obfuscate identifiers during compilation.
+  - **100% Verification**: Verified complete project compilation (`./gradlew compileDebugKotlin`) and release unit test execution (`./gradlew testReleaseUnitTest`) with 120/120 passing tests.
+- 🛠️ **Studio Tools Streamlining & Complete Metadata Health Inspector Purge (`AdminToolsTab.kt`, `AdminToolsDialog.kt`, `AdminEditorState.kt`, `AdminEditorDialog.kt`)**:
+  - Completely purged the legacy Metadata Health Inspector and deleted `MetadataInspectorDialog.kt` (674 lines of obsolete code).
+  - Eradicated redundant full-catalog scans (`getMediaItemIssues`) on opening Studio Tools, reducing memory pressure.
+  - Focused Studio Tools strictly on the 3 core operations: Single-Device VIP Vouchers (`VoucherManagerDialog`), Cloudflare KV Backup & Restore (`CatalogBackupDialog`), and Stream URL Rewriter (`ServerMigrationDialog`).
+
+---
+
 ### What's New in StreamHub v4.8.451 🚀
 
 - 🛠️ **Responsive Split Tool Tab Architecture & Streamlined 3-Tab Creator Studio (`ExpressiveComponents.kt`, `AdminToolsDialog.kt`, `AdminEditorDialog.kt`, `HomeScreen.kt`, `ProfileScreen.kt`, `MainActivity.kt`, `NavGraph.kt`)**:

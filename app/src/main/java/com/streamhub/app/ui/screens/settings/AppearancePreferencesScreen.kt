@@ -1,5 +1,17 @@
 package com.streamhub.app.ui.screens.settings
 
+/**
+ * =====================================================================================
+ * WHAT IS THIS FILE?
+ * =====================================================================================
+ * AppearancePreferencesScreen.kt provides complete visual personalization for StreamHub:
+ *  1. Cinema Accent Themes: 7 classic solid themes and 6 expressive dual-tonal gradients.
+ *  2. AMOLED Dark Mode: Pure deep black (#000000) mode for OLED battery conservation.
+ *  3. Seekbar Styling: Sinusoidal wavy, thick pill, or standard seekbar selection.
+ *  4. Home Shelf Layout: Custom toggles for Hero Carousel, Trending, and Continue Watching.
+ * =====================================================================================
+ */
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable

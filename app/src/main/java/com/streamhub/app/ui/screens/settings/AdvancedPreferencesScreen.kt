@@ -1,5 +1,20 @@
 package com.streamhub.app.ui.screens.settings
 
+/**
+ * =====================================================================================
+ * WHAT IS THIS FILE?
+ * =====================================================================================
+ * AdvancedPreferencesScreen.kt manages StreamHub's system-level maintenance, data backup,
+ * and diagnostic utilities:
+ *  1. Backup & Restore: Export and import complete JSON backups (Watchlist, History,
+ *     Custom Folders, Preferences) using Android's Storage Access Framework (SAF).
+ *  2. CDN Speedometer: Real-time latency ping and bandwidth throughput testing against
+ *     active edge video nodes.
+ *  3. Application Updates: GitHub releases integration for checking updates and reading
+ *     changelogs.
+ * =====================================================================================
+ */
+
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts

@@ -73,18 +73,6 @@ fun AdminToolsDialog(
         )
     }
 
-    if (state.showMetadataInspector) {
-        MetadataInspectorDialog(
-            repository = CatalogRepository.getInstance(),
-            onDismiss = { state.showMetadataInspector = false },
-            onEditShow = { itemToEdit ->
-                state.showMetadataInspector = false
-                onEditShow?.invoke(itemToEdit)
-                onDismiss()
-            }
-        )
-    }
-
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -138,7 +126,7 @@ fun AdminToolsDialog(
                                 )
                             )
                             Text(
-                                text = "Metadata Health, VIP Vouchers & Cloudflare Backup",
+                                text = "VIP Vouchers, KV Backup & Domain Migrator",
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     color = TextSecondary
                                 )

@@ -1,5 +1,16 @@
 package com.streamhub.app.ui.screens.settings
 
+/**
+ * =====================================================================================
+ * WHAT IS THIS FILE?
+ * =====================================================================================
+ * AudioPreferencesScreen.kt governs sound engineering and vocal enhancement:
+ *  1. Volume Normalization: Dynamic range compression (+3dB) for balanced quiet/loud scenes.
+ *  2. Hardware Volume Boost: Up to 200% voice amplification via Android's LoudnessEnhancer.
+ *  3. Audio Delay Sync: Fine-grained millisecond audio/video sync calibration.
+ * =====================================================================================
+ */
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement

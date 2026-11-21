@@ -18,10 +18,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudSync
-import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -30,9 +28,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,14 +35,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.streamhub.app.data.models.MediaItem
-import com.streamhub.app.data.repository.CatalogRepository
 import com.streamhub.app.ui.theme.TextPrimary
 import com.streamhub.app.ui.theme.TextSecondary
 import com.streamhub.app.ui.theme.bouncyTouch
 
 /**
- * Tab 3: Studio Tools & Metadata Health Inspector for Creator Studio.
+ * Studio Tools & Catalog Operations for Creator Studio.
  * Extracted into a standalone composable to isolate bytecode and DEX registers.
  */
 @Composable
@@ -60,92 +53,7 @@ fun AdminToolsTab(
     ) {
         Text("Tools & Catalog Management", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
 
-        // 1. Metadata Health Inspector Hero Card
-        val catalog by CatalogRepository.getInstance().mediaCatalog.collectAsState()
-        val itemsNeedingRepair = remember(catalog) { catalog.filter { getMediaItemIssues(it).isNotEmpty() } }
-        val totalIssues = itemsNeedingRepair.size
-        val healthScore = remember(catalog, totalIssues) {
-            if (catalog.isEmpty()) 100 else (((catalog.size - totalIssues).coerceAtLeast(0).toFloat() / catalog.size.toFloat()) * 100).toInt()
-        }
-
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerLowest,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF7C4DFF).copy(alpha = 0.2f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.HealthAndSafety, contentDescription = null, tint = Color(0xFFB388FF), modifier = Modifier.size(22.dp))
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "Metadata Health Inspector",
-                                color = TextPrimary,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Surface(
-                                shape = CircleShape,
-                                color = if (totalIssues > 0) Color(0x33FF9800) else Color(0x2210B981)
-                            ) {
-                                Text(
-                                    text = "$healthScore% Quality",
-                                    color = if (totalIssues > 0) Color(0xFFFFB74D) else Color(0xFF34D399),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
-                            }
-                        }
-                        Text(
-                            text = if (totalIssues > 0) "$totalIssues shows have missing trailers, cast, genres or specs" else "All ${catalog.size} shows have healthy, complete metadata",
-                            color = if (totalIssues > 0) Color(0xFFFFB74D) else TextSecondary,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Text(
-                    text = "Scan all shows across your catalog, audit 11 critical metadata fields (trailers, cast, genres, synopses, backdrops, ratings, runtime, studios), and auto-repair them from TMDb / AniList with a single tap.",
-                    color = TextSecondary,
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Button(
-                    onClick = { state.showMetadataInspector = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C4DFF)),
-                    shape = CircleShape,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(46.dp)
-                        .bouncyTouch()
-                ) {
-                    Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Launch Metadata Inspector & Auto-Repair", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        // 2. User Codes & Voucher Manager Card
+        // 1. User Codes & Voucher Manager Card
         Surface(
             shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surfaceContainerLowest,

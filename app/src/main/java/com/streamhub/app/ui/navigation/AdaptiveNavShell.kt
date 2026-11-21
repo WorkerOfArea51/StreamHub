@@ -1,5 +1,17 @@
 package com.streamhub.app.ui.navigation
 
+/**
+ * =====================================================================================
+ * WHAT IS THIS FILE?
+ * =====================================================================================
+ * AdaptiveNavShell.kt implements StreamHub's signature "Floating Island Navigation":
+ *  1. Floating Island Dock: Independent floating pill chips with zero-gap touch shield.
+ *  2. Adaptive Layout: Automatically switches between bottom bar (phones) and navigation rail
+ *     (tablets, foldables, and landscape).
+ *  3. Fluid Viscosity: Dynamic animated indicator transitions (Water Flow, Snappy).
+ * =====================================================================================
+ */
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row

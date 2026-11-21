@@ -6,9 +6,16 @@ compatibility_date = "2024-10-01"
 [vars]
 UPSTREAM_HOST = "midnighthawk.serv00.net"
 
-# Cloudflare KV Binding for Free Tier Catalog & Live Telemetry Storage (1 GB Free)
-# In Cloudflare Dashboard: Workers & Pages > KV > Create Namespace "streamhub-catalog"
-# Then bind it under Worker Settings > Variables and KV > Bind as "CATALOG_KV"
+# Cloudflare KV Binding for High-Speed Edge Delivery & Caching (1 GB Free)
+# In Cloudflare Dashboard: Workers & Pages > KV > "streamhub-catalog"
 [[kv_namespaces]]
 binding = "CATALOG_KV"
 id = "632fe4c5e43a4aeb95ffeffbf9ab64d2"
+
+# Cloudflare D1 Relational SQLite Database (5 GB Free)
+# In Cloudflare Dashboard: Storage & Databases > D1 > Create "streamhub-db"
+# Then bind under Worker Settings > Bindings > D1 Database as "DB"
+[[d1_databases]]
+binding = "DB"
+database_name = "streamhub-db"
+database_id = "67231ae4-e3dc-4ba2-8c8e-8466b0e95203"

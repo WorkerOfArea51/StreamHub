@@ -1,5 +1,17 @@
 package com.streamhub.app.ui.screens.settings
 
+/**
+ * =====================================================================================
+ * WHAT IS THIS FILE?
+ * =====================================================================================
+ * GesturePreferencesScreen.kt configures touch interaction during media playback:
+ *  1. Vertical Slider Swap: Swap left (Brightness) and right (Volume) drag controls.
+ *  2. Double-Tap Seek: Configure 5s, 10s, 15s, or 30s forward/rewind skip steps.
+ *  3. Hold to 2X Speed: Long-press gesture for instant 2.0x playback fast-forwarding.
+ *  4. Multi-Touch Pinch-to-Zoom: 0.5x to 5.0x smooth frame zoom and two-finger panning.
+ * =====================================================================================
+ */
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column

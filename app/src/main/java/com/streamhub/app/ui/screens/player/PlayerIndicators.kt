@@ -1,5 +1,18 @@
 package com.streamhub.app.ui.screens.player
 
+/**
+ * =====================================================================================
+ * WHAT IS THIS FILE?
+ * =====================================================================================
+ * PlayerIndicators.kt provides visual feedback HUDs during video playback:
+ *  1. ReconnectingStreamHud: Glassmorphic attempt counter ("Reconnecting (1/3)...")
+ *     displayed during automated network stall recovery.
+ *  2. StreamRestoredPill: Success badge indicating stream connection was re-established.
+ *  3. BufferingHud: Center loading flower, suppressed when forward runway is healthy.
+ *  4. Volume/Brightness Vertical OSDs: On-screen level bars responding to edge vertical drag.
+ * =====================================================================================
+ */
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing

@@ -1,5 +1,18 @@
 package com.streamhub.app.ui.screens.settings.components
 
+/**
+ * =====================================================================================
+ * WHAT IS THIS FILE?
+ * =====================================================================================
+ * CardPreferences.kt provides the foundational UI primitives for the entire Settings suite:
+ *  - PreferenceCard: Styled rounded container for grouping related preference items.
+ *  - PreferenceItem: Clickable row with icon, title, subtitle, and navigation chevron.
+ *  - PreferenceSwitchItem: Row with Material 3 switch toggle for boolean preferences.
+ *  - PreferenceDivider: Subtle hairline divider separating items within a card.
+ *  - PreferenceSectionHeader: Uppercase eyebrow section header with accent tinting.
+ * =====================================================================================
+ */
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement

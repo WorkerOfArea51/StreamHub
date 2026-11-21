@@ -1,5 +1,18 @@
 package com.streamhub.app
 
+/**
+ * =====================================================================================
+ * WHAT IS THIS FILE?
+ * =====================================================================================
+ * StreamHubApplication.kt is the global Application subclass for StreamHub.
+ *
+ * Lifecycle & Startup Responsibilities:
+ *  1. App Initialization: Sets up logging, Coil image cache loaders, and lifecycle observers.
+ *  2. Process Lifecycle: Monitors foreground/background transitions for memory optimization.
+ *  3. Notification Channels: Pre-registers notification channels for downloads and alerts.
+ * =====================================================================================
+ */
+
 import android.app.Application
 import android.util.Log
 import com.streamhub.app.data.AccessGateManager

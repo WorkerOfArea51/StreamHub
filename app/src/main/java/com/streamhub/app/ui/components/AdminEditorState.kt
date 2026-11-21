@@ -126,7 +126,6 @@ class AdminEditorState(
     var showBackupDialog by mutableStateOf(false)
     var showMigrationDialog by mutableStateOf(false)
     var showVoucherDialog by mutableStateOf(false)
-    var showMetadataInspector by mutableStateOf(false)
 
     // Single Episode Management (Edit & Add)
     var editingEpisodeIndex by mutableStateOf<Int?>(null)

@@ -1,5 +1,16 @@
 package com.streamhub.app.ui.screens.settings
 
+/**
+ * =====================================================================================
+ * WHAT IS THIS FILE?
+ * =====================================================================================
+ * NotificationPreferencesScreen.kt manages system push alerts and release tracking:
+ *  1. Episode Release Alerts: Notify when bookmarked shows have new episodes available.
+ *  2. Test Notification: Fire a test notification immediately to verify OS permissions.
+ *  3. Background Schedule: Configure battery-efficient periodic background check intervals.
+ * =====================================================================================
+ */
+
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager

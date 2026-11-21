@@ -1,5 +1,15 @@
 package com.streamhub.app.ui.screens.settings
 
+/**
+ * =====================================================================================
+ * WHAT IS THIS FILE?
+ * =====================================================================================
+ * LayoutSettingsCards.kt houses individual card components for home feed customization:
+ *  - LayoutDensityCard: Toggle between compact, standard, and comfortable grid density.
+ *  - ShelfOrderingCard: Customize which media shelves appear on the home screen.
+ * =====================================================================================
+ */
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable

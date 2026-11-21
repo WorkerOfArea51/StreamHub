@@ -1,5 +1,15 @@
 package com.streamhub.app.ui.screens.settings
 
+/**
+ * =====================================================================================
+ * WHAT IS THIS FILE?
+ * =====================================================================================
+ * PathSettingsCards.kt manages directory destinations on user storage:
+ *  1. Download Path Preference: Custom folder selection for offline episode downloads.
+ *  2. Screenshot Path Preference: Storage directory for video player frame snapshots.
+ * =====================================================================================
+ */
+
 import android.content.Intent
 import android.net.Uri
 import android.os.Environment

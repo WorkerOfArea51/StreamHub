@@ -68,7 +68,7 @@ graph TD
 ```
 
 - **Language**: Kotlin 2.0+ (Coroutine-first, Dispatchers.IO isolation)
-- **UI Framework**: Pure Jetpack Compose with Material 3 Design Tokens
+- **UI Architecture**: Pure Jetpack Compose with Material 3 Design Tokens, decomposed into **13 feature-isolated packages** (`home`, `player`, `details`, `mylist`, `downloads`, `search`, `broadcast`, `storage`, `history`, `profile`, `settings`, `about`, `splash`) with zero monolithic screens. Complete blueprint in [ARCHITECTURE.md](ARCHITECTURE.md).
 - **Video Engine**: AndroidX Media3 ExoPlayer (`media3-exoplayer`, `media3-ui`, `media3-datasource`)
 - **Metadata Database**: Cloudflare Edge Workers + Workers KV REST API (100% Free Tier, Zero-Firebase)
 - **Networking**: Retrofit 2 + OkHttp3 + Gson + AniList GraphQL
