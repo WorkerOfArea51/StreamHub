@@ -4,6 +4,16 @@ All notable architectural milestones, performance optimizations, and visual upda
 
 ---
 
+### What's New in StreamHub v4.8.455 🚀
+
+- 🖐️ **Player Gesture Engine Overhaul & Smooth Button-Synced Touch Control (`PlayerGesturesHandler.kt`, `PlayerScreen.kt`)**:
+  - **Dynamic State Synchronization (`rememberUpdatedState`)**: Wrapped `currentBrightnessPercent`, `currentVolumePercent`, `currentSpeed`, `maxVolumeBoostPercent`, and `holdTo2XEnabled` in `rememberUpdatedState`. Gesture coroutines now read live audio and brightness levels directly, permanently eliminating stale state captures where screen swipes would snap back to initial opening levels after hardware button adjustments.
+  - **Zero-Delta Drag Anchor (`dragStartY = currentPos.y`)**: Re-anchored vertical swipe origin at the precise moment dragging is engaged after crossing the 28px directional gate. Wiped out the initial ~3.5% jump/jerk, delivering silky smooth 120fps gesture response from 0.0f delta.
+  - **Persistent Drag HUD & Release-Only Auto-Dismiss**: Wired `onBrightnessDragStart` and `onVolumeDragStart` callbacks. While touching/dragging the screen, slider cards stay continuously visible with zero coroutine churn. The 1500ms auto-dismiss countdown triggers strictly upon finger release (`onBrightnessDragEnd` / `onVolumeDragEnd`).
+  - **Proportional Hardware Step Rounding**: Enhanced volume mapping to use `.roundToInt().coerceIn(0, maxVolume.toInt())`, matching Android `AudioManager` hardware step curves and allowing seamless transitions between hardware buttons and screen dragging.
+
+---
+
 ### What's New in StreamHub v4.8.454 🚀
 
 - 🎮 **Player HUDs & Content Warning Overlays Restored (`PlayerScreen.kt`)**:

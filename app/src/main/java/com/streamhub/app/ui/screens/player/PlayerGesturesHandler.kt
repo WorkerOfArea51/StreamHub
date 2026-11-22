@@ -36,6 +36,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -111,6 +112,8 @@ fun PlayerGesturesHandler(
     onUpdateSubtitleConfig: (SubtitleConfig) -> Unit,
     onBrightnessChange: (Float) -> Unit,
     onVolumeChange: (Float) -> Unit,
+    onBrightnessDragStart: () -> Unit = {},
+    onVolumeDragStart: () -> Unit = {},
     onBrightnessDragEnd: () -> Unit,
     onVolumeDragEnd: () -> Unit,
     modifier: Modifier = Modifier
@@ -118,6 +121,14 @@ fun PlayerGesturesHandler(
     val context = LocalContext.current
     val activity = context as? Activity
     val scope = rememberCoroutineScope()
+
+    // Dynamic state holders to prevent stale closure captures across pointerInput coroutines
+    val currentBrightness by rememberUpdatedState(currentBrightnessPercent)
+    val currentVolume by rememberUpdatedState(currentVolumePercent)
+    val currentSpeedState by rememberUpdatedState(currentSpeed)
+    val maxVolumeBoost by rememberUpdatedState(playerSettings.maxVolumeBoostPercent.toFloat())
+    val holdTo2X by rememberUpdatedState(playerSettings.holdTo2XEnabled)
+    val subDragEnabled by rememberUpdatedState(playerSettings.subtitleVerticalDragEnabled)
 
     var isMultiTouchActive by remember { mutableStateOf(false) }
     var is2xSpeedHolding by remember { mutableStateOf(false) }
@@ -183,6 +194,7 @@ fun PlayerGesturesHandler(
                         .pointerInput(playerSettings.volumeOnRight, isPlaying) {
                             var originalBrightness = 0f
                             var originalVolume = 0f
+                            var dragStartY = 0f
                             var isDragging = false
                             var isLongPressed = false
 
@@ -194,10 +206,10 @@ fun PlayerGesturesHandler(
 
                                 val longPressJob = scope.launch {
                                     delay(450L)
-                                    if (!isDragging && down.pressed && playerSettings.holdTo2XEnabled) {
+                                    if (!isDragging && down.pressed && holdTo2X) {
                                         if (isPlaying) {
                                             isLongPressed = true
-                                            speedBeforeHold = currentSpeed
+                                            speedBeforeHold = currentSpeedState
                                             onSetPlaybackSpeed(2.0f)
                                             is2xSpeedHolding = true
                                         }
@@ -228,10 +240,13 @@ fun PlayerGesturesHandler(
                                             longPressJob.cancel()
                                             if (abs(deltaY) > abs(deltaX) * 1.25f) {
                                                 isDragging = true
+                                                dragStartY = currentPos.y
                                                 if (playerSettings.volumeOnRight) {
-                                                    originalBrightness = currentBrightnessPercent
+                                                    originalBrightness = currentBrightness
+                                                    onBrightnessDragStart()
                                                 } else {
-                                                    originalVolume = currentVolumePercent
+                                                    originalVolume = currentVolume
+                                                    onVolumeDragStart()
                                                 }
                                             }
                                         }
@@ -239,13 +254,12 @@ fun PlayerGesturesHandler(
                                         if (isDragging) {
                                             pointer.consume()
                                             if (playerSettings.volumeOnRight) {
-                                                val dragDelta = (startPos.y - currentPos.y) / (size.height * 0.75f) * 100f
+                                                val dragDelta = (dragStartY - currentPos.y) / (size.height * 0.75f) * 100f
                                                 val newBrightness = (originalBrightness + dragDelta).coerceIn(1f, 100f)
                                                 onBrightnessChange(newBrightness)
                                             } else {
-                                                val dragDelta = (startPos.y - currentPos.y) / (size.height * 0.85f) * 200f
-                                                val maxBoost = playerSettings.maxVolumeBoostPercent.toFloat()
-                                                val newVol = (originalVolume + dragDelta).coerceIn(0f, maxBoost)
+                                                val dragDelta = (dragStartY - currentPos.y) / (size.height * 0.85f) * 200f
+                                                val newVol = (originalVolume + dragDelta).coerceIn(0f, maxVolumeBoost)
                                                 onVolumeChange(newVol)
                                             }
                                         }
@@ -300,6 +314,7 @@ fun PlayerGesturesHandler(
                         .fillMaxHeight()
                         .pointerInput(subConfig, isPlaying) {
                             var originalPadding = subConfig.bottomPaddingFraction
+                            var dragStartY = 0f
                             var isDragging = false
                             var isLongPressed = false
 
@@ -311,10 +326,10 @@ fun PlayerGesturesHandler(
 
                                 val longPressJob = scope.launch {
                                     delay(450L)
-                                    if (!isDragging && down.pressed && playerSettings.holdTo2XEnabled) {
+                                    if (!isDragging && down.pressed && holdTo2X) {
                                         if (isPlaying) {
                                             isLongPressed = true
-                                            speedBeforeHold = currentSpeed
+                                            speedBeforeHold = currentSpeedState
                                             onSetPlaybackSpeed(2.0f)
                                             is2xSpeedHolding = true
                                         }
@@ -343,8 +358,9 @@ fun PlayerGesturesHandler(
 
                                         if (!isDragging && !isLongPressed && distance > 28f) {
                                             longPressJob.cancel()
-                                            if (abs(deltaY) > abs(deltaX) * 1.25f && playerSettings.subtitleVerticalDragEnabled) {
+                                            if (abs(deltaY) > abs(deltaX) * 1.25f && subDragEnabled) {
                                                 isDragging = true
+                                                dragStartY = currentPos.y
                                                 originalPadding = subConfig.bottomPaddingFraction
                                                 onHudPill("Subtitle Position: ${(originalPadding * 100).toInt()}%", Icons.Default.Subtitles)
                                             }
@@ -352,7 +368,7 @@ fun PlayerGesturesHandler(
 
                                         if (isDragging) {
                                             pointer.consume()
-                                            val dragDelta = (startPos.y - currentPos.y) / (size.height * 1.5f)
+                                            val dragDelta = (dragStartY - currentPos.y) / (size.height * 1.5f)
                                             val newPadding = (originalPadding + dragDelta).coerceIn(0.02f, 0.85f)
                                             onUpdateSubtitleConfig(subConfig.copy(bottomPaddingFraction = newPadding))
                                             onHudPill("Subtitle Position: ${(newPadding * 100).toInt()}%", Icons.Default.Subtitles)
@@ -403,6 +419,7 @@ fun PlayerGesturesHandler(
                         .pointerInput(playerSettings.volumeOnRight, isPlaying) {
                             var originalBrightness = 0f
                             var originalVolume = 0f
+                            var dragStartY = 0f
                             var isDragging = false
                             var isLongPressed = false
 
@@ -414,10 +431,10 @@ fun PlayerGesturesHandler(
 
                                 val longPressJob = scope.launch {
                                     delay(450L)
-                                    if (!isDragging && down.pressed && playerSettings.holdTo2XEnabled) {
+                                    if (!isDragging && down.pressed && holdTo2X) {
                                         if (isPlaying) {
                                             isLongPressed = true
-                                            speedBeforeHold = currentSpeed
+                                            speedBeforeHold = currentSpeedState
                                             onSetPlaybackSpeed(2.0f)
                                             is2xSpeedHolding = true
                                         }
@@ -448,10 +465,13 @@ fun PlayerGesturesHandler(
                                             longPressJob.cancel()
                                             if (abs(deltaY) > abs(deltaX) * 1.25f) {
                                                 isDragging = true
+                                                dragStartY = currentPos.y
                                                 if (playerSettings.volumeOnRight) {
-                                                    originalVolume = currentVolumePercent
+                                                    originalVolume = currentVolume
+                                                    onVolumeDragStart()
                                                 } else {
-                                                    originalBrightness = currentBrightnessPercent
+                                                    originalBrightness = currentBrightness
+                                                    onBrightnessDragStart()
                                                 }
                                             }
                                         }
@@ -459,12 +479,11 @@ fun PlayerGesturesHandler(
                                         if (isDragging) {
                                             pointer.consume()
                                             if (playerSettings.volumeOnRight) {
-                                                val dragDelta = (startPos.y - currentPos.y) / (size.height * 0.85f) * 200f
-                                                val maxBoost = playerSettings.maxVolumeBoostPercent.toFloat()
-                                                val newVol = (originalVolume + dragDelta).coerceIn(0f, maxBoost)
+                                                val dragDelta = (dragStartY - currentPos.y) / (size.height * 0.85f) * 200f
+                                                val newVol = (originalVolume + dragDelta).coerceIn(0f, maxVolumeBoost)
                                                 onVolumeChange(newVol)
                                             } else {
-                                                val dragDelta = (startPos.y - currentPos.y) / (size.height * 0.75f) * 100f
+                                                val dragDelta = (dragStartY - currentPos.y) / (size.height * 0.75f) * 100f
                                                 val newBrightness = (originalBrightness + dragDelta).coerceIn(1f, 100f)
                                                 onBrightnessChange(newBrightness)
                                             }

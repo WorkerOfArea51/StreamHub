@@ -58,6 +58,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlin.math.roundToInt
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -928,17 +929,26 @@ fun PlayerScreen(
                 },
                 onTriggerDoubleTapSeek = { isForward -> triggerDoubleTapSeek(isForward) },
                 onUpdateSubtitleConfig = { SubtitleSettingsManager.updateConfig(it) },
+                onBrightnessDragStart = {
+                    showBrightnessIndicator = true
+                    brightnessHideJob?.cancel()
+                },
+                onVolumeDragStart = {
+                    showVolumeIndicator = true
+                    volumeHideJob?.cancel()
+                },
                 onBrightnessChange = { newB ->
                     currentBrightnessPercent = newB
                     activity?.window?.attributes = activity?.window?.attributes?.apply {
                         screenBrightness = (newB / 100f).coerceIn(0.01f, 1.0f)
                     }
-                    displayBrightnessSlider()
+                    showBrightnessIndicator = true
+                    brightnessHideJob?.cancel()
                 },
                 onVolumeChange = { newV ->
                     currentVolumePercent = newV
                     if (newV <= 100f) {
-                        val targetVol = ((newV / 100f) * maxVolume).toInt()
+                        val targetVol = ((newV / 100f) * maxVolume).roundToInt().coerceIn(0, maxVolume.toInt())
                         audioManager?.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
                         viewModel.setVolumeBoost(0)
                     } else {
@@ -946,7 +956,8 @@ fun PlayerScreen(
                         val boostVal = (newV - 100f).toInt()
                         viewModel.setVolumeBoost(boostVal)
                     }
-                    displayVolumeSlider()
+                    showVolumeIndicator = true
+                    volumeHideJob?.cancel()
                 },
                 onBrightnessDragEnd = {
                     if (playerSettings.rememberBrightness) {

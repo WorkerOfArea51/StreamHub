@@ -4,6 +4,16 @@ Welcome to the official release notes for **StreamHub** — the ultimate high-pe
 
 ---
 
+### What's New in StreamHub v4.8.455 🚀
+
+- 🖐️ **Silky Smooth Screen Gestures for Brightness & Volume**:
+  - Screen swipe gestures now stay in 100% real-time sync with hardware buttons and settings.
+  - Eliminated initial jumps when starting a swipe — dragging now glides effortlessly from where the buttons left off.
+  - Indicator sliders remain comfortably visible while your finger is on the screen and only fade out after you release.
+  - Smoothed volume step transitions for perfectly natural sound level control.
+
+---
+
 ### What's New in StreamHub v4.8.454 🚀
 
 - 🎮 **Video Player HUD & Content Warning Restored**:
