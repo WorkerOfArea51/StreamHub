@@ -521,6 +521,76 @@ fun PlayerErrorOverlay(
 }
 
 @Composable
+fun CyberRadarSpinner(
+    modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = 22.dp,
+    primaryColor: Color = PrimaryRed,
+    accentColor: Color = AccentOrange
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "RadarTransition")
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "RadarRotation"
+    )
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "PulseAlpha"
+    )
+
+    Box(
+        modifier = modifier.size(size),
+        contentAlignment = Alignment.Center
+    ) {
+        // Outer faint orbital ring
+        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokeWidth = 2.dp.toPx()
+            drawCircle(
+                color = primaryColor.copy(alpha = 0.25f),
+                radius = (this.size.minDimension - strokeWidth) / 2,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
+            )
+        }
+        // Rotating radar sweep arc using GPU RenderNode rotation
+        androidx.compose.foundation.Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { rotationZ = rotation }
+        ) {
+            val strokeWidth = 2.dp.toPx()
+            drawArc(
+                brush = Brush.sweepGradient(
+                    listOf(Color.Transparent, accentColor.copy(alpha = 0.4f), primaryColor)
+                ),
+                startAngle = 0f,
+                sweepAngle = 260f,
+                useCenter = false,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                    width = strokeWidth,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round
+                )
+            )
+        }
+        // Center pulsing core dot
+        androidx.compose.foundation.Canvas(modifier = Modifier.size(6.dp)) {
+            drawCircle(
+                color = accentColor.copy(alpha = pulseAlpha),
+                radius = this.size.minDimension / 2
+            )
+        }
+    }
+}
+
+@Composable
 fun BufferingHud(
     visible: Boolean,
     networkSpeedKbps: Long,
@@ -529,49 +599,87 @@ fun BufferingHud(
 ) {
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(tween(200)),
-        exit = fadeOut(tween(300)),
+        enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.92f, animationSpec = tween(180)),
+        exit = fadeOut(tween(250)) + scaleOut(targetScale = 0.92f, animationSpec = tween(250)),
         modifier = modifier
     ) {
         Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = Color(0xCC000000),
-            border = BorderStroke(1.dp, Color(0x33FFFFFF)),
-            modifier = Modifier.padding(top = 60.dp)
+            shape = RoundedCornerShape(20.dp),
+            color = Color(0xE60A0B14),
+            border = BorderStroke(
+                1.dp,
+                Brush.linearGradient(
+                    listOf(
+                        PrimaryRed.copy(alpha = 0.65f),
+                        AccentOrange.copy(alpha = 0.35f),
+                        Color(0x33FFFFFF)
+                    )
+                )
+            ),
+            shadowElevation = 8.dp
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
             ) {
-                // Material 3 Expressive Morphing Organic Petal Spinner
-                com.streamhub.app.ui.components.ExpressiveLoadingIndicator(
-                    size = 36.dp,
-                    color = PrimaryRed,
+                // Dual-Ring Cyber Radar Spinner
+                CyberRadarSpinner(
+                    size = 22.dp,
+                    primaryColor = PrimaryRed,
                     accentColor = AccentOrange
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                // Buffer health bar
-                val healthColor = when {
-                    bufferHealthSeconds >= 30L -> Color(0xFF4CAF50)
-                    bufferHealthSeconds >= 10L -> Color(0xFFFFA726)
-                    else -> Color(0xFFFF5252)
-                }
-                Text(
-                    text = "Buffer: ${bufferHealthSeconds}s",
-                    color = healthColor,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                if (networkSpeedKbps > 0L) {
-                    val speedStr = when {
-                        networkSpeedKbps >= 1024L -> "%.1f MB/s".format(networkSpeedKbps / 1024.0)
-                        else -> "$networkSpeedKbps KB/s"
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "BUFFERING",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            letterSpacing = 0.8.sp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        // Health Runway Badge
+                        val healthColor = when {
+                            bufferHealthSeconds >= 30L -> Color(0xFF4CAF50)
+                            bufferHealthSeconds >= 10L -> Color(0xFFFFA726)
+                            else -> Color(0xFFFF5252)
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = healthColor.copy(alpha = 0.18f),
+                            border = BorderStroke(0.5.dp, healthColor.copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = "${bufferHealthSeconds}s",
+                                color = healthColor,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            )
+                        }
                     }
-                    Text(
-                        text = speedStr,
-                        color = TextSecondary,
-                        fontSize = 10.sp
-                    )
+                    if (networkSpeedKbps > 0L) {
+                        val speedStr = when {
+                            networkSpeedKbps >= 1024L -> "%.1f MB/s".format(networkSpeedKbps / 1024.0)
+                            else -> "$networkSpeedKbps KB/s"
+                        }
+                        Text(
+                            text = "$speedStr • Edge Route",
+                            color = Color(0xFFB0B0C4),
+                            fontSize = 9.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        )
+                    } else {
+                        Text(
+                            text = "Connecting to Edge...",
+                            color = Color(0xFF8E8EA0),
+                            fontSize = 9.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        )
+                    }
                 }
             }
         }

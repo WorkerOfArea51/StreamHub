@@ -4,6 +4,17 @@ All notable architectural milestones, performance optimizations, and visual upda
 
 ---
 
+### What's New in StreamHub v4.8.456 🚀
+
+- 🎮 **Center-Top Cyber Capsule Buffering HUD & Restored Scrubbing Preview (`PlayerScreen.kt`, `PlayerIndicators.kt`)**:
+  - **Option 1 Cyber Capsule Architecture (`CyberRadarSpinner`)**: Re-anchored `BufferingHud` to `Alignment.TopCenter` with `windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)).padding(top = 18.dp)`. Wiped out the center-screen regression where the buffering indicator covered the video action.
+  - **GPU RenderNode Radar Rotation**: Engineered `CyberRadarSpinner` utilizing an animated sweep gradient radar arc (`graphicsLayer { rotationZ = rotation }`), pulsing center core, dynamic runway status pill (`${bufferHealthSeconds}s`: Green $\ge 30$s, Amber $\ge 10$s, Red $< 10$s), and live network throughput telemetry (`1.8 MB/s • Edge Route`).
+  - **Collision & Scrubbing Suppression**: Strictly suppressed buffering indicator when scrubbing (`isScrubbing`) or reconnecting (`uiState.isReconnecting`), preserving 100% clean video view.
+  - **Restored Horizontal Swipe Scrubbing HUD Card**: Re-inserted the centered glass card (`Alignment.Center`) during seekbar and horizontal swipe gestures, displaying local frame preview thumbnail (`scrubberThumbnailBitmap`), target timestamp (`formatMpvTime`), color-coded delta pill (`[+00:15]` green / `[-00:30]` red), and total video duration.
+  - **Inviolable Invariant Updated in `GEMINI.md`**: Formally locked in the Center-Top Buffering & Scrubbing Preview Invariant in the master architectural compass.
+
+---
+
 ### What's New in StreamHub v4.8.455 🚀
 
 - 🖐️ **Player Gesture Engine Overhaul & Smooth Button-Synced Touch Control (`PlayerGesturesHandler.kt`, `PlayerScreen.kt`)**:

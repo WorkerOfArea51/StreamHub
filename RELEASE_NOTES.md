@@ -4,6 +4,16 @@ Welcome to the official release notes for **StreamHub** — the ultimate high-pe
 
 ---
 
+### What's New in StreamHub v4.8.456 🚀
+
+- 🎮 **Brand New Cyber Capsule Buffering Display**:
+  - Upgraded the buffering indicator to a sleek glassmorphic capsule anchored at the top of the screen, leaving the center of your video completely clear and unobstructed.
+  - Features a smooth radar spinner, live buffer runway indicator, and real-time streaming speed.
+- ⏱️ **Restored Video Scrubbing Preview**:
+  - Horizontal swipe scrubbing now displays a dedicated center preview card with frame thumbnail, target time, and quick jump delta (e.g. `[+00:15]`).
+
+---
+
 ### What's New in StreamHub v4.8.455 🚀
 
 - 🖐️ **Silky Smooth Screen Gestures for Brightness & Volume**:

@@ -23,27 +23,45 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.streamhub.app.ui.screens.player.controls.formatMpvTime
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -998,21 +1016,95 @@ fun PlayerScreen(
                     .padding(horizontal = 24.dp)
             )
 
-            // 1. Buffering Indicator
+            // 1. Buffering Indicator (Option 1: Cyber Capsule, Center-Top anchored)
             BufferingHud(
-                visible = showBufferingHud,
+                visible = showBufferingHud && !uiState.isReconnecting && !isScrubbing && !uiState.streamRestoredToast,
                 networkSpeedKbps = playbackProgress.networkSpeedKbps,
                 bufferHealthSeconds = playbackProgress.bufferHealthSeconds,
-                modifier = Modifier.align(Alignment.Center)
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+                    .padding(top = 18.dp)
             )
+
+            // mpvEx Horizontal Swipe / Seekbar Scrubbing Preview HUD Card (Center Frame & Delta)
+            if (isScrubbing) {
+                val deltaMs = scrubbingPositionMs - playbackProgress.currentPositionMs
+                val deltaText = if (deltaMs >= 0) "+${formatMpvTime(deltaMs)}" else "-${formatMpvTime(-deltaMs)}"
+                val hasLocalFrame = scrubberThumbnailBitmap != null && !scrubberThumbnailBitmap!!.isRecycled
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xF20F101A),
+                    border = BorderStroke(1.dp, Color(0xFFD0BCFF).copy(alpha = 0.5f)),
+                    shadowElevation = 14.dp,
+                    modifier = Modifier.align(Alignment.Center)
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(
+                            horizontal = if (hasLocalFrame) 20.dp else 16.dp,
+                            vertical = if (hasLocalFrame) 12.dp else 10.dp
+                        )
+                    ) {
+                        if (hasLocalFrame) {
+                            Box(
+                                modifier = Modifier
+                                    .size(width = 160.dp, height = 90.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFF1E1E28))
+                            ) {
+                                Image(
+                                    bitmap = scrubberThumbnailBitmap!!.asImageBitmap(),
+                                    contentDescription = "Scrub Preview Frame",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = formatMpvTime(scrubbingPositionMs),
+                                color = Color.White,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (deltaMs >= 0) Color(0x334CAF50) else Color(0x33FF5252),
+                                border = BorderStroke(0.5.dp, if (deltaMs >= 0) Color(0xFF4CAF50) else Color(0xFFFF5252))
+                            ) {
+                                Text(
+                                    text = deltaText,
+                                    color = if (deltaMs >= 0) Color(0xFF81C784) else Color(0xFFFF8A80),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "/ ${formatMpvTime(uiState.durationMs)}",
+                                color = Color(0xFF9E9EAF),
+                                fontSize = 13.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+            }
 
             // 2. Playback Error Overlay
             val errorInfo = uiState.playerErrorInfo
-            if (errorInfo != null) {
+            if (errorInfo != null && !uiState.isReconnecting) {
                 PlayerErrorOverlay(
                     errorInfo = errorInfo,
-                    onRetry = { viewModel.playEpisode(uiState.currentEpisodeIndex) },
-                    onBack = onBackClick
+                    onRetry = { viewModel.retryCurrentEpisode() },
+                    onBack = onBackClick,
+                    modifier = Modifier.align(Alignment.Center)
                 )
             }
 
@@ -1024,6 +1116,7 @@ fun PlayerScreen(
                 isOffline = !isOnline,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
                     .padding(top = 18.dp)
             )
 
@@ -1032,6 +1125,7 @@ fun PlayerScreen(
                 visible = uiState.streamRestoredToast,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
                     .padding(top = 18.dp)
             )
 
