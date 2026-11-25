@@ -4,6 +4,18 @@ Welcome to the official release notes for **StreamHub** — the ultimate high-pe
 
 ---
 
+### What's New in StreamHub v4.8.457 🚀
+
+- 📸 **Pristine Video Screenshot Camera (Zero UI Controls, Pure Video)**:
+  - Completely overhauled the in-player screenshot camera to capture clean, pure video frames directly from the hardware decoder surface.
+  - Eliminated the black/blank screenshot issue and removed all UI controls, buttons, and seekbars from saved photos.
+  - Added a tactile haptic pulse and a 150ms camera shutter flash animation on capture.
+  - Snapshots now immediately appear in your phone's Gallery / Photos app under `StreamHub_Screenshots`.
+- 🎯 **Standalone Camera Button**:
+  - Replaced the cluttered expanding capsule (`<<`, `📷`, `>>`, `✕`) with a sleek, standalone camera button in the player bottom bar. One tap instantly captures your snapshot.
+
+---
+
 ### What's New in StreamHub v4.8.456 🚀
 
 - 🎮 **Brand New Cyber Capsule Buffering Display**:

@@ -4,6 +4,16 @@ All notable architectural milestones, performance optimizations, and visual upda
 
 ---
 
+### What's New in StreamHub v4.8.457 🚀
+
+- 📸 **Hardware Surface Video Screenshot & Direct Gallery Sync Engine (`PlayerScreen.kt`, `PlayerBottomBarControls.kt`)**:
+  - **Hardware Surface Video Capture (`PixelCopy.request(surfaceView)`)**: Replaced legacy window-level pixel copy with direct hardware `SurfaceView` / `TextureView` stream capture (`PixelCopy.request(surfaceView, ...)`). Permanently resolved the black/blank screenshot issue and eliminated the UI controls overlay from captured images. Snapshots now capture 100% clean, full-color, high-resolution video frames without buttons, seekbar, or HUD clutter.
+  - **Background I/O & Gallery Scanner Integration**: PNG file compression and storage moved to `Dispatchers.IO` with zero main-thread stutters. Automatically registers newly saved screenshots with `MediaScannerConnection.scanFile`, instantly displaying snapshots inside Android's Gallery and Photos apps under `StreamHub_Screenshots`.
+  - **Haptic & Visual Shutter Flash**: Added tactile haptic pulse and a 150ms visual camera shutter flash overlay (`shutterAlpha` tween) for immediate feedback on snap.
+  - **Standalone Snapshot Camera Button**: Replaced the multi-button expanding frame navigation capsule (`[<<] [📷] [>>] [✕]`) with a clean, standalone `ControlsButton` with `CameraAlt` matching PiP, Aspect Ratio, and Night Shield. One tap directly captures the photo without extra steps or interface clutter.
+
+---
+
 ### What's New in StreamHub v4.8.456 🚀
 
 - 🎮 **Center-Top Cyber Capsule Buffering HUD & Restored Scrubbing Preview (`PlayerScreen.kt`, `PlayerIndicators.kt`)**:

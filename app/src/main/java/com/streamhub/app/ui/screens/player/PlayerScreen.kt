@@ -5,10 +5,19 @@ import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.media.AudioManager
+import android.media.MediaScannerConnection
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.util.Rational
+import android.view.PixelCopy
+import android.view.SurfaceView
+import android.view.TextureView
+import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -16,6 +25,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -122,9 +132,11 @@ import com.streamhub.app.ui.screens.player.controls.VolumeSliderCard
 import com.streamhub.app.ui.screens.player.sheets.AmbientMoodPresets
 import com.streamhub.app.ui.screens.player.sheets.DefaultAspectPresets
 import com.streamhub.app.ui.screens.player.sheets.MpvAspectRatioItem
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
@@ -357,8 +369,14 @@ fun PlayerScreen(
     var showAudioDelaySheet by remember { mutableStateOf(false) }
     var showSubtitleDelaySheet by remember { mutableStateOf(false) }
     var showOnlineSubSearchSheet by remember { mutableStateOf(false) }
-    var isFrameNavExpanded by remember { mutableStateOf(false) }
     var isSnapshotLoading by remember { mutableStateOf(false) }
+    var isShutterFlashing by remember { mutableStateOf(false) }
+    val shutterAlpha by animateFloatAsState(
+        targetValue = if (isShutterFlashing) 0.45f else 0f,
+        animationSpec = tween(durationMillis = 150),
+        label = "ShutterFlash",
+        finishedListener = { if (isShutterFlashing) isShutterFlashing = false }
+    )
     var audioDelayMs by remember(playerSettings.defaultAudioDelayMs) { mutableLongStateOf(playerSettings.defaultAudioDelayMs.toLong()) }
 
     val isAnySheetOpen = showAspectRatioSheet || showSpeedSheet || showZoomSheet ||
@@ -913,6 +931,15 @@ fun PlayerScreen(
             )
         }
 
+        // Camera Shutter Flash Effect
+        if (shutterAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.White.copy(alpha = shutterAlpha))
+            )
+        }
+
         // ──────────────────────────────────────────────────────────────
         // Gestures, Controls, Overlays & Dialogs (Hidden in PiP Mode)
         // ──────────────────────────────────────────────────────────────
@@ -1230,53 +1257,100 @@ fun PlayerScreen(
                         val triggerTakeSnapshot: () -> Unit = {
                             val pv = rememberPlayerViewRef
                             val act = activity
-                            if (pv != null && act != null) {
+                            if (pv != null && act != null && !isSnapshotLoading) {
                                 isSnapshotLoading = true
+                                isShutterFlashing = true
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+
                                 try {
+                                    val videoView = pv.videoSurfaceView ?: findVideoSurfaceView(pv)
                                     val screenshotDir = DownloadManager.getEffectiveScreenshotDir(context)
                                     val screenshotFile = File(screenshotDir, "StreamHub_${System.currentTimeMillis()}.png")
 
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                        val viewWidth = pv.width.coerceAtLeast(1)
-                                        val viewHeight = pv.height.coerceAtLeast(1)
-                                        val bitmap = android.graphics.Bitmap.createBitmap(
-                                            viewWidth, viewHeight, android.graphics.Bitmap.Config.ARGB_8888
-                                        )
-                                        val location = IntArray(2)
-                                        pv.getLocationInWindow(location)
-                                        val srcRect = android.graphics.Rect(
-                                            location[0], location[1],
-                                            location[0] + viewWidth, location[1] + viewHeight
-                                        )
-                                        android.view.PixelCopy.request(
-                                            act.window,
-                                            srcRect,
-                                            bitmap,
-                                            { copyResult ->
-                                                isSnapshotLoading = false
-                                                if (copyResult == android.view.PixelCopy.SUCCESS) {
-                                                    try {
-                                                        FileOutputStream(screenshotFile).use { out ->
-                                                            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
-                                                        }
-                                                        act.runOnUiThread {
-                                                            ToastManager.showToast("📸 Snapshot saved to ${screenshotDir.name}")
-                                                        }
-                                                    } catch (e: Exception) {
-                                                        Log.w("PlayerScreen", "Saving screenshot failed", e)
-                                                    } finally {
-                                                        bitmap.recycle()
-                                                    }
-                                                } else {
-                                                    bitmap.recycle()
+                                    val saveScreenshotAsync: (Bitmap) -> Unit = { bitmap ->
+                                        scope.launch(Dispatchers.IO) {
+                                            try {
+                                                FileOutputStream(screenshotFile).use { out ->
+                                                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                                                    out.flush()
                                                 }
-                                            },
-                                            android.os.Handler(android.os.Looper.getMainLooper())
-                                        )
+                                                // Register file with Android MediaStore so it appears in Gallery
+                                                MediaScannerConnection.scanFile(
+                                                    context,
+                                                    arrayOf(screenshotFile.absolutePath),
+                                                    arrayOf("image/png"),
+                                                    null
+                                                )
+                                                withContext(Dispatchers.Main) {
+                                                    isSnapshotLoading = false
+                                                    ToastManager.showToast("📸 Snapshot saved to Gallery")
+                                                }
+                                            } catch (e: Exception) {
+                                                Log.w("PlayerScreen", "Saving screenshot failed", e)
+                                                withContext(Dispatchers.Main) {
+                                                    isSnapshotLoading = false
+                                                    ToastManager.showToast("Failed to save snapshot")
+                                                }
+                                            } finally {
+                                                bitmap.recycle()
+                                            }
+                                        }
+                                    }
+
+                                    when (videoView) {
+                                        is SurfaceView -> {
+                                            val surface = videoView.holder.surface
+                                            if (surface != null && surface.isValid) {
+                                                val width = videoView.width.coerceAtLeast(1)
+                                                val height = videoView.height.coerceAtLeast(1)
+                                                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                                                    PixelCopy.request(
+                                                        videoView,
+                                                        bitmap,
+                                                        { copyResult ->
+                                                            if (copyResult == PixelCopy.SUCCESS) {
+                                                                saveScreenshotAsync(bitmap)
+                                                            } else {
+                                                                isSnapshotLoading = false
+                                                                bitmap.recycle()
+                                                                Log.w("PlayerScreen", "PixelCopy failed with code $copyResult")
+                                                                ToastManager.showToast("Snapshot capture failed")
+                                                            }
+                                                        },
+                                                        Handler(Looper.getMainLooper())
+                                                    )
+                                                } else {
+                                                    isSnapshotLoading = false
+                                                    bitmap.recycle()
+                                                    ToastManager.showToast("Snapshot requires Android 7.0+")
+                                                }
+                                            } else {
+                                                isSnapshotLoading = false
+                                                ToastManager.showToast("Video surface not ready")
+                                            }
+                                        }
+                                        is TextureView -> {
+                                            val width = videoView.width.coerceAtLeast(1)
+                                            val height = videoView.height.coerceAtLeast(1)
+                                            val bitmap = videoView.getBitmap(width, height)
+                                            if (bitmap != null) {
+                                                saveScreenshotAsync(bitmap)
+                                            } else {
+                                                isSnapshotLoading = false
+                                                ToastManager.showToast("Snapshot capture failed")
+                                            }
+                                        }
+                                        else -> {
+                                            isSnapshotLoading = false
+                                            Log.w("PlayerScreen", "No SurfaceView or TextureView found for snapshot")
+                                            ToastManager.showToast("Snapshot not supported on this video")
+                                        }
                                     }
                                 } catch (e: Exception) {
                                     isSnapshotLoading = false
-                                    Log.w("PlayerScreen", "Screenshot failed: ${e.message}")
+                                    Log.w("PlayerScreen", "Screenshot failed: ${e.message}", e)
                                 }
                             }
                         }
@@ -1299,7 +1373,6 @@ fun PlayerScreen(
                             selectedRatioOption = selectedRatioOption,
                             videoZoomScale = videoZoomScale,
                             isNightShield = isNightShield,
-                            isFrameNavExpanded = isFrameNavExpanded,
                             isSnapshotLoading = isSnapshotLoading,
                             scrubberThumbnailBitmap = scrubberThumbnailBitmap,
                             playerSettings = playerSettings,
@@ -1363,11 +1436,7 @@ fun PlayerScreen(
                                     }
                                 }
                             },
-                            onToggleFrameNavExpand = { isFrameNavExpanded = !isFrameNavExpanded },
-                            onStepBackward = { viewModel.seekBackward(100L) },
-                            onStepForward = { viewModel.seekForward(100L) },
                             onTakeSnapshot = triggerTakeSnapshot,
-                            onOpenFrameNavSheet = { showFrameNavSheet = true },
                             onToggleNightShield = {
                                 isNightShield = !isNightShield
                                 ToastManager.showToast(if (isNightShield) "🌙 Night Shield ON (Amber Filter)" else "Night Shield OFF")
@@ -1543,3 +1612,18 @@ fun PlayerScreen(
         }
     }
 }
+
+/**
+ * Recursively locates the video surface view (SurfaceView or TextureView) inside the PlayerView.
+ */
+private fun findVideoSurfaceView(view: View): View? {
+    if (view is SurfaceView || view is TextureView) return view
+    if (view is ViewGroup) {
+        for (i in 0 until view.childCount) {
+            val found = findVideoSurfaceView(view.getChildAt(i))
+            if (found != null) return found
+        }
+    }
+    return null
+}
+

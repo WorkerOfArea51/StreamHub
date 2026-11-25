@@ -31,6 +31,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.Forward10
@@ -68,7 +69,7 @@ import com.streamhub.app.player.PlayerUiState
 import com.streamhub.app.ui.screens.player.controls.AmbientDiscoIcon
 import com.streamhub.app.ui.screens.player.controls.ControlsButton
 import com.streamhub.app.ui.screens.player.controls.ControlsGroup
-import com.streamhub.app.ui.screens.player.controls.FrameNavigationCapsule
+// import com.streamhub.app.ui.screens.player.controls.FrameNavigationCapsule
 import com.streamhub.app.ui.screens.player.controls.MpvSeekbar
 import com.streamhub.app.ui.screens.player.sheets.MpvAspectRatioItem
 
@@ -145,8 +146,8 @@ fun PlayerBottomBarControls(
     selectedRatioOption: MpvAspectRatioItem,
     videoZoomScale: Float,
     isNightShield: Boolean,
-    isFrameNavExpanded: Boolean,
-    isSnapshotLoading: Boolean,
+    isFrameNavExpanded: Boolean = false,
+    isSnapshotLoading: Boolean = false,
     scrubberThumbnailBitmap: Bitmap?,
     playerSettings: PlayerSettings,
     onToggleLock: () -> Unit,
@@ -166,11 +167,11 @@ fun PlayerBottomBarControls(
     onOpenZoomSheet: () -> Unit,
     onResetZoom: () -> Unit,
     onEnterPip: () -> Unit,
-    onToggleFrameNavExpand: () -> Unit,
-    onStepBackward: () -> Unit,
-    onStepForward: () -> Unit,
+    onToggleFrameNavExpand: () -> Unit = {},
+    onStepBackward: () -> Unit = {},
+    onStepForward: () -> Unit = {},
     onTakeSnapshot: () -> Unit,
-    onOpenFrameNavSheet: () -> Unit,
+    onOpenFrameNavSheet: () -> Unit = {},
     onToggleNightShield: () -> Unit,
     onSeekTo: (Long) -> Unit,
     onScrubbingChanged: (Boolean) -> Unit,
@@ -389,16 +390,14 @@ fun PlayerBottomBarControls(
                         title = "Picture-in-Picture"
                     )
 
-                    // 12. Frame Navigation Capsule
-                    FrameNavigationCapsule(
-                        isExpanded = isFrameNavExpanded,
-                        isSnapshotLoading = isSnapshotLoading,
-                        onToggleExpand = onToggleFrameNavExpand,
-                        onStepBackward = onStepBackward,
-                        onStepForward = onStepForward,
-                        onTakeSnapshot = onTakeSnapshot,
-                        onOpenSheet = onOpenFrameNavSheet,
-                        buttonSize = 40.dp
+                    // 12. Snapshot Camera Button
+                    ControlsButton(
+                        icon = Icons.Default.CameraAlt,
+                        onClick = onTakeSnapshot,
+                        size = 40.dp,
+                        iconSize = 18.dp,
+                        title = "Take Screenshot",
+                        color = if (isSnapshotLoading) Color(0xFFD0BCFF) else Color.White
                     )
 
                     // 13. Night Shield
@@ -550,15 +549,14 @@ fun PlayerBottomBarControls(
                         title = "Picture-in-Picture"
                     )
 
-                    FrameNavigationCapsule(
-                        isExpanded = isFrameNavExpanded,
-                        isSnapshotLoading = isSnapshotLoading,
-                        onToggleExpand = onToggleFrameNavExpand,
-                        onStepBackward = onStepBackward,
-                        onStepForward = onStepForward,
-                        onTakeSnapshot = onTakeSnapshot,
-                        onOpenSheet = onOpenFrameNavSheet,
-                        buttonSize = 40.dp
+                    // 12. Snapshot Camera Button
+                    ControlsButton(
+                        icon = Icons.Default.CameraAlt,
+                        onClick = onTakeSnapshot,
+                        size = 40.dp,
+                        iconSize = 18.dp,
+                        title = "Take Screenshot",
+                        color = if (isSnapshotLoading) Color(0xFFD0BCFF) else Color.White
                     )
 
                     ControlsButton(
